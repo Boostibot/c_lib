@@ -2,6 +2,7 @@
 #define LIB_LOG
 
 #include "assert.h"
+#include "defines.h"
 #include <stdarg.h>
 
 #ifndef LOG_CUSTOM_SETTINGS
