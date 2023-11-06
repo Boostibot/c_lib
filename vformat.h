@@ -135,8 +135,11 @@ typedef unsigned long long llu;
         //use too much memory
         if(slot % RESET_EVERY < EPHEMERAL_SLOTS)
         {
-            if(curr->capacity > KEPT_SIZE)
-                array_init(ephemeral_strings, allocator_get_static());
+            if(curr->capacity == 0 || curr->capacity > KEPT_SIZE)
+            {
+                array_init(curr, allocator_get_static());
+                array_set_capacity(curr, KEPT_SIZE);
+            }
         }
         
         va_list args;
