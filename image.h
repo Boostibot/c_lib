@@ -208,9 +208,7 @@ EXPORT Image image_from_builder(Image_Builder image)
 
 EXPORT bool image_is_contiguous(Image view)
 {
-    return view.from_x == 0 && view.from_y == 0
-        && view.width == view.containing_width 
-        && view.height == view.containing_height;
+    return view.from_x == 0 && view.width == view.containing_width;
 }
 
 EXPORT Image image_range(Image view, i32 from_x, i32 from_y, i32 to_x, i32 to_y)

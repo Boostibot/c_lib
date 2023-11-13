@@ -27,6 +27,7 @@
 #include "format.h"
 #include "error.h"
 
+
 typedef enum Netbpm_Format {
     NETBPM_FORMAT_NONE = 0,
     NETBPM_FORMAT_PBM_ASCII = 1,
@@ -232,7 +233,7 @@ INTERNAL Error _netbpm_format_write_append_pfm_pfmg(String_Builder* append_into,
 
     f32 corrected_range = 0;
     if(endian_get_local() == ENDIAN_LITTLE)
-        corrected_range = -fabsf(range);
+        corrected_range = fabsf(range);
     else
         corrected_range = fabsf(range);
 
@@ -294,11 +295,13 @@ INTERNAL Error _netbpm_format_read_pfm_pfmg(Image_Builder* image, String ppm, co
 
 EXPORT Error netbpm_format_pgm_write_into(String_Builder* into, Image image)
 {
+    array_clear(into);
     return _netbpm_format_write_append_pgm_ppm(into, image, "P5", 1);
 }
 
 EXPORT Error netbpm_format_ppm_write_into(String_Builder* into, Image image)
 {
+    array_clear(into);
     return _netbpm_format_write_append_pgm_ppm(into, image, "P6", 3);
 }
 
@@ -314,11 +317,13 @@ EXPORT Error netbpm_format_ppm_read_into(Image_Builder* image, String ppm)
 
 EXPORT Error netbpm_format_pfmg_write_into(String_Builder* into, Image image, f32 range)
 {
+    array_clear(into);
     return _netbpm_format_write_append_pfm_pfmg(into, image, "Pf", 1, range);
 }
 
 EXPORT Error netbpm_format_pfm_write_into(String_Builder* into, Image image, f32 range)
 {
+    array_clear(into);
     return _netbpm_format_write_append_pfm_pfmg(into, image, "PF", 3, range);
 }
 
