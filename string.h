@@ -4,7 +4,8 @@
 #include "allocator.h"
 #include "array.h"
 
-typedef struct String {
+typedef struct String
+{
     const char* data;
     isize size;
 } String;

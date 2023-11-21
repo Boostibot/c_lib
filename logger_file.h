@@ -376,9 +376,15 @@ EXPORT bool file_logger_flush(File_Logger* logger)
 EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, isize indentation, Source_Info source, const char* format, va_list args)
 {
     PERF_COUNTER_START(counter);
+    File_Logger* self = (File_Logger*) (void*) logger;
+    if(type == LOG_TYPE_FLUSH)
+    {
+        file_logger_flush(self);
+        return;
+    }
+
     (void) source;
 
-    File_Logger* self = (File_Logger*) (void*) logger;
     String module_string = string_make(module);
 
     String_Builder formatted_log = {0};
@@ -425,10 +431,19 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
 
     if(print_to_console)
     {
+        const char* color_mode = ANSI_COLOR_NORMAL;
+        if(type == LOG_TYPE_ERROR || type == LOG_TYPE_FATAL)
+            color_mode = ANSI_COLOR_BRIGHT_RED;
+        else if(type == LOG_TYPE_WARN)
+            color_mode = ANSI_COLOR_YELLOW;
+        else if(type == LOG_TYPE_TRACE || type == LOG_TYPE_DEBUG)
+            color_mode = ANSI_COLOR_GRAY;
+
         if(self->console_print_func)
             self->console_print_func(formatted_log.data, formatted_log.size, self->console_print_context);
         else
-            fwrite(formatted_log.data, 1, formatted_log.size, stdout);
+            printf("%s%s" ANSI_COLOR_NORMAL, color_mode, formatted_log.data);
+            //fwrite(formatted_log.data, 1, formatted_log.size, stdout);
     }
 
     if(print_to_file)

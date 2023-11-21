@@ -543,7 +543,7 @@ EXPORT Error netbpm_format_pam_read_into(Image_Builder* image, String ppm)
         else
         {
             Allocator* alloc = image->allocator;
-            image_builder_init_from_pixel_size(image, alloc, (i32) pixel_size, (i32) pixel_format);
+            image_builder_init_from_pixel_size(image, alloc, (i32) pixel_size, (Image_Pixel_Format) pixel_format);
             image_builder_resize(image, (i32) width, (i32) height);
             memcpy(image->pixels, ppm.data, needed_size);
         }

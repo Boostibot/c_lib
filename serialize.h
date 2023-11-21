@@ -31,6 +31,7 @@
 #include "format.h"
 #include "math.h"
 #include "base64.h"
+#include "guid.h"
 
 typedef enum Read_Or_Write {
     SERIALIZE_READ = 0,

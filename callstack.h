@@ -60,37 +60,8 @@ EXPORT void callstack_capture_and_translate(Stack_Trace* into, isize depth, isiz
     ptr_Array stack = {0};
     array_init_backed(&stack, allocator_get_scratch(), _DEF_CALLSTACK_SIZE);
     callstack_capture(&stack, depth, skip);
-    callstack_translate(into, stack.data, stack.size);
+    callstack_translate(into, (const void**) stack.data, stack.size);
     array_deinit(&stack);
-}
-
-EXPORT void log_callstack(const char* log_module, Log_Type log_type, isize depth, isize skip)
-{
-    ptr_Array stack = {0};
-    array_init_backed(&stack, allocator_get_scratch(), _DEF_CALLSTACK_SIZE);
-    callstack_capture(&stack, depth, skip);
-    log_captured_callstack(log_module, log_type, stack.data, stack.size);
-    array_deinit(&stack);
-}
-
-EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void** callstack, isize callstack_size)
-{
-    Stack_Trace trace = {0};
-    array_init_backed(&trace, allocator_get_scratch(), 16);
-    callstack_translate(&trace, callstack, callstack_size);
-
-    for(isize i = 0; i < callstack_size; i++)
-    {
-        Stack_Trace_Entry* entry = &trace.data[i];
-        if(strcmp(entry->function, "invoke_main") == 0)
-            break;
-
-        LOG(log_module, log_type, STACK_TRACE_FMT, STACK_TRACE_PRINT(*entry));
-        if(strcmp(entry->function, "main") == 0)
-            break;
-    }
-
-    array_deinit(&trace);
 }
 
 

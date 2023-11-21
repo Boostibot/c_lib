@@ -763,7 +763,7 @@ INTERNAL bool _lpf_split_into_segments(_Lpf_Segment_Array* segemnts, String valu
         while(line.size > max_size)
         {
             had_too_log = true;
-            _Lpf_Segment segment = {0};
+            _Lpf_Segment segment = {LPF_KIND_BLANK};
             segment.kind = kind;
             segment.string = string_head(line, max_size);
             
@@ -772,7 +772,7 @@ INTERNAL bool _lpf_split_into_segments(_Lpf_Segment_Array* segemnts, String valu
             kind = LPF_KIND_ESCAPED_CONTINUATION;
         }
         
-        _Lpf_Segment last_segemnt = {0};
+        _Lpf_Segment last_segemnt = {LPF_KIND_BLANK};
         last_segemnt.kind = kind;
         last_segemnt.string = line;
         array_push(segemnts, last_segemnt);
@@ -1067,7 +1067,7 @@ EXPORT void lpf_write_entry(Lpf_Writer* writer, String_Builder* builder, Lpf_Ent
         for(isize i = 0; i < value_segments.size; i++)
         {
             _Lpf_Segment segment = value_segments.data[i];
-            Lpf_Entry continuation = {0};
+            Lpf_Entry continuation = {LPF_KIND_BLANK};
             continuation.kind = segment.kind;
             continuation.value = segment.string;
 
@@ -1354,10 +1354,10 @@ EXPORT void lpf_dyn_entry_from_entry(Lpf_Dyn_Entry* dyn, Lpf_Entry entry)
 
 EXPORT Lpf_Entry lpf_entry_from_dyn_entry(Lpf_Dyn_Entry dyn)
 {
-    Lpf_Entry entry = {0};
+    Lpf_Entry entry = {LPF_KIND_BLANK};
 
-    entry.kind = dyn.kind;
-    entry.error = dyn.error;
+    entry.kind = (Lpf_Kind) dyn.kind;
+    entry.error = (Lpf_Error) dyn.error;
     entry.line_number = dyn.line_number;
     entry.depth = dyn.depth;
     entry.format_flags = dyn.format_flags;
@@ -1411,7 +1411,7 @@ EXPORT void lpf_reader_commit_entries(Lpf_Reader* reader)
         Lpf_Dyn_Entry* parent = (Lpf_Dyn_Entry*) *array_last(reader->scopes);
         lpf_dyn_entry_push(parent, last);
 
-        Lpf_Entry null_entry = {0};
+        Lpf_Entry null_entry = {LPF_KIND_BLANK};
         reader->last_entry = null_entry;
         array_clear(&reader->last_comment);
         array_clear(&reader->last_value);
@@ -1577,7 +1577,7 @@ EXPORT Lpf_Error lpf_read_custom(String source, Lpf_Dyn_Entry* into, const Lpf_F
     Lpf_Error last_error = LPF_ERROR_NONE;
     while(true)
     {
-        Lpf_Entry entry = {0};
+        Lpf_Entry entry = {LPF_KIND_BLANK};
         isize next_source_i = lpf_lowlevel_read_entry(source, last_source_i, &entry);
         if(last_source_i == next_source_i)
             break;

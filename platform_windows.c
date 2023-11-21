@@ -1,5 +1,13 @@
 #include "platform.h"
 
+#ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef UNICODE
+    #define UNICODE
+#endif 
+
+#include <locale.h>
 #include <assert.h>
 #include <windows.h>
 
@@ -14,6 +22,8 @@
 #include <dwmapi.h>
 #pragma comment(lib, "dwmapi.lib")
 
+#undef near
+#undef far
 
 enum { WINDOWS_PLATFORM_FILE_TYPE_PIPE = PLATFORM_FILE_TYPE_PIPE };
 #undef PLATFORM_FILE_TYPE_PIPE
@@ -96,7 +106,8 @@ int64_t platform_thread_get_proccessor_count()
 Platform_Thread platform_thread_create(int (*func)(void*), void* context, int64_t stack_size)
 {
     Platform_Thread thread = {0};
-    thread.handle = CreateThread(0, stack_size, func, context, 0, &thread.id);
+    PTHREAD_START_ROUTINE cast_func = (PTHREAD_START_ROUTINE) (void*) func;
+    thread.handle = CreateThread(0, stack_size, cast_func, context, 0, (LPDWORD) &thread.id);
     return thread;
 }
 void platform_thread_destroy(Platform_Thread* thread)
@@ -231,13 +242,16 @@ int64_t platform_local_epoch_time()
 
 Platform_Calendar_Time platform_epoch_time_to_calendar_time(int64_t epoch_time_usec)
 {
-    #define EPOCH_YEAR              (int64_t) 1970
-    #define MILLISECOND_MICROSECOND (int64_t) 1000
-    #define SECOND_MICROSECONDS     (int64_t) 1000000
-    #define DAY_SECONDS             (int64_t) 86400
-    #define YEAR_SECONDS            (int64_t) 31556952
-    #define DAY_MICROSECONDS        (DAY_SECONDS * SECOND_MICROSECONDS)
-    #define YEAR_MICROSECONDS       (YEAR_SECONDS * SECOND_MICROSECONDS)
+    const int64_t EPOCH_YEAR              = (int64_t) 1970;
+    const int64_t MILLISECOND_MICROSECOND = (int64_t) 1000;
+    const int64_t SECOND_MICROSECONDS     = (int64_t) 1000000;
+    const int64_t DAY_SECONDS             = (int64_t) 86400;
+    const int64_t YEAR_SECONDS            = (int64_t) 31556952;
+    const int64_t DAY_MICROSECONDS        = (DAY_SECONDS * SECOND_MICROSECONDS);
+    const int64_t YEAR_MICROSECONDS       = (YEAR_SECONDS * SECOND_MICROSECONDS);
+
+    (void) DAY_SECONDS;
+    (void) DAY_MICROSECONDS;
 
     SYSTEMTIME systime = {0};
     FILETIME filetime = _epoch_time_to_filetime(epoch_time_usec);
@@ -559,7 +573,7 @@ const char* platform_translate_error(Platform_Error error)
     
     (void) length;
     LocalFree(_translated_errors[_translated_error_cursor]);
-    _translated_errors[_translated_error_cursor] = trasnlated;
+    _translated_errors[_translated_error_cursor] = (char*) trasnlated;
     _translated_error_cursor = (_translated_error_cursor + 1) % _TRANSLATED_ERRORS_SIMULATANEOUS;
 
     return (const char*) trasnlated;
@@ -722,52 +736,53 @@ Platform_Error platform_file_memory_map(const char* file_path, int64_t desired_s
         return PLATFORM_ERROR_OK;
     }
 
-    LARGE_INTEGER desired_size = {0};
-    if(desired_size_or_zero == 0)
-        desired_size.QuadPart = liFileSize.QuadPart;
-    if(desired_size_or_zero > 0)
     {
-        desired_size.QuadPart = desired_size_or_zero;
-
-        //if is desired smaller shrinks the file
-        if(desired_size_or_zero < liFileSize.QuadPart)
+        LARGE_INTEGER desired_size = {0};
+        if(desired_size_or_zero == 0)
+            desired_size.QuadPart = liFileSize.QuadPart;
+        if(desired_size_or_zero > 0)
         {
-            DWORD dwPtrLow = SetFilePointer(hFile, desired_size.LowPart, &desired_size.HighPart,  FILE_BEGIN); 
-            if(dwPtrLow == INVALID_SET_FILE_POINTER)
-                goto error;
+            desired_size.QuadPart = desired_size_or_zero;
 
-            if(SetEndOfFile(hFile) == FALSE)
-                goto error;
+            //if is desired smaller shrinks the file
+            if(desired_size_or_zero < liFileSize.QuadPart)
+            {
+                DWORD dwPtrLow = SetFilePointer(hFile, desired_size.LowPart, &desired_size.HighPart,  FILE_BEGIN); 
+                if(dwPtrLow == INVALID_SET_FILE_POINTER)
+                    goto error;
+
+                if(SetEndOfFile(hFile) == FALSE)
+                    goto error;
+            }
         }
+        if(desired_size_or_zero < 0)
+            desired_size.QuadPart = -desired_size_or_zero + liFileSize.QuadPart;
+
+        hMap = CreateFileMappingW(
+            hFile,
+            NULL,                          // Mapping attributes
+            PAGE_READWRITE ,               // Protection flags
+            desired_size.HighPart,         // MaximumSizeHigh
+            desired_size.LowPart,          // MaximumSizeLow
+            NULL);                         // Name
+        if (hMap == 0) 
+            goto error;
+
+        lpBasePtr = MapViewOfFile(
+            hMap,
+            FILE_MAP_ALL_ACCESS,   // dwDesiredAccess
+            0,                     // dwFileOffsetHigh
+            0,                     // dwFileOffsetLow
+            0);                    // dwNumberOfBytesToMap
+        if (lpBasePtr == NULL) 
+            goto error;
+
+        mapping->size = desired_size.QuadPart;
+        mapping->address = lpBasePtr;
+        mapping->state[0] = (uint64_t) hFile;
+        mapping->state[1] = (uint64_t) hMap;
+        return PLATFORM_ERROR_OK;
     }
-    if(desired_size_or_zero < 0)
-        desired_size.QuadPart = -desired_size_or_zero + liFileSize.QuadPart;
-
-    hMap = CreateFileMappingW(
-        hFile,
-        NULL,                          // Mapping attributes
-        PAGE_READWRITE ,               // Protection flags
-        desired_size.HighPart,         // MaximumSizeHigh
-        desired_size.LowPart,          // MaximumSizeLow
-        NULL);                         // Name
-    if (hMap == 0) 
-        goto error;
-
-    lpBasePtr = MapViewOfFile(
-        hMap,
-        FILE_MAP_ALL_ACCESS,   // dwDesiredAccess
-        0,                     // dwFileOffsetHigh
-        0,                     // dwFileOffsetLow
-        0);                    // dwNumberOfBytesToMap
-    if (lpBasePtr == NULL) 
-        goto error;
-
-    mapping->size = desired_size.QuadPart;
-    mapping->address = lpBasePtr;
-    mapping->state[0] = (uint64_t) hFile;
-    mapping->state[1] = (uint64_t) hMap;
-
-    return PLATFORM_ERROR_OK;
 
     error: {
         DWORD err = GetLastError();
@@ -1472,7 +1487,7 @@ Platform_Sandox_Error platform_exception_sandbox(
 
     sandbox_error_func = prev_func;
     sandbox_error_context = prev_context;
-    return 0;
+    return PLATFORM_EXCEPTION_NONE;
 }
 
 const char* platform_sandbox_error_to_string(Platform_Sandox_Error error)
@@ -1505,10 +1520,41 @@ const char* platform_sandbox_error_to_string(Platform_Sandox_Error error)
     }
 }
 
+bool _platform_set_console_output_escape_sequences()
+{
+    // Set output mode to handle virtual terminal sequences
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE)
+        return false;
+
+    DWORD dwOriginalOutMode = 0;
+    if (!GetConsoleMode(hOut, &dwOriginalOutMode))
+        return false;
+
+    DWORD dwOutMode = dwOriginalOutMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
+    if (!SetConsoleMode(hOut, dwOutMode))
+    {
+        dwOutMode = dwOriginalOutMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        if (!SetConsoleMode(hOut, dwOutMode))
+            return false;
+    }
+
+    return true;
+}
+
+void _platform_set_console_utf8()
+{
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+    setlocale(LC_ALL, ".UTF-8");
+}
+
 void platform_init()
 {
     platform_perf_counter();
     platform_startup_epoch_time();
+    _platform_set_console_utf8();
+    _platform_set_console_output_escape_sequences();
 }
 void platform_deinit()
 {

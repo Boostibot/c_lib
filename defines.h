@@ -69,17 +69,20 @@ typedef uint32_t    c32;
     #define NO_INLINE __attribute__((noinline))
     #define THREAD_LOCAL __thread
     #define ALIGNED(bytes) __attribute__((aligned(bytes)))
+    #define ASSUME_UNREACHABLE() __builtin_unreachable()
 #elif defined(_MSC_VER)
     #define RESTRICT __restrict
     #define FORCE_INLINE __forceinline
     #define NO_INLINE __declspec(noinline)
     #define THREAD_LOCAL __declspec(thread)
     #define ALIGNED(bytes) __declspec(align(bytes))
+    #define ASSUME_UNREACHABLE() __assume(0)
 #else
     #define RESTRICT
     #define FORCE_INLINE
     #define NO_INLINE
     #define THREAD_LOCAL __thread
+    #define ASSUME_UNREACHABLE()
 #endif
 
 #ifndef _MSC_VER

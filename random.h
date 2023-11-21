@@ -326,9 +326,9 @@ EXPORT void	 random_state_bytes(Random_State* state, void* into, int64_t size);
 		u64* fulls = (u64*) into;
 	
 		for(int64_t i = 0; i < full_randoms; i++)
-			fulls[i] = random_u64(state);
+			fulls[i] = random_state_u64(state);
 
-		u64 last = random_u64(state);
+		u64 last = random_state_u64(state);
 		memcpy(&fulls[full_randoms], &last, remainder);
 	}
 

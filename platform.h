@@ -288,7 +288,7 @@ Platform_Sandox_Error platform_exception_sandbox(
 
 const char* platform_sandbox_error_to_string(Platform_Sandox_Error error);
 
-typedef enum {
+typedef enum Platform_Sandox_Error {
     PLATFORM_EXCEPTION_NONE = 0,
     PLATFORM_EXCEPTION_ACCESS_VIOLATION,
     PLATFORM_EXCEPTION_DATATYPE_MISALIGNMENT,
@@ -311,7 +311,6 @@ typedef enum {
     PLATFORM_EXCEPTION_TERMINATE = 0x0001000,
     PLATFORM_EXCEPTION_OTHER = 0x0001001,
 } Platform_Sandox_Error; 
-
 
 // =================== INLINE IMPLEMENTATION ============================
 #if defined(_MSC_VER)

@@ -294,8 +294,8 @@ EXPORT Error file_append_entire(String file_path, String contents)
     Platform_Error error = platform_file_memory_map(cstring_from_builder(escpaed_file_path), -contents.size, &mapping);
     if(error == 0)
     {
-        char* bytes = mapping.address;
-        char* last_bytes = bytes + mapping.size - contents.size;
+        u8* bytes = (u8*) mapping.address;
+        u8* last_bytes = bytes + mapping.size - contents.size;
         memcpy(last_bytes, contents.data, contents.size);
         platform_file_memory_unmap(&mapping);
     }

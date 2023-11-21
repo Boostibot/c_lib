@@ -333,7 +333,7 @@ EXPORT void debug_allocator_panic_func(Debug_Allocator* allocator, Debug_Allocat
     LOG_FATAL("MEMORY", "PANIC because of %s at pointer 0x%p " SOURCE_INFO_FMT "\n", reason_str, allocation.ptr, SOURCE_INFO_PRINT(called_from));
     debug_allocator_print_alive_allocations(*allocator, 0);
     
-    log_flush_all();
+    log_flush();
     platform_trap();
     platform_abort();
 }
@@ -681,7 +681,7 @@ EXPORT void debug_allocator_print_alive_allocations(const Debug_Allocator alloca
         if(allocator.captured_callstack_size > 0)
         {
             log_group_push();
-            log_captured_callstack("MEMORY", LOG_TYPE_INFO, curr.allocation_trace.data, curr.allocation_trace.size);
+            log_captured_callstack("MEMORY", LOG_TYPE_INFO, (const void**) curr.allocation_trace.data, curr.allocation_trace.size);
             log_group_pop();
         }
     }
@@ -728,12 +728,12 @@ EXPORT void debug_allocator_print_dead_allocations(const Debug_Allocator allocat
             log_group_push();
                 LOG_TRACE("MEMORY", "allocation callstack (%lli):", (lli) curr.allocation_trace.size);
                 log_group_push();
-                log_captured_callstack("MEMORY", LOG_TYPE_TRACE, curr.allocation_trace.data, curr.allocation_trace.size);
+                log_captured_callstack("MEMORY", LOG_TYPE_TRACE, (const void**) curr.allocation_trace.data, curr.allocation_trace.size);
                 log_group_pop();
 
                 LOG_TRACE("MEMORY", "deallocation callstack (%lli):", (lli) curr.deallocation_trace.size);
                 log_group_push();
-                log_captured_callstack("MEMORY", LOG_TYPE_TRACE, curr.deallocation_trace.data, curr.deallocation_trace.size);
+                log_captured_callstack("MEMORY", LOG_TYPE_TRACE, (const void**) curr.deallocation_trace.data, curr.deallocation_trace.size);
                 log_group_pop();
             log_group_pop();
         }
@@ -865,7 +865,7 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
             return _debug_allocator_panic(self, DEBUG_ALLOC_PANIC_INVALID_PARAMS, old_ptr, called_from);
         }
 
-        old_block_ptr = _debug_allocator_get_placed_block(self, old_ptr);
+        old_block_ptr = (u8*) _debug_allocator_get_placed_block(self, old_ptr);
     }
 
     
@@ -904,7 +904,7 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
     {
         Debug_Allocation_Block new_block = {0};
         _debug_allocator_place_block(self, new_block_ptr, new_size, align, &new_block);
-        new_ptr = new_block.pre.user_ptr;
+        new_ptr = (u8*) new_block.pre.user_ptr;
 
         if(self->captured_callstack_size > 0)
             platform_capture_call_stack(new_block.pre.call_stack, new_block.pre.call_stack_size, 1);

@@ -93,9 +93,7 @@ EXPORT void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize 
 EXPORT Allocator_Stats allocator_get_stats(Allocator* self);
 
 //Gets called when function requiring to always succeed fails an allocation - most often from allocator_reallocate
-//Unless LIB_ALLOCATOR_NAKED is defined is left unimplemented.
-//If user wannts some more dynamic system potentially enabling local handlers 
-// they can implement it themselves
+//If ALLOCATOR_CUSTOM_OUT_OF_MEMORY is defines is left unimplemented
 EXPORT void allocator_out_of_memory(
     Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align, 
     Source_Info called_from, const char* format_string, ...);
@@ -112,6 +110,8 @@ EXPORT Allocator_Set allocator_set_static(Allocator* new_scratch);
 EXPORT Allocator_Set allocator_set_both(Allocator* new_default, Allocator* new_scratch);
 EXPORT Allocator_Set allocator_set(Allocator_Set backup); 
 
+//Returns memory unit and saves the unit size in unit_or_null. If unit_or_null is null does not save anything.
+EXPORT const char* get_memory_unit(isize bytes, isize *unit_or_null);
 
 EXPORT bool  is_power_of_two(isize num);
 EXPORT bool  is_power_of_two_or_zero(isize num);
@@ -241,27 +241,6 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
 
         return prev;
     }
-
-    #ifdef LIB_ALLOCATOR_NAKED
-    #include <stdlib.h>
-    #include <stdarg.h>
-    #include <stdio.h>
-    EXPORT void allocator_out_of_memory(
-        struct Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align, 
-        void* context, Source_Info called_from, 
-        const char* format_string, ...)
-    {
-    
-        fprintf(stderr, "Allocator run out of memory! with message:" );
-        
-        va_list args;
-        va_start(args, format_string);
-        vfprintf(stderr, format_string, args);
-        va_end(args);
-
-        abort();
-    }
-    #endif // !
     
     EXPORT bool is_power_of_two_or_zero(isize num) 
     {
@@ -299,5 +278,113 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
 
         return (void*) ptr_num;
     }
+    
+    EXPORT const char* get_memory_unit(isize bytes, isize *unit_or_null)
+    {
+        isize TB = (isize) 1000*1000*1000*1000;
+        isize GB = (isize) 1000*1000*1000;
+        isize MB = (isize) 1000*1000;
+        isize KB = (isize) 1000;
+        isize B = (isize) 1;
 
+        const char* out = "";
+        isize unit = 1;
+        if(bytes > TB)
+        {
+            out = "TB";
+            unit = TB;
+        }
+        else if(bytes > GB)
+        {
+            out = "GB";
+            unit = GB;
+        }
+        else if(bytes > MB)
+        {
+            out = "MB";
+            unit = MB;
+        }
+        else if(bytes > KB)
+        {
+            out = "KB";
+            unit = KB;
+        }
+        else
+        {
+            out = "B";
+            unit = B;
+        }
+
+        if(unit_or_null)
+            *unit_or_null = unit;
+
+        return out;
+    }
+
+    #ifndef ALLOCATOR_CUSTOM_OUT_OF_MEMORY
+    EXPORT void allocator_out_of_memory(
+        Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align, 
+        Source_Info called_from, const char* format_string, ...)
+    {
+        Allocator_Stats stats = {0};
+        if(allocator != NULL && allocator->get_stats != NULL)
+            stats = allocator_get_stats(allocator);
+        
+        if(stats.type_name == NULL)
+            stats.type_name = "<no type name>";
+
+        if(stats.name == NULL)
+            stats.name = "<no name>";
+
+        const char* mod = "memory";
+        LOG_FATAL(mod, "Allocator %s %s reported out of memory! (%s : %lli)", stats.type_name, stats.name, called_from.file, called_from.line);
+
+        log_group_push();
+        LOG_INFO(mod, "new_size:    %lli B", new_size);
+        if(old_ptr != NULL)
+            LOG_INFO(mod, "old_ptr:     0x%p", old_ptr);
+        else
+            LOG_INFO(mod, "old_ptr:     NULL");
+        LOG_INFO(mod, "old_size:    %lli B", old_size);
+        LOG_INFO(mod, "align:       %lli B", align);
+        
+        if(format_string != NULL && strlen(format_string) > 0)
+        {
+            log_group_push();
+                va_list args;               
+                va_start(args, format_string);     
+                VLOG(mod, LOG_TYPE_FATAL, format_string, args);
+                va_end(args);  
+            log_group_pop();
+        }
+
+        LOG_INFO(mod, "Allocator_Stats:");
+        log_group_push();
+        {
+            const char* unit_str = "";
+            isize unit = 0;
+
+            unit_str = get_memory_unit(stats.bytes_allocated, &unit);
+            LOG_INFO(mod, "bytes_allocated:     %lli %s", DIV_ROUND_UP(stats.bytes_allocated, unit), unit_str);
+            unit_str = get_memory_unit(stats.max_bytes_allocated, &unit);
+            LOG_INFO(mod, "max_bytes_allocated: %lli %s", DIV_ROUND_UP(stats.max_bytes_allocated, unit), unit_str);
+
+            LOG_INFO(mod, "allocation_count:    %lli", stats.allocation_count);
+            LOG_INFO(mod, "deallocation_count:  %lli", stats.deallocation_count);
+            LOG_INFO(mod, "reallocation_count:  %lli", stats.reallocation_count);
+        }
+        log_group_pop();
+    
+        LOG_TRACE(mod, "callstack:");
+        log_group_push();
+            log_callstack(mod, LOG_TYPE_TRACE, -1, 1);
+        log_group_pop();
+        
+        log_group_push();
+
+        log_flush();
+        platform_trap(); 
+        platform_abort();
+    }
+    #endif
 #endif

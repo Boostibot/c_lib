@@ -13,10 +13,10 @@ typedef struct Failing_Allocator
     Allocator allocator;
     Failing_Allocator_Panic panic_func;
     void* panic_context;
-} Malloc_Allocator;
+} Failing_Allocator;
 
-EXPORT void failling_allocator_init(Malloc_Allocator* self, Failing_Allocator_Panic panic_func, void* panic_context);
-EXPORT void failling_allocator_deinit(Malloc_Allocator* self);
+EXPORT void failling_allocator_init(Failing_Allocator* self, Failing_Allocator_Panic panic_func, void* panic_context);
+EXPORT void failling_allocator_deinit(Failing_Allocator* self);
 
 EXPORT void* failling_allocator_allocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from);
 EXPORT Allocator_Stats failling_allocator_get_stats(Allocator* self);
@@ -28,7 +28,7 @@ EXPORT Allocator_Stats failling_allocator_get_stats(Allocator* self);
 #if (defined(LIB_ALL_IMPL) || defined(LIB_ALLOCATOR_FAILING_IMPL)) && !defined(LIB_ALLOCATOR_FAILING_HAS_IMPL)
 #define LIB_ALLOCATOR_FAILING_HAS_IMPL
 
-EXPORT void failling_allocator_init(Malloc_Allocator* self, Failing_Allocator_Panic panic_func, void* panic_context)
+EXPORT void failling_allocator_init(Failing_Allocator* self, Failing_Allocator_Panic panic_func, void* panic_context)
 {
     self->allocator.allocate = failling_allocator_allocate;
     self->allocator.get_stats = failling_allocator_get_stats;
@@ -36,7 +36,7 @@ EXPORT void failling_allocator_init(Malloc_Allocator* self, Failing_Allocator_Pa
     self->panic_func = panic_func;
 }
 
-EXPORT void failling_allocator_deinit(Malloc_Allocator* self)
+EXPORT void failling_allocator_deinit(Failing_Allocator* self)
 {
     (void) self;
 }

@@ -140,7 +140,7 @@ EXPORT void _array_clear(void* array, isize item_size);
 #define array_append(array_ptr, items, item_count) \
     /* Here is a little hack to typecheck the items array.*/ \
     /* We try to assign the first item to the first data but never actaully run it */ \
-    0 ? *(array_ptr)->data = *(items), 0 : 0, \
+    (void) (0 ? *(array_ptr)->data = *(items), 0 : 0), \
     _array_append(array_ptr, sizeof *(array_ptr)->data, items, item_count, SOURCE_INFO())
     
 //Removes item_count items from the end of the array shrinking it
@@ -235,7 +235,7 @@ EXPORT void _array_init_backed(void* array, isize item_size, Allocator* allocato
 
     if(backing_item_count > 0)
     {
-        base->data = backing;
+        base->data = (u8*) backing;
         base->capacity = backing_item_count;
         base->allocator = _set_allocator_bits(allocator, true);
         memset(base->data, 0, backing_item_count * item_size);

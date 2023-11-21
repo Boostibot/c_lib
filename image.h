@@ -104,7 +104,7 @@ EXPORT isize image_pixel_format_size(Image_Pixel_Format format)
 
 EXPORT isize image_builder_channel_count(Image_Builder image)
 {
-    isize format_size = MAX(image_pixel_format_size(image.pixel_format), 1);
+    isize format_size = MAX(image_pixel_format_size((Image_Pixel_Format) image.pixel_format), 1);
     isize out = image.pixel_size / format_size;
     return out;
 }
@@ -167,7 +167,7 @@ EXPORT void* image_builder_at(Image_Builder image, i32 x, i32 y)
 
 EXPORT isize image_channel_count(Image image)
 {
-    isize format_size = MAX(image_pixel_format_size(image.pixel_format), 1);
+    isize format_size = MAX(image_pixel_format_size((Image_Pixel_Format) image.pixel_format), 1);
     isize out = image.pixel_size / format_size;
     return out;
 }
@@ -203,7 +203,7 @@ EXPORT Image image_from_data(void* pixels, isize width, isize height, isize pixe
 
 EXPORT Image image_from_builder(Image_Builder image)
 {
-    return image_from_data(image.pixels, image.width, image.height, image.pixel_size, image.pixel_format);
+    return image_from_data(image.pixels, image.width, image.height, image.pixel_size, (Image_Pixel_Format) image.pixel_format);
 }
 
 EXPORT bool image_is_contiguous(Image view)
@@ -304,7 +304,7 @@ EXPORT void image_builder_init_from_image(Image_Builder* image, Allocator* alloc
     isize new_byte_size = (isize) view.width * (isize) view.height * (isize) view.pixel_size;
 
     image_builder_deinit(image);
-    image_builder_init_from_pixel_size(image, alloc, view.pixel_size, view.pixel_format);
+    image_builder_init_from_pixel_size(image, alloc, view.pixel_size, (Image_Pixel_Format) view.pixel_format);
     image->width = view.width;
     image->height = view.height;
     image->pixels = (u8*) allocator_allocate(image->allocator, new_byte_size, DEF_ALIGN, SOURCE_INFO());
