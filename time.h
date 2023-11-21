@@ -1,5 +1,5 @@
-#ifndef LIB_TIME
-#define LIB_TIME
+#ifndef JOT_TIME
+#define JOT_TIME
 
 #include "platform.h"
 #include "defines.h"
@@ -28,8 +28,8 @@ EXPORT f32 clock_s32();
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_TIME_IMPL)) && !defined(LIB_TIME_HAS_IMPL)
-#define LIB_TIME_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_TIME_IMPL)) && !defined(JOT_TIME_HAS_IMPL)
+#define JOT_TIME_HAS_IMPL
 
 EXPORT f64 platform_perf_counter_frequency_f64()
 {
@@ -95,4 +95,4 @@ EXPORT f32 clock_s32()
 // 1 / 10Mhz = 1e-7. This precission is held up untill 1e9 secons have passed which is roughly 31 years. 
 // => Please dont run your program for more than 31 years or you will loose precision
 
-#endif // !LIB_TIME
+#endif // !JOT_TIME

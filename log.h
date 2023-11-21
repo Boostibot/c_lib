@@ -1,5 +1,5 @@
-#ifndef LIB_LOG
-#define LIB_LOG
+#ifndef JOT_LOG
+#define JOT_LOG
 
 #include "defines.h"
 #include <stdarg.h>
@@ -113,8 +113,8 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_LOG_IMPL)) && !defined(LIB_LOG_HAS_IMPL)
-#define LIB_LOG_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_LOG_IMPL)) && !defined(JOT_LOG_HAS_IMPL)
+#define JOT_LOG_HAS_IMPL
 
 static Logger _global_def_logger = {def_logger_func};
 static Logger* _global_logger = &_global_def_logger;

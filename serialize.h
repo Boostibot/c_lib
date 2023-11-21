@@ -1,5 +1,5 @@
-#ifndef LIB_SERIALIZE
-#define LIB_SERIALIZE
+#ifndef JOT_SERIALIZE
+#define JOT_SERIALIZE
 
 // This file allows for simple and composable serialization/deserialization with minimum boilerplate.
 // The main idea is to split writing and reading of files into two different parts:
@@ -118,8 +118,8 @@ EXPORT bool serialize_quat(Lpf_Dyn_Entry* entry, Quat* val, Quat def, Read_Or_Wr
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_SERIALIZE_IMPL)) && !defined(LIB_SERIALIZE_HAS_IMPL)
-#define LIB_SERIALIZE_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_SERIALIZE_IMPL)) && !defined(JOT_SERIALIZE_HAS_IMPL)
+#define JOT_SERIALIZE_HAS_IMPL
 
 EXPORT Lpf_Dyn_Entry* serialize_locate_any(Lpf_Dyn_Entry* into, Lpf_Kind create_kind, Lpf_Kind kind, String label, String type, Read_Or_Write action)
 {

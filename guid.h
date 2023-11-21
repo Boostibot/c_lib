@@ -1,5 +1,5 @@
-#ifndef LIB_GUID
-#define LIB_GUID
+#ifndef JOT_GUID
+#define JOT_GUID
 
 #include "defines.h"
 #include "platform.h"
@@ -29,11 +29,11 @@ EXPORT u64 guid_hash(Guid guid);
 
 #endif
 
-#define LIB_ALL_IMPL
+#define JOT_ALL_IMPL
 
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_GUID_IMPL)) && !defined(LIB_GUID_HAS_IMPL)
-#define LIB_GUID_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_GUID_IMPL)) && !defined(JOT_GUID_HAS_IMPL)
+#define JOT_GUID_HAS_IMPL
 
 EXPORT Id id_generate()
 {

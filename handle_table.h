@@ -1,5 +1,5 @@
-#ifndef LIB_HANDLE_TABLE
-#define LIB_HANDLE_TABLE
+#ifndef JOT_HANDLE_TABLE
+#define JOT_HANDLE_TABLE
 
 // Handle_Table is generation counted, stable adressed, safe acess container. 
 // 
@@ -118,10 +118,10 @@ EXPORT void* handle_table_get(Handle_Table table, const Handle* handle);
 #define HANDLE_TABLE_FOR_EACH_END }
 
 #endif
-#define LIB_ALL_IMPL
+#define JOT_ALL_IMPL
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_HANDLE_TABLE_IMPL)) && !defined(LIB_HANDLE_TABLE_HAS_IMPL)
-#define LIB_HANDLE_TABLE_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_HANDLE_TABLE_IMPL)) && !defined(JOT_HANDLE_TABLE_HAS_IMPL)
+#define JOT_HANDLE_TABLE_HAS_IMPL
 
 
 INTERNAL Allocator* _handle_table_get_allocator(Handle_Table* table)

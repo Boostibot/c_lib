@@ -1,5 +1,5 @@
-#ifndef LIB_UNICODE
-#define LIB_UNICODE
+#ifndef JOT_UNICODE
+#define JOT_UNICODE
 
 // Utility to simply and performantly convert between different unicode standards. 
 // It contains both high level per string api and low level per codepoint api. 
@@ -201,8 +201,8 @@ static void unicode_example_checks()
 
 
 // ========================= IMPLEMENTATION ===========================
-#if (defined(LIB_ALL_IMPL) || defined(LIB_UNICODE_IMPL)) && !defined(LIB_UNICODE_HAS_IMPL)
-#define LIB_UNICODE_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_UNICODE_IMPL)) && !defined(JOT_UNICODE_HAS_IMPL)
+#define JOT_UNICODE_HAS_IMPL
 
 // The last codepoint of the Basic Multilingual Plane, which is the part of Unicode that
 // UTF-16 can encode without surrogates

@@ -1,5 +1,5 @@
-#ifndef LIB_HASH_TABLE
-#define LIB_HASH_TABLE
+#ifndef JOT_HASH_TABLE
+#define JOT_HASH_TABLE
 
 #include "hash_index.h"
 #include "assert.h"
@@ -106,8 +106,8 @@ EXPORT Hash_Found  hash_table_find_or_make(void* _table, String key, bool* was_f
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_HASH_TABLE_IMPL)) && !defined(LIB_HASH_TABLE_HAS_IMPL)
-#define LIB_HASH_TABLE_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_HASH_TABLE_IMPL)) && !defined(JOT_HASH_TABLE_HAS_IMPL)
+#define JOT_HASH_TABLE_HAS_IMPL
 
 EXPORT u64 hash_string(String string, u64 seed)
 {

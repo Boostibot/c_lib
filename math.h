@@ -1,5 +1,5 @@
-#ifndef LIB_MATH
-#define LIB_MATH
+#ifndef JOT_MATH
+#define JOT_MATH
 
 #include <math.h>
 #include <stddef.h>
@@ -11,7 +11,7 @@
 #include <stdbool.h>
 #endif
 
-#if !defined(ASSERT) && !defined(LIB_ASSERT)
+#if !defined(ASSERT) && !defined(JOT_ASSERT)
 #define ASSERT(x) assert(x)
 #endif // !ASSERT
 

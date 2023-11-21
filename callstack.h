@@ -1,5 +1,5 @@
-#ifndef LIB_LOG_MISC
-#define LIB_LOG_MISC
+#ifndef JOT_LOG_MISC
+#define JOT_LOG_MISC
 
 #include "log.h"
 #include "platform.h"
@@ -20,8 +20,8 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, co
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_LOG_MISC_IMPL)) && !defined(LIB_LOG_MISC_HAS_IMPL)
-#define LIB_LOG_MISC_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_LOG_MISC_IMPL)) && !defined(JOT_LOG_MISC_HAS_IMPL)
+#define JOT_LOG_MISC_HAS_IMPL
 
 enum { _DEF_CALLSTACK_SIZE = 64 };
 

@@ -1,5 +1,5 @@
-#ifndef LIB_ASSERT
-#define LIB_ASSERT
+#ifndef JOT_ASSERT
+#define JOT_ASSERT
 
 #include "platform.h"
 #include "log.h"
@@ -78,8 +78,8 @@ void platform_abort();
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_ASSERT_IMPL)) && !defined(LIB_ASSERT_HAS_IMPL)
-#define LIB_ASSERT_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_ASSERT_IMPL)) && !defined(JOT_ASSERT_HAS_IMPL)
+#define JOT_ASSERT_HAS_IMPL
 
     #ifndef ASSERT_CUSTOM_REPORT
         void assertion_report(const char* expression, Source_Info source, const char* message, ...)

@@ -1,5 +1,5 @@
-#ifndef LIB_ALLOCATOR_FAILING
-#define LIB_ALLOCATOR_FAILING
+#ifndef JOT_ALLOCATOR_FAILING
+#define JOT_ALLOCATOR_FAILING
 
 //An implementation of the allocator concept that panics on every allocation/deallocation. 
 //This is useful for asserting that a piece of code doesnt allocate.
@@ -23,10 +23,10 @@ EXPORT Allocator_Stats failling_allocator_get_stats(Allocator* self);
 
 #endif
 
-#define LIB_ALL_IMPL
+#define JOT_ALL_IMPL
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_ALLOCATOR_FAILING_IMPL)) && !defined(LIB_ALLOCATOR_FAILING_HAS_IMPL)
-#define LIB_ALLOCATOR_FAILING_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_FAILING_IMPL)) && !defined(JOT_ALLOCATOR_FAILING_HAS_IMPL)
+#define JOT_ALLOCATOR_FAILING_HAS_IMPL
 
 EXPORT void failling_allocator_init(Failing_Allocator* self, Failing_Allocator_Panic panic_func, void* panic_context)
 {

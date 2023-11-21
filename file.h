@@ -1,5 +1,5 @@
-#ifndef LIB_FILE
-#define LIB_FILE
+#ifndef JOT_FILE
+#define JOT_FILE
 
 #include "platform.h"
 #include "allocator.h"
@@ -82,8 +82,8 @@ EXPORT String path_get_part_filename(String path, Path_Info info);
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_FILE_IMPL)) && !defined(LIB_FILE_HAS_IMPL)
-#define LIB_FILE_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_FILE_IMPL)) && !defined(JOT_FILE_HAS_IMPL)
+#define JOT_FILE_HAS_IMPL
 
 #include "log.h"
 #include "format.h"

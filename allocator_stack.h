@@ -1,5 +1,5 @@
-#ifndef LIB_ALLOCATOR_STACK
-#define LIB_ALLOCATOR_STACK
+#ifndef JOT_ALLOCATOR_STACK
+#define JOT_ALLOCATOR_STACK
 
 #include "allocator.h"
 
@@ -45,8 +45,8 @@ EXPORT Allocator_Stats stack_allocator_get_stats(Allocator* self);
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_ALLOCATOR_STACK_IMPL)) && !defined(LIB_ALLOCATOR_STACK_HAS_IMPL)
-#define LIB_ALLOCATOR_STACK_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_STACK_IMPL)) && !defined(JOT_ALLOCATOR_STACK_HAS_IMPL)
+#define JOT_ALLOCATOR_STACK_HAS_IMPL
 
 EXPORT void stack_allocator_init(Stack_Allocator* allocator, void* buffer, isize buffer_size, Allocator* parent)
 {

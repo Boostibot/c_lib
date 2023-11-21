@@ -1,5 +1,5 @@
-#ifndef LIB_ARRAY
-#define LIB_ARRAY
+#ifndef JOT_ARRAY
+#define JOT_ARRAY
 
 // This file introduces a simple but powerful generic dynamic array concept.
 // It works by defining struct for each type and then using type generic macros to work
@@ -89,7 +89,7 @@ EXPORT void _array_clear(void* array, isize item_size);
 
 //Initializes the array using backed_elements_count elements alloced on the stack as backing store.
 //Only triggers a proper reallocation once the capacity required is grater than backed_elements_count.
-#ifndef LIB_MEM_DEBUG
+#ifndef JOT_MEM_DEBUG
     #define array_init_backed(array_ptr, allocator, backed_elements_count) \
         char PP_CONCAT(_backing_buffer_, __LINE__)[(backed_elements_count) * sizeof *(array_ptr)->data]; \
         _array_init_backed(array_ptr, sizeof *(array_ptr)->data, allocator, PP_CONCAT(_backing_buffer_, __LINE__), (backed_elements_count), SOURCE_INFO())
@@ -98,7 +98,7 @@ EXPORT void _array_clear(void* array, isize item_size);
         array_init(array_ptr, allocator)
 
     //Backing hides small allocations making it harder to catch memory leaks during testing.
-    //As sich we disable it when LIB_MEM_DEBUG is on.
+    //As sich we disable it when JOT_MEM_DEBUG is on.
 #endif // ARRAY_DEBUG
 
 //Initializes the array using backing_array_size elements alloced at backing_array as backing store.
@@ -179,8 +179,8 @@ EXPORT void _array_clear(void* array, isize item_size);
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_ARRAY_IMPL)) && !defined(LIB_ARRAY_HAS_IMPL)
-#define LIB_ARRAY_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_ARRAY_IMPL)) && !defined(JOT_ARRAY_HAS_IMPL)
+#define JOT_ARRAY_HAS_IMPL
 #include <string.h>
 
 EXPORT bool _array_is_invariant(const void* array, isize item_size)

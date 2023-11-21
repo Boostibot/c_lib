@@ -1,5 +1,5 @@
-#ifndef LIB_PERF
-#define LIB_PERF
+#ifndef JOT_PERF
+#define JOT_PERF
 
 #ifndef __cplusplus
 #include <stdbool.h>
@@ -59,8 +59,8 @@ inline static int64_t platform_interlocked_decrement64(volatile int64_t* target)
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_PERF_IMPL)) && !defined(LIB_PERF_HAS_IMPL)
-#define LIB_PERF_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_PERF_IMPL)) && !defined(JOT_PERF_HAS_IMPL)
+#define JOT_PERF_HAS_IMPL
 
 	EXPORT Perf_Counter_Running perf_counter_start()
 	{

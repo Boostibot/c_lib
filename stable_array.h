@@ -1,5 +1,5 @@
-#ifndef LIB_STABLE_ARRAY
-#define LIB_STABLE_ARRAY
+#ifndef JOT_STABLE_ARRAY
+#define JOT_STABLE_ARRAY
 
 // This is a data structure that aims to be as closely performant as array while being "stable"
 // meaning that pointers to items remain valid even with additions and removals.
@@ -119,8 +119,8 @@ EXPORT void  stable_array_reserve(Stable_Array* stable, isize to);
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_STABLE_ARRAY_IMPL)) && !defined(LIB_STABLE_ARRAY_HAS_IMPL)
-#define LIB_STABLE_ARRAY_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_STABLE_ARRAY_IMPL)) && !defined(JOT_STABLE_ARRAY_HAS_IMPL)
+#define JOT_STABLE_ARRAY_HAS_IMPL
 
 #define _STABLE_ARRAY_DO_CHECKS
 #define _STABLE_ARRAY_DO_SLOW_CHECKS

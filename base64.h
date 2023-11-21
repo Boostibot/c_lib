@@ -1,5 +1,5 @@
-#ifndef LIB_BASE64
-#define LIB_BASE64
+#ifndef JOT_BASE64
+#define JOT_BASE64
 
 // A simple base64 encode/decode facility. It does not require any allocations or other system resources.
 // 
@@ -101,8 +101,8 @@ extern const Base64_Decoding BASE64_DECODING_UNIVERSAL;
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_BASE64_IMPL)) && !defined(LIB_BASE64_HAS_IMPL)
-#define LIB_BASE64_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_BASE64_IMPL)) && !defined(JOT_BASE64_HAS_IMPL)
+#define JOT_BASE64_HAS_IMPL
 
 
 extern const Base64_Encoding BASE64_ENCODING_URL = {BASE64_ENCODING_TABLE_URL, '=', true};

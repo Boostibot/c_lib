@@ -1,5 +1,5 @@
-#ifndef LIB_STRING
-#define LIB_STRING
+#ifndef JOT_STRING
+#define JOT_STRING
 
 #include "allocator.h"
 #include "array.h"
@@ -70,8 +70,8 @@ EXPORT String_Array string_split(String to_split, String split_by);
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_STRING_IMPL)) && !defined(LIB_STRING_HAS_IMPL)
-#define LIB_STRING_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_STRING_IMPL)) && !defined(JOT_STRING_HAS_IMPL)
+#define JOT_STRING_HAS_IMPL
 
     #include <string.h>
     EXPORT String string_head(String string, isize to)

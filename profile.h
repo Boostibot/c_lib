@@ -1,5 +1,5 @@
-#ifndef LIB_PROFILE
-#define LIB_PROFILE
+#ifndef JOT_PROFILE
+#define JOT_PROFILE
 
 #include "platform.h"
 #include "defines.h"
@@ -144,8 +144,8 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 	#define _IF_NOT_PERF_END_DISCARD_(name, fake_run) platform_memory_fence(), (fake_run) ? global_perf_counter_end_discard(&(name)) : global_perf_counter_end_detailed(&(name))
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_PROFILE_IMPL)) && !defined(LIB_PROFILE_HAS_IMPL)
-#define LIB_PROFILE_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_PROFILE_IMPL)) && !defined(JOT_PROFILE_HAS_IMPL)
+#define JOT_PROFILE_HAS_IMPL
 
 	//Must be correctly sized for optimal performance
 	//need to be on separed cache lines to eliminate false sharing

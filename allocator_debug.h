@@ -1,5 +1,5 @@
-#ifndef LIB_DEBUG_ALLOCATOR
-#define LIB_DEBUG_ALLOCATOR
+#ifndef JOT_DEBUG_ALLOCATOR
+#define JOT_DEBUG_ALLOCATOR
 
 //It is extremely easy to mess up memory management in some way in C. Even when using hierarchical memory managemnt
 // (local allocator tree) memory leeks are still localy possible which is often not idea. Thus we are need in
@@ -219,8 +219,8 @@ typedef enum Debug_Allocator_Panic_Reason
 } Debug_Allocator_Panic_Reason;
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_DEBUG_ALLOCATOR_IMPL)) && !defined(LIB_DEBUG_ALLOCATOR_HAS_IMPL)
-#define LIB_DEBUG_ALLOCATOR_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_DEBUG_ALLOCATOR_IMPL)) && !defined(JOT_DEBUG_ALLOCATOR_HAS_IMPL)
+#define JOT_DEBUG_ALLOCATOR_HAS_IMPL
 
 #define DEBUG_ALLOCATOR_MAGIC_NUM8  (u8)  0x55
 

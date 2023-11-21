@@ -1,5 +1,5 @@
-#ifndef LIB_FORMAT_LPF
-#define LIB_FORMAT_LPF
+#ifndef JOT_FORMAT_LPF
+#define JOT_FORMAT_LPF
 
 // This is a custom JSON-like format spec and implementation.
 // 
@@ -364,8 +364,8 @@ EXPORT isize               lpf_find_index(Lpf_Dyn_Entry in_children_of, Lpf_Kind
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_FORMAT_LPF_IMPL)) && !defined(LIB_FORMAT_LPF_HAS_IMPL)
-#define LIB_FORMAT_LPF_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_FORMAT_LPF_IMPL)) && !defined(JOT_FORMAT_LPF_HAS_IMPL)
+#define JOT_FORMAT_LPF_HAS_IMPL
 
 EXPORT Lpf_Format_Options lpf_make_default_format_options()
 {

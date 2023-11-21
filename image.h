@@ -1,5 +1,5 @@
-#ifndef LIB_IMAGE
-#define LIB_IMAGE
+#ifndef JOT_IMAGE
+#define JOT_IMAGE
 
 #include "allocator.h"
 #include <limits.h>
@@ -86,8 +86,8 @@ EXPORT void image_copy(Image* to_image, Image image, i32 offset_x, i32 offset_y)
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_IMAGE_IMPL)) && !defined(LIB_IMAGE_HAS_IMPL)
-#define LIB_IMAGE_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_IMAGE_IMPL)) && !defined(JOT_IMAGE_HAS_IMPL)
+#define JOT_IMAGE_HAS_IMPL
 
 EXPORT isize image_pixel_format_size(Image_Pixel_Format format)
 {

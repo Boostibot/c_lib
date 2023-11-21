@@ -1,5 +1,5 @@
-#ifndef LIB_FORMAT
-#define LIB_FORMAT
+#ifndef JOT_FORMAT
+#define JOT_FORMAT
 
 #include "vformat.h"
 #include "base64.h"
@@ -505,9 +505,9 @@ EXPORT void preformat_float(char* out, Decimal_FP f, Float_Format_Spec fspecs)
 
 #undef TWO_DIGITS_TO_STRING
 #endif
-#endif // !LIB_FORMAT
+#endif // !JOT_FORMAT
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_FORMAT_IMPL)) && !defined(LIB_FORMAT_HAS_IMPL)
-#define LIB_FORMAT_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_FORMAT_IMPL)) && !defined(JOT_FORMAT_HAS_IMPL)
+#define JOT_FORMAT_HAS_IMPL
     
 #endif

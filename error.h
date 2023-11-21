@@ -1,5 +1,5 @@
-#ifndef LIB_ERROR
-#define LIB_ERROR
+#ifndef JOT_ERROR
+#define JOT_ERROR
 
 #include "allocator.h"
 #include "string.h"
@@ -20,7 +20,7 @@
 // By default we register the following systems: platform (1) and stdlib (errno) (2) 
 enum {
     PLATFORM_ERROR = 1,
-    STDLIB_ERROR = 2,
+    STDJOT_ERROR = 2,
 };
 
 // Represent any error from any module. 
@@ -89,12 +89,12 @@ EXPORT u32 error_system_register_module(Error_Translator translator, String modu
 //Default translator for platform module
 EXPORT String error_system_platform_translator(u32 error_code, void* context);
 //Default translator for stdlib module
-EXPORT String error_system_stdlib_translator(u32 error_code, void* context);
+EXPORT String error_system_stdJOT_translator(u32 error_code, void* context);
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_ERROR_IMPL)) && !defined(LIB_ERROR_HAS_IMPL)
-#define LIB_ERROR_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_ERROR_IMPL)) && !defined(JOT_ERROR_HAS_IMPL)
+#define JOT_ERROR_HAS_IMPL
 
 enum {
     _ERROR_SYSTEM_MAX_PLATFORM_ERRORS = 4,
@@ -180,13 +180,13 @@ EXPORT void error_system_init(Allocator* allocator)
     global_error_system.is_init = true;
 
     error_system_register_module(error_system_platform_translator, STRING("platform.h"), NULL);
-    error_system_register_module(error_system_stdlib_translator, STRING("stdlib"), NULL);
+    error_system_register_module(error_system_stdJOT_translator, STRING("stdlib"), NULL);
 
 }
 
 INTERNAL void _error_system_unregister_module(u32 module)
 {
-    if(module == STDLIB_ERROR || module == PLATFORM_ERROR)
+    if(module == STDJOT_ERROR || module == PLATFORM_ERROR)
         return;
 
     Error_Module* registered = error_system_get_module(module);
@@ -238,7 +238,7 @@ EXPORT u32 error_system_register_module(Error_Translator translator, String modu
 
 INTERNAL void error_system_unregister_module(u32 module)
 {
-    if(module == STDLIB_ERROR || module == PLATFORM_ERROR)
+    if(module == STDJOT_ERROR || module == PLATFORM_ERROR)
         return;
 
     _error_system_unregister_module(module);
@@ -251,7 +251,7 @@ EXPORT String error_system_platform_translator(u32 error_code, void* context)
     return string_make(platform_translate_error((Platform_Error) error_code));
 }
 
-EXPORT String error_system_stdlib_translator(u32 error_code, void* context)
+EXPORT String error_system_stdJOT_translator(u32 error_code, void* context)
 {
     (void) context;
     return string_make(strerror((int) error_code));
@@ -270,7 +270,7 @@ EXPORT Error error_from_platform(Platform_Error error)
 
 EXPORT Error error_from_stdlib(errno_t error)
 {
-    return error_make(STDLIB_ERROR, (u32) error);
+    return error_make(STDJOT_ERROR, (u32) error);
 }
 
 #endif

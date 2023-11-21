@@ -1,5 +1,5 @@
-#ifndef LIB_PARSE
-#define LIB_PARSE
+#ifndef JOT_PARSE
+#define JOT_PARSE
 
 #include "defines.h"
 #include "string.h"
@@ -59,8 +59,8 @@ EXPORT String string_trim_whitespace(String s);
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_PARSE_IMPL)) && !defined(LIB_PARSE_HAS_IMPL)
-#define LIB_PARSE_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_PARSE_IMPL)) && !defined(JOT_PARSE_HAS_IMPL)
+#define JOT_PARSE_HAS_IMPL
 
 EXPORT bool char_is_space(char c)
 {

@@ -1,5 +1,5 @@
-#ifndef LIB_DEFINES
-#define LIB_DEFINES
+#ifndef JOT_DEFINES
+#define JOT_DEFINES
 
 #include <stdint.h>
 #include <stddef.h>

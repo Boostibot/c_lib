@@ -1,5 +1,5 @@
-#ifndef LIB_HASH
-#define LIB_HASH
+#ifndef JOT_HASH
+#define JOT_HASH
 
 #include <stdint.h>
 

@@ -1,5 +1,5 @@
-#ifndef LIB_ALLOCATOR_MALLOC
-#define LIB_ALLOCATOR_MALLOC
+#ifndef JOT_ALLOCATOR_MALLOC
+#define JOT_ALLOCATOR_MALLOC
 
 // A simple implementation of the allocator concept using default C malloc.
 // The main purpose of this file is to be a quick substitute until more complex allocators are built.
@@ -63,8 +63,8 @@ EXPORT void  malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_ALLOCATOR_MALLOC_IMPL)) && !defined(LIB_ALLOCATOR_MALLOC_HAS_IMPL)
-#define LIB_ALLOCATOR_MALLOC_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_MALLOC_IMPL)) && !defined(JOT_ALLOCATOR_MALLOC_HAS_IMPL)
+#define JOT_ALLOCATOR_MALLOC_HAS_IMPL
 
     #include "profile.h"
 

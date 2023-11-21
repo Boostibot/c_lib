@@ -1,5 +1,5 @@
-#ifndef LIB_RANDOM
-#define LIB_RANDOM
+#ifndef JOT_RANDOM
+#define JOT_RANDOM
 
 #include <stdint.h>
 
@@ -75,8 +75,8 @@ EXPORT void	 random_state_bytes(Random_State* state, void* into, int64_t size);
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_RANDOM_IMPL)) && !defined(LIB_RANDOM_HAS_IMPL)
-	#define LIB_RANDOM_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_RANDOM_IMPL)) && !defined(JOT_RANDOM_HAS_IMPL)
+	#define JOT_RANDOM_HAS_IMPL
 	#include <time.h>
 	#include <string.h>
 

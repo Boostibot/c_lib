@@ -1,5 +1,5 @@
-#ifndef LIB_HASH_INDEX
-#define LIB_HASH_INDEX
+#ifndef JOT_HASH_INDEX
+#define JOT_HASH_INDEX
 
 // A simple and flexible linear-probing-hash style hash index.
 // 
@@ -152,8 +152,8 @@ EXPORT void* hash_ptr_ptr_restore(void* stored);
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_HASH_INDEX_IMPL)) && !defined(LIB_HASH_INDEX_HAS_IMPL)
-#define LIB_HASH_INDEX_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_HASH_INDEX_IMPL)) && !defined(JOT_HASH_INDEX_HAS_IMPL)
+#define JOT_HASH_INDEX_HAS_IMPL
     #include <string.h>
     
     typedef enum {

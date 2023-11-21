@@ -1,5 +1,5 @@
-#ifndef LIB_ALLOCATOR
-#define LIB_ALLOCATOR
+#ifndef JOT_ALLOCATOR
+#define JOT_ALLOCATOR
 
 #include "defines.h"
 #include "assert.h"
@@ -137,8 +137,8 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_ALLOCATOR_IMPL)) && !defined(LIB_ALLOCATOR_HAS_IMPL)
-#define LIB_ALLOCATOR_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_IMPL)) && !defined(JOT_ALLOCATOR_HAS_IMPL)
+#define JOT_ALLOCATOR_HAS_IMPL
 
     EXPORT void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from)
     {

@@ -1,5 +1,5 @@
-#ifndef LIB_FORMAT_NETBPM
-#define LIB_FORMAT_NETBPM
+#ifndef JOT_FORMAT_NETBPM
+#define JOT_FORMAT_NETBPM
 
 // This file contains readers and writers for some of the more common variants of the netbmp formats.
 // These formats are really simple and have no data compression at all. This makes them ideal for really fast loading and writing.
@@ -76,8 +76,8 @@ EXPORT Error netbpm_format_pam_read_into(Image_Builder* image, String ppm);
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_FORMAT_NETBPM_IMPL)) && !defined(LIB_FORMAT_NETBPM_HAS_IMPL)
-#define LIB_FORMAT_NETBPM_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_FORMAT_NETBPM_IMPL)) && !defined(JOT_FORMAT_NETBPM_HAS_IMPL)
+#define JOT_FORMAT_NETBPM_HAS_IMPL
 
 EXPORT u32 endian_byteswap(u32 val)
 {

@@ -1,5 +1,5 @@
-#ifndef LIB_PLATFORM
-#define LIB_PLATFORM
+#ifndef JOT_PLATFORM
+#define JOT_PLATFORM
 
 #include <stdint.h>
 #include <stdbool.h>

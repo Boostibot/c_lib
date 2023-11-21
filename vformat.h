@@ -1,5 +1,5 @@
-#ifndef LIB_VFORMAT
-#define LIB_VFORMAT
+#ifndef JOT_VFORMAT
+#define JOT_VFORMAT
 
 #include "string.h"
 #include "profile.h"
@@ -29,10 +29,10 @@ EXPORT String format_ephemeral(const char* format, ...);
 
 typedef long long int lli;
 typedef unsigned long long llu;
-#endif // !LIB_VFORMAT
+#endif // !JOT_VFORMAT
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_VFORMAT_IMPL)) && !defined(LIB_VFORMAT_HAS_IMPL)
-#define LIB_VFORMAT_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_VFORMAT_IMPL)) && !defined(JOT_VFORMAT_HAS_IMPL)
+#define JOT_VFORMAT_HAS_IMPL
     #include <stdio.h>
 
     EXPORT void vformat_append_into(String_Builder* append_to, const char* format, va_list args)

@@ -1,5 +1,5 @@
-#ifndef LIB_LOGGER_MEMORYGER_MEMORY
-#define LIB_LOGGER_MEMORYGER_MEMORY
+#ifndef JOT_LOGGER_MEMORYGER_MEMORY
+#define JOT_LOGGER_MEMORYGER_MEMORY
 
 // A logger that only collects error messages in memory without printing them. 
 // Makes for a surprisingly powerfull error management utility.
@@ -50,8 +50,8 @@ EXPORT void memory_logger_init_use(Memory_Logger* logger, Allocator* alloc);
 
 #endif
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_LOGGER_MEMORY_IMPL)) && !defined(LIB_LOGGER_MEMORY_HAS_IMPL)
-#define LIB_LOGGER_MEMORY_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_LOGGER_MEMORY_IMPL)) && !defined(JOT_LOGGER_MEMORY_HAS_IMPL)
+#define JOT_LOGGER_MEMORY_HAS_IMPL
 
 EXPORT String memory_log_get_module(const Memory_Log* log)
 {

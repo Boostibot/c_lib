@@ -1,5 +1,5 @@
-#ifndef LIB_LIB_LOGGER_FILEGER_FILE
-#define LIB_LIB_LOGGER_FILEGER_FILE
+#ifndef JOT_JOT_LOGGER_FILEGER_FILE
+#define JOT_JOT_LOGGER_FILEGER_FILE
 
 //This is a simple logger (log formatter)
 
@@ -120,10 +120,10 @@ EXPORT void file_logger_console_clear_filters(File_Logger* logger);
 extern File_Logger global_logger;
 #endif
 
-#define LIB_ALL_IMPL
+#define JOT_ALL_IMPL
 
-#if (defined(LIB_ALL_IMPL) || defined(LIB_LOGGER_FILE_IMPL)) && !defined(LIB_LOGGER_FILE_HAS_IMPL)
-#define LIB_LOGGER_FILE_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_LOGGER_FILE_IMPL)) && !defined(JOT_LOGGER_FILE_HAS_IMPL)
+#define JOT_LOGGER_FILE_HAS_IMPL
 
 File_Logger global_logger = {0};
 
