@@ -1175,7 +1175,7 @@ Platform_Window_Popup_Controls platform_window_make_popup(Platform_Window_Popup_
 
 int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t skip_count)
 {
-    if(stack_size == 0)
+    if(stack_size <= 0)
         return 0;
 
     int64_t captured = CaptureStackBackTrace((DWORD) skip_count + 1, (DWORD) stack_size, stack, NULL);

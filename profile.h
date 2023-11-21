@@ -5,7 +5,6 @@
 #include "defines.h"
 #include "assert.h"
 #include "perf.h"
-#include "platform.h"
 
 // This file provides a simple and performant API
 // for tracking running time across the whole aplication.

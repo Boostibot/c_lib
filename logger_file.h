@@ -178,25 +178,13 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
     }
 
     //Convert type to string
-    const char* type_str = NULL;
-    switch(type)
-    {
-        case LOG_TYPE_INFO: type_str = "INFO"; break;
-        case LOG_TYPE_WARN: type_str = "WARN"; break;
-        case LOG_TYPE_ERROR: type_str = "ERROR"; break;
-        case LOG_TYPE_FATAL: type_str = "FATAL"; break;
-        case LOG_TYPE_DEBUG: type_str = "DEBUG"; break;
-        case LOG_TYPE_TRACE: type_str = "TRACE"; break;
-        case LOG_TYPE_ENUM_MAX:
-        default: break;
-    }
-
     Platform_Calendar_Time c = platform_epoch_time_to_calendar_time(epoch_time);
     
     //Try to guess size
     array_grow(append_to, size_before + message_string.size + 100 + module.size);
 
-    if(type_str != NULL)
+    const char* type_str = log_type_to_string(type);
+    if(strlen(type_str) > 0)
     {
         format_into(append_to, "%02d-%02d-%02d %03d %-5s  ", 
             (int) c.hour, (int) c.minute, (int) c.second, (int) c.millisecond, type_str);

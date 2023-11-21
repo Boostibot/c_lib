@@ -197,12 +197,12 @@
 
 typedef enum Lpf_Kind {
     LPF_KIND_BLANK = 0,
-    LPF_KIND_ENTRY,
-    LPF_KIND_CONTINUATION,
-    LPF_KIND_ESCAPED_CONTINUATION,
-    LPF_KIND_COMMENT,
-    LPF_KIND_SCOPE_START,
-    LPF_KIND_SCOPE_END,
+    LPF_KIND_ENTRY = ':',
+    LPF_KIND_CONTINUATION = ',',
+    LPF_KIND_ESCAPED_CONTINUATION = ';',
+    LPF_KIND_COMMENT = '#',
+    LPF_KIND_SCOPE_START = '{',
+    LPF_KIND_SCOPE_END = '}',
 } Lpf_Kind;
 
 typedef enum Lpf_Error {
@@ -232,7 +232,7 @@ enum {
 };
 
 typedef struct Lpf_Dyn_Entry {
-    i8  kind;
+    char  kind;
     i8  error;
     u16 format_flags;
     u32 depth;

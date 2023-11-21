@@ -3,7 +3,8 @@
 
 #include "defines.h"
 #include <stdarg.h>
-#include <stdio.h> //@TODO: color printing thus only platform!
+#include <stdio.h>
+#include <string.h>
 
 #ifndef LOG_CUSTOM_SETTINGS
     #define DO_LOG          /* Disables all log types */   
@@ -226,7 +227,9 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 EXPORT void log_callstack(const char* log_module, Log_Type log_type, isize depth, isize skip)
 {
     void* stack[256] = {0};
-    isize size = platform_capture_call_stack(stack, 256, skip);
+    if(depth < 0 || depth > 256)
+        depth = 256;
+    isize size = platform_capture_call_stack(stack, depth, skip + 1);
     log_captured_callstack(log_module, log_type, (const void**) stack, size);
 }
 
@@ -235,7 +238,7 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, co
     if(callstack_size < 0 || callstack == NULL)
         callstack_size = 0;
     
-    enum {TRANSLATE_AT_ONCE = 32};
+    enum {TRANSLATE_AT_ONCE = 1};
     for(isize i = 0; i < callstack_size; i += TRANSLATE_AT_ONCE)
     {
         isize offset = i * TRANSLATE_AT_ONCE;
@@ -245,15 +248,18 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, co
 
         Platform_Stack_Trace_Entry translated[TRANSLATE_AT_ONCE] = {0};
         platform_translate_call_stack(translated, callstack + offset, remaining);
-        for(isize i = 0; i < remaining; i++)
+        for(isize j = 0; j < remaining; j++)
         {
-            Platform_Stack_Trace_Entry* entry = &translated[i];
+            Platform_Stack_Trace_Entry* entry = &translated[j];
             const char* function = entry->function ? entry->function : "";
             const char* file = entry->file ? entry->file : "";
 
             log_message(log_module, log_type, SOURCE_INFO(), "%-30s %s : %lli", function, file, entry->line);
             if(strcmp(function, "main") == 0) //if reaches main stops (we dont care about OS stuff)
+            {
+                i = callstack_size;
                 break;
+            }
         }
     }
 }

@@ -65,7 +65,7 @@ EXPORT void error_code_into(String_Builder* into, Error error);
 EXPORT void error_module_into(String_Builder* into, Error error);
 
 #define ERROR_OK       BRACE_INIT(Error){0, 0}
-#define ERROR_OR(err)  ((err).code != 0) ? (err) : 
+#define ERROR_OR(err)  ((err).code != 0) ? (err) :  
 //use like:
 // Error my_error = {0};
 // my_error = ERROR_OR(my_error) function_returning_error(1);
