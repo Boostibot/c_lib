@@ -2,6 +2,7 @@
 #define JOT_LOG
 
 #include "defines.h"
+#include "platform.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
