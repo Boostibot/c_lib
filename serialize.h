@@ -71,6 +71,10 @@ EXPORT bool serialize_write_name(Lpf_Dyn_Entry* entry, String val, String type);
 EXPORT bool serialize_read_name(Lpf_Dyn_Entry* entry, String_Builder* val, String def);
 
 //Serialize interface
+EXPORT bool serialize_scope(Lpf_Dyn_Entry* entry, String type, u16 format_flags, Read_Or_Write action);
+EXPORT bool serialize_blank(Lpf_Dyn_Entry* entry, isize count, Read_Or_Write action);
+EXPORT bool serialize_comment(Lpf_Dyn_Entry* entry, String comment, Read_Or_Write action);
+
 EXPORT bool serialize_raw_typed(Lpf_Dyn_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action);
 EXPORT bool serialize_string_typed(Lpf_Dyn_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action);
 EXPORT bool serialize_base64_typed(Lpf_Dyn_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action);
@@ -123,6 +127,9 @@ EXPORT bool serialize_quat(Lpf_Dyn_Entry* entry, Quat* val, Quat def, Read_Or_Wr
 
 EXPORT Lpf_Dyn_Entry* serialize_locate_any(Lpf_Dyn_Entry* into, Lpf_Kind create_kind, Lpf_Kind kind, String label, String type, Read_Or_Write action)
 {
+    if(into == NULL)
+        return NULL;
+
     isize found_i = lpf_find_index(*into, kind, label, type, 0);
     if(found_i != -1)
         return &into->children[found_i];
@@ -288,6 +295,53 @@ EXPORT bool serialize_read_base64(Lpf_Dyn_Entry* entry, String_Builder* val, Str
         
     isize actual_size = base64_decode(val->data, trimmed.data, trimmed.size, BASE64_DECODING_UNIVERSAL, NULL);
     array_resize(val, actual_size); 
+    return true;
+}
+
+EXPORT bool serialize_scope(Lpf_Dyn_Entry* entry, String type, u16 format_flags, Read_Or_Write action)
+{
+    if(entry == NULL)
+        return false;
+        
+    if(action == SERIALIZE_WRITE)
+    {
+        serialize_entry_set_identity(entry, type, STRING(""), LPF_KIND_SCOPE_START, format_flags);
+        return true;
+    }
+    else
+    {
+        return entry->kind == LPF_KIND_SCOPE_START;
+    }
+}
+
+EXPORT bool serialize_blank(Lpf_Dyn_Entry* entry, isize count, Read_Or_Write action)
+{
+    if(entry == NULL)
+        return false;
+        
+    if(action == SERIALIZE_WRITE)
+    {
+        for(isize i = 0; i < count; i++)
+        {
+            Lpf_Entry added = {LPF_KIND_BLANK};
+            lpf_dyn_entry_push(entry, added);
+        }
+    }
+
+    return true;
+}
+EXPORT bool serialize_comment(Lpf_Dyn_Entry* entry, String comment, Read_Or_Write action)
+{
+    if(entry == NULL)
+        return false;
+        
+    if(action == SERIALIZE_WRITE)
+    {
+        Lpf_Entry added = {LPF_KIND_COMMENT};
+        added.comment = comment;
+        lpf_dyn_entry_push(entry, added);
+    }
+
     return true;
 }
 

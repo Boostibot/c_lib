@@ -89,6 +89,12 @@ EXPORT void* allocator_reallocate(Allocator* from_allocator, isize new_size, voi
 EXPORT void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align, Source_Info called_from);
 //Calls the realloc function of from_allocator to deallocate
 EXPORT void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize old_size, isize align, Source_Info called_from);
+
+//Calls the realloc function of from_allocator, then if reallocating up fills the added memory with zeros
+EXPORT void* allocator_reallocate_cleared(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from);
+//Calls the realloc function of from_allocator to allocate, then fills the memory with zeros if fails panics
+EXPORT void* allocator_allocate_cleared(Allocator* from_allocator, isize new_size, isize align, Source_Info called_from);
+
 //Retrieves stats from the allocator. The stats can be only partially filled.
 EXPORT Allocator_Stats allocator_get_stats(Allocator* self);
 
@@ -173,6 +179,21 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     EXPORT void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize old_size, isize align, Source_Info called_from)
     {
         allocator_reallocate(from_allocator, 0, old_ptr, old_size, align, called_from);
+    }
+    
+    EXPORT void* allocator_reallocate_cleared(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from)
+    {
+        void* ptr = allocator_reallocate(from_allocator, new_size, old_ptr, old_size, align, called_from);
+        if(new_size > old_size)
+            memset((u8*) ptr + old_size, 0, new_size - old_size);
+        return ptr;
+    }
+
+    EXPORT void* allocator_allocate_cleared(Allocator* from_allocator, isize new_size, isize align, Source_Info called_from)
+    {
+        void* ptr = allocator_allocate(from_allocator, new_size, align, called_from);
+        memset(ptr, 0, new_size);
+        return ptr;
     }
 
     EXPORT Allocator_Stats allocator_get_stats(Allocator* self)

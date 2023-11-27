@@ -560,7 +560,7 @@ static int64_t _translated_error_cursor = 0;
 
 const char* platform_translate_error(Platform_Error error)
 {
-    LPVOID trasnlated = NULL;
+    char* trasnlated = NULL;
     int64_t length = FormatMessageA(
         FORMAT_MESSAGE_ALLOCATE_BUFFER | 
         FORMAT_MESSAGE_FROM_SYSTEM |
@@ -573,10 +573,19 @@ const char* platform_translate_error(Platform_Error error)
     
     (void) length;
     LocalFree(_translated_errors[_translated_error_cursor]);
-    _translated_errors[_translated_error_cursor] = (char*) trasnlated;
+    _translated_errors[_translated_error_cursor] = trasnlated;
     _translated_error_cursor = (_translated_error_cursor + 1) % _TRANSLATED_ERRORS_SIMULATANEOUS;
 
-    return (const char*) trasnlated;
+    //Strips annoying trailing whitespace
+    for(int64_t i = length; i-- > 0; )
+    {
+        if(isspace(trasnlated[i]))
+            trasnlated[i] = '\0';
+        else
+            break;
+    }
+
+    return trasnlated;
 }
 
 void _translated_deinit_all()
@@ -1114,6 +1123,14 @@ const char* platform_get_executable_path()
     
     return cached;
 }
+
+//typedef struct Platform_File_Watch {
+//    Platform_Thread thread;
+//    void* data;
+//} Platform_File_Watch;
+
+Platform_Error platform_file_watch(Platform_File_Watch* file_watch, const char* file_or_dir_path, u32 file_wacht_flags, int (*async_func)(void* context), void* context);
+void platform_file_unwatch(Platform_File_Watch* file_watch);
 
 //=========================================
 // Window managmenet

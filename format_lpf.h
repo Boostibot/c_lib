@@ -1575,6 +1575,7 @@ EXPORT Lpf_Error lpf_read_custom(String source, Lpf_Dyn_Entry* into, const Lpf_F
     Lpf_Reader reader = {0};
     isize last_source_i = 0;
     Lpf_Error last_error = LPF_ERROR_NONE;
+    into->kind = LPF_KIND_SCOPE_START;
     while(true)
     {
         Lpf_Entry entry = {LPF_KIND_BLANK};
