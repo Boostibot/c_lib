@@ -242,16 +242,16 @@ int64_t platform_local_epoch_time()
 
 Platform_Calendar_Time platform_epoch_time_to_calendar_time(int64_t epoch_time_usec)
 {
-    const int64_t EPOCH_YEAR              = (int64_t) 1970;
-    const int64_t MILLISECOND_MICROSECOND = (int64_t) 1000;
-    const int64_t SECOND_MICROSECONDS     = (int64_t) 1000000;
-    const int64_t DAY_SECONDS             = (int64_t) 86400;
-    const int64_t YEAR_SECONDS            = (int64_t) 31556952;
-    const int64_t DAY_MICROSECONDS        = (DAY_SECONDS * SECOND_MICROSECONDS);
-    const int64_t YEAR_MICROSECONDS       = (YEAR_SECONDS * SECOND_MICROSECONDS);
+    const int64_t _EPOCH_YEAR              = (int64_t) 1970;
+    const int64_t _MILLISECOND_MICROSECOND = (int64_t) 1000;
+    const int64_t _SECOND_MICROSECONDS     = (int64_t) 1000000;
+    const int64_t _DAY_SECONDS             = (int64_t) 86400;
+    const int64_t _YEAR_SECONDS            = (int64_t) 31556952;
+    const int64_t _DAY_MICROSECONDS        = (_DAY_SECONDS * _SECOND_MICROSECONDS);
+    const int64_t _YEAR_MICROSECONDS       = (_YEAR_SECONDS * _SECOND_MICROSECONDS);
 
-    (void) DAY_SECONDS;
-    (void) DAY_MICROSECONDS;
+    (void) _DAY_SECONDS;
+    (void) _DAY_MICROSECONDS;
 
     SYSTEMTIME systime = {0};
     FILETIME filetime = _epoch_time_to_filetime(epoch_time_usec);
@@ -268,12 +268,12 @@ Platform_Calendar_Time platform_epoch_time_to_calendar_time(int64_t epoch_time_u
     time.second = (int8_t) systime.wSecond;
     time.year = (int32_t) systime.wYear;
 
-    int64_t years_since_epoch = (int64_t) time.year - EPOCH_YEAR;
-    int64_t microsec_diff = epoch_time_usec - years_since_epoch*YEAR_MICROSECONDS;
+    int64_t years_since_epoch = (int64_t) time.year - _EPOCH_YEAR;
+    int64_t microsec_diff = epoch_time_usec - years_since_epoch*_YEAR_MICROSECONDS;
     //int64_t microsec_remainder = microsec_diff % YEAR_MICROSECONDS;
     //int64_t day_of_year = (microsec_remainder / DAY_MICROSECONDS);
     //int64_t microsecond = (microsec_remainder % MILLISECOND_MICROSECOND);
-    int64_t microsecond = (microsec_diff % MILLISECOND_MICROSECOND);
+    int64_t microsecond = (microsec_diff % _MILLISECOND_MICROSECOND);
 
     //time.day_of_year = (int16_t) day_of_year;
     time.microsecond = (int16_t) microsecond;
