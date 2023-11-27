@@ -20,7 +20,7 @@
 //If fails does not compile. 
 //x must be a valid compile time exception. 
 //Is useful for validating if compile time settings are correct
-#define STATIC_ASSERT(x) typedef char PP_CONCAT(__static_assertion_, __LINE__)[(x) ? 1 : -1]
+#define STATIC_ASSERT(x) typedef char PP_CONCAT(__static_assertion__, __LINE__)[(x) ? 1 : -1]
 
 
 //If x evaluates to false executes assertion_report() without any message. 
@@ -62,19 +62,6 @@ void platform_abort();
     #define _IF_NOT_DO_ASSERTS_SLOW(ignore)    DISSABLED_TEST_MSG
     #define _IF_NOT_DO_BOUNDS_CHECKS(ignore)   DISSABLED_TEST_MSG
 
-    //Pre-Processor (PP) utils
-    #define PP_CONCAT2(a, b) a ## b
-    #define PP_CONCAT3(a, b, c)     PP_CONCAT2(PP_CONCAT2(a, b), c)
-    #define PP_CONCAT4(a, b, c, d)  PP_CONCAT2(PP_CONCAT3(a, b, c), d)
-    #define PP_CONCAT(a, b)         PP_CONCAT2(a, b)
-    #define PP_ID(x) x
-
-    //if CONDITION_DEFINE is defined: expands to x, 
-    //else: expands to _IF_NOT_##CONDITION_DEFINE(x). See above how to use this.
-    //The reason for its use is that simply all other things I have tried either didnt
-    // work or failed to compose for obscure reasons
-    #define PP_IF(CONDITION_DEFINE, x)         PP_CONCAT(_IF_NOT_, CONDITION_DEFINE)(x)
-    #define _IF_NOT_(x) x
 
 #endif
 

@@ -4,6 +4,7 @@
 #include "allocator.h"
 #include "string.h"
 #include "parse.h"
+#include "assert.h"
 
 // This file presents an unified error handling startegy in 
 // the engines major systems (small functions that fail for 

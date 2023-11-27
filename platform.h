@@ -35,8 +35,7 @@ int64_t platform_heap_get_block_size(void* old_ptr, int64_t align); //returns th
 // Threading
 //=========================================
 
-typedef struct Platform_Thread
-{
+typedef struct Platform_Thread {
     void* handle;
     int32_t id;
 } Platform_Thread;
@@ -199,6 +198,24 @@ const char* platform_get_executable_path();
 Platform_Error platform_directory_list_contents_alloc(const char* directory_path, Platform_Directory_Entry** entries, int64_t* entries_count, int64_t max_depth);
 //Frees previously allocated file list
 void platform_directory_list_contents_free(Platform_Directory_Entry* entries);
+
+enum {
+    PLATFORM_FILE_WATCH_CHANGE      = 1,
+    PLATFORM_FILE_WATCH_DIR_NAME    = 2,
+    PLATFORM_FILE_WATCH_FILE_NAME   = 4,
+    PLATFORM_FILE_WATCH_ATTRIBUTES  = 8,
+
+    PLATFORM_FILE_WATCH_RECURSIVE   = 16,
+    PLATFORM_FILE_WATCH_ALL         = 31,
+};
+
+typedef struct Platform_File_Watch {
+    Platform_Thread thread;
+    void* data;
+} Platform_File_Watch;
+
+Platform_Error platform_file_watch(Platform_File_Watch* file_watch, const char* file_or_dir_path, u32 file_wacht_flags, int (*async_func)(void* context), void* context);
+void platform_file_unwatch(Platform_File_Watch* file_watch);
 
 //Memory maps the file pointed to by file_path and saves the adress and size of the mapped block into mapping. 
 //If the desired_size_or_zero == 0 maps the entire file. 

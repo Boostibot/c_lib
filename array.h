@@ -186,14 +186,14 @@ EXPORT void _array_clear(void* array, isize item_size);
 EXPORT bool _array_is_invariant(const void* array, isize item_size)
 {
     u8_Array* base = (u8_Array*) array;
-    bool is_capaicty_correct = 0 <= base->capacity;
+    bool is_capacity_correct = 0 <= base->capacity;
     bool is_size_correct = (0 <= base->size && base->size < base->capacity);
     if(base->size == 0)
         is_size_correct = true;
 
     bool is_data_correct = (base->data == NULL) == (base->capacity == 0);
     bool item_size_correct = item_size > 0;
-    bool result = is_capaicty_correct && is_size_correct && is_data_correct && item_size_correct;
+    bool result = is_capacity_correct && is_size_correct && is_data_correct && item_size_correct;
     ASSERT(result);
     return result;
 }
