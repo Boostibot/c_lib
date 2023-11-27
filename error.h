@@ -226,7 +226,7 @@ EXPORT Error_Module* error_system_get_module(u32 module)
 //Registers a new module with the given translator, name and context. Name does NOT need to be unique.
 EXPORT u32 error_system_register_module(Error_Translator translator, String module_name, void* context)
 {
-    ASSERT(global_error_system.is_init && "error module must be init!");
+    ASSERT_MSG(global_error_system.is_init, "error module must be init!");
 
     _Error_Module created = {0};
     created.is_gravestone = false;

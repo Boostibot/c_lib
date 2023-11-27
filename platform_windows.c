@@ -28,8 +28,6 @@
 enum { WINDOWS_PLATFORM_FILE_TYPE_PIPE = PLATFORM_FILE_TYPE_PIPE };
 #undef PLATFORM_FILE_TYPE_PIPE
 
-
-
 //=========================================
 // Virtual memory
 //=========================================
@@ -107,6 +105,8 @@ Platform_Thread platform_thread_create(int (*func)(void*), void* context, int64_
 {
     Platform_Thread thread = {0};
     PTHREAD_START_ROUTINE cast_func = (PTHREAD_START_ROUTINE) (void*) func;
+    if(stack_size <= 0)
+        stack_size = 0;
     thread.handle = CreateThread(0, stack_size, cast_func, context, 0, (LPDWORD) &thread.id);
     return thread;
 }
@@ -141,6 +141,44 @@ int platform_thread_join(Platform_Thread thread)
     DWORD code = 0;
     GetExitCodeThread(thread.handle, &code);
     return code;
+}
+
+Platform_Error _error_code(bool state)
+{
+    if(state)
+        return PLATFORM_ERROR_OK;
+    else
+        return (Platform_Error) GetLastError();
+}
+
+Platform_Error  platform_mutex_create(Platform_Mutex* mutex)
+{
+    platform_mutex_destroy(mutex);
+    Platform_Mutex out = {0};
+    out.handle = (void*) CreateMutexW(NULL, FALSE, L"platform_mutex_create");
+    *mutex = out;
+
+    return _error_code(true);
+}
+
+void platform_mutex_destroy(Platform_Mutex* mutex)
+{
+    CloseHandle((HANDLE) mutex->handle);
+}
+
+Platform_Error platform_mutex_acquire(Platform_Mutex* mutex)
+{
+    DWORD dwWaitResult = WaitForSingleObject( 
+            (HANDLE) mutex->handle, 
+            INFINITE);  // no time-out interval
+   
+    return _error_code(dwWaitResult == WAIT_OBJECT_0);
+}
+
+void platform_mutex_release(Platform_Mutex* mutex)
+{
+    bool return_val = ReleaseMutex((HANDLE) mutex->handle);
+    assert(return_val && "there is little we can do about errors appart from hoping they dont occur");
 }
 
 
@@ -597,13 +635,6 @@ void _translated_deinit_all()
     }
 }
 
-Platform_Error _error_code(bool state)
-{
-    if(state)
-        return PLATFORM_ERROR_OK;
-    else
-        return (Platform_Error) GetLastError();
-}
 
 //Makes a temporary buffer called buffer_name filled with utf16 representation of path.
 //buffer gets automatically freed upon exit. Return or other control from must not be used to
@@ -1124,13 +1155,105 @@ const char* platform_get_executable_path()
     return cached;
 }
 
-//typedef struct Platform_File_Watch {
-//    Platform_Thread thread;
-//    void* data;
-//} Platform_File_Watch;
+typedef bool (*_File_Watch_Func)(void* context);
 
-Platform_Error platform_file_watch(Platform_File_Watch* file_watch, const char* file_or_dir_path, u32 file_wacht_flags, int (*async_func)(void* context), void* context);
-void platform_file_unwatch(Platform_File_Watch* file_watch);
+typedef struct _Platform_File_Watch_Context {
+    HANDLE watch_handle;
+    bool (*user_func)(void* context);
+    void* user_context;
+} _Platform_File_Watch_Context;
+
+#define WATCH_ALIGN 8
+
+int _file_watch_func(void* context)
+{
+    _Platform_File_Watch_Context* watch_context = (_Platform_File_Watch_Context*) context;
+    int return_state = 0;
+    while(true)
+    {
+        DWORD wait_state = WaitForSingleObject(watch_context->watch_handle, INFINITE);
+        if(wait_state == WAIT_OBJECT_0)
+        {
+            bool user_state = watch_context->user_func(watch_context->user_context);
+            if(user_state == false)
+            {
+                return_state = 0;
+                break;
+            }
+        }
+        //something else happened. It shouldnt but it did. We exit the thread.
+        else
+        {
+            assert(wait_state != WAIT_ABANDONED && "only happens for mutexes");
+            assert(wait_state != WAIT_TIMEOUT && "we didnt set timeout");
+            return_state = 1;
+            break;
+        }
+
+        if(FindNextChangeNotification(watch_context->watch_handle) == false)
+        {
+            //Some error occured
+            assert(false);
+            return_state = 1;
+            break;
+        }
+    }
+    
+    platform_heap_reallocate(0, watch_context, sizeof *watch_context, WATCH_ALIGN);
+
+    if(watch_context->watch_handle != INVALID_HANDLE_VALUE)
+        FindCloseChangeNotification(watch_context->watch_handle);
+    return return_state;
+}
+
+Platform_Error platform_file_watch(Platform_File_Watch* file_watch, const char* file_or_dir_path, int32_t file_wacht_flags, bool (*async_func)(void* context), void* context)
+{
+    platform_file_unwatch(file_watch);
+    assert(async_func != NULL);
+    
+    HANDLE watch_handle = INVALID_HANDLE_VALUE;
+    _Platform_File_Watch_Context* watch_context = (_Platform_File_Watch_Context*) platform_heap_reallocate(sizeof *watch_context, NULL, 0, WATCH_ALIGN);
+    if(watch_context != NULL)
+    {
+        BOOL watch_subtree = false;
+        DWORD notify_filter = 0;
+
+        if(file_wacht_flags & PLATFORM_FILE_WATCH_CHANGE)
+            notify_filter |= FILE_NOTIFY_CHANGE_LAST_WRITE;
+        
+        if(file_wacht_flags & PLATFORM_FILE_WATCH_DIR_NAME)
+            notify_filter |= FILE_NOTIFY_CHANGE_DIR_NAME;
+        
+        if(file_wacht_flags & PLATFORM_FILE_WATCH_FILE_NAME)
+            notify_filter |= FILE_NOTIFY_CHANGE_FILE_NAME;
+        
+        if(file_wacht_flags & PLATFORM_FILE_WATCH_ATTRIBUTES)
+            notify_filter |= FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_ATTRIBUTES;
+        
+        if(file_wacht_flags & PLATFORM_FILE_WATCH_RECURSIVE)
+            watch_subtree = true;
+
+        _TEMP_CONVERT_UTF16(normalized_path, file_or_dir_path) {
+            watch_handle = FindFirstChangeNotificationW(_wstring(normalized_path), watch_subtree, notify_filter);
+        }
+
+        if(watch_handle != INVALID_HANDLE_VALUE)
+        {
+            watch_context->user_context = context;
+            watch_context->user_func = async_func;
+            watch_context->watch_handle = watch_handle;
+            file_watch->thread = platform_thread_create(_file_watch_func, watch_context, 0);
+            file_watch->data = (void*) watch_handle;
+        }
+    }
+
+    return _error_code(watch_handle != INVALID_HANDLE_VALUE);
+}
+void platform_file_unwatch(Platform_File_Watch* file_watch)
+{
+    platform_thread_destroy(&file_watch->thread);
+    FindCloseChangeNotification((HANDLE) file_watch->data);
+}
 
 //=========================================
 // Window managmenet

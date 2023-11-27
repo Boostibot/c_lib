@@ -186,6 +186,7 @@
 #include "string.h"
 #include "parse.h"
 #include "assert.h"
+#include "vformat.h"
 
 #ifdef PERF_COUNTER_START
     #define LPF_PERF_COUNTER_START(x) PERF_COUNTER_START(x)

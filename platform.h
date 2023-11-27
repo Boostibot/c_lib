@@ -35,11 +35,30 @@ int64_t platform_heap_get_block_size(void* old_ptr, int64_t align); //returns th
 // Threading
 //=========================================
 
+typedef uint32_t Platform_Error;
+enum {PLATFORM_ERROR_OK = 0};
+
+//@TODO: CHANGE!! Alongside all other allocation fucntions. Make this file include its own simple allocator interface perfectly comaptible
+// with the outside one except not needing get stats and not requiring the allocator data to subclassing thing
+
+//Returns a translated error message. The returned pointer is not static and shall NOT be stored as further calls to this functions will invalidate it. 
+//Thus the returned string should be immedietelly printed or copied into a different buffer
+const char* platform_translate_error(Platform_Error error);
+
+//=========================================
+// Threading
+//=========================================
+
 typedef struct Platform_Thread {
     void* handle;
     int32_t id;
 } Platform_Thread;
 
+typedef struct Platform_Mutex {
+    void* handle;
+} Platform_Mutex;
+
+//@TODO: remove the need to destroy thread handles. Make exit and abort sensitive to this 
 int64_t         platform_thread_get_proccessor_count();
 Platform_Thread platform_thread_create(int (*func)(void*), void* context, int64_t stack_size); //CreateThread
 void            platform_thread_destroy(Platform_Thread* thread); //CloseHandle 
@@ -49,6 +68,14 @@ void            platform_thread_yield();
 void            platform_thread_sleep(int64_t ms);
 void            platform_thread_exit(int code);
 int             platform_thread_join(Platform_Thread thread);
+
+//@TODO: make the only function!
+int             platform_threads_join(const Platform_Thread* threads, int64_t count);
+
+Platform_Error  platform_mutex_create(Platform_Mutex* mutex);
+void            platform_mutex_destroy(Platform_Mutex* mutex);
+Platform_Error  platform_mutex_acquire(Platform_Mutex* mutex);
+void            platform_mutex_release(Platform_Mutex* mutex);
 
 //=========================================
 // Atomics 
@@ -119,8 +146,6 @@ int64_t platform_perf_counter_frequency();  //returns the frequency of the perfo
 // Filesystem
 //=========================================
 
-typedef uint32_t Platform_Error;
-enum {PLATFORM_ERROR_OK = 0};
 
 typedef enum Platform_File_Type
 {
@@ -160,12 +185,6 @@ typedef struct Platform_Memory_Mapping
 
 
 
-//@TODO: CHANGE!! Alongside all other allocation fucntions. Make this file include its own simple allocator interface perfectly comaptible
-// with the outside one except not needing get stats and not requiring the allocator data to subclassing thing
-
-//Returns a translated error message. The returned pointer is not static and shall NOT be stored as further calls to this functions will invalidate it. 
-//Thus the returned string should be immedietelly printed or copied into a different buffer
-const char* platform_translate_error(Platform_Error error);
 
 //retrieves info about the specified file or directory
 Platform_Error platform_file_info(const char* file_path, Platform_File_Info* info);
@@ -204,7 +223,6 @@ enum {
     PLATFORM_FILE_WATCH_DIR_NAME    = 2,
     PLATFORM_FILE_WATCH_FILE_NAME   = 4,
     PLATFORM_FILE_WATCH_ATTRIBUTES  = 8,
-
     PLATFORM_FILE_WATCH_RECURSIVE   = 16,
     PLATFORM_FILE_WATCH_ALL         = 31,
 };
@@ -214,7 +232,7 @@ typedef struct Platform_File_Watch {
     void* data;
 } Platform_File_Watch;
 
-Platform_Error platform_file_watch(Platform_File_Watch* file_watch, const char* file_or_dir_path, u32 file_wacht_flags, int (*async_func)(void* context), void* context);
+Platform_Error platform_file_watch(Platform_File_Watch* file_watch, const char* file_or_dir_path, int32_t file_wacht_flags, bool (*async_func)(void* context), void* context);
 void platform_file_unwatch(Platform_File_Watch* file_watch);
 
 //Memory maps the file pointed to by file_path and saves the adress and size of the mapped block into mapping. 

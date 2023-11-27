@@ -114,11 +114,13 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 #define _IF_NOT_DO_LOG_TRACE(ignore)        LOG_NEVER
 
 //Pre-Processor (PP) utils
-#define PP_CONCAT2(a, b) a ## b
+#define PP_STRINGIFY_(x)        #x
+#define PP_CONCAT2(a, b)        a ## b
 #define PP_CONCAT3(a, b, c)     PP_CONCAT2(PP_CONCAT2(a, b), c)
 #define PP_CONCAT4(a, b, c, d)  PP_CONCAT2(PP_CONCAT3(a, b, c), d)
 #define PP_CONCAT(a, b)         PP_CONCAT2(a, b)
-#define PP_ID(x) x
+#define PP_STRINGIFY(x)         PP_STRINGIFY_(x)
+#define PP_ID(x)                x
 
 //if CONDITION_DEFINE is defined: expands to x, 
 //else: expands to _IF_NOT_##CONDITION_DEFINE(x). See above how to use this.
