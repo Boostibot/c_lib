@@ -146,7 +146,6 @@ int64_t platform_perf_counter_frequency();  //returns the frequency of the perfo
 // Filesystem
 //=========================================
 
-
 typedef enum Platform_File_Type
 {
     PLATFORM_FILE_TYPE_NOT_FOUND = 0,
@@ -182,9 +181,6 @@ typedef struct Platform_Memory_Mapping
     int64_t size;
     uint64_t state[8];
 } Platform_Memory_Mapping;
-
-
-
 
 //retrieves info about the specified file or directory
 Platform_Error platform_file_info(const char* file_path, Platform_File_Info* info);

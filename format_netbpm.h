@@ -18,15 +18,11 @@
 // 
 // The ascii files have data comprised of numbers in decimal separated by whitespace. There is one number for one channel.
 // The binary files have data simply layed out in memory next to each other in row major order. There is no compression.
-//
-// @TODO: separate this file more from the rest of the engine. This whole file can be transfomed to only use scanf and clib.
-// @TODO: factor endian functions someplace else
 
 #include "image.h"
 #include "string.h"
 #include "format.h"
 #include "error.h"
-
 
 typedef enum Netbpm_Format {
     NETBPM_FORMAT_NONE = 0,
@@ -117,15 +113,15 @@ EXPORT Netbpm_Format netbpm_format_classify(String data)
     }
 }
 
-INTERNAL String format_ppm_translate_error(u32 code, void* context)
+INTERNAL const char* format_ppm_translate_error(u32 code, void* context)
 {
     (void) context;
     switch(code)
     {
         default: return ERROR_SYSTEM_STRING_UNEXPECTED_ERROR;
-        case NETBPM_FORMAT_ERROR_INVALID_HEADER: return STRING("invalid header of ppm file");
-        case NETBPM_FORMAT_ERROR_INVALID_HEADER_VALUES: return STRING("values found in ppm header are invalid (negative or too big)");
-        case NETBPM_FORMAT_ERROR_NOT_ENOUGH_DATA: return STRING("not enough data to fill all width * height pixels of the file");
+        case NETBPM_FORMAT_ERROR_INVALID_HEADER: return "invalid header of ppm file";
+        case NETBPM_FORMAT_ERROR_INVALID_HEADER_VALUES: return "values found in ppm header are invalid (negative or too big)";
+        case NETBPM_FORMAT_ERROR_NOT_ENOUGH_DATA: return "not enough data to fill all width * height pixels of the file";
     }
 }
 
