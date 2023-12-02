@@ -4,27 +4,30 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+typedef struct Platform_Allocator {
+    void* (*reallocate)(void* context, int64_t new_size, void* old_ptr, int64_t old_size);
+    void* context;
+} Platform_Allocator;
+
+void platform_init(Platform_Allocator* allocator_or_null);
+void platform_deinit();
+
 //=========================================
 // Virtual memory
 //=========================================
 
-void platform_init();
-void platform_deinit();
-
-typedef enum Platform_Virtual_Allocation
-{
-    PLATFORM_VIRTUAL_ALLOC_RESERVE, //Reserves adress space so that no other allocation can be made there
-    PLATFORM_VIRTUAL_ALLOC_COMMIT,  //Commits adress space causing operating system to suply physical memory or swap file
-    PLATFORM_VIRTUAL_ALLOC_DECOMMIT,//Removes adress space from commited freeing physical memory
-    PLATFORM_VIRTUAL_ALLOC_RELEASE, //Free adress space
+typedef enum Platform_Virtual_Allocation {
+    PLATFORM_VIRTUAL_ALLOC_RESERVE  = 0, //Reserves adress space so that no other allocation can be made there
+    PLATFORM_VIRTUAL_ALLOC_COMMIT   = 1, //Commits adress space causing operating system to suply physical memory or swap file
+    PLATFORM_VIRTUAL_ALLOC_DECOMMIT = 2, //Removes adress space from commited freeing physical memory
+    PLATFORM_VIRTUAL_ALLOC_RELEASE  = 3, //Free adress space
 } Platform_Virtual_Allocation;
 
-typedef enum Platform_Memory_Protection
-{
-    PLATFORM_MEMORY_PROT_NO_ACCESS,
-    PLATFORM_MEMORY_PROT_READ,
-    PLATFORM_MEMORY_PROT_WRITE,
-    PLATFORM_MEMORY_PROT_READ_WRITE
+typedef enum Platform_Memory_Protection {
+    PLATFORM_MEMORY_PROT_NO_ACCESS  = 0,
+    PLATFORM_MEMORY_PROT_READ       = 1,
+    PLATFORM_MEMORY_PROT_WRITE      = 2,
+    PLATFORM_MEMORY_PROT_READ_WRITE = 3,
 } Platform_Memory_Protection;
 
 void* platform_virtual_reallocate(void* allocate_at, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection);
@@ -37,9 +40,6 @@ int64_t platform_heap_get_block_size(void* old_ptr, int64_t align); //returns th
 
 typedef uint32_t Platform_Error;
 enum {PLATFORM_ERROR_OK = 0};
-
-//@TODO: CHANGE!! Alongside all other allocation fucntions. Make this file include its own simple allocator interface perfectly comaptible
-// with the outside one except not needing get stats and not requiring the allocator data to subclassing thing
 
 //Returns a translated error message. The returned pointer is not static and shall NOT be stored as further calls to this functions will invalidate it. 
 //Thus the returned string should be immedietelly printed or copied into a different buffer
@@ -84,7 +84,6 @@ inline static void platform_compiler_memory_fence();
 inline static void platform_memory_fence();
 inline static void platform_processor_pause();
 
-
 //Returns the first/last set bit position. If num is zero result is undefined
 inline static int32_t platform_find_last_set_bit32(uint32_t num); 
 inline static int32_t platform_find_last_set_bit64(uint64_t num);
@@ -110,8 +109,7 @@ inline static int64_t platform_interlocked_decrement64(volatile int64_t* target)
 // Timings
 //=========================================
 
-typedef struct Platform_Calendar_Time
-{
+typedef struct Platform_Calendar_Time {
     int32_t year;       // any
     int8_t month;       // [0, 12)
     int8_t day_of_week; // [0, 7) where 0 is sunday
@@ -145,9 +143,12 @@ int64_t platform_perf_counter_frequency();  //returns the frequency of the perfo
 //=========================================
 // Filesystem
 //=========================================
+typedef struct Platform_String {
+    const char* data;
+    int64_t size;
+} Platform_String;
 
-typedef enum Platform_File_Type
-{
+typedef enum Platform_File_Type {
     PLATFORM_FILE_TYPE_NOT_FOUND = 0,
     PLATFORM_FILE_TYPE_FILE = 1,
     PLATFORM_FILE_TYPE_DIRECTORY = 4,
@@ -156,8 +157,7 @@ typedef enum Platform_File_Type
     PLATFORM_FILE_TYPE_OTHER = 5,
 } Platform_File_Type;
 
-typedef struct Platform_File_Info
-{
+typedef struct Platform_File_Info {
     int64_t size;
     Platform_File_Type type;
     int64_t created_epoch_time;
@@ -166,51 +166,78 @@ typedef struct Platform_File_Info
     bool is_link; //if file/dictionary is actually just a link (hardlink or softlink or symlink)
 } Platform_File_Info;
     
-typedef struct Platform_Directory_Entry
-{
+typedef struct Platform_Directory_Entry {
     char* path;
-    int64_t path_size;
     int64_t index_within_directory;
     int64_t directory_depth;
     Platform_File_Info info;
 } Platform_Directory_Entry;
 
-typedef struct Platform_Memory_Mapping
-{
+typedef struct Platform_Memory_Mapping {
     void* address;
     int64_t size;
     uint64_t state[8];
 } Platform_Memory_Mapping;
 
+typedef struct Platform_File {
+    Platform_File_Type type;
+    int64_t size;
+    void* data;
+    uint64_t state[1];
+} Platform_File;
+
+typedef enum File_Open_Mode {
+    FILE_OPEN_READ = 1,
+    FILE_OPEN_WRITE = 2,
+    FILE_OPEN_READ_WRITE = 1 | 2,
+
+    FILE_OPEN_CREATE = 4,           //the file can exist or not not in both cases it is opened
+    FILE_OPEN_CREATE_ELSE_FAIL = 8, //if the file does exist fail
+    //FILE_OPEN_TEMPORARY = 32,  //@TODO: implement
+} File_Open_Mode;
+
+typedef enum File_Seek {
+    FILE_SEEK_START = 0,
+    FILE_SEEK_CURRENT = 1,
+    FILE_SEEK_END = 2,
+} File_Seek;
+
+typedef enum File_IO_State {
+    FILE_IO_STATE_OK = 0,
+    FILE_IO_STATE_ERROR = 1,
+    FILE_IO_STATE_EOF = 2,
+    FILE_IO_STATE_FILE_CLOSED = 3,
+} File_IO_State;
+
 //retrieves info about the specified file or directory
-Platform_Error platform_file_info(const char* file_path, Platform_File_Info* info);
+Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null);
 //Creates an empty file at the specified path. Succeeds if the file exists after the call.
 //Saves to was_just_created wheter the file was just now created. If is null doesnt save anything.
-Platform_Error platform_file_create(const char* file_path, bool* was_just_created);
+Platform_Error platform_file_create(Platform_String file_path, bool* was_just_created);
 //Removes a file at the specified path. Succeeds if the file exists after the call
 //Saves to was_just_deleted wheter the file was just now deleted. If is null doesnt save anything.
-Platform_Error platform_file_remove(const char* file_path, bool* was_just_deleted);
+Platform_Error platform_file_remove(Platform_String file_path, bool* was_just_deleted);
 //Moves or renames a file. If the file cannot be found or renamed to file that already exists, fails.
-Platform_Error platform_file_move(const char* new_path, const char* old_path);
+Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path);
 //Copies a file. If the file cannot be found or copy_to_path file that already exists, fails.
-Platform_Error platform_file_copy(const char* copy_to_path, const char* copy_from_path);
+Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String copy_from_path);
 //Resizes a file. The file must exist.
-Platform_Error platform_file_resize(const char* file_path, int64_t size);
+Platform_Error platform_file_resize(Platform_String file_path, int64_t size);
 
 //Makes an empty directory
-Platform_Error platform_directory_create(const char* dir_path);
+Platform_Error platform_directory_create(Platform_String dir_path);
 //Removes an empty directory
-Platform_Error platform_directory_remove(const char* dir_path);
+Platform_Error platform_directory_remove(Platform_String dir_path);
 
 //changes the current working directory to the new_working_dir.  
-Platform_Error platform_directory_set_current_working(const char* new_working_dir);    
+Platform_Error platform_directory_set_current_working(Platform_String new_working_dir);    
 //Retrieves the current working directory
 const char* platform_directory_get_current_working();    
 const char* platform_get_executable_path();    
 
 //Gathers and allocates list of files in the specified directory. Saves a pointer to array of entries to entries and its size to entries_count. 
 //Needs to be freed using directory_list_contents_free()
-Platform_Error platform_directory_list_contents_alloc(const char* directory_path, Platform_Directory_Entry** entries, int64_t* entries_count, int64_t max_depth);
+Platform_Error platform_directory_list_contents_alloc(Platform_String directory_path, Platform_Directory_Entry** entries, int64_t* entries_count, int64_t max_depth);
 //Frees previously allocated file list
 void platform_directory_list_contents_free(Platform_Directory_Entry* entries);
 
@@ -228,7 +255,7 @@ typedef struct Platform_File_Watch {
     void* data;
 } Platform_File_Watch;
 
-Platform_Error platform_file_watch(Platform_File_Watch* file_watch, const char* file_or_dir_path, int32_t file_wacht_flags, bool (*async_func)(void* context), void* context);
+Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_String file_or_dir_path, int32_t file_wacht_flags, bool (*async_func)(void* context), void* context);
 void platform_file_unwatch(Platform_File_Watch* file_watch);
 
 //Memory maps the file pointed to by file_path and saves the adress and size of the mapped block into mapping. 
@@ -240,7 +267,7 @@ void platform_file_unwatch(Platform_File_Watch* file_watch);
 //If the desired_size_or_zero < 0 maps additional desired_size_or_zero bytes from the file 
 //    (for appending) extending it by that ammount and filling the space with 0.
 //  if the file doesnt exist the function creates a new file.
-Platform_Error platform_file_memory_map(const char* file_path, int64_t desired_size_or_zero, Platform_Memory_Mapping* mapping);
+Platform_Error platform_file_memory_map(Platform_String file_path, int64_t desired_size_or_zero, Platform_Memory_Mapping* mapping);
 //Unmpas the previously mapped file. If mapping is a result of failed platform_file_memory_map does nothing.
 void platform_file_memory_unmap(Platform_Memory_Mapping* mapping);
 
@@ -271,7 +298,7 @@ typedef enum Platform_Window_Popup_Controls
     PLATFORM_POPUP_CONTROL_IGNORE,
 } Platform_Window_Popup_Controls;
 
-Platform_Window_Popup_Controls  platform_window_make_popup(Platform_Window_Popup_Style desired_style, const char* message, const char* title);
+Platform_Window_Popup_Controls  platform_window_make_popup(Platform_Window_Popup_Style desired_style, Platform_String message, Platform_String title);
 
 //=========================================
 // Debug

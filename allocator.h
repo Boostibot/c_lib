@@ -57,14 +57,10 @@ typedef struct Allocator_Stats {
     //if doesnt use any other allocator to obtain its memory. For example malloc allocator or VM memory allocator have this set.
     bool is_top_level; 
 
-    //The number of bytes used by the entire allocator including the size needed for book keeping
-    isize bytes_used;
     //The number of bytes given out to the program by this allocator. (does NOT include book keeping bytes).
     //Might not be totally accurate but is required to be localy stable - if we allocate 100B and then deallocate 100B this should not change.
     //This can be used to accurately track memory leaks. (Note that if this field is simply not set and thus is 0 the above property is satisfied)
     isize bytes_allocated;
-            
-    isize max_bytes_used;       //maximum bytes_used during the enire lifetime of the allocator
     isize max_bytes_allocated;  //maximum bytes_allocated during the enire lifetime of the allocator
 
     isize allocation_count;     //The number of allocation requests (old_ptr == NULL). Does not include reallocs!
@@ -97,6 +93,8 @@ EXPORT void* allocator_allocate_cleared(Allocator* from_allocator, isize new_siz
 
 //Retrieves stats from the allocator. The stats can be only partially filled.
 EXPORT Allocator_Stats allocator_get_stats(Allocator* self);
+
+EXPORT Platform_Allocator platform_allocator_from_allocator(Allocator* alloc);
 
 //Gets called when function requiring to always succeed fails an allocation - most often from allocator_reallocate
 //If ALLOCATOR_CUSTOM_OUT_OF_MEMORY is defines is left unimplemented
@@ -263,6 +261,18 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         return prev;
     }
     
+    INTERNAL void* _platform_allocator_allocate(void* context, int64_t new_size, void* old_ptr, int64_t old_size)
+    {
+        Allocator* alloc = (Allocator*) context;
+        return alloc->allocate(alloc, new_size, old_ptr, old_size, DEF_ALIGN, SOURCE_INFO());
+    }
+
+    EXPORT Platform_Allocator platform_allocator_from_allocator(Allocator* alloc)
+    {
+        Platform_Allocator out = {_platform_allocator_allocate, alloc};
+        return out;
+    }
+
     EXPORT bool is_power_of_two_or_zero(isize num) 
     {
         usize n = (usize) num;

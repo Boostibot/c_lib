@@ -4,11 +4,7 @@
 #include "allocator.h"
 #include "array.h"
 
-typedef struct String
-{
-    const char* data;
-    isize size;
-} String;
+typedef Platform_String String;
 
 DEFINE_ARRAY_TYPE(char, String_Builder);
 DEFINE_ARRAY_TYPE(String, String_Array);
