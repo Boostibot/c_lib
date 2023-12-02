@@ -233,12 +233,8 @@ EXPORT String path_get_relative_ephemeral(String path)
 EXPORT Error file_read_entire_append_into(String file_path, String_Builder* append_into)
 {
     PERF_COUNTER_START(c);
-    String_Builder escpaed_file_path = {0};
-    array_init_backed(&escpaed_file_path, allocator_get_scratch(), 512);
-    builder_append(&escpaed_file_path, file_path);
-
     Platform_Memory_Mapping mapping = {0};
-    Platform_Error error = platform_file_memory_map(cstring_from_builder(escpaed_file_path), 0, &mapping);
+    Platform_Error error = platform_file_memory_map(file_path, 0, &mapping);
     if(error == 0)
     {
         //@NOTE: if this fails because we dont have enough memory then the file remains mapped!
@@ -247,7 +243,6 @@ EXPORT Error file_read_entire_append_into(String file_path, String_Builder* appe
         platform_file_memory_unmap(&mapping);
     }
 
-    array_deinit(&escpaed_file_path);
     PERF_COUNTER_END(c);
     return error_from_platform(error);
 }
@@ -261,12 +256,8 @@ EXPORT Error file_read_entire(String file_path, String_Builder* data)
 EXPORT Error file_append_entire(String file_path, String contents)
 {
     PERF_COUNTER_START(c);
-    String_Builder escpaed_file_path = {0};
-    array_init_backed(&escpaed_file_path, allocator_get_scratch(), 512);
-    builder_append(&escpaed_file_path, file_path);
-
     Platform_Memory_Mapping mapping = {0};
-    Platform_Error error = platform_file_memory_map(cstring_from_builder(escpaed_file_path), -contents.size, &mapping);
+    Platform_Error error = platform_file_memory_map(file_path, -contents.size, &mapping);
     if(error == 0)
     {
         u8* bytes = (u8*) mapping.address;
@@ -275,7 +266,6 @@ EXPORT Error file_append_entire(String file_path, String contents)
         platform_file_memory_unmap(&mapping);
     }
 
-    array_deinit(&escpaed_file_path);
     PERF_COUNTER_END(c);
     return error_from_platform(error);
 }
@@ -283,19 +273,14 @@ EXPORT Error file_append_entire(String file_path, String contents)
 EXPORT Error file_write_entire(String file_path, String contents)
 {
     PERF_COUNTER_START(c);
-    String_Builder escpaed_file_path = {0};
-    array_init_backed(&escpaed_file_path, allocator_get_scratch(), 512);
-    builder_append(&escpaed_file_path, file_path);
-
     Platform_Memory_Mapping mapping = {0};
-    Platform_Error error = platform_file_memory_map(cstring_from_builder(escpaed_file_path), contents.size, &mapping);
+    Platform_Error error = platform_file_memory_map(file_path, contents.size, &mapping);
     if(error == 0)
     {
         memcpy(mapping.address, contents.data, contents.size);
         platform_file_memory_unmap(&mapping);
     }
 
-    array_deinit(&escpaed_file_path);
     PERF_COUNTER_END(c);
     return error_from_platform(error);
 }
@@ -303,13 +288,9 @@ EXPORT Error file_write_entire(String file_path, String contents)
 EXPORT Error file_create(String file_path, bool* was_just_created)
 {
     PERF_COUNTER_START(c);
-    String_Builder escpaed_file_path = {0};
-    array_init_backed(&escpaed_file_path, allocator_get_scratch(), 512);
-    builder_append(&escpaed_file_path, file_path);
 
-    Platform_Error error = platform_file_create(cstring_from_builder(escpaed_file_path), was_just_created);
+    Platform_Error error = platform_file_create(file_path, was_just_created);
     
-    array_deinit(&escpaed_file_path);
     PERF_COUNTER_END(c);
     return error_from_platform(error);
 }
@@ -317,13 +298,9 @@ EXPORT Error file_create(String file_path, bool* was_just_created)
 EXPORT Error file_remove(String file_path, bool* was_just_removed)
 {
     PERF_COUNTER_START(c);
-    String_Builder escpaed_file_path = {0};
-    array_init_backed(&escpaed_file_path, allocator_get_scratch(), 512);
-    builder_append(&escpaed_file_path, file_path);
 
-    Platform_Error error = platform_file_remove(cstring_from_builder(escpaed_file_path), was_just_removed);
+    Platform_Error error = platform_file_remove(file_path, was_just_removed);
     
-    array_deinit(&escpaed_file_path);
     PERF_COUNTER_END(c);
     return error_from_platform(error);
 }

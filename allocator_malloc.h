@@ -66,15 +66,17 @@ EXPORT void  malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_MALLOC_IMPL)) && !defined(JOT_ALLOCATOR_MALLOC_HAS_IMPL)
 #define JOT_ALLOCATOR_MALLOC_HAS_IMPL
 
-    #include "profile.h"
 
-    //the way this file is written this can simple be changed to malloc
+    //the way this file is written this can simple be changed to malloc just by defining MALLOC_ALLOCATOR_NAKED
     #ifdef MALLOC_ALLOCATOR_NAKED
         #include <stdlib.h>
+        #define PERF_COUNTER_START(x)
+        #define PERF_COUNTER_END(x)
         #define MALLOC_ALLOCATOR_MALLOC(size) malloc(size)
         #define MALLOC_ALLOCATOR_FREE(pointer, size) free(pointer)
     #else
         #include "platform.h"
+        #include "profile.h"
         #define MALLOC_ALLOCATOR_MALLOC(size) platform_heap_reallocate(size, NULL, 0, DEF_ALIGN)
         #define MALLOC_ALLOCATOR_FREE(pointer, size) platform_heap_reallocate(0, pointer, size, DEF_ALIGN)
     #endif

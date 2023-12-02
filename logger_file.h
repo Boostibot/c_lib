@@ -120,8 +120,6 @@ EXPORT void file_logger_console_clear_filters(File_Logger* logger);
 extern File_Logger global_logger;
 #endif
 
-#define JOT_ALL_IMPL
-
 #if (defined(JOT_ALL_IMPL) || defined(JOT_LOGGER_FILE_IMPL)) && !defined(JOT_LOGGER_FILE_HAS_IMPL)
 #define JOT_LOGGER_FILE_HAS_IMPL
 
@@ -341,7 +339,7 @@ EXPORT bool file_logger_flush(File_Logger* logger)
                     
                 builder_append(&file_name, string_from_builder(self->file_postfix));
 
-                platform_directory_create(self->file_directory_path.data);
+                platform_directory_create(string_from_builder(self->file_directory_path));
                 self->file = fopen(cstring_from_builder(file_name), "ab");
                 
                 state = state && self->file != NULL;

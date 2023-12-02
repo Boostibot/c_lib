@@ -129,7 +129,7 @@ INTERNAL u32 netbmp_format_error_module()
 {
     static u32 error_module = 0;
     if(error_module == 0)
-        error_module = error_system_register_module(format_ppm_translate_error, STRING("format_ppm.h"), NULL);
+        error_module = error_system_register_module(format_ppm_translate_error, "format_ppm.h", NULL);
 
     return error_module;
 }
