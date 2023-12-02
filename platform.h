@@ -4,13 +4,51 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+//This is a complete operating system abstarction layer. Its implementation is as stright forward and light as possible.
+//It uses sized strings on all imputs and returns null terminated strings for maximum compatibility and performance.
+//It tries to minimize the need to track state user side instead tries to operate on fixed ammount of mutable buffers.
+
+//Why we need this:
+//  1) Practical
+//      The c standard library is extremely minimalistic so if we wish to list all files in a directory there is no other way.
+// 
+//  2) Idealogical
+//     Its necessary to udnerstand the bedrock of any medium we are working with. Be it paper, oil & canvas or code, 
+//     understanding the medium will help us define strong limitations on the final problem solutions. This is possible
+//     and this isnt. Yes or no. This drastically shrinks the design space of any problem which allow for deeper exploration of it. 
+//     
+//     Interestingly it does not only shrink the design space it also makes it more defined. We see more oportunities that we 
+//     wouldnt have seen if we just looked at some high level abstarction library. This can lead to development of better abstractions.
+//  
+//     Further having absolute control over the system is rewarding. Having the knowledge of every single operation that goes on is
+//     immensely satisfying.
+
+
+//=========================================
+// Platform layer setup
+//=========================================
+
+//Initializes the platform layer interface. 
+//Should be called before calling any other function.
+void platform_init();
+
+//Deinitializes the platform layer, freeing all allocated resources back to os.
+//platform_init() should be called before using any other fucntion again!
+void platform_deinit();
+
 typedef struct Platform_Allocator {
     void* (*reallocate)(void* context, int64_t new_size, void* old_ptr, int64_t old_size);
     void* context;
 } Platform_Allocator;
 
-void platform_init(Platform_Allocator* allocator_or_null);
-void platform_deinit();
+//Sets a different allocator used for internal allocations. This allocator must never fail (for the moment).
+//The semantics must be quivalent to:
+//   if(new_size == 0) return free(old_ptr);
+//   else              return realloc(old_ptr, new_size);
+//context is user defined argument and old_size is purely informative (can be used for tracking purposes).
+//The value pointed to by context is not copied and needs to remain valid untill call to platform_deinit()!
+void platform_set_internal_allocator(Platform_Allocator allocator);
+
 
 //=========================================
 // Virtual memory
@@ -34,8 +72,9 @@ void* platform_virtual_reallocate(void* allocate_at, int64_t bytes, Platform_Vir
 void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t old_size, int64_t align);
 int64_t platform_heap_get_block_size(void* old_ptr, int64_t align); //returns the size in bytes of the allocated block. Useful for compatibility with APIs that expect malloc/free type allocation functions without explicit size
 
+
 //=========================================
-// Threading
+// Errors 
 //=========================================
 
 typedef uint32_t Platform_Error;
@@ -44,6 +83,7 @@ enum {PLATFORM_ERROR_OK = 0};
 //Returns a translated error message. The returned pointer is not static and shall NOT be stored as further calls to this functions will invalidate it. 
 //Thus the returned string should be immedietelly printed or copied into a different buffer
 const char* platform_translate_error(Platform_Error error);
+
 
 //=========================================
 // Threading
@@ -60,22 +100,28 @@ typedef struct Platform_Mutex {
 
 //@TODO: remove the need to destroy thread handles. Make exit and abort sensitive to this 
 int64_t         platform_thread_get_proccessor_count();
-Platform_Thread platform_thread_create(int (*func)(void*), void* context, int64_t stack_size); //CreateThread
-void            platform_thread_destroy(Platform_Thread* thread); //CloseHandle 
 
-int32_t         platform_thread_get_id();
-void            platform_thread_yield();
-void            platform_thread_sleep(int64_t ms);
-void            platform_thread_exit(int code);
-int             platform_thread_join(Platform_Thread thread);
+//initializes a new thread and immedietely starts it with the func function.
+//The thread has stack_size_or_zero bytes of stack sizes rounded up to page size
+//If stack_size_or_zero is zero or lower uses system default stack size.
+Platform_Error  platform_thread_init(Platform_Thread* thread, int (*func)(void*), void* context, int64_t stack_size_or_zero); 
+//Deinits a thread. If the thread is still running it is killed! Call platform_thread_join before to ensure it has finished
+void            platform_thread_deinit(Platform_Thread* thread); 
+
+Platform_Thread platform_thread_get_current(); //Returns handle to the calling thread
+void            platform_thread_sleep(int64_t ms); //Sleeps the calling thread for ms milliseconds
+int             platform_thread_join(Platform_Thread thread); //Blocks calling thread until the thread finishes and returns it state. Must not join the current calling thread!
+void            platform_thread_exit(int code); //Terminates a thread with an exit code
+void            platform_thread_yield(); //Yields the remainder of this thread's time slice to the OS
 
 //@TODO: make the only function!
 int             platform_threads_join(const Platform_Thread* threads, int64_t count);
 
-Platform_Error  platform_mutex_create(Platform_Mutex* mutex);
-void            platform_mutex_destroy(Platform_Mutex* mutex);
+Platform_Error  platform_mutex_init(Platform_Mutex* mutex);
+void            platform_mutex_deinit(Platform_Mutex* mutex);
 Platform_Error  platform_mutex_acquire(Platform_Mutex* mutex);
 void            platform_mutex_release(Platform_Mutex* mutex);
+
 
 //=========================================
 // Atomics 
@@ -84,26 +130,46 @@ inline static void platform_compiler_memory_fence();
 inline static void platform_memory_fence();
 inline static void platform_processor_pause();
 
-//Returns the first/last set bit position. If num is zero result is undefined
-inline static int32_t platform_find_last_set_bit32(uint32_t num); 
-inline static int32_t platform_find_last_set_bit64(uint64_t num);
+//Returns the first/last set (1) bit position. If num is zero result is undefined.
+//The follwing invarints hold (analogous for 64 bit)
+// (num & (1 << platform_find_first_set_bit32(num)) != 0
+// (num & (1 << (32 - platform_find_last_set_bit32(num))) != 0
 inline static int32_t platform_find_first_set_bit32(uint32_t num);
 inline static int32_t platform_find_first_set_bit64(uint64_t num);
+inline static int32_t platform_find_last_set_bit32(uint32_t num); 
+inline static int32_t platform_find_last_set_bit64(uint64_t num);
 
-//Returns the number of on bits 
+//Returns the number of set (1) bits 
 inline static int32_t platform_pop_count32(uint32_t num);
 inline static int32_t platform_pop_count64(uint64_t num);
 
+//Standard Compare and Swap (CAS) semantics.
+//Performs atomically: {
+//   if(*target != old_value)
+//      return false;
+// 
+//   *target = new_value;
+//   return true;
+// }
 inline static bool platform_interlocked_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value);
 inline static bool platform_interlocked_compare_and_swap32(volatile int32_t* target, int32_t old_value, int32_t new_value);
+
+//Performs atomically: { int64_t copy = *target; *target = value; return copy; }
 inline static int64_t platform_interlocked_excahnge64(volatile int64_t* target, int64_t value);
 inline static int32_t platform_interlocked_excahnge32(volatile int32_t* target, int32_t value);
+
+//Performs atomically: { int64_t copy = *target; *target += value; return copy; }
 inline static int32_t platform_interlocked_add32(volatile int32_t* target, int32_t value);
 inline static int64_t platform_interlocked_add64(volatile int64_t* target, int64_t value);
+
+//Performs atomically: { target += 1; return target}
 inline static int32_t platform_interlocked_increment32(volatile int32_t* target);
 inline static int64_t platform_interlocked_increment64(volatile int64_t* target);
+
+//Performs atomically: { target -= 1; return target}
 inline static int32_t platform_interlocked_decrement32(volatile int32_t* target);
 inline static int64_t platform_interlocked_decrement64(volatile int64_t* target);
+
 
 //=========================================
 // Timings
@@ -124,21 +190,27 @@ typedef struct Platform_Calendar_Time {
     //int16_t day_of_year; // [0, 365]
 } Platform_Calendar_Time;
 
-//returns the number of micro-seconds since the start of the epoch
-int64_t platform_universal_epoch_time(); 
+//returns the number of micro-seconds since the start of the epoch.
+//This functions is very fast and suitable for fast profiling
+int64_t platform_epoch_time(); 
 //returns the number of micro-seconds since the start of the epoch
 // with respect to local timezones/daylight saving times and other
 int64_t platform_local_epoch_time();     
-//returns the number of micro-seconds between the epoch and the call to platform_init
+//returns the number of micro-seconds between the epoch and the call to platform_init()
 int64_t platform_startup_epoch_time(); 
 
+//converts the epoch time (micro second time since unix epoch) to calendar representation
 Platform_Calendar_Time platform_epoch_time_to_calendar_time(int64_t epoch_time_usec);
+//Converts calendar time to the precise epoch time (micro second time since unix epoch)
 int64_t platform_calendar_time_to_epoch_time(Platform_Calendar_Time calendar_time);
 
-int64_t platform_perf_counter();            //returns the current value of performance counter
-int64_t platform_perf_counter_startup();    //returns the value of performence conuter at the first time this function was called which is taken as the startup time
-int64_t platform_perf_counter_frequency();  //returns the frequency of the performance counter
-
+//Returns the current value of monotonic lowlevel performance counter. Is ideal for benchamrks.
+//Generally is with nanosecond precisions.
+int64_t platform_perf_counter();         
+//returns the frequency of the performance counter (that is counter ticks per second)
+int64_t platform_perf_counter_frequency();  
+//returns platform_perf_counter() take at time of platform_init()
+int64_t platform_perf_counter_startup();    
 
 //=========================================
 // Filesystem
@@ -179,36 +251,6 @@ typedef struct Platform_Memory_Mapping {
     uint64_t state[8];
 } Platform_Memory_Mapping;
 
-typedef struct Platform_File {
-    Platform_File_Type type;
-    int64_t size;
-    void* data;
-    uint64_t state[1];
-} Platform_File;
-
-typedef enum File_Open_Mode {
-    FILE_OPEN_READ = 1,
-    FILE_OPEN_WRITE = 2,
-    FILE_OPEN_READ_WRITE = 1 | 2,
-
-    FILE_OPEN_CREATE = 4,           //the file can exist or not not in both cases it is opened
-    FILE_OPEN_CREATE_ELSE_FAIL = 8, //if the file does exist fail
-    //FILE_OPEN_TEMPORARY = 32,  //@TODO: implement
-} File_Open_Mode;
-
-typedef enum File_Seek {
-    FILE_SEEK_START = 0,
-    FILE_SEEK_CURRENT = 1,
-    FILE_SEEK_END = 2,
-} File_Seek;
-
-typedef enum File_IO_State {
-    FILE_IO_STATE_OK = 0,
-    FILE_IO_STATE_ERROR = 1,
-    FILE_IO_STATE_EOF = 2,
-    FILE_IO_STATE_FILE_CLOSED = 3,
-} File_IO_State;
-
 //retrieves info about the specified file or directory
 Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null);
 //Creates an empty file at the specified path. Succeeds if the file exists after the call.
@@ -231,8 +273,9 @@ Platform_Error platform_directory_remove(Platform_String dir_path);
 
 //changes the current working directory to the new_working_dir.  
 Platform_Error platform_directory_set_current_working(Platform_String new_working_dir);    
-//Retrieves the current working directory
+//Retrieves the absolute path current working directory
 const char* platform_directory_get_current_working();    
+//Retrieves the absolute path of the executable / dll
 const char* platform_get_executable_path();    
 
 //Gathers and allocates list of files in the specified directory. Saves a pointer to array of entries to entries and its size to entries_count. 
@@ -255,7 +298,11 @@ typedef struct Platform_File_Watch {
     void* data;
 } Platform_File_Watch;
 
-Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_String file_or_dir_path, int32_t file_wacht_flags, bool (*async_func)(void* context), void* context);
+//Creates a watch of a diretcory monitoring for events described in the file_watch_flags. 
+//The async_func get called on another thread every time the appropriate action happens. This thread is in blocked state otherwise.
+//If async_func returns false the file watch is closed and no further actions are reported.
+Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_String dir_path, int32_t file_watch_flags, bool (*async_func)(void* context), void* context);
+//Deinits the file watch stopping the monitoring thread.
 void platform_file_unwatch(Platform_File_Watch* file_watch);
 
 //Memory maps the file pointed to by file_path and saves the adress and size of the mapped block into mapping. 
@@ -298,6 +345,7 @@ typedef enum Platform_Window_Popup_Controls
     PLATFORM_POPUP_CONTROL_IGNORE,
 } Platform_Window_Popup_Controls;
 
+//Makes default shell popup with a custom message and style
 Platform_Window_Popup_Controls  platform_window_make_popup(Platform_Window_Popup_Style desired_style, Platform_String message, Platform_String title);
 
 //=========================================
@@ -314,15 +362,16 @@ typedef struct {
 
 //Stops the debugger at the call site
 #define platform_trap() 
+//Aborts the current thread. Identical to abort() from stdlib except can get intercepted by exception handler.
 void platform_abort();
+//Identical to platform_abort except termination is treated as proper, correct exit (aborting is treated as panicking)
 void platform_terminate();
 
 //Captures the current stack frame pointers. 
 //Saves up to stack_size pointres into the stack array and returns the number of
-//stack frames captures. If the returned number is exactly stack_size a bigger buffer
-//MIGHT be reuqired.
-//Skips first skip_count stack pointers. Even with skip_count = 0 this function should not be
-//included within the stack
+//stack frames captures. If the returned number is exactly stack_size a bigger buffer MIGHT be reuqired.
+//Skips first skip_count stack pointers from the position of the called. 
+//Even with skip_count = 0 this will not be included within the stack
 int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t skip_count);
 
 //Translates captured stack into helpful entries. Operates on short fixed width strings to guarantee this function
@@ -344,6 +393,8 @@ Platform_Sandox_Error platform_exception_sandbox(
     void* error_context
 );
 
+//Convertes the sandbox error to string. The string value is the name of the enum
+// (PLATFORM_EXCEPTION_ACCESS_VIOLATION -> "PLATFORM_EXCEPTION_ACCESS_VIOLATION")
 const char* platform_sandbox_error_to_string(Platform_Sandox_Error error);
 
 typedef enum Platform_Sandox_Error {
@@ -394,25 +445,23 @@ typedef enum Platform_Sandox_Error {
     {
         _mm_pause();
     }
+    
+    inline static int32_t platform_find_last_set_bit32(uint32_t num)
+    {
+        assert(num != 0);
+        unsigned long out = 0;
+        _BitScanReverse(&out, (unsigned long) num);
+        return (int32_t) out;
+    }
+    
+    inline static int32_t platform_find_last_set_bit64(uint64_t num)
+    {
+        assert(num != 0);
+        unsigned long out = 0;
+        _BitScanReverse64(&out, (unsigned long long) num);
+        return (int32_t) out;
+    }
 
-    //inline static int64_t platform_find_first_set_bit(int64_t num)
-    //{
-    //    
-    //}
-    //
-    //inline static int64_t platform_find_last_set_bit(int64_t num)
-    //{
-    //    
-    //}
-    //
-    //inline static int64_t platform_pop_count(int64_t num)
-    //{
-    //
-    //}
-    
-    
-    inline static int32_t platform_find_last_set_bit32(uint32_t num); 
-    inline static int32_t platform_find_last_set_bit64(uint64_t num);
     inline static int32_t platform_find_first_set_bit32(uint32_t num)
     {
         assert(num != 0);
@@ -426,6 +475,15 @@ typedef enum Platform_Sandox_Error {
         unsigned long out = 0;
         _BitScanForward64(&out, (unsigned long long) num);
         return (int32_t) out;
+    }
+    
+    inline static int32_t platform_pop_count32(uint32_t num)
+    {
+        return (int32_t) __popcnt((unsigned int) num);
+    }
+    inline static int32_t platform_pop_count64(uint64_t num)
+    {
+        return (int32_t) __popcnt64((unsigned __int64)num);
     }
 
     inline static bool platform_interlocked_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value)
