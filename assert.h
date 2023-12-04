@@ -32,8 +32,8 @@
 
 //If x evaluates to false executes assertion_report() with the specified message. 
 #define TEST_MSG(x, msg, ...)               (!(x) ? (assertion_report(#x, SOURCE_INFO(), (msg), ##__VA_ARGS__), (platform_trap()), platform_abort()) : (void) 0)
-#define ASSERT_MSG(x, msg, ...)             PP_IF(DO_ASSERTS,       TEST_MSG)(x, msg, __VA_ARGS__)
-#define ASSERT_SLOW_MSG(x, msg, ...)        PP_IF(DO_ASSERTS_SLOW,  TEST_MSG)(x, msg, __VA_ARGS__)
+#define ASSERT_MSG(x, msg, ...)             PP_IF(DO_ASSERTS,       TEST_MSG)(x, msg, ##__VA_ARGS__)
+#define ASSERT_SLOW_MSG(x, msg, ...)        PP_IF(DO_ASSERTS_SLOW,  TEST_MSG)(x, msg, ##__VA_ARGS__)
 #define CHECK_RANGE_BOUNDS(i, from, to)     PP_IF(DO_BOUNDS_CHECKS, TEST_MSG)((from) <= (i) && (i) < (to), \
                                                 "Bounds check failed! %lli is not from the interval [%lli, %lli)!", \
                                                 (long long) (i), (long long) (from), (long long) (to))

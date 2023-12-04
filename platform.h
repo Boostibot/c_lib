@@ -162,6 +162,10 @@ inline static int32_t platform_interlocked_excahnge32(volatile int32_t* target, 
 inline static int32_t platform_interlocked_add32(volatile int32_t* target, int32_t value);
 inline static int64_t platform_interlocked_add64(volatile int64_t* target, int64_t value);
 
+//@TODO: we dont need atomic increment if the compiler is smart enough to change: 
+// platform_interlocked_add32(target, 1) ~~~> platform_interlocked_increment32(target)
+// Test it on MSVC!
+
 //Performs atomically: { target += 1; return target}
 inline static int32_t platform_interlocked_increment32(volatile int32_t* target);
 inline static int64_t platform_interlocked_increment64(volatile int64_t* target);
@@ -361,7 +365,7 @@ typedef struct {
 } Platform_Stack_Trace_Entry;
 
 //Stops the debugger at the call site
-#define platform_trap() 
+#define platform_trap() (*(char*)0 = 0)
 //Aborts the current thread. Identical to abort() from stdlib except can get intercepted by exception handler.
 void platform_abort();
 //Identical to platform_abort except termination is treated as proper, correct exit (aborting is treated as panicking)
@@ -533,6 +537,111 @@ typedef enum Platform_Sandox_Error {
     {
         return (int64_t) _InterlockedDecrement64((volatile long long*) target);
     }
+#elif defined(__GNUC__) || defined(__clang__)
+
+    inline static void platform_compiler_memory_fence() 
+    {
+        __asm__ __volatile__("":::"memory");
+    }
+
+    inline static void platform_memory_fence()
+    {
+        platform_compiler_memory_fence(); 
+        __sync_synchronize();
+    }
+
+#if defined(__x86_64__) || defined(__i386__)
+    #include <immintrin.h> // For _mm_pause
+    inline static void platform_processor_pause()
+    {
+        _mm_pause();
+    }
+#else
+    #include <time.h>
+    inline static void platform_processor_pause()
+    {
+        struct timespec spec = {0};
+        spec.tv_sec = 0;
+        spec.tv_nsec = 1;
+        nanosleep(spec, NULL);
+    }
+#endif
+
+    //for refernce see: https://gcc.gnu.org/onlinedocs/gcc/Other-Builtins.html
+    inline static int32_t platform_find_last_set_bit32(uint32_t num)
+    {
+        return __builtin_ffs((int) num) - 1;
+    }
+    
+    inline static int32_t platform_find_last_set_bit64(uint64_t num)
+    {
+        return __builtin_ffsll((long long) num) - 1;
+    }
+
+    inline static int32_t platform_find_first_set_bit32(uint32_t num)
+    {
+        return 32 - __builtin_ctz((int) num) - 1;
+    }
+    inline static int32_t platform_find_first_set_bit64(uint64_t num)
+    {
+        return 64 - __builtin_ctzll((long long) num) - 1;
+    }
+
+    inline static int32_t platform_pop_count32(uint32_t num)
+    {
+        return __builtin_popcount((uint32_t) num);
+    }
+    inline static int32_t platform_pop_count64(uint64_t num)
+    {
+        return __builtin_popcountll((uint64_t) num);
+    }
+
+    //for reference see: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fatomic-Builtins.html
+    inline static bool platform_interlocked_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value)
+    {
+        return __atomic_compare_exchange_n(target, &old_value, new_value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    }
+    inline static bool platform_interlocked_compare_and_swap32(volatile int32_t* target, int32_t old_value, int32_t new_value)
+    {
+        return __atomic_compare_exchange_n(target, &old_value, new_value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    }
+
+    inline static int64_t platform_interlocked_excahnge64(volatile int64_t* target, int64_t value)
+    {
+        return (int64_t) __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
+    }
+    inline static int32_t platform_interlocked_excahnge32(volatile int32_t* target, int32_t value)
+    {
+        return (int32_t) __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
+    }
+
+    inline static int32_t platform_interlocked_add32(volatile int32_t* target, int32_t value)
+    {
+        return (int32_t) __atomic_add_fetch(target, value, __ATOMIC_SEQ_CST);
+    }
+    inline static int64_t platform_interlocked_add64(volatile int64_t* target, int64_t value)
+    {
+        return (int64_t) __atomic_add_fetch(target, value, __ATOMIC_SEQ_CST);
+    }
+
+    inline static int32_t platform_interlocked_increment32(volatile int32_t* target)
+    {
+        return platform_interlocked_add32(target, 1) + 1;
+    }
+    inline static int64_t platform_interlocked_increment64(volatile int64_t* target)
+    {
+        return platform_interlocked_add64(target, 1) + 1;
+    }
+
+    inline static int32_t platform_interlocked_decrement32(volatile int32_t* target)
+    {
+        return platform_interlocked_add32(target, -1) - 1;
+    }
+    inline static int64_t platform_interlocked_decrement64(volatile int64_t* target)
+    {
+        return platform_interlocked_add64(target, -1) - 1;
+    }
+
 #endif
 
 #endif

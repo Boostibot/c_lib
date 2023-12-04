@@ -49,7 +49,7 @@ DEFINE_BUFFER_TYPE(Platform_Allocator, Platform_Allocator_Buffer)
 typedef struct Platform_State {
     Platform_Allocator_Buffer allocators;
 
-    int64_t perf_counter_base;
+    int64_t startup_perf_counter;
     int64_t perf_counter_freq;
     int64_t startup_epoch_time;
 
@@ -238,9 +238,9 @@ int64_t platform_perf_counter()
 
 int64_t platform_perf_counter_startup()
 {
-    if(gp_state.perf_counter_base == 0)
-        gp_state.perf_counter_base = platform_perf_counter();
-    return gp_state.perf_counter_base;
+    if(gp_state.startup_perf_counter == 0)
+        gp_state.startup_perf_counter = platform_perf_counter();
+    return gp_state.startup_perf_counter;
 }
 
 int64_t platform_perf_counter_frequency()

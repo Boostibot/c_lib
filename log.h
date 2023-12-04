@@ -76,22 +76,22 @@ EXPORT Logger def_logger_make();
 EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, isize indentation, Source_Info source, const char* format, va_list args);
 
 //Default logging facility. Logs a message into the provided module cstring with log_type type (info, warn, error...)
-#define LOG(module, log_type, format, ...)      PP_IF(DO_LOG, LOG_ALWAYS)(module, log_type, format, __VA_ARGS__)
+#define LOG(module, log_type, format, ...)      PP_IF(DO_LOG, LOG_ALWAYS)(module, log_type, format, ##__VA_ARGS__)
 #define VLOG(module, log_type, format, args)      PP_IF(DO_LOG, LOG_ALWAYS)(module, log_type, format, args)
 
 //Logs a message type into the provided module cstring.
-#define LOG_INFO(module, format, ...)           PP_IF(DO_LOG_INFO, LOG)(module, LOG_TYPE_INFO, format, __VA_ARGS__)
-#define LOG_WARN(module, format, ...)           PP_IF(DO_LOG_WARN, LOG)(module, LOG_TYPE_WARN, format, __VA_ARGS__)
-#define LOG_ERROR(module, format, ...)          PP_IF(DO_LOG_ERROR, LOG)(module, LOG_TYPE_ERROR, format, __VA_ARGS__)
-#define LOG_FATAL(module, format, ...)          PP_IF(DO_LOG_FATAL, LOG)(module, LOG_TYPE_FATAL, format, __VA_ARGS__)
-#define LOG_DEBUG(module, format, ...)          PP_IF(DO_LOG_DEBUG, LOG)(module, LOG_TYPE_DEBUG, format, __VA_ARGS__)
-#define LOG_TRACE(module, format, ...)          PP_IF(DO_LOG_TRACE, LOG)(module, LOG_TYPE_TRACE, format, __VA_ARGS__)
+#define LOG_INFO(module, format, ...)           PP_IF(DO_LOG_INFO, LOG)(module, LOG_TYPE_INFO, format, ##__VA_ARGS__)
+#define LOG_WARN(module, format, ...)           PP_IF(DO_LOG_WARN, LOG)(module, LOG_TYPE_WARN, format, ##__VA_ARGS__)
+#define LOG_ERROR(module, format, ...)          PP_IF(DO_LOG_ERROR, LOG)(module, LOG_TYPE_ERROR, format, ##__VA_ARGS__)
+#define LOG_FATAL(module, format, ...)          PP_IF(DO_LOG_FATAL, LOG)(module, LOG_TYPE_FATAL, format, ##__VA_ARGS__)
+#define LOG_DEBUG(module, format, ...)          PP_IF(DO_LOG_DEBUG, LOG)(module, LOG_TYPE_DEBUG, format, ##__VA_ARGS__)
+#define LOG_TRACE(module, format, ...)          PP_IF(DO_LOG_TRACE, LOG)(module, LOG_TYPE_TRACE, format, ##__VA_ARGS__)
 
 //Logs a message. Does not get dissabled.
-#define LOG_ALWAYS(module, log_type, format, ...) log_message(module, log_type, SOURCE_INFO(), format, __VA_ARGS__)
+#define LOG_ALWAYS(module, log_type, format, ...) log_message(module, log_type, SOURCE_INFO(), format, ##__VA_ARGS__)
 #define VLOG_ALWAYS(module, log_type, format, args) vlog_message(module, log_type, SOURCE_INFO(), format, args)
 //Does not do anything (failed condition) but type checks the arguments
-#define LOG_NEVER(module, log_type, format, ...)  ((module && false) ? log_message(module, log_type, SOURCE_INFO(),format, __VA_ARGS__) : (void) 0)
+#define LOG_NEVER(module, log_type, format, ...)  ((module && false) ? log_message(module, log_type, SOURCE_INFO(),format, ##__VA_ARGS__) : (void) 0)
 
 #define ANSI_COLOR_NORMAL       "\x1B[0m"
 #define ANSI_COLOR_RED          "\x1B[31m"
