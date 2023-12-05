@@ -11,8 +11,11 @@ EXPORT Error file_read_entire_append_into(String file_path, String_Builder* appe
 EXPORT Error file_read_entire(String file_path, String_Builder* data);
 EXPORT Error file_append_entire(String file_path, String data);
 EXPORT Error file_write_entire(String file_path, String data);
+
+#if 0
 EXPORT Error file_create(String file_path, bool* was_just_created);
 EXPORT Error file_remove(String file_path, bool* was_just_removed);
+#endif
 
 EXPORT Error  path_get_full_from(String_Builder* into, String path, String base);
 EXPORT String path_get_full_ephemeral_from(String path, String base);
@@ -229,62 +232,97 @@ EXPORT String path_get_relative_ephemeral(String path)
 }
 
 #include <stdio.h>
+#include <errno.h>
 
 EXPORT Error file_read_entire_append_into(String file_path, String_Builder* append_into)
 {
-    PERF_COUNTER_START(c);
-    Platform_Memory_Mapping mapping = {0};
-    Platform_Error error = platform_file_memory_map(file_path, 0, &mapping);
-    if(error == 0)
+    enum {CHUNK_SIZE = 4096*16};
+    isize size_before = append_into->size;
+    isize read_bytes = 0;
+
+    const char* full_path = path_get_full_ephemeral(file_path).data;
+    FILE* file = fopen(full_path, "rb");
+    bool had_eof = false;
+    if(file != NULL)
     {
-        //@NOTE: if this fails because we dont have enough memory then the file remains mapped!
-        //@TODO: make this proper!
-        array_append(append_into, (char*) mapping.address, mapping.size);
-        platform_file_memory_unmap(&mapping);
+        while(true) 
+        {
+            array_resize(append_into, size_before + read_bytes + CHUNK_SIZE);
+            isize single_read = fread(append_into->data + size_before + read_bytes, 1, CHUNK_SIZE, file);
+            if (single_read == 0)
+            {
+                if(feof(file))
+                    had_eof = true;
+                break;
+
+            }
+
+            read_bytes += single_read;
+        }
+
+        fclose(file);
+        array_resize(append_into, size_before + read_bytes);
     }
 
-    PERF_COUNTER_END(c);
-    return error_from_platform(error);
+    if (file == NULL || had_eof == false) 
+    {
+        return error_from_stdlib(errno);
+    }
+    else    
+    {
+        return ERROR_OK;
+    }
 }
 
-EXPORT Error file_read_entire(String file_path, String_Builder* data)
+EXPORT Error _file_write_entire_append_into(String file_path, String written, const char* open_mode)
 {
-    array_clear(data);
-    return file_read_entire_append_into(file_path, data);
+    //Maximum read value allowed by the standard
+    enum {MAX_READ = 2097152};
+    isize wrote_bytes = 0;
+
+    const char* full_path = path_get_full_ephemeral(file_path).data;
+    FILE* file = fopen(full_path, open_mode);
+    if(file != NULL)
+    {
+        for(; wrote_bytes < written.size; )
+        {
+            isize written_size = written.size - written_size;
+            if(written_size > MAX_READ)
+                written_size = MAX_READ;
+
+            isize single_write = fwrite(written.data + wrote_bytes, written_size, 1, file);
+            if (single_write == 0)
+                break;
+
+            wrote_bytes += single_write;
+        }
+
+        fclose(file);
+    }
+
+    if (file == NULL || ferror(file) || wrote_bytes != written.size) 
+        return error_from_stdlib(errno);
+    else    
+        return ERROR_OK;
+}
+
+EXPORT Error file_read_entire(String file_path, String_Builder* append_into)
+{
+    array_clear(append_into);
+    return file_read_entire_append_into(file_path, append_into);
 }
 
 EXPORT Error file_append_entire(String file_path, String contents)
 {
-    PERF_COUNTER_START(c);
-    Platform_Memory_Mapping mapping = {0};
-    Platform_Error error = platform_file_memory_map(file_path, -contents.size, &mapping);
-    if(error == 0)
-    {
-        u8* bytes = (u8*) mapping.address;
-        u8* last_bytes = bytes + mapping.size - contents.size;
-        memcpy(last_bytes, contents.data, contents.size);
-        platform_file_memory_unmap(&mapping);
-    }
-
-    PERF_COUNTER_END(c);
-    return error_from_platform(error);
+    return _file_write_entire_append_into(file_path, contents, "ab");
 }
 
 EXPORT Error file_write_entire(String file_path, String contents)
 {
-    PERF_COUNTER_START(c);
-    Platform_Memory_Mapping mapping = {0};
-    Platform_Error error = platform_file_memory_map(file_path, contents.size, &mapping);
-    if(error == 0)
-    {
-        memcpy(mapping.address, contents.data, contents.size);
-        platform_file_memory_unmap(&mapping);
-    }
-
-    PERF_COUNTER_END(c);
-    return error_from_platform(error);
+    return _file_write_entire_append_into(file_path, contents, "wb");
 }
 
+#if 0
 EXPORT Error file_create(String file_path, bool* was_just_created)
 {
     PERF_COUNTER_START(c);
@@ -304,5 +342,6 @@ EXPORT Error file_remove(String file_path, bool* was_just_removed)
     PERF_COUNTER_END(c);
     return error_from_platform(error);
 }
+#endif
 
 #endif

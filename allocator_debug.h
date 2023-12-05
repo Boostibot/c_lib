@@ -49,6 +49,7 @@
 //@TODO: make simpler!
 //@TODO: format size correctly
 //@TODO: use the sots order
+//@TODO: refactor prining to be more modern & figure out a way to prevent allocations from showing within prints
 
 #include "allocator.h"
 #include "array.h"
@@ -105,6 +106,7 @@ typedef struct Debug_Allocator
 
     Allocator_Set allocator_backup;
     bool is_init; //prevents double init
+    bool is_within_allocation;  //prevents infinite recursion on logging functions
 } Debug_Allocator;
 
 typedef enum Debug_Allocation_Sort_Criteria {
@@ -137,7 +139,7 @@ EXPORT void debug_allocator_init(Debug_Allocator* allocator, Allocator* parent, 
 //Initalizes the debug allocator and makes it the dafault and scratch global allocator.
 //Additional flags defined above can be passed to quickly tweak the allocator.
 //Restores the old allocators on deinit. 
-EXPORT void debug_allocator_init_use(Debug_Allocator* allocator, u64 flags);
+EXPORT void debug_allocator_init_use(Debug_Allocator* allocator, Allocator* parent, u64 flags);
 //Deinits the debug allocator
 EXPORT void debug_allocator_deinit(Debug_Allocator* allocator);
 
@@ -295,9 +297,9 @@ EXPORT void debug_allocator_init(Debug_Allocator* allocator, Allocator* parent, 
 
     debug_allocator_init_custom(allocator, parent, options);
 }
-EXPORT void debug_allocator_init_use(Debug_Allocator* debug, u64 flags)
+EXPORT void debug_allocator_init_use(Debug_Allocator* debug, Allocator* parent, u64 flags)
 {
-    debug_allocator_init(debug, allocator_get_default(), flags);
+    debug_allocator_init(debug, parent, flags);
     debug->allocator_backup = allocator_set_both(&debug->allocator, &debug->allocator);
 }
 
@@ -329,8 +331,8 @@ EXPORT void debug_allocator_panic_func(Debug_Allocator* allocator, Debug_Allocat
     (void) penetration;
     const char* reason_str = debug_allocator_panic_reason_to_string(reason);
 
-    //log("MEMORY", LOG_TYPE_FATAL, SOURCE_INFO(), "PANIC because of %s at pointer 0x%p " SOURCE_INFO_FMT "\n", reason_str, allocation.ptr, SOURCE_INFO_PRINT(called_from));
-    LOG_FATAL("MEMORY", "PANIC because of %s at pointer 0x%p " SOURCE_INFO_FMT "\n", reason_str, allocation.ptr, SOURCE_INFO_PRINT(called_from));
+    //log("MEMORY", LOG_TYPE_FATAL, SOURCE_INFO(), "PANIC because of %s at pointer 0x%08X " SOURCE_INFO_FMT "\n", reason_str, allocation.ptr, SOURCE_INFO_PRINT(called_from));
+    LOG_FATAL("MEMORY", "PANIC because of %s at pointer 0x%08X " SOURCE_INFO_FMT, reason_str, allocation.ptr, SOURCE_INFO_PRINT(called_from));
     debug_allocator_print_alive_allocations(*allocator, 0);
     
     log_flush();
@@ -534,8 +536,8 @@ INTERNAL bool _debug_allocator_is_invariant(const Debug_Allocator* allocator)
         && "dead zone size must be a valid multiple of alignment"
         && "this is so that the pointers within the header will be properly aligned!");
 
+    // ASSERT(allocator->is_within_allocation == false);
     //All alive allocations must be in hash
-
     if(allocator->do_contnual_checks)
     {
         isize size_sum = 0;
@@ -669,13 +671,13 @@ EXPORT void debug_allocator_print_alive_allocations(const Debug_Allocator alloca
     if(print_max > 0)
         ASSERT(alive.size <= print_max);
 
-    LOG_INFO("MEMORY", "printing ALIVE allocations (%lli) below:\n", (lli)alive.size);
+    LOG_INFO("MEMORY", "printing ALIVE allocations (%lli) below:", (lli)alive.size);
     log_group_push();
 
     for(isize i = 0; i < alive.size; i++)
     {
         Debug_Allocation curr = alive.data[i];
-        LOG_INFO("MEMORY", "%-3lli - size %-8lli ptr: 0x%p align: %-2lli" SOURCE_INFO_FMT "\n",
+        LOG_INFO("MEMORY", "%-3lli - size %-8lli ptr: 0x%08X align: %-2lli" SOURCE_INFO_FMT,
             (lli) i, (lli) curr.size, curr.ptr, (lli) curr.align, SOURCE_INFO_PRINT(curr.allocation_source));
      
         if(allocator.captured_callstack_size > 0)
@@ -698,7 +700,7 @@ EXPORT void debug_allocator_print_dead_allocations(const Debug_Allocator allocat
     if(print_max > 0)
         ASSERT(dead.size <= print_max);
 
-    LOG_INFO("MEMORY", "printing DEAD allocations (%lli) below:\n", (lli)dead.size);
+    LOG_INFO("MEMORY", "printing DEAD allocations (%lli) below:", (lli)dead.size);
     
     for(isize i = 0; i < dead.size; i++)
     {
@@ -711,14 +713,14 @@ EXPORT void debug_allocator_print_dead_allocations(const Debug_Allocator allocat
 
         if(files_match)
         {
-            LOG_INFO("MEMORY", "%-3lli - size %-8lli ptr: 0x%p align: %-2lli (%s : %3lli -> %3lli)\n",
+            LOG_INFO("MEMORY", "%-3lli - size %-8lli ptr: 0x%08X align: %-2lli (%s : %3lli -> %3lli)",
                 (lli) i, (lli) curr.size, curr.ptr, curr.align,
                 to_source.file, (lli) from_source.line, (lli) to_source.line);
         }
         else
         {
-            LOG_INFO("MEMORY", "%-3lli - size %-8lli ptr: 0x%p align: %-2lli\n",
-                "[%-3lli] " SOURCE_INFO_FMT " -> " SOURCE_INFO_FMT"\n",
+            LOG_INFO("MEMORY", "%-3lli - size %-8lli ptr: 0x%08X align: %-2lli\n",
+                "[%-3lli] " SOURCE_INFO_FMT " -> " SOURCE_INFO_FMT,
                 (lli) i, (lli) curr.size, curr.ptr, curr.align,
                 i, SOURCE_INFO_PRINT(from_source), SOURCE_INFO_PRINT(to_source));
         }
@@ -765,19 +767,19 @@ INTERNAL bool _debug_allocator_is_aligned(void* ptr, isize alignment)
 
 void print_pre(Debug_Allocation_Pre_Block pre, const char* c)
 {
-    LOG_TRACE("DEBUG", "printing pre block \"%s\" from: " SOURCE_INFO_FMT, c, SOURCE_INFO_PRINT(pre.header->allocation_source));
+    LOG_DEBUG("DEBUG", "printing pre block \"%s\" from: " SOURCE_INFO_FMT, c, SOURCE_INFO_PRINT(pre.header->allocation_source));
     log_group_push();
-        LOG_TRACE("DEBUG", "header:             %p", pre.header);
-        LOG_TRACE("DEBUG", "user_ptr:           %p", pre.user_ptr);
-        LOG_TRACE("DEBUG", "call_stack:         %p", pre.call_stack);
-        LOG_TRACE("DEBUG", "dead_zone:          %p", pre.dead_zone);
-        LOG_TRACE("DEBUG", "dead_zone_size:     %lli", (lli) pre.dead_zone_size);
-        LOG_TRACE("DEBUG", "call_stack_size:    %lli", (lli) pre.call_stack_size);
+        LOG_DEBUG("DEBUG", "header:             %08X", pre.header);
+        LOG_DEBUG("DEBUG", "user_ptr:           %08X", pre.user_ptr);
+        LOG_DEBUG("DEBUG", "call_stack:         %08X", pre.call_stack);
+        LOG_DEBUG("DEBUG", "dead_zone:          %08X", pre.dead_zone);
+        LOG_DEBUG("DEBUG", "dead_zone_size:     %lli", (lli) pre.dead_zone_size);
+        LOG_DEBUG("DEBUG", "call_stack_size:    %lli", (lli) pre.call_stack_size);
         log_group_push();
-        LOG_TRACE("DEBUG", "header.size:                %lli", (lli) pre.header->size);
-        LOG_TRACE("DEBUG", "header.align:               %lli", (lli) pre.header->align);
-        LOG_TRACE("DEBUG", "header.block_start_offset:  %lli", (lli) pre.header->block_start_offset);
-        LOG_TRACE("DEBUG", "header.allocation_time_s:   %lf", pre.header->allocation_time_s);
+        LOG_DEBUG("DEBUG", "header.size:                %lli", (lli) pre.header->size);
+        LOG_DEBUG("DEBUG", "header.align:               %lli", (lli) pre.header->align);
+        LOG_DEBUG("DEBUG", "header.block_start_offset:  %lli", (lli) pre.header->block_start_offset);
+        LOG_DEBUG("DEBUG", "header.allocation_time_s:   %lf", pre.header->allocation_time_s);
         log_group_pop();
 
     log_group_pop();
@@ -786,7 +788,6 @@ void print_pre(Debug_Allocation_Pre_Block pre, const char* c)
 EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr_, isize old_size, isize align, Source_Info called_from)
 {
     PERF_COUNTER_START(c);
-
     //This function executes the following steps. 
     // The order is crucial because we need to ensure that: 
     //  1: all inputs are checked
@@ -868,7 +869,6 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
         old_block_ptr = (u8*) _debug_allocator_get_placed_block(self, old_ptr);
     }
 
-    
     new_block_ptr = (u8*) self->parent->allocate(self->parent, total_new_size, old_block_ptr, total_old_size, DEF_ALIGN, called_from);
     //new_block_ptr = (u8*) self->parent->allocate(self->parent, total_new_size, old_block_ptr, total_old_size, DEF_ALIGN, called_from);
     
@@ -929,10 +929,12 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
     self->bytes_allocated += new_size;
     self->max_bytes_allocated = MAX(self->max_bytes_allocated, self->bytes_allocated);
     
-    if(self->do_printing)
+    if(self->do_printing && self->is_within_allocation == false)
     {
-        LOG_INFO("MEMORY", "size %6lli -> %-6lli ptr: 0x%p -> 0x%p align: %lli " SOURCE_INFO_FMT "\n",
+        self->is_within_allocation = true;
+        LOG_DEBUG("MEMORY", "size %6lli -> %-6lli ptr: 0x%08X -> 0x%08X align: %lli " SOURCE_INFO_FMT,
             (lli) old_size, (lli) new_size, old_ptr, new_ptr, (lli) align, SOURCE_INFO_PRINT(called_from));
+        self->is_within_allocation = false;
     }
 
     if(old_ptr == NULL)
@@ -942,6 +944,7 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
     else
         self->reallocation_count += 1;
     
+    self->is_within_allocation = false; //just to be sure...
     _debug_allocator_is_invariant(self);
     PERF_COUNTER_END(c);
     return new_ptr;

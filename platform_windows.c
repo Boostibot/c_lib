@@ -126,7 +126,7 @@ void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t old_size
 }
 
 
-int64_t platform_heap_get_block_size(void* old_ptr, int64_t align)
+int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
 {
     int64_t size = _aligned_msize(old_ptr, (size_t) align, 0);
     return size;
@@ -907,14 +907,18 @@ Platform_Error platform_file_memory_map(Platform_String file_path, int64_t desir
     }
 }
 
-static bool _is_file_link(const wchar_t* directory_path)
+static Platform_Link_Type _get_link_type(const wchar_t* directory_path)
 {
     HANDLE file = CreateFileW(directory_path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                               NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     size_t requiredSize = GetFinalPathNameByHandleW(file, NULL, 0, FILE_NAME_NORMALIZED);
     CloseHandle(file);
 
-    return requiredSize == 0;
+    Platform_Link_Type link_type = PLATFORM_LINK_TYPE_NOT_LINK;
+    if(requiredSize == 0)
+        link_type = PLATFORM_LINK_TYPE_OTHER;
+    
+    return link_type;
 }
 
 Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null)
@@ -926,7 +930,7 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
     bool state = !!GetFileAttributesExW(path, GetFileExInfoStandard, &native_info);
         
     if(native_info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
-        info.is_link = _is_file_link(path);
+        info.link_type = _get_link_type(path);
     if(!state)
         return _error_code(state);
             
@@ -1078,7 +1082,7 @@ static Platform_Error _directory_list_contents_alloc(const wchar_t* directory_pa
                     info.type = PLATFORM_FILE_TYPE_FILE;
 
                 if(visitor->current_entry.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
-                    info.is_link = _is_file_link(built_path.data);  
+                    info.link_type = _get_link_type(built_path.data);  
 
                 int flag = IO_NORMALIZE_LINUX;
                 if(info.type == PLATFORM_FILE_TYPE_DIRECTORY)

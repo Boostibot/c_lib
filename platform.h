@@ -70,8 +70,7 @@ typedef enum Platform_Memory_Protection {
 
 void* platform_virtual_reallocate(void* allocate_at, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection);
 void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t old_size, int64_t align);
-int64_t platform_heap_get_block_size(void* old_ptr, int64_t align); //returns the size in bytes of the allocated block. Useful for compatibility with APIs that expect malloc/free type allocation functions without explicit size
-
+int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align); //returns the size in bytes of the allocated block. Useful for compatibility with APIs that expect malloc/free type allocation functions without explicit size
 
 //=========================================
 // Errors 
@@ -230,16 +229,25 @@ typedef enum Platform_File_Type {
     PLATFORM_FILE_TYPE_DIRECTORY = 4,
     PLATFORM_FILE_TYPE_CHARACTER_DEVICE = 2,
     PLATFORM_FILE_TYPE_PIPE = 3,
-    PLATFORM_FILE_TYPE_OTHER = 5,
+    PLATFORM_FILE_TYPE_SOCKET = 5,
+    PLATFORM_FILE_TYPE_OTHER = 6,
 } Platform_File_Type;
+
+typedef enum Platform_Link_Type {
+    PLATFORM_LINK_TYPE_NOT_LINK = 0,
+    PLATFORM_LINK_TYPE_HARD = 1,
+    PLATFORM_LINK_TYPE_SOFT = 2,
+    PLATFORM_LINK_TYPE_SYM = 3,
+    PLATFORM_LINK_TYPE_OTHER = 4,
+} Platform_Link_Type;
 
 typedef struct Platform_File_Info {
     int64_t size;
     Platform_File_Type type;
+    Platform_Link_Type link_type;
     int64_t created_epoch_time;
     int64_t last_write_epoch_time;  
     int64_t last_access_epoch_time; //The last time file was either read or written
-    bool is_link; //if file/dictionary is actually just a link (hardlink or softlink or symlink)
 } Platform_File_Info;
     
 typedef struct Platform_Directory_Entry {
@@ -260,7 +268,7 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
 //Creates an empty file at the specified path. Succeeds if the file exists after the call.
 //Saves to was_just_created wheter the file was just now created. If is null doesnt save anything.
 Platform_Error platform_file_create(Platform_String file_path, bool* was_just_created);
-//Removes a file at the specified path. Succeeds if the file exists after the call
+//Removes a file at the specified path. Succeeds if the file exists after the call the file does not exist.
 //Saves to was_just_deleted wheter the file was just now deleted. If is null doesnt save anything.
 Platform_Error platform_file_remove(Platform_String file_path, bool* was_just_deleted);
 //Moves or renames a file. If the file cannot be found or renamed to file that already exists, fails.
@@ -269,6 +277,8 @@ Platform_Error platform_file_move(Platform_String new_path, Platform_String old_
 Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String copy_from_path);
 //Resizes a file. The file must exist.
 Platform_Error platform_file_resize(Platform_String file_path, int64_t size);
+
+//@TODO: Implement was_just_created for platform_directory_create, platform_directory_remove
 
 //Makes an empty directory
 Platform_Error platform_directory_create(Platform_String dir_path);
@@ -538,6 +548,13 @@ typedef enum Platform_Sandox_Error {
         return (int64_t) _InterlockedDecrement64((volatile long long*) target);
     }
 #elif defined(__GNUC__) || defined(__clang__)
+
+
+    #include <signal.h>
+
+    #undef platform_trap
+    // #define platform_trap() __builtin_trap() /* bad looks like a fault in program! */
+    #define platform_trap() raise(SIGTSTP)
 
     inline static void platform_compiler_memory_fence() 
     {

@@ -45,11 +45,10 @@ typedef struct Error_Module {
     void* context;
 } Error_Module;
 
-STATIC_ASSERT(sizeof(errno_t) == sizeof(u32)); //"error size must be compatible!"
 
 EXPORT Error error_make(u32 module, u32 code);
 EXPORT Error error_from_platform(Platform_Error error);
-EXPORT Error error_from_stdlib(errno_t error);
+EXPORT Error error_from_stdlib(int error);
 
 EXPORT bool error_is_ok(Error error); //returns wheter the error is okay ie is not error at all.
 EXPORT const char* error_code(Error error); //returns the translated text of the error that occured. The returned string must not be stored anywhere! (this means either directly printed or immediately copied)
@@ -130,7 +129,7 @@ EXPORT Error error_from_platform(Platform_Error error)
     return error_make(ERROR_MODULE_PLATFORM, (u32) error);
 }
 
-EXPORT Error error_from_stdlib(errno_t error)
+EXPORT Error error_from_stdlib(int error)
 {
     return error_make(ERROR_MODULE_STDLIB, (u32) error);
 }
