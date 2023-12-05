@@ -392,25 +392,6 @@ int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t sk
 //will never fail yet translate all needed stack frames. This function should never allocate anything.
 void platform_translate_call_stack(Platform_Stack_Trace_Entry* tanslated, const void** stack, int64_t stack_size);
 
-typedef enum Platform_Sandox_Error Platform_Sandox_Error;
-
-//Launches the sandboxed_func inside a sendbox protecting the outside environment 
-//from any exceptions that might occur inside sandboxed func this includes hardware
-//exceptions. 
-//If an exception occurs calls error_func (if not NULL) with the error_code signaling the exception.
-//after error_func returns gracefully exits and returns the same error_code as passed into error_func.
-//On no error returns 0
-Platform_Sandox_Error platform_exception_sandbox(
-    void (*sandboxed_func)(void* context),   
-    void* sandbox_context,
-    void (*error_func)(void* context, Platform_Sandox_Error error_code),   
-    void* error_context
-);
-
-//Convertes the sandbox error to string. The string value is the name of the enum
-// (PLATFORM_EXCEPTION_ACCESS_VIOLATION -> "PLATFORM_EXCEPTION_ACCESS_VIOLATION")
-const char* platform_sandbox_error_to_string(Platform_Sandox_Error error);
-
 typedef enum Platform_Sandox_Error {
     PLATFORM_EXCEPTION_NONE = 0,
     PLATFORM_EXCEPTION_ACCESS_VIOLATION,
@@ -434,6 +415,24 @@ typedef enum Platform_Sandox_Error {
     PLATFORM_EXCEPTION_TERMINATE = 0x0001000,
     PLATFORM_EXCEPTION_OTHER = 0x0001001,
 } Platform_Sandox_Error; 
+
+//Launches the sandboxed_func inside a sendbox protecting the outside environment 
+//from any exceptions that might occur inside sandboxed func this includes hardware
+//exceptions. 
+//If an exception occurs calls error_func (if not NULL) with the error_code signaling the exception.
+//after error_func returns gracefully exits and returns the same error_code as passed into error_func.
+//On no error returns 0
+Platform_Sandox_Error platform_exception_sandbox(
+    void (*sandboxed_func)(void* context),   
+    void* sandbox_context,
+    void (*error_func)(void* context, Platform_Sandox_Error error_code),   
+    void* error_context
+);
+
+//Convertes the sandbox error to string. The string value is the name of the enum
+// (PLATFORM_EXCEPTION_ACCESS_VIOLATION -> "PLATFORM_EXCEPTION_ACCESS_VIOLATION")
+const char* platform_sandbox_error_to_string(Platform_Sandox_Error error);
+
 
 // =================== INLINE IMPLEMENTATION ============================
 #if defined(_MSC_VER)

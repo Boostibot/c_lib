@@ -38,12 +38,19 @@ typedef unsigned long long llu;
     EXPORT void vformat_append_into(String_Builder* append_to, const char* format, va_list args)
     {
         PERF_COUNTER_START(c);
-        //an attempt to estimate the needed size so we dont need to call vsnprintf twice
+        //An attempt to estimate the needed size so we dont need to call vsnprintf twice.
+        //We use some heuristic or the maximum capacity whichever is bigger. This saves us
+        // 99% of double calls to vsnprintf which makes this function almost twice as fast
+        //Because its used for pretty much all logging and setting shader uniforms thats
+        // a big difference.
         isize format_size = strlen(format);
         isize estimated_size = format_size + 64 + format_size/4;
         isize base_size = append_to->size; 
-        array_resize(append_to, base_size + estimated_size);
+        // array_resize(append_to, base_size + estimated_size);
+        isize first_resize_size = MAX(base_size + estimated_size, append_to->capacity - 1);
+        array_resize(append_to, first_resize_size);
 
+        //gcc modifies va_list on use! make sure to copy it!
         va_list args_copy;
         va_copy(args_copy, args);
         isize count = vsnprintf(append_to->data + base_size, (size_t) (append_to->size - base_size), format, args);
@@ -52,11 +59,11 @@ typedef unsigned long long llu;
         {
             PERF_COUNTER_START(format_twice);
             array_resize(append_to, base_size + count + 3);
-            count = vsnprintf(append_to->data + base_size, (size_t) (append_to->size - base_size), format, args);
+            count = vsnprintf(append_to->data + base_size, (size_t) (append_to->size - base_size), format, args_copy);
             PERF_COUNTER_END(format_twice);
         }
     
-        //Sometimes apparently the standard linrary screws up and returns negative...
+        //Sometimes apparently the msvc standard linrary screws up and returns negative...
         if(count < 0)
             count = 0;
         array_resize(append_to, base_size + count);

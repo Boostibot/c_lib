@@ -379,12 +379,12 @@ JMAPI Mat4 mat4(
         float m31, float m32, float m33, float m34,
         float m41, float m42, float m43, float m44)
 {
-    Mat4 mat = {
-        m11, m21, m31, m41,
-        m12, m22, m32, m42,
-        m13, m23, m33, m43,
-        m14, m24, m34, m44,
-    };        
+    Mat4 mat = {{
+        {m11, m21, m31, m41},
+        {m12, m22, m32, m42},
+        {m13, m23, m33, m43},
+        {m14, m24, m34, m44},
+    }};        
 
     return mat;
 }
@@ -521,7 +521,7 @@ JMAPI bool mat4_is_near_scaled(Mat4 a, Mat4 b, float epsilon)
 
 JMAPI Mat4 mat4_cols(Vec4 col1, Vec4 col2, Vec4 col3, Vec4 col4)
 {
-    Mat4 result = {col1, col2, col3, col4};
+    Mat4 result = {{col1, col2, col3, col4}};
     return result;
 }
 

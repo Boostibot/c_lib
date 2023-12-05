@@ -271,7 +271,7 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, co
             const char* function = entry->function ? entry->function : "";
             const char* file = entry->file ? entry->file : "";
 
-            log_message(log_module, log_type, SOURCE_INFO(), "%-30s %s : %lli", function, file, entry->line);
+            log_message(log_module, log_type, SOURCE_INFO(), "%-30s %s : %i", function, file, (int) entry->line);
             if(strcmp(function, "main") == 0) //if reaches main stops (we dont care about OS stuff)
             {
                 i = callstack_size;

@@ -139,7 +139,7 @@ EXPORT Endian endian_get_local()
     union {
         u8 vals[4];
         u32 val;
-    } endian_tester = {0x11, 0x22, 0x33, 0x44};
+    } endian_tester = {{0x11, 0x22, 0x33, 0x44}};
 
     switch(endian_tester.val)
     {
@@ -527,7 +527,7 @@ EXPORT Error netbpm_format_pam_read_into(Image_Builder* image, String ppm)
             pixel_size = 2*depth;
         }
         
-        if(pixel_size < image_pixel_format_size(pixel_format) == 0)
+        if(image_pixel_format_size(pixel_format) == 0 || pixel_size % image_pixel_format_size(pixel_format) != 0)
             pixel_format = PIXEL_FORMAT_U8;
 
         isize pixel_count = width * height;

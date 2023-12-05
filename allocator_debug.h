@@ -68,7 +68,6 @@ typedef enum Debug_Allocator_Panic_Reason Debug_Allocator_Panic_Reason;
 
 DEFINE_ARRAY_TYPE(Debug_Allocation, Debug_Allocation_Array);
 
-
 typedef void (*Debug_Allocator_Panic)(Debug_Allocator* allocator, Debug_Allocator_Panic_Reason reason, Debug_Allocation allocation, isize penetration, Source_Info called_from, void* context);
 
 typedef struct Debug_Allocator
