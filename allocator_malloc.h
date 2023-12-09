@@ -163,7 +163,7 @@ EXPORT void  malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
 
         if(new_size != 0)
         {
-            void* actual_new_ptr = _malloc_allocator_parent_allocate(self, new_size + align + sizeof(Malloc_Allocator_Block_Header), called_from);
+            void* actual_new_ptr = _malloc_allocator_parent_allocate(self, new_size + align + (isize) sizeof(Malloc_Allocator_Block_Header), called_from);
             //if error return error
             if(actual_new_ptr == NULL)
             {
@@ -221,9 +221,9 @@ EXPORT void  malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
             ASSERT((self->first_block == NULL) == (self->last_block == NULL));
             
             isize smaller_size = new_size < old_size ? new_size : old_size;
-            memcpy(out_ptr, old_ptr, smaller_size);
+            memcpy(out_ptr, old_ptr, (size_t) smaller_size);
 
-            _malloc_allocator_parent_free(self, (u8*) old_ptr - old_block_ptr->heap_block_offset, old_size + align + sizeof(Malloc_Allocator_Block_Header), called_from);
+            _malloc_allocator_parent_free(self, (u8*) old_ptr - old_block_ptr->heap_block_offset, old_size + align + (isize) sizeof(Malloc_Allocator_Block_Header), called_from);
         }
         
         if(old_ptr == NULL)

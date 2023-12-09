@@ -394,24 +394,7 @@ int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t sk
 //will never fail yet translate all needed stack frames. 
 void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void** stack, int64_t stack_size);
 
-typedef struct Platfrom_Sandbox_Error_State Platfrom_Sandbox_Error_State; 
-
-//Launches the sandboxed_func inside a sendbox protecting the outside environment 
-// from any exceptions, including hardware exceptions that might occur inside sandboxed_func.
-//If an exception occurs collects execution context including stack pointers and gracefuly recovers. 
-//Returns the error that occured or PLATFORM_EXCEPTION_NONE = 0 on success.
-Platform_Sandox_Error platform_exception_sandbox(
-    void (*sandboxed_func)(void* sandbox_context),   
-    void* sandbox_context,
-    void** stack, int64_t stack_size,
-);
-
-typedef struct Platfrom_Sandbox_Error_State {
-    Platform_Sandox_Error error;
-    const void** stack_at_error;
-} Platfrom_Sandbox_Error_State;
-
-typedef enum Platform_Sandox_Error {
+typedef enum Platform_Exception {
     PLATFORM_EXCEPTION_NONE = 0,
     PLATFORM_EXCEPTION_ACCESS_VIOLATION,
     PLATFORM_EXCEPTION_DATATYPE_MISALIGNMENT,
@@ -433,11 +416,38 @@ typedef enum Platform_Sandox_Error {
     PLATFORM_EXCEPTION_ABORT,
     PLATFORM_EXCEPTION_TERMINATE = 0x0001000,
     PLATFORM_EXCEPTION_OTHER = 0x0001001,
-} Platform_Sandox_Error; 
+} Platform_Exception; 
+
+typedef struct Platform_Sandbox_Error {
+    //The exception that occured
+    Platform_Exception exception;
+    
+    //A translated stack trace and its size
+    const Platform_Stack_Trace_Entry* stack_trace; 
+    int64_t stack_trace_size;
+
+    //Platform specific data containing the cpu state and its size (so that it can be copied and saved)
+    const void* execution_context;
+    int64_t execution_context_size;
+
+    //The epoch time of the exception and offset in nanoseconds to the exact time 
+    int64_t epoch_time;
+    int64_t nanosec_offset;
+} Platform_Sandbox_Error;
+
+//Launches the sandboxed_func inside a sendbox protecting the outside environment 
+// from any exceptions, including hardware exceptions that might occur inside sandboxed_func.
+//If an exception occurs collects execution context including stack pointers and gracefuly recovers. 
+//Returns the error that occured or PLATFORM_EXCEPTION_NONE = 0 on success.
+Platform_Exception platform_exception_sandbox(
+    void (*sandboxed_func)(void* sandbox_context),   
+    void* sandbox_context,
+    void (*error_func)(void* error_context, Platform_Sandbox_Error error),
+    void* error_context);
 
 //Convertes the sandbox error to string. The string value is the name of the enum
 // (PLATFORM_EXCEPTION_ACCESS_VIOLATION -> "PLATFORM_EXCEPTION_ACCESS_VIOLATION")
-const char* platform_sandbox_error_to_string(Platform_Sandox_Error error);
+const char* platform_exception_to_string(Platform_Exception error);
 
 
 // =================== INLINE IMPLEMENTATION ============================
@@ -602,11 +612,11 @@ const char* platform_sandbox_error_to_string(Platform_Sandox_Error error);
 
     inline static int32_t platform_find_first_set_bit32(uint32_t num)
     {
-        return 32 - __builtin_ctz((int) num) - 1;
+        return 32 - __builtin_ctz((unsigned int) num) - 1;
     }
     inline static int32_t platform_find_first_set_bit64(uint64_t num)
     {
-        return 64 - __builtin_ctzll((long long) num) - 1;
+        return 64 - __builtin_ctzll((unsigned long long) num) - 1;
     }
 
     inline static int32_t platform_pop_count32(uint32_t num)

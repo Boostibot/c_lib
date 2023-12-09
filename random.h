@@ -266,6 +266,7 @@ EXPORT void	 random_state_bytes(Random_State* state, void* into, int64_t size);
 
 	EXPORT void swap_any(void* a, void* b, int64_t size)
 	{
+		ASSERT(size >= 0);
 		enum {LOCAL = 64};
 		char temp[LOCAL] = {0};
 	
@@ -283,13 +284,14 @@ EXPORT void	 random_state_bytes(Random_State* state, void* into, int64_t size);
 			memcpy(elemsj + k*LOCAL, temp,             LOCAL);
 		}
 			
-		memcpy(temp,             elemsi + exact, remainder);
-		memcpy(elemsi + exact,   elemsj + exact, remainder);
-		memcpy(elemsj + exact,   temp,           remainder);
+		memcpy(temp,             elemsi + exact, (size_t) remainder);
+		memcpy(elemsi + exact,   elemsj + exact, (size_t) remainder);
+		memcpy(elemsj + exact,   temp,           (size_t) remainder);
 	}
 
 	EXPORT void random_state_shuffle(Random_State* state, void* elements, int64_t element_count, int64_t element_size)
 	{
+		ASSERT(element_count >= 0 && element_size >= 0);
 		enum {LOCAL = 256};
 		char temp[LOCAL] = {0};
 		char* elems = (char*) elements;
@@ -299,20 +301,20 @@ EXPORT void	 random_state_bytes(Random_State* state, void* into, int64_t size);
 		{
 			for (int64_t i = 0; i < element_count - 1; i++)
 			{
-				uint64_t offset = _random_bounded(state, (uint64_t) (element_count - i));
-				uint64_t j = offset + i;
+				int64_t offset = (int64_t) _random_bounded(state, (uint64_t) (element_count - i));
+				int64_t j = offset + i;
 
-				memcpy(temp,        elems + i*s, s);
-				memcpy(elems + i*s, elems + j*s, s);
-				memcpy(elems + j*s, temp,        s);
+				memcpy(temp,        elems + i*s, (size_t) s);
+				memcpy(elems + i*s, elems + j*s, (size_t) s);
+				memcpy(elems + j*s, temp,        (size_t) s);
 			}
 		}
 		else
 		{
 			for (int64_t i = 0; i < element_count - 1; i++)
 			{
-				uint64_t offset = _random_bounded(state, (uint64_t) (element_count - i));
-				uint64_t j = offset + i;
+				int64_t offset = (int64_t) _random_bounded(state, (uint64_t) (element_count - i));
+				int64_t j = offset +  i;
 
 				swap_any(elems + i*s, elems + j*s, s);
 			}
@@ -329,7 +331,7 @@ EXPORT void	 random_state_bytes(Random_State* state, void* into, int64_t size);
 			fulls[i] = random_state_u64(state);
 
 		u64 last = random_state_u64(state);
-		memcpy(&fulls[full_randoms], &last, remainder);
+		memcpy(&fulls[full_randoms], &last, (size_t) remainder);
 	}
 
 	EXPORT Random_State* random_state()

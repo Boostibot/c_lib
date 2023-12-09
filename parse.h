@@ -268,7 +268,7 @@ EXPORT bool match_decimal_u64(String str, isize* index, u64* out)
     *index = i;
 
     ASSERT(parsed <= UINT64_MAX);
-    *out = (i64) parsed;
+    *out = (u64) parsed;
     return matched;
 }
 

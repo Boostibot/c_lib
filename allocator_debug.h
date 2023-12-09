@@ -388,7 +388,7 @@ INTERNAL Debug_Allocation_Post_Block _debug_allocator_get_post_block(const Debug
 //  Fills in just the necessary info for orientation (size align and start offset)
 INTERNAL isize _debug_allocator_place_block(const Debug_Allocator* self, void* block_ptr, isize size, isize align, Debug_Allocation_Block* block)
 {
-    isize preamble_size = sizeof(Debug_Allocation_Header) + self->dead_zone_size + self->captured_callstack_size * sizeof(void*);
+    isize preamble_size = (isize) sizeof(Debug_Allocation_Header) + self->dead_zone_size + self->captured_callstack_size * (isize) sizeof(void*);
     isize postamble_size = self->dead_zone_size;
     isize total_size = preamble_size + postamble_size + align + size;
 
@@ -611,7 +611,7 @@ EXPORT Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debug_
         }
     }
     
-    qsort(out.data, out.size, sizeof *out.data, _debug_allocation_alloc_time_compare);
+    qsort(out.data, (size_t) out.size, sizeof *out.data, _debug_allocation_alloc_time_compare);
 
     //ASSERT(out.size <= count);
     array_resize(&out, count);
@@ -910,8 +910,8 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
 
         new_block.pre.header->allocation_source = called_from;
         new_block.pre.header->allocation_time_s = curr_time;
-        memset(new_block.pre.dead_zone, DEBUG_ALLOCATOR_MAGIC_NUM8, new_block.pre.dead_zone_size);
-        memset(new_block.post.dead_zone, DEBUG_ALLOCATOR_MAGIC_NUM8, new_block.post.dead_zone_size);
+        memset(new_block.pre.dead_zone, DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) new_block.pre.dead_zone_size);
+        memset(new_block.post.dead_zone, DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) new_block.post.dead_zone_size);
         
         ASSERT(_debug_allocator_find_allocation(self, new_ptr) == -1 && "Must not be added already!");
 

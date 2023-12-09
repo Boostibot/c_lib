@@ -87,8 +87,8 @@ EXPORT String path_get_part_filename(String path, Path_Info info);
 #if (defined(JOT_ALL_IMPL) || defined(JOT_FILE_IMPL)) && !defined(JOT_FILE_HAS_IMPL)
 #define JOT_FILE_HAS_IMPL
 
-#include "log.h"
-#include "format.h"
+#include "vformat.h"
+#include "string.h"
 
 EXPORT String path_get_name_from_path(String path)
 {
@@ -248,7 +248,7 @@ EXPORT Error file_read_entire_append_into(String file_path, String_Builder* appe
         while(true) 
         {
             array_resize(append_into, size_before + read_bytes + CHUNK_SIZE);
-            isize single_read = fread(append_into->data + size_before + read_bytes, 1, CHUNK_SIZE, file);
+            isize single_read = (isize) fread(append_into->data + size_before + read_bytes, 1, CHUNK_SIZE, file);
             if (single_read == 0)
             {
                 if(feof(file))
@@ -290,7 +290,7 @@ EXPORT Error _file_write_entire_append_into(String file_path, String written, co
             if(written_size > MAX_READ)
                 written_size = MAX_READ;
 
-            isize single_write = fwrite(written.data + wrote_bytes, written_size, 1, file);
+            isize single_write = (isize) fwrite(written.data + wrote_bytes, (size_t) written_size, 1, file);
             if (single_write == 0)
                 break;
 

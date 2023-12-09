@@ -277,7 +277,7 @@ EXPORT void image_copy(Image* to_image, Image from_image, i32 offset_x, i32 offs
     {
         for(isize y = 0; y < copy_height; y++)
         { 
-            memmove(to_image_ptr, from_image_ptr, row_byte_size);
+            memmove(to_image_ptr, from_image_ptr, (size_t) row_byte_size);
 
             to_image_ptr += to_image_stride;
             from_image_ptr += from_image_stride;
@@ -294,7 +294,7 @@ EXPORT void image_copy(Image* to_image, Image from_image, i32 offset_x, i32 offs
             to_image_ptr -= to_image_stride;
             from_image_ptr -= from_image_stride;
 
-            memmove(to_image_ptr, from_image_ptr, row_byte_size);
+            memmove(to_image_ptr, from_image_ptr, (size_t) row_byte_size);
         }
     }
 }
@@ -328,7 +328,7 @@ EXPORT void image_builder_resize(Image_Builder* image, i32 width, i32 height)
     new_image.pixel_format = image->pixel_format;
     new_image.pixel_size = image->pixel_size;
     new_image.pixels = (u8*) allocator_allocate(image->allocator, new_byte_size, DEF_ALIGN, SOURCE_INFO());
-    memset(new_image.pixels, 0, new_byte_size);
+    memset(new_image.pixels, 0, (size_t) new_byte_size);
 
     Image to_view = image_from_builder(new_image);
     Image from_view = image_from_builder(*image);

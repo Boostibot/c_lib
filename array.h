@@ -238,7 +238,7 @@ EXPORT void _array_init_backed(void* array, isize item_size, Allocator* allocato
         base->data = (u8*) backing;
         base->capacity = backing_item_count;
         base->allocator = _set_allocator_bits(allocator, true);
-        memset(base->data, 0, backing_item_count * item_size);
+        memset(base->data, 0, (size_t) (backing_item_count * item_size));
     }
     else
     {
@@ -294,7 +294,7 @@ EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, So
             copy_size = new_byte_size;
 
         void* new_data = allocator_allocate(alloc, new_byte_size, DEF_ALIGN, from);
-        memmove(new_data, base->data, copy_size);
+        memmove(new_data, base->data, (size_t) copy_size);
         base->data = (uint8_t*) new_data;
     }
     else
@@ -306,7 +306,7 @@ EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, So
 
     //Clear the allocated to 0
     if(new_byte_size > old_byte_size)
-        memset(base->data + old_byte_size, 0, new_byte_size - old_byte_size);
+        memset(base->data + old_byte_size, 0, (size_t) (new_byte_size - old_byte_size));
 
     //trim the size if too big
     base->capacity = capacity;
@@ -314,7 +314,7 @@ EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, So
         base->size = base->capacity - 1;
         
     //escape the string/data
-    memset(base->data + base->size*item_size, 0, item_size);
+    memset(base->data + base->size*item_size, 0, (size_t) item_size);
     ASSERT(_array_is_invariant(array, item_size));
 }
 
@@ -337,10 +337,10 @@ EXPORT isize _array_resize(void* array, isize item_size, isize to_size, Source_I
     _array_reserve(base, item_size, to_size, false, from);
     isize size_before = base->size;
     if(to_size > base->size)
-        memset(base->data + base->size*item_size, 0, (to_size - base->size)*item_size);
+        memset(base->data + base->size*item_size, 0, (size_t) ((to_size - base->size)*item_size));
         
     base->size = to_size;
-    memset(base->data + base->size*item_size, 0, item_size);
+    memset(base->data + base->size*item_size, 0, (size_t)  item_size);
     ASSERT(_array_is_invariant(array, item_size));
     return size_before;
 }
@@ -361,11 +361,12 @@ EXPORT void _array_reserve(void* array, isize item_size, isize to_fit, bool do_g
 
 EXPORT void _array_append(void* array, isize item_size, const void* data, isize data_count, Source_Info from)
 {
+    ASSERT(data_count >= 0 && item_size > 0);
     u8_Array* base = (u8_Array*) array;
     _array_reserve(base, item_size, base->size+data_count, true, from);
-    memmove(base->data + item_size * base->size, data, item_size * data_count);
+    memmove(base->data + item_size * base->size, data, (size_t) (item_size * data_count));
     base->size += data_count;
-    memset(base->data + base->size*item_size, 0, item_size);
+    memset(base->data + base->size*item_size, 0, (size_t) item_size);
     ASSERT(_array_is_invariant(array, item_size));
 }
 
@@ -377,7 +378,7 @@ EXPORT void _array_unappend(void* array, isize item_size, isize data_count)
     base->size -= data_count;
 
     if(data_count > 0)
-        memset(base->data + base->size*item_size, 0, item_size);
+        memset(base->data + base->size*item_size, 0, (size_t) item_size);
 }
 
 EXPORT void _array_clear(void* array, isize item_size)

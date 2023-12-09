@@ -203,8 +203,8 @@ EXPORT String_Array string_split(String to_split, String split_by);
         const char* end_of_long_search = (const char*) align_backward((void*) string_end, 8);
         end_of_long_search = MAX(end_of_long_search, start_of_long_search);
 
-        #define broadcast64(c) (0x0101010101010101ULL * (u64) c)
-        #define haszero64(v) (((v) - 0x0101010101010101ULL) & ~(v) & 0x8080808080808080ULL)
+        #define broadcast64(c) ((u64) 0x0101010101010101ULL * (u64) c)
+        #define haszero64(v) (((v) - (u64) 0x0101010101010101ULL) & ~(v) & (u64) 0x8080808080808080ULL)
         
         u64 search_mask = broadcast64(search_for);
 
@@ -239,6 +239,9 @@ EXPORT String_Array string_split(String to_split, String split_by);
                 return (isize) (i - string.data);
     
         return -1;
+
+
+
     }
     
     EXPORT isize string_find_first_char_vanilla(String string, char search_for, isize from)
@@ -280,8 +283,8 @@ EXPORT String_Array string_split(String to_split, String split_by);
         const char* long_search_start = (const char*) align_backward((void*) search_start, 8);
         isize overread_before = search_start - long_search_start;
 
-        #define broadcast64(c) (0x0101010101010101ULL * (u64) c)
-        #define haszero64(v) (((v) - 0x0101010101010101ULL) & ~(v) & 0x8080808080808080ULL)
+        #define broadcast64(c) ((u64) 0x0101010101010101ULL * (u64) c)
+        #define haszero64(v) (((v) - (u64) 0x0101010101010101ULL) & ~(v) & (u64) 0x8080808080808080ULL)
         
         const char* i = long_search_start;
         u64 search_mask = broadcast64(search_for);
@@ -320,6 +323,9 @@ EXPORT String_Array string_split(String to_split, String split_by);
 
             return found;
         }
+
+        #undef broadcast64
+        #undef haszero64
     }
 
     EXPORT isize string_find_last_char_from(String string, char search_for, isize from)
@@ -343,7 +349,7 @@ EXPORT String_Array string_split(String to_split, String split_by);
         if(a.size < b.size)
             return 1;
 
-        int res = memcmp(a.data, b.data, a.size);
+        int res = memcmp(a.data, b.data, (u64) a.size);
         return res;
     }
     
@@ -352,7 +358,7 @@ EXPORT String_Array string_split(String to_split, String split_by);
         if(a.size != b.size)
             return false;
 
-        bool eq = memcmp(a.data, b.data, a.size) == 0;
+        bool eq = memcmp(a.data, b.data, (u64) a.size) == 0;
         return eq;
     }
 
@@ -396,7 +402,7 @@ EXPORT String_Array string_split(String to_split, String split_by);
         if(string == NULL)
             return 0;
         else
-            return strlen(string);
+            return (isize) strlen(string);
     }
 
     EXPORT const char* cstring_from_builder(String_Builder builder)
@@ -495,8 +501,8 @@ EXPORT String_Array string_split(String to_split, String split_by);
         String_Builder joined = {0};
         array_resize(&joined, a.size + b.size);
         ASSERT(joined.data != NULL);
-        memcpy(joined.data, a.data, a.size);
-        memcpy(joined.data + a.size, b.data, b.size);
+        memcpy(joined.data, a.data, (size_t) a.size);
+        memcpy(joined.data + a.size, b.data, (size_t) b.size);
 
         return joined;
     }

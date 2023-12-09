@@ -43,7 +43,7 @@ typedef unsigned long long llu;
         // 99% of double calls to vsnprintf which makes this function almost twice as fast
         //Because its used for pretty much all logging and setting shader uniforms thats
         // a big difference.
-        isize format_size = strlen(format);
+        isize format_size = (isize) strlen(format);
         isize estimated_size = format_size + 64 + format_size/4;
         isize base_size = append_to->size; 
         // array_resize(append_to, base_size + estimated_size);

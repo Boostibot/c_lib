@@ -70,6 +70,7 @@ EXPORT void vlog_message(const char* module, Log_Type type, Source_Info source, 
 
 EXPORT void log_callstack(const char* log_module, Log_Type log_type, isize depth, isize skip);
 EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void** callstack, isize callstack_size);
+EXPORT void log_translated_callstack(const char* log_module, Log_Type log_type, const Platform_Stack_Trace_Entry* translated, isize callstack_size);
 
 EXPORT const char* log_type_to_string(Log_Type type);
 EXPORT Logger def_logger_make();
@@ -250,12 +251,26 @@ EXPORT void log_callstack(const char* log_module, Log_Type log_type, isize depth
     log_captured_callstack(log_module, log_type, (const void**) stack, size);
 }
 
+INTERNAL bool _log_translated_callstack_and_check_main(const char* log_module, Log_Type log_type, const Platform_Stack_Trace_Entry* translated, isize callstack_size)
+{
+    for(isize j = 0; j < callstack_size; j++)
+    {
+        const Platform_Stack_Trace_Entry* entry = &translated[j];
+        log_message(log_module, log_type, SOURCE_INFO(), "%-30s %s : %i", entry->function , entry->file, (int) entry->line);
+        if(strcmp(entry->function, "main") == 0) //if reaches main stops (we dont care about OS stuff)
+            return true;
+    }
+
+    return false;
+}
+
+
 EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void** callstack, isize callstack_size)
 {
     if(callstack_size < 0 || callstack == NULL)
         callstack_size = 0;
     
-    enum {TRANSLATE_AT_ONCE = 1};
+    enum {TRANSLATE_AT_ONCE = 256};
     for(isize i = 0; i < callstack_size; i += TRANSLATE_AT_ONCE)
     {
         isize offset = i * TRANSLATE_AT_ONCE;
@@ -265,20 +280,16 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, co
 
         Platform_Stack_Trace_Entry translated[TRANSLATE_AT_ONCE] = {0};
         platform_translate_call_stack(translated, callstack + offset, remaining);
-        for(isize j = 0; j < remaining; j++)
-        {
-            Platform_Stack_Trace_Entry* entry = &translated[j];
-            const char* function = entry->function ? entry->function : "";
-            const char* file = entry->file ? entry->file : "";
-
-            log_message(log_module, log_type, SOURCE_INFO(), "%-30s %s : %i", function, file, (int) entry->line);
-            if(strcmp(function, "main") == 0) //if reaches main stops (we dont care about OS stuff)
-            {
-                i = callstack_size;
-                break;
-            }
-        }
+        
+        bool found_main = _log_translated_callstack_and_check_main(log_module, log_type, translated, remaining);
+        if(found_main)
+            break;
     }
+}
+
+EXPORT void log_translated_callstack(const char* log_module, Log_Type log_type, const Platform_Stack_Trace_Entry* translated, isize callstack_size)
+{
+    _log_translated_callstack_and_check_main(log_module, log_type, translated, callstack_size);
 }
 
 #endif

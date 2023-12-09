@@ -108,10 +108,10 @@ uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed)
     const uint64_t m = 0xc6a4a7935bd1e995;
     const int r = 47;
 
-    uint64_t h = seed ^ (size * m);
+    uint64_t h = seed ^ ((uint64_t) size * m);
 
     const uint64_t * data = (const uint64_t *)key;
-    const uint64_t * end = data + (size/8);
+    const uint64_t * end = data + ((uint64_t) size/8);
 
     bool is_big_endian = false;
     #ifdef PLATFORM_BIG_ENDIAN

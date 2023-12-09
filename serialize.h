@@ -47,6 +47,11 @@ typedef struct Serialize_Enum {
 
 #define SERIALIZE_ENUM_VALUE(ENUM_VALUE) BRACE_INIT(Serialize_Enum){STRING(#ENUM_VALUE), ENUM_VALUE}
 
+EXPORT void base64_encode_append_into(String_Builder* into, const void* data, isize len, Base64_Encoding encoding);
+EXPORT bool base64_decode_append_into(String_Builder* into, const void* data, isize len, Base64_Decoding decoding);
+EXPORT void base64_encode_into(String_Builder* into, const void* data, isize len, Base64_Encoding encoding);
+EXPORT bool base64_decode_into(String_Builder* into, const void* data, isize len, Base64_Decoding decoding);
+
 //Attempts to locate an entry within children of into and return pointer to it. 
 //If it cannot find it: returns NULL if action is read or creates it if action is write.
 EXPORT Lpf_Dyn_Entry* serialize_locate_any(Lpf_Dyn_Entry* into, Lpf_Kind create_kind, Lpf_Kind kind, String label, String type, Read_Or_Write action);
@@ -124,6 +129,51 @@ EXPORT bool serialize_quat(Lpf_Dyn_Entry* entry, Quat* val, Quat def, Read_Or_Wr
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_SERIALIZE_IMPL)) && !defined(JOT_SERIALIZE_HAS_IMPL)
 #define JOT_SERIALIZE_HAS_IMPL
+
+
+
+EXPORT void base64_encode_append_into(String_Builder* into, const void* data, isize len, Base64_Encoding encoding)
+{
+    isize size_before = into->size;
+    isize needed = base64_encode_max_output_length(len);
+    array_resize(into, size_before + needed);
+
+    isize actual_size = base64_encode(into->data + size_before, data, len, encoding);
+    array_resize(into, size_before + actual_size);
+}
+
+EXPORT bool base64_decode_append_into(String_Builder* into, const void* data, isize len, Base64_Decoding decoding)
+{
+    isize size_before = into->size;
+    isize needed = base64_decode_max_output_length(len);
+    array_resize(into, size_before + needed);
+    
+    isize error_at = 0;
+    isize actual_size = base64_decode(into->data + size_before, data, len, decoding, &error_at);
+    if(error_at == -1)
+    {
+        array_resize(into, size_before + actual_size);
+        return true;
+    }
+    else
+    {
+        array_resize(into, size_before);
+        return false;
+    }
+}
+
+EXPORT void base64_encode_into(String_Builder* into, const void* data, isize len, Base64_Encoding encoding)
+{
+    array_clear(into);
+    base64_encode_append_into(into, data, len, encoding);
+}
+
+EXPORT bool base64_decode_into(String_Builder* into, const void* data, isize len, Base64_Decoding decoding)
+{
+    array_clear(into);
+    return base64_decode_append_into(into, data, len, decoding);
+}
+
 
 EXPORT Lpf_Dyn_Entry* serialize_locate_any(Lpf_Dyn_Entry* into, Lpf_Kind create_kind, Lpf_Kind kind, String label, String type, Read_Or_Write action)
 {

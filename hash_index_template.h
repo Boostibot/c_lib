@@ -62,8 +62,8 @@ typedef struct Entry {
     Value value;
 } Entry;
 
-typedef uint64_t Hash;
-typedef uint64_t Value;
+typedef u64 Hash;
+typedef u64 Value;
 
 #endif
 
@@ -121,7 +121,7 @@ EXPORT bool  hash_index_is_entry_used(Entry entry);
     INTERNAL void entry_set_gravestone(Entry* entry);
     INTERNAL bool entry_is_empty(const Entry* entry);
     INTERNAL bool entry_is_gravestone(const Entry* entry);
-    INTERNAL uint64_t entry_hash_escape(Hash hash);
+    INTERNAL u64 entry_hash_escape(Hash hash);
     INTERNAL Value entry_value_escape(Value hash);
     // ==============================================================
     
@@ -138,8 +138,8 @@ EXPORT bool  hash_index_is_entry_used(Entry entry);
         }
 
         CHECK_BOUNDS(prev_index, entries_size);
-        uint64_t mask = (uint64_t) entries_size - 1;
-        uint64_t i = prev_index & mask;
+        isize mask = entries_size - 1;
+        isize i = prev_index & mask;
         isize counter = 0;
         for(; entry_is_empty(&entries[i]) == false; i = (i + 1) & mask)
         {
@@ -168,21 +168,21 @@ EXPORT bool  hash_index_is_entry_used(Entry entry);
     {  
         //#define HASH_INDEX_IS_EMPTY_ZERO
         #ifdef HASH_INDEX_IS_EMPTY_ZERO
-        memset(new_entries, 0, new_entries_size * sizeof *new_entries);
+        memset(new_entries, 0, (size_t) new_entries_size * sizeof *new_entries);
         #else
         for(isize i = 0; i < new_entries_size; i++)
             entry_set_empty(&new_entries[i]);
         #endif
 
         isize hash_colisions = 0;
-        uint64_t mask = (uint64_t) new_entries_size - 1;
+        u64 mask = (u64) new_entries_size - 1;
         for(isize i = 0; i < entries_size; i++)
         {
             Entry curr = entries[i];
             if(hash_index_is_entry_used(curr) == false)
                 continue;
             
-            uint64_t k = curr.hash & mask;
+            u64 k = curr.hash & mask;
             isize counter = 0;
             for(; hash_index_is_entry_used(new_entries[k]); k = (k + 1) & mask)
             {
@@ -201,10 +201,10 @@ EXPORT bool  hash_index_is_entry_used(Entry entry);
     INTERNAL isize _hash_index_insert(Entry* entries, isize entries_size, Hash hash, Value value) 
     {
         ASSERT(entries_size > 0 && "there must be space for insertion");
-        uint64_t mask = (uint64_t) entries_size - 1;
+        isize mask = entries_size - 1;
     
-        uint64_t escaped = entry_hash_escape(hash);
-        uint64_t i = escaped & mask;
+        isize escaped = (isize) entry_hash_escape(hash);
+        isize i = escaped & mask;
         isize counter = 0;
         for(; hash_index_is_entry_used(entries[i]); i = (i + 1) & mask)
             ASSERT(counter ++ < entries_size && "must not be completely full!");
@@ -225,7 +225,7 @@ EXPORT bool  hash_index_is_entry_used(Entry entry);
     {
         ASSERT(hash_index_is_invariant(*table));
         if(table->entries != NULL)
-            allocator_deallocate(table->allocator, table->entries, table->entries_count * sizeof *table->entries, DEF_ALIGN, SOURCE_INFO());
+            allocator_deallocate(table->allocator, table->entries, table->entries_count * (isize) sizeof *table->entries, DEF_ALIGN, SOURCE_INFO());
 
         Hash_Index null = {0};
         *table = null;
@@ -263,7 +263,7 @@ EXPORT bool  hash_index_is_entry_used(Entry entry);
 
     EXPORT void hash_index_clear(Hash_Index* to_table)
     {
-        memset(to_table->entries, 0, to_table->entries_count*sizeof(*to_table->entries));
+        memset(to_table->entries, 0, (size_t) to_table->entries_count*sizeof(*to_table->entries));
         to_table->size = 0;
     }
     
@@ -285,9 +285,9 @@ EXPORT bool  hash_index_is_entry_used(Entry entry);
     
     EXPORT isize hash_index_find_first(Hash_Index table, Hash hash, isize* finished_at)
     {
-        uint64_t escaped = entry_hash_escape(hash);
-        uint64_t mask = (uint64_t) table.entries_count - 1;
-        uint64_t start_at = escaped & mask;
+        isize escaped = (isize) entry_hash_escape(hash);
+        isize mask = table.entries_count - 1;
+        isize start_at = escaped & mask;
         return _hash_index_find_from(table.entries, table.entries_count, (Hash) escaped, start_at, finished_at);
     }
     
@@ -299,7 +299,7 @@ EXPORT bool  hash_index_is_entry_used(Entry entry);
     
     EXPORT isize hash_index_find_next(Hash_Index table, Hash hash, isize prev_found, isize* finished_at)
     {
-        uint64_t escaped = entry_hash_escape(hash);
+        isize escaped = (isize) entry_hash_escape(hash);
         return _hash_index_find_from(table.entries, table.entries_count, (Hash) escaped, prev_found + 1, finished_at);
     }
 
@@ -307,9 +307,9 @@ EXPORT bool  hash_index_is_entry_used(Entry entry);
     {
         hash_index_reserve(table, table->size + 1);
         isize finish_at = 0;
-        uint64_t escaped = entry_hash_escape(hash);
-        uint64_t mask = (uint64_t) table->entries_count - 1;
-        uint64_t start_at = escaped & mask;
+        isize escaped = (isize) entry_hash_escape(hash);
+        isize mask = table->entries_count - 1;
+        isize start_at = escaped & mask;
         isize found = _hash_index_find_from(table->entries, table->entries_count, (Hash) escaped, start_at, &finish_at);
             
         if(found == -1)

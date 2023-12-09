@@ -183,14 +183,14 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     {
         void* ptr = allocator_reallocate(from_allocator, new_size, old_ptr, old_size, align, called_from);
         if(new_size > old_size)
-            memset((u8*) ptr + old_size, 0, new_size - old_size);
+            memset((u8*) ptr + old_size, 0, (size_t) (new_size - old_size));
         return ptr;
     }
 
     EXPORT void* allocator_allocate_cleared(Allocator* from_allocator, isize new_size, isize align, Source_Info called_from)
     {
         void* ptr = allocator_allocate(from_allocator, new_size, align, called_from);
-        memset(ptr, 0, new_size);
+        memset(ptr, 0, (size_t) new_size);
         return ptr;
     }
 
@@ -291,7 +291,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         //this is a little criptic but according to the iternet should be the fastest way of doing this
         // my benchmarks support this. 
         //(its about 50% faster than using div_round_up would be - even if we supply log2 alignment and bitshifts)
-        usize mask = (usize) (align_to - 1);
+        isize mask = align_to - 1;
         isize ptr_num = (isize) ptr;
         ptr_num += (-ptr_num) & mask;
 

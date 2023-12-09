@@ -49,7 +49,7 @@
 #include "time.h"
 #include "string.h"
 #include "profile.h"
-#include "format.h"
+#include "vformat.h"
 #include "log.h"
 
 typedef bool(*File_Logger_Print)(const void* data, isize size, void* context); 
@@ -225,7 +225,7 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
         {
             isize before_padding = append_to->size;
             array_resize(append_to, before_padding + header_size);
-            memset(append_to->data + before_padding, ' ', header_size);
+            memset(append_to->data + before_padding, ' ', (size_t) header_size);
         }
         
         builder_append(append_to, string_from_builder(formatted_module));
@@ -349,7 +349,7 @@ EXPORT bool file_logger_flush(File_Logger* logger)
             }
 
             if(self->file)
-                fwrite(self->buffer.data, 1, self->buffer.size, self->file);
+                fwrite(self->buffer.data, 1, (size_t) self->buffer.size, self->file);
         }
 
         self->last_flush_time = clock_s();
