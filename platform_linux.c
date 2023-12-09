@@ -609,42 +609,16 @@ int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t sk
     return not_skipped_size;
 }
 
-int64_t platform_shell_output(const char* command, char* buffer, int64_t buffer_size)
-{
-    int64_t read = 0;
-    FILE* pipe = popen(command, "r");
-    if(pipe)
-    {
-        read = (int64_t) fread(buffer, 1, (size_t) buffer_size, pipe);
-        pclose(pipe);
-    }
-
-    return read;
-}
 
 #define _MIN(a, b)   ((a) < (b) ? (a) : (b))
 #define _MAX(a, b)   ((a) > (b) ? (a) : (b))
 #define _CLAMP(value, low, high) _MAX((low), _MIN((value), (high)))
 
-//Translates call stack. 
-void _platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void** stack, int64_t stack_size, int64_t crash_depth)
+void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void** stack, int64_t stack_size)
 {
     assert(stack_size >= 0);
-
     memset(translated, 0, (size_t) stack_size * sizeof *translated);
 
-    char addr2line_buffer[1024] = {0};
-    char command[1024] = {0};
-
-    //@NOTE: backtrace_symbols only gives good answers sometimes and more often than not its
-    //missing all the relevant info. (File, function, line).
-    //Thus we use it as only a starting off point and call addr2line to get rest of the information.
-    //If that fails we use just the backtrace_symbols output @TODO
-    //We then srtring parse whatever we can.
-
-    //@NOTE: backtrace_symbols is not safe to call from within signal handler but we handle signals
-    //by caopying tiny bit of state and siglongjmp'ing back to before the signal handler was encoutnered
-    //so we *should* be fine
     char **semi_translated = backtrace_symbols((void *const *) stack, stack_size);
     if (semi_translated != NULL)
     {
@@ -652,99 +626,43 @@ void _platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, cons
         {
             Platform_Stack_Trace_Entry* entry = &translated[i];
             void* frame = (void*) stack[i];
-            char* message = semi_translated[i];
-
-            Dl_info info = {0};
-            struct link_map* link_map = NULL;
             
-            //if is dynamically loaded symbol we can use that info.
-            bool is_dynamic_loaded = !!dladdr1(frame, &info, (void**) &link_map, RTLD_DL_LINKMAP);
-            if(is_dynamic_loaded)
-            {
-                size_t VMA_addr = (size_t) frame - link_map->l_addr;
+            const char* message = semi_translated[i];
+            int64_t message_size = (int64_t) strlen(message);
 
-                //we need to substract one to get the actual instruction address because the instruction pointer
-                //is pointing to the next instruction. The only time when we dont do this is when a crahs occured
-                //see: https://stackoverflow.com/questions/11579509/wrong-line-numbers-from-addr2line/63841497#63841497
-                if(i!=crash_depth)
-                    VMA_addr-=1;    
-                snprintf(command, sizeof command - 1, "addr2line -e %s -f -Ci %zx", info.dli_fname,VMA_addr);
-            }
-            //Else parse the bear minimum
-            else
-            {
-                //find first occurence of '(' or ' ' in message[i] and assume
-                //everything before that is the file name. (don't go beyond 0 though
-                //(string terminator)
-                int p = 0;
-                while(message[p] != '(' && message[p] != ' ' && message[p] != 0)
-                    p++;
+            int64_t function_from = -1;
+            int64_t function_to = -1;
 
-                snprintf(command, sizeof command - 1, "addr2line -e %.*s -f -Ci %zx", p, message, (size_t) frame);
+            int64_t file_from = 0;
+            int64_t file_to = 0;
+
+            for(int64_t i = message_size; i-- > 0; )
+            {
+                if(message[i] == '+' && function_to == -1)
+                    function_to = i;
+
+                if(message[i] == '(' && function_to != -1)
+                    function_from = i + 1;
             }
 
-            //Translate the address using address to line
-            int64_t addr2line_size = platform_shell_output(command, addr2line_buffer, (int64_t) sizeof addr2line_buffer - 1);
-            addr2line_buffer[addr2line_size] = '\0';
+            file_to = function_from - 1;
 
-            //parse the output. It will look something like the following (my comments (//) not included): 
-            //my_func_a             //[function name]
-            //path/to/file.c:13     //[path]:[line]
+            function_from = _CLAMP(function_from, 0, message_size);
+            function_to = _CLAMP(function_to, 0, message_size);
+            file_from = _CLAMP(file_from, 0, message_size);
+            file_to = _CLAMP(file_to, 0, message_size);
 
-            int64_t function_name_to = addr2line_size;
-            for(int64_t i = 0; i < addr2line_size; i++)
-            {
-                if(addr2line_buffer[i] == '\n')
-                {
-                    function_name_to = i;
-                    break;
-                }
-            }
-
-            int64_t digit_separator = addr2line_size;
-            for(int64_t i = addr2line_size; i-- > 0;)
-            {
-                if(addr2line_buffer[i] == ':')
-                {
-                    digit_separator = i;
-                    break;
-                }
-            }
-
-            int64_t file_from = function_name_to + 1;
-            int64_t file_size = digit_separator - file_from;
-
-            int64_t line_from = digit_separator + 1;
-            int64_t line_size = addr2line_size - line_from;
-            
-            //Add the module or current executable
-            const char* module = "";
-            if(is_dynamic_loaded && info.dli_fname != NULL)
-                module = info.dli_fname;
-            else
-                module = platform_get_executable_path();
-            
-            int64_t module_size = (int64_t) strlen(module);
-            int64_t function_size = function_name_to;
-
-            file_size = _CLAMP(file_size, 0, (int64_t) sizeof entry->file - 1);
-            line_size = _CLAMP(line_size, 0, (int64_t) sizeof entry->function - 1);
-            function_size = _CLAMP(function_size, 0, (int64_t) sizeof entry->function - 1);
-
-            int64_t line = atoi(addr2line_buffer + line_from);
-
-            entry->line = line;
+            entry->line = 0; //@TODO: make work but not through addr2line!
             entry->address = frame;
-            memcpy(entry->function, addr2line_buffer, (size_t) function_size);
-            memcpy(entry->file, addr2line_buffer + file_from, (size_t) file_size);
-            memcpy(entry->module, module, (size_t) module_size);
+            memcpy(entry->function, message + function_from, _MIN((size_t) (function_to - function_from), sizeof entry->function));
+            memcpy(entry->file,     message + file_from,     _MIN((size_t) (file_to - file_from), sizeof entry->file));
+            memcpy(entry->module,   message + file_from,     _MIN((size_t) (file_to - file_from), sizeof entry->module));
 
             //if everything else failed just use the semi translate message...            
             if(strcmp(entry->function, "") == 0 && strcmp(entry->file, "") == 0)
             {
-                function_size = (int64_t) strlen(message);
-                function_size = _CLAMP(function_size, 0, (int64_t) sizeof entry->function - 1);
-                memcpy(entry->function, message, (size_t) function_size);
+                size_t function_size = _CLAMP((size_t) message_size, 0, sizeof entry->function);
+                memcpy(entry->function, message, function_size);
             }
 
             //null terminate everything just in case
@@ -755,11 +673,6 @@ void _platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, cons
     }
 
     free(semi_translated);
-}
-
-void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void** stack, int64_t stack_size)
-{
-    _platform_translate_call_stack(translated, stack, stack_size, -1);
 }
 
 #include <signal.h>
