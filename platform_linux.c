@@ -233,12 +233,14 @@ static int64_t untested_stack_overflow_calendar_to_time_t(int64_t sec, int64_t m
 // Debug
 //=========================================
 
+#define PLATFORM_CALLSTACKS_MAX 256
+#define PLATFORM_CALLSTACK_LINE_LEN 64
+
 #include <execinfo.h>
 int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t skip_count)
 {
     //@TODO: preallocate on heap!
-    #define MAX_STACK 256
-    static void* stack_ptrs[MAX_STACK] = {0};
+    static void* stack_ptrs[PLATFORM_CALLSTACKS_MAX] = {0};
     int64_t found_size = backtrace(stack_ptrs, stack_size);
     int64_t not_skipped_size = found_size - skip_count - 1;
     if(not_skipped_size < 0)
@@ -248,29 +250,154 @@ int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t sk
     return not_skipped_size;
 }
 
-void platform_translate_call_stack(Platform_Stack_Trace_Entry* tanslated, const void** stack, int64_t stack_size)
+int64_t platform_shell_output(const char* command, char* buffer, int64_t buffer_size)
 {
-    //@TODO: make exception safe!
-    //@TODO: addr2line
-    char **function_names = backtrace_symbols((void *const *) stack, stack_size);
-    if (function_names != NULL)
+    FILE* pipe = popen(command, "r");
+    int64_t read = 0;
+    if(pipe)
+    {
+        read = fread(buffer, 1, buffer_size, pipe);
+        pclose(pipe);
+    }
+
+    return read;
+}
+
+#define _MIN(a, b)   ((a) < (b) ? (a) : (b))
+#define _MAX(a, b)   ((a) > (b) ? (a) : (b))
+#define _CLAMP(value, low, high) _MAX(low, _MIN(value, high))
+
+
+//Translates call stack. 
+void _platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void** stack, int64_t stack_size, int64_t crash_depth)
+{
+    memset(translated, 0, stack_size * sizeof *translated);
+
+    char addr2line_buffer[1024] = {0};
+    char command[1024] = {0};
+
+    //@NOTE: backtrace_symbols only gives good answers sometimes and more often than not its
+    //missing all the relevant info. (File, function, line).
+    //Thus we use it as only a starting off point and call addr2line to get rest of the information.
+    //If that fails we use just the backtrace_symbols output @TODO
+    //We then srtring parse whatever we can.
+
+    //@NOTE: backtrace_symbols is not safe to call from within signal handler but we handle signals
+    //by caopying tiny bit of state and siglongjmp'ing back to before the signal handler was encoutnered
+    //so we *should* be fine
+    char **semi_translated = backtrace_symbols((void *const *) stack, stack_size);
+    if (semi_translated != NULL)
     {
         for (int64_t i = 0; i < stack_size; i++)
         {
-            Platform_Stack_Trace_Entry* entry = &tanslated[i];
-            char* func_name = function_names[i];
-            int64_t func_name_size = strlen(func_name);
-            if(func_name_size > sizeof(entry->function) - 1)
-                func_name_size = sizeof(entry->function) - 1;
+            Platform_Stack_Trace_Entry* entry = &translated[i];
+            void* frame = (void*) stack[i];
+            char* message = semi_translated[i];
 
-            memset(entry, 0, sizeof *entry); 
-            memcpy(entry->function, func_name, func_name_size);
+            Dl_info info = {0};
+            link_map* link_map = NULL;
+            
+            //if is dynamically loaded symbol we can use that info.
+            bool is_dynamic_loaded = !!dladdr1(frame, &info, (void**) &link_map, RTLD_DL_LINKMAP);
+            if(is_dynamic_loaded)
+            {
+                size_t VMA_addr = frame - link_map->l_addr;
 
-            assert(entry->function[sizeof(entry->function) - 1] == 0 && "must be null terminated!");
+                //we need to substract one to get the actual instruction address because the instruction pointer
+                //is pointing to the next instruction. The only time when we dont do this is when a crahs occured
+                //see: https://stackoverflow.com/questions/11579509/wrong-line-numbers-from-addr2line/63841497#63841497
+                if(i!=crash_depth)
+                    VMA_addr-=1;    
+                snprintf(command, sizeof command - 1, "addr2line -e %s -f -Ci %zx", info.dli_fname,VMA_addr);
+            }
+            //Else parse the bear minimum
+            else
+            {
+                //find first occurence of '(' or ' ' in message[i] and assume
+                //everything before that is the file name. (don't go beyond 0 though
+                //(string terminator)
+                size_t p = 0;
+                while(message[p] != '(' && message[p] != ' ' && message[p] != 0)
+                    p++;
+
+                snprintf(command, sizeof command - 1, "addr2line -e %.*s -f -Ci %zx", p, message, (size_t) frame);
+            }
+
+            //Translate the address using address to line
+            int64_t addr2line_size = platform_shell_output(command, addr2line_buffer, sizeof addr2line_buffer - 1);
+            addr2line_buffer[addr2line_size] = '\0';
+
+            //parse the output. It will look something like the following (my comments (//) not included): 
+            //my_func_a             //[function name]
+            //path/to/file.c:13     //[path]:[line]
+
+            int64_t function_name_to = addr2line_size;
+            for(int64_t i = 0; i < addr2line_size; i++)
+            {
+                if(addr2line_buffer[i] == '\n')
+                {
+                    function_name_to = i;
+                    break;
+                }
+            }
+
+            int64_t digit_separator = addr2line_size;
+            for(int64_t i = addr2line_size; i-- > 0;)
+            {
+                if(addr2line_buffer[i] == ':')
+                {
+                    digit_separator = i;
+                    break;
+                }
+
+                if(addr2line_buffer[i] == '\n')
+                    break;
+            }
+
+            int64_t file_from = function_name_to + 1;
+            int64_t file_size = digit_separator - file_from;
+
+            int64_t line_from = digit_separator + 1;
+            int64_t line_size = addr2line_size - line_from;
+            
+            //Add the module or current executable
+            const char* module = "";
+            if(is_dynamic_loaded && info->dli_fname != NULL)
+                module = info->dli_fname;
+            else
+                module = platform_get_executable_path();
+            
+            int64_t module_size = strlen(module);
+            int64_t function_size = function_name_to;
+
+            file_size = _CLAMP(file_size, 0, sizeof entry->file - 1);
+            line_size = _CLAMP(line_size, 0, sizeof entry->function - 1);
+            function_size = _CLAMP(function_size, 0, sizeof entry->function - 1);
+
+            int64_t line = atoi(addr2line_buffer + line_from);
+
+            entry->line = line;
+            entry->address = frame;
+            memcpy(entry->function, addr2line_buffer, function_size);
+            memcpy(entry->file, addr2line_buffer + file_from, file_size);
+            memcpy(entry->module, module, module_size);
+
+            //if everything else failed just use the semi translate message...            
+            if(strcmp(entry->function, "") == 0 && strcmp(entry->file, "") == 0)
+            {
+                function_size = strlen(message);
+                function_size = _CLAMP(function_size, 0, sizeof entry->function - 1);
+                memcpy(entry->function, message, function_size);
+            }
+
+            //null terminate everything just in case
+            entry->module[sizeof entry->module - 1] = '\0';
+            entry->file[sizeof entry->file - 1] = '\0';
+            entry->function[sizeof entry->function - 1] = '\0';
         }
     }
 
-    free (function_names);
+    free(semi_translated);
 }
 
 //=========================================
@@ -378,7 +505,6 @@ int64_t platform_epoch_time_from_time_t(time_t time)
 {
     return (int64_t) time * _SECOND_MICROSECS;
 }
-
 
 Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null)
 {
@@ -530,13 +656,31 @@ const char* platform_directory_get_current_working()
         return "";
 }    
 
-//@TODO
-//Retrieves the absolute path of the executable / dll
 const char* platform_get_executable_path()
 {
-    // assert(false && "TODO");
-    return "";
-    // return platform_directory_get_current_working();
+    const int64_t path_size = PATH_MAX*4;
+    static char* exe_path = NULL;
+
+    if(exe_path == NULL)
+    {
+        exe_path = (char*) malloc(path_size);
+        if(exe_path == NULL)
+        {
+            PLATFORM_PRINT_OUT_OF_MEMORY(path_size);
+            assert(false && "allocation of executable failed!");
+            return "";
+        }
+
+        ssize_t count = readlink("/proc/self/exe", result, path_size);
+        if(count < 0)
+            count = 0;
+        if(count >= path_size)
+            count = path_size - 1;
+
+        exe_path[count] = '\0';
+    }
+
+    return exe_path;
 }
 
 //Memory maps the file pointed to by file_path and saves the adress and size of the mapped block into mapping. 
@@ -604,17 +748,158 @@ void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t old_size
 }
 
 
+#include <signal.h>
+#include <setjmp.h>
+
+#define PLATFORM_SANDBOXES_MAX 256
+#define PLATFORM_SANDBOXE_JUMP_CODE 0x123
+
+//An X macro collection of all signals with some commented out that we are not handling. 
+//If you want to enable/disable comment/uncomment additional lines.
+//Taken from: https://man7.org/linux/man-pages/man7/signal.7.html
+//For info on X macros: https://en.wikipedia.org/wiki/X_macro 
+#define SIGNAL_ACTION_X \
+    X(SIGABRT, PLATFORM_EXCEPTION_ABORT)      /*P1990      Core    Abort signal from abort(3) */ \
+    /*X(SIGALRM, PLATFORM_EXCEPTION_OTHER)      /*P1990      Term    Timer signal from alarm(2) */ \
+    X(SIGBUS, PLATFORM_EXCEPTION_ACCESS_VIOLATION)       /*P2001      Core    Bus error (bad memory access) */ \
+    /*X(SIGCHLD, PLATFORM_EXCEPTION_OTHER)      /*P1990      Ign     Child stopped or terminated  */ \
+    /*X(SIGCLD, PLATFORM_EXCEPTION_OTHER)       /*  -        Ign     A synonym for SIGCHLD  */ \
+    /*X(SIGCONT, PLATFORM_EXCEPTION_OTHER)      /*P1990      Cont    Continue if stopped  */ \
+    /*X(SIGEMT, PLATFORM_EXCEPTION_OTHER)       /*  -        Term    Emulator trap  */ \
+    X(SIGFPE, PLATFORM_EXCEPTION_FLOAT_OTHER)       /*P1990      Core    Floating-point exception */ \
+    X(SIGHUP, PLATFORM_EXCEPTION_OTHER)       /*P1990      Term    Hangup detected on controlling terminal or death of controlling process */ \
+    X(SIGILL, PLATFORM_EXCEPTION_ILLEGAL_INSTRUCTION)       /*P1990      Core    Illegal Instruction */ \
+    X(SIGINFO, PLATFORM_EXCEPTION_OTHER)      /*  -                A synonym for SIGPWR */ \
+    /*X(SIGINT, PLATFORM_EXCEPTION_OTHER)       /*P1990      Term    Interrupt from keyboard */ \
+    /*X(SIGIO, PLATFORM_EXCEPTION_OTHER)        /*  -        Term    I/O now possible (4.2BSD) */ \
+    X(SIGIOT, PLATFORM_EXCEPTION_ABORT)       /*  -        Core    IOT trap. A synonym for SIGABRT */ \
+    /*X(SIGKILL, PLATFORM_EXCEPTION_OTHER)      /*P1990      Term    Kill signal */ \
+    /*X(SIGLOST, PLATFORM_EXCEPTION_OTHER)      /*  -        Term    File lock lost (unused) */ \
+    /*X(SIGPIPE, PLATFORM_EXCEPTION_OTHER)      /*P1990      Term    Broken pipe: write to pipe with no readers; see pipe(7) */ \
+    /*X(SIGPOLL, PLATFORM_EXCEPTION_OTHER)      /*P2001      Term    Pollable event (Sys V); synonym for SIGIO */ \
+    /*X(SIGPROF, PLATFORM_EXCEPTION_OTHER)      /*P2001      Term    Profiling timer expired */ \
+    X(SIGPWR, PLATFORM_EXCEPTION_OTHER)       /*  -        Term    Power failure (System V) */ \
+    /*X(SIGQUIT, PLATFORM_EXCEPTION_OTHER)      /*P1990      Core    Quit from keyboard */ \
+    X(SIGSEGV, PLATFORM_EXCEPTION_ACCESS_VIOLATION)      /*P1990      Core    Invalid memory reference */ \
+    X(SIGSTKFLT, PLATFORM_EXCEPTION_ACCESS_VIOLATION)    /*  -        Term    Stack fault on coprocessor (unused) */ \
+    /*X(SIGSTOP, PLATFORM_EXCEPTION_OTHER)      /*P1990      Stop    Stop process */ \
+    /*X(SIGTSTP, PLATFORM_EXCEPTION_OTHER)      /*P1990      Stop    Stop typed at terminal */ \
+    X(SIGSYS, PLATFORM_EXCEPTION_OTHER)       /*P2001      Core    Bad system call (SVr4); see also seccomp(2) */ \
+    X(SIGTERM, PLATFORM_EXCEPTION_TERMINATE)      /*P1990      Term    Termination signal */ \
+    X(SIGTRAP, PLATFORM_EXCEPTION_BREAKPOINT)      /*P2001      Core    Trace/breakpoint trap */ \
+    /*X(SIGTTIN, PLATFORM_EXCEPTION_OTHER)      /*P1990      Stop    Terminal input for background process */ \
+    /*X(SIGTTOU, PLATFORM_EXCEPTION_OTHER)      /*P1990      Stop    Terminal output for background process */ \
+    /*X(SIGUNUSED, PLATFORM_EXCEPTION_OTHER)    /*  -        Core    Synonymous with SIGSYS */ \
+    /*X(SIGURG, PLATFORM_EXCEPTION_OTHER)       /*P2001      Ign     Urgent condition on socket (4.2BSD) */ \
+    /*X(SIGUSR1, PLATFORM_EXCEPTION_OTHER)      /*P1990      Term    User-defined signal 1 */ \
+    /*X(SIGUSR2, PLATFORM_EXCEPTION_OTHER)      /*P1990      Term    User-defined signal 2 */ \
+    /*X(SIGVTALRM, PLATFORM_EXCEPTION_OTHER)    /*P2001      Term    Virtual alarm clock (4.2BSD) */ \
+    /*X(SIGXCPU, PLATFORM_EXCEPTION_OTHER)      /*P2001      Core    CPU time limit exceeded (4.2BSD); see setrlimit(2) */ \
+    /*X(SIGXFSZ, PLATFORM_EXCEPTION_OTHER)      /*P2001      Core    File size limit exceeded (4.2BSD); see setrlimit(2) */ \
+    /*X(SIGWINCH, PLATFORM_EXCEPTION_OTHER)     /*  -        Ign     Window resize signal (4.3BSD, Sun) */ \
+
+typedef struct Signal_Handler_Queue {
+    sigjmp_buf jump_buffer;
+    int signal;
+} Signal_Handler_Queue;
+
+__declspec(thread) Signal_Handler_Queue platform_signal_handler_queue[PLATFORM_SANDBOXES_MAX];
+__declspec(thread) platform_signal_handler_i1 = 0;
+
+void platform_sighandler(int sig, struct sigcontext ctx) 
+{
+    (void) sig;
+    (void) ctx;
+
+    printf("inside signal handler with signal %d!\n", sig);
+    int32_t my_index_i1 = platform_signal_handler_i1;
+    if(my_index >= 0)
+    {
+        //@TODO: add more specific flag testing!
+        Signal_Handler_Queue* my_handler = &platform_signal_handler_queue[my_index_i1-1];
+        my_handler->signal = sig;
+        siglongjmp(my_handler->jump_buffer, PLATFORM_SANDBOXE_JUMP_CODE);
+    }
+}
+
 Platform_Sandox_Error platform_exception_sandbox(
     void (*sandboxed_func)(void* context),   
     void* sandbox_context,
     void (*error_func)(void* context, Platform_Sandox_Error error_code),   
-    void* error_context
-)
+    void* error_context)
 {
-    (void) error_func;
-    (void) error_context;
-    sandboxed_func(sandbox_context);
-    return PLATFORM_EXCEPTION_NONE;
+    typedef struct {
+        int signal;
+        Platform_Sandox_Error platform_error;
+        struct sigaction action;
+        struct sigaction prev_action;
+    } Signal_Error;
+
+    #undef X
+    #define X(SIGNAL_NAME, PLATFORM_ERROR)
+         {(SIGNAL_NAME), (PLATFORM_ERROR), {0}, {0}}
+
+    Signal_Error error_handlers[] = {
+        SIGNAL_ACTION_X
+    };
+    int64_t handler_count = sizeof(error_handlers) / sizeof(Signal_Error);
+
+    for(int64_t i = 0; i < handler_count; i++)
+    {
+        Signal_Error* sig_error = &error_handlers[i];
+        sig_error->action.sa_handler = (void *)bt_sighandler;
+        sigemptyset(&sig_error->action.sa_mask);
+        sig_error->action.sa_flags = SA_RESETHAND | SA_NOCLDSTOP;
+
+        bool state = sigaction(sig_error->signal, &sig_error->action, &sig_error->prev_action) == 0;
+        assert(state && "bad signal specifier!");
+    }
+
+    if(platform_signal_handler_i1 < 0)
+        platform_signal_handler_i1 = 0;
+
+    int32_t my_index = platform_signal_handler_i1++;
+    Signal_Handler_Queue* my_handler = &platform_signal_handler_queue[my_index];
+    memset(my_handler, 0, sizeof *my_handler);
+
+    Platform_Error had_error = PLATFORM_EXCEPTION_NONE;
+    switch(sigsetjmp(&my_handler->jump_buffer) == 0)
+    {
+        case 0: {
+            sandboxed_func(sandbox_context);
+            break;
+        }
+        case PLATFORM_SANDBOXE_JUMP_CODE: {
+            had_error = PLATFORM_EXCEPTION_OTHER;
+            for(int64_t i = 0; i < handler_count; i++)
+            {
+                if(error_handlers[i].signal == my_handler->signal)
+                {
+                    found_error = error_handlers[i].platform_error;
+                    break;
+                }
+            }
+            
+            printf("A signal handler was called and terminated successfully! %s\n", platform_error_code(found_error));
+            error_func(error_context, found_error);
+            break;
+        }
+        default: {
+            assert(false && "unexpected jump occured!");
+            break;
+        }
+    }
+
+    --platform_signal_handler_i1;
+
+    for(int64_t i = 0; i < handler_count; i++)
+    {
+        Signal_Error* sig_error = &error_handlers[i];
+        bool state = sigaction(sig_error->signal, &sig_error->prev_action, NULL) == 0;
+        assert(state && "bad signal specifier")
+    }
+
+    return had_error;
 }
 
 const char* platform_sandbox_error_to_string(Platform_Sandox_Error error)

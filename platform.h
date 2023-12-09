@@ -173,6 +173,7 @@ inline static int64_t platform_interlocked_increment64(volatile int64_t* target)
 inline static int32_t platform_interlocked_decrement32(volatile int32_t* target);
 inline static int64_t platform_interlocked_decrement64(volatile int64_t* target);
 
+//@TODO: Interlocked read? Its not needed on x86 but is needed on other arcitectures
 
 //=========================================
 // Timings
@@ -372,6 +373,7 @@ typedef struct {
     char module[256];   //mangled or unmangled module name ie. name of dll/executable
     char file[256];     //file or empty if not supported
     int64_t line;       //0 if not supported;
+    void* address;
 } Platform_Stack_Trace_Entry;
 
 //Stops the debugger at the call site
@@ -383,14 +385,31 @@ void platform_terminate();
 
 //Captures the current stack frame pointers. 
 //Saves up to stack_size pointres into the stack array and returns the number of
-//stack frames captures. If the returned number is exactly stack_size a bigger buffer MIGHT be reuqired.
+//stack frames captures. If the returned number is exactly stack_size a bigger buffer MIGHT be required.
 //Skips first skip_count stack pointers from the position of the called. 
-//Even with skip_count = 0 this will not be included within the stack
+//(even with skip_count = 0 platform_capture_call_stack() will not be included within the stack)
 int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t skip_count);
 
-//Translates captured stack into helpful entries. Operates on short fixed width strings to guarantee this function
-//will never fail yet translate all needed stack frames. This function should never allocate anything.
-void platform_translate_call_stack(Platform_Stack_Trace_Entry* tanslated, const void** stack, int64_t stack_size);
+//Translates captured stack into helpful entries. Operates on fixed width strings to guarantee this function
+//will never fail yet translate all needed stack frames. 
+void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void** stack, int64_t stack_size);
+
+typedef struct Platfrom_Sandbox_Error_State Platfrom_Sandbox_Error_State; 
+
+//Launches the sandboxed_func inside a sendbox protecting the outside environment 
+// from any exceptions, including hardware exceptions that might occur inside sandboxed_func.
+//If an exception occurs collects execution context including stack pointers and gracefuly recovers. 
+//Returns the error that occured or PLATFORM_EXCEPTION_NONE = 0 on success.
+Platform_Sandox_Error platform_exception_sandbox(
+    void (*sandboxed_func)(void* sandbox_context),   
+    void* sandbox_context,
+    void** stack, int64_t stack_size,
+);
+
+typedef struct Platfrom_Sandbox_Error_State {
+    Platform_Sandox_Error error;
+    const void** stack_at_error;
+} Platfrom_Sandbox_Error_State;
 
 typedef enum Platform_Sandox_Error {
     PLATFORM_EXCEPTION_NONE = 0,
@@ -415,19 +434,6 @@ typedef enum Platform_Sandox_Error {
     PLATFORM_EXCEPTION_TERMINATE = 0x0001000,
     PLATFORM_EXCEPTION_OTHER = 0x0001001,
 } Platform_Sandox_Error; 
-
-//Launches the sandboxed_func inside a sendbox protecting the outside environment 
-//from any exceptions that might occur inside sandboxed func this includes hardware
-//exceptions. 
-//If an exception occurs calls error_func (if not NULL) with the error_code signaling the exception.
-//after error_func returns gracefully exits and returns the same error_code as passed into error_func.
-//On no error returns 0
-Platform_Sandox_Error platform_exception_sandbox(
-    void (*sandboxed_func)(void* context),   
-    void* sandbox_context,
-    void (*error_func)(void* context, Platform_Sandox_Error error_code),   
-    void* error_context
-);
 
 //Convertes the sandbox error to string. The string value is the name of the enum
 // (PLATFORM_EXCEPTION_ACCESS_VIOLATION -> "PLATFORM_EXCEPTION_ACCESS_VIOLATION")
@@ -553,7 +559,7 @@ const char* platform_sandbox_error_to_string(Platform_Sandox_Error error);
 
     #undef platform_trap
     // #define platform_trap() __builtin_trap() /* bad looks like a fault in program! */
-    #define platform_trap() raise(SIGTSTP)
+    #define platform_trap() raise(SIGTRAP)
 
     inline static void platform_compiler_memory_fence() 
     {

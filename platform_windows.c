@@ -1475,7 +1475,7 @@ static void _platform_stack_trace_deinit()
     SymCleanup(gp_state.stack_trace_process);
 }
 
-void platform_translate_call_stack(Platform_Stack_Trace_Entry* tanslated, const void** stack, int64_t stack_size)
+void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void** stack, int64_t stack_size)
 {
     if(stack_size == 0)
         return;
@@ -1487,12 +1487,12 @@ void platform_translate_call_stack(Platform_Stack_Trace_Entry* tanslated, const 
     IMAGEHLP_LINE64 line = {0};
     line.SizeOfStruct = sizeof line;
 
-    Platform_Stack_Trace_Entry null_entry = {0};
+    memset(translated, 0, stack_size * sizeof *translated);
     for(int64_t i = 0; i < stack_size; i++)
     {
-        Platform_Stack_Trace_Entry* entry = tanslated + i;
+        Platform_Stack_Trace_Entry* entry = translated + i;
         DWORD64 address = (DWORD64) stack[i];
-        *entry = null_entry;
+        entry->address = stack[i];
 
         if (address == 0)
             continue;
