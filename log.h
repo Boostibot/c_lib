@@ -94,6 +94,8 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 //Does not do anything (failed condition) but type checks the arguments
 #define LOG_NEVER(module, log_type, format, ...)  ((module && false) ? log_message(module, log_type, SOURCE_INFO(),format, ##__VA_ARGS__) : (void) 0)
 
+//Some of the ansi colors that can be used within logs. 
+//However their usage is not recommended since these will be written to log files and thus make their parsing more difficult.
 #define ANSI_COLOR_NORMAL       "\x1B[0m"
 #define ANSI_COLOR_RED          "\x1B[31m"
 #define ANSI_COLOR_BRIGHT_RED   "\x1B[91m"
@@ -270,7 +272,7 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, co
     if(callstack_size < 0 || callstack == NULL)
         callstack_size = 0;
     
-    enum {TRANSLATE_AT_ONCE = 256};
+    enum {TRANSLATE_AT_ONCE = 8};
     for(isize i = 0; i < callstack_size; i += TRANSLATE_AT_ONCE)
     {
         isize offset = i * TRANSLATE_AT_ONCE;

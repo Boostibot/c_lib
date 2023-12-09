@@ -84,33 +84,22 @@ EXPORT int64_t base64_encode(void* out, const void* data, int64_t input_length, 
 //Returns the exact ammount of bytes written to out.
 EXPORT int64_t base64_decode(void* out, const void* data, int64_t input_length, Base64_Decoding decoding, int64_t* error_at_or_null);
 
-//@TODO: change to functions
-const uint8_t BASE64_ENCODING_TABLE_URL[BASE64_ENCODING_TABLE_SIZE + 1];
-const uint8_t BASE64_ENCODING_TABLE_UTF8[BASE64_ENCODING_TABLE_SIZE + 1];
-const uint8_t BASE64_DECODING_TABLE_UNIVERSAL[BASE64_DECODING_TABLE_SIZE]; 
-
 //Common encodings and decodings
 //Url/filesystem safe encoding. We use this for everything. Formally RFC 4648 / Base64URL
-const Base64_Encoding BASE64_ENCODING_URL;
-const Base64_Encoding BASE64_ENCODING_URL_NO_PAD;
+EXPORT const Base64_Encoding base64_encoding_url();
+EXPORT const Base64_Encoding base64_encoding_url_no_pad();
+EXPORT const Base64_Encoding base64_encoding_url_utf8();   //common internet encoding
+EXPORT const Base64_Decoding base64_decoding_universal();  //Common decoding that should work for *most* base64 encodings.
 
-//common internet encoding
-const Base64_Encoding BASE64_ENCODING_UTF8;
-
-//Common decoding that should work for *most* base64 encodings.
-const Base64_Decoding BASE64_DECODING_UNIVERSAL;
+//The appropriate encoding/decoding tables used by the above encodings/decodings. See implementation
+EXPORT const uint8_t* base64_encoding_table_url();
+EXPORT const uint8_t* base64_encoding_table_utf8();
+EXPORT const uint8_t* base64_decoding_table_universal();
 
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_BASE64_IMPL)) && !defined(JOT_BASE64_HAS_IMPL)
 #define JOT_BASE64_HAS_IMPL
-
-
-const Base64_Encoding BASE64_ENCODING_URL = {BASE64_ENCODING_TABLE_URL, '=', true};
-const Base64_Encoding BASE64_ENCODING_URL_NO_PAD = {BASE64_ENCODING_TABLE_URL, '=', false};
-const Base64_Encoding BASE64_ENCODING_UTF8 = {BASE64_ENCODING_TABLE_UTF8, '=', true};
-
-const Base64_Decoding BASE64_DECODING_UNIVERSAL = {BASE64_DECODING_TABLE_UNIVERSAL, '=', true, false};
 
 EXPORT int64_t base64_encode_max_output_length(int64_t input_length)
 {
@@ -453,5 +442,39 @@ const uint8_t BASE64_TABLE_DECODING_URL[BASE64_DECODING_TABLE_SIZE] = {
 };
 
 #endif
+
+EXPORT const uint8_t* base64_encoding_table_url()
+{
+    return BASE64_ENCODING_TABLE_URL;
+}
+EXPORT const uint8_t* base64_encoding_table_utf8()
+{
+    return BASE64_ENCODING_TABLE_UTF8;
+}
+EXPORT const uint8_t* base64_decoding_table_universal()
+{
+    return BASE64_DECODING_TABLE_UNIVERSAL;
+}
+
+EXPORT const Base64_Encoding base64_encoding_url()
+{
+    Base64_Encoding out = {BASE64_ENCODING_TABLE_URL, '=', true};
+    return out;
+}
+EXPORT const Base64_Encoding base64_encoding_url_no_pad()
+{
+    Base64_Encoding out = {BASE64_ENCODING_TABLE_URL, '=', false};
+    return out;
+}
+EXPORT const Base64_Encoding base64_encoding_url_utf8()
+{
+    Base64_Encoding out = {BASE64_ENCODING_TABLE_UTF8, '=', true};
+    return out;
+}
+EXPORT const Base64_Decoding base64_decoding_universal()
+{
+    Base64_Decoding out = {BASE64_DECODING_TABLE_UNIVERSAL, '=', true, false};
+    return out;
+}
 
 #endif

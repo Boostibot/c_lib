@@ -415,7 +415,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
 
         log_flush();
         platform_trap(); 
-        platform_abort();
+        abort();
     }
     #endif
 #endif

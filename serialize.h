@@ -28,7 +28,7 @@
 
 #include "format_lpf.h"
 #include "parse.h"
-#include "format.h"
+#include "vformat.h"
 #include "math.h"
 #include "base64.h"
 #include "guid.h"
@@ -321,7 +321,7 @@ EXPORT bool serialize_write_base64(Lpf_Dyn_Entry* entry, String val, String type
     isize max_size = base64_encode_max_output_length(val.size);
     array_resize(&encoded, max_size); 
         
-    isize actual_size = base64_encode(encoded.data, val.data, val.size, BASE64_ENCODING_URL);
+    isize actual_size = base64_encode(encoded.data, val.data, val.size, base64_encoding_url());
     array_resize(&encoded, actual_size); 
 
     serialize_entry_set_identity(entry, type, string_from_builder(encoded), LPF_KIND_ENTRY, LPF_FLAG_WHITESPACE_AGNOSTIC);
@@ -343,7 +343,7 @@ EXPORT bool serialize_read_base64(Lpf_Dyn_Entry* entry, String_Builder* val, Str
     isize max_size = base64_decode_max_output_length(trimmed.size);
     array_resize(val, max_size); 
         
-    isize actual_size = base64_decode(val->data, trimmed.data, trimmed.size, BASE64_DECODING_UNIVERSAL, NULL);
+    isize actual_size = base64_decode(val->data, trimmed.data, trimmed.size, base64_decoding_universal(), NULL);
     array_resize(val, actual_size); 
     return true;
 }

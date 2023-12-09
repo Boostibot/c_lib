@@ -336,7 +336,7 @@ EXPORT void debug_allocator_panic_func(Debug_Allocator* allocator, Debug_Allocat
     
     log_flush();
     platform_trap();
-    platform_abort();
+    abort();
 }
 
 typedef struct Debug_Allocation_Pre_Block

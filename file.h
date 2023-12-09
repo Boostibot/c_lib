@@ -214,21 +214,22 @@ EXPORT String path_get_full_ephemeral_from(String path, String base)
     return out_string;
 }
 
+
 EXPORT Error  path_get_full(String_Builder* into, String path) 
 { 
-    return path_get_full_from(into, path, path_get_executable_directory()); 
+    return path_get_full_from(into, path, string_make(platform_directory_get_current_working())); 
 }
 EXPORT String path_get_full_ephemeral(String path)
 {
-    return path_get_full_ephemeral_from(path, path_get_executable_directory()); 
+    return path_get_full_ephemeral_from(path, string_make(platform_directory_get_current_working())); 
 }
 EXPORT void path_get_relative(String_Builder* into, String path)
 {
-    path_get_relative_from(into, path, path_get_executable_directory()); 
+    path_get_relative_from(into, path, string_make(platform_directory_get_current_working())); 
 }
 EXPORT String path_get_relative_ephemeral(String path)
 {
-    return path_get_relative_ephemeral_from(path, path_get_executable_directory()); 
+    return path_get_relative_ephemeral_from(path, string_make(platform_directory_get_current_working())); 
 }
 
 #include <stdio.h>
@@ -240,7 +241,11 @@ EXPORT Error file_read_entire_append_into(String file_path, String_Builder* appe
     isize size_before = append_into->size;
     isize read_bytes = 0;
 
-    const char* full_path = path_get_full_ephemeral(file_path).data;
+    String_Builder escaped_path = {0};
+    array_init_backed(&escaped_path, allocator_get_scratch(), 512);
+    builder_append(&escaped_path, file_path);
+
+    const char* full_path = cstring_from_builder(escaped_path);
     FILE* file = fopen(full_path, "rb");
     bool had_eof = false;
     if(file != NULL)
@@ -264,6 +269,8 @@ EXPORT Error file_read_entire_append_into(String file_path, String_Builder* appe
         array_resize(append_into, size_before + read_bytes);
     }
 
+    array_deinit(&escaped_path);
+
     if (file == NULL || had_eof == false) 
     {
         return error_from_stdlib(errno);
@@ -279,14 +286,18 @@ EXPORT Error _file_write_entire_append_into(String file_path, String written, co
     //Maximum read value allowed by the standard
     enum {MAX_READ = 2097152};
     isize wrote_bytes = 0;
-
-    const char* full_path = path_get_full_ephemeral(file_path).data;
+    
+    String_Builder escaped_path = {0};
+    array_init_backed(&escaped_path, allocator_get_scratch(), 512);
+    builder_append(&escaped_path, file_path);
+    
+    const char* full_path = cstring_from_builder(escaped_path);
     FILE* file = fopen(full_path, open_mode);
     if(file != NULL)
     {
         for(; wrote_bytes < written.size; )
         {
-            isize written_size = written.size - written_size;
+            isize written_size = written.size - wrote_bytes;
             if(written_size > MAX_READ)
                 written_size = MAX_READ;
 
@@ -299,7 +310,8 @@ EXPORT Error _file_write_entire_append_into(String file_path, String written, co
 
         fclose(file);
     }
-
+    
+    array_deinit(&escaped_path);
     if (file == NULL || ferror(file) || wrote_bytes != written.size) 
         return error_from_stdlib(errno);
     else    

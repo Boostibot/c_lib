@@ -33,15 +33,6 @@ void platform_set_internal_allocator(Platform_Allocator allocator)
     (void) allocator;
 }
 
-void platform_abort()
-{
-    abort();
-}
-
-void platform_terminate()
-{
-    exit(0);
-}
 
 //=========================================
 // Timings 

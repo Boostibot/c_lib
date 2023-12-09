@@ -378,10 +378,6 @@ typedef struct {
 
 //Stops the debugger at the call site
 #define platform_trap() (*(char*)0 = 0)
-//Aborts the current thread. Identical to abort() from stdlib except can get intercepted by exception handler.
-void platform_abort();
-//Identical to platform_abort except termination is treated as proper, correct exit (aborting is treated as panicking)
-void platform_terminate();
 
 //Captures the current stack frame pointers. 
 //Saves up to stack_size pointres into the stack array and returns the number of
@@ -423,8 +419,8 @@ typedef struct Platform_Sandbox_Error {
     Platform_Exception exception;
     
     //A translated stack trace and its size
-    const Platform_Stack_Trace_Entry* stack_trace; 
-    int64_t stack_trace_size;
+    const Platform_Stack_Trace_Entry* call_stack; 
+    int64_t call_stack_size;
 
     //Platform specific data containing the cpu state and its size (so that it can be copied and saved)
     const void* execution_context;

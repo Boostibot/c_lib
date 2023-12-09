@@ -128,7 +128,7 @@ void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t old_size
 
 int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
 {
-    int64_t size = _aligned_msize(old_ptr, (size_t) align, 0);
+    int64_t size = _aligned_msize((void*) old_ptr, (size_t) align, 0);
     return size;
 }
 
@@ -1352,10 +1352,13 @@ Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_Str
 void platform_file_unwatch(Platform_File_Watch* file_watch)
 {
     _Platform_File_Watch_Context* watch_context = (_Platform_File_Watch_Context*) file_watch->data;
-
+    
     platform_thread_deinit(&file_watch->thread);
-    FindCloseChangeNotification(watch_context->user_context);
-    _platform_internal_reallocate(0, watch_context);
+    if(watch_context)
+    {
+        FindCloseChangeNotification(watch_context->watch_handle);
+        _platform_internal_reallocate(0, watch_context);
+    }
     memset(file_watch, 0, sizeof *file_watch);
 }
 
@@ -1492,7 +1495,7 @@ void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const
     {
         Platform_Stack_Trace_Entry* entry = translated + i;
         DWORD64 address = (DWORD64) stack[i];
-        entry->address = stack[i];
+        entry->address = (void*) stack[i];
 
         if (address == 0)
             continue;
@@ -1592,142 +1595,230 @@ static int64_t _platform_stack_trace_walk(CONTEXT context, HANDLE process, HANDL
     return i;
 }
 
-typedef void (*Sandbox_Error_Func)(void* context, Platform_Sandox_Error error_code);
+typedef void (*Sandbox_Error_Func)(void* error_context, Platform_Sandbox_Error error);
 
-__declspec(thread) Sandbox_Error_Func sandbox_error_func;
-__declspec(thread) void* sandbox_error_context;
-__declspec(thread) Platform_Sandox_Error sanbox_error_code;
-__declspec(thread) bool sandbox_is_signal_handler_set = false;
+#define SANDBOX_MAX_STACK 256
+#define SANDBOX_JUMP_VALUE 123
 
-void platform_abort()
+#include <setjmp.h>
+#include <signal.h>
+
+typedef struct Platform_Sandbox_State {
+    Platform_Exception exception;
+    void* stack[SANDBOX_MAX_STACK];
+    int64_t stack_size;
+    int64_t epoch_time;
+    int64_t perf_counter;
+
+    jmp_buf jump_buffer;
+    CONTEXT context;
+} Platform_Sandbox_State;
+
+__declspec(thread) Platform_Sandbox_State sandbox_state = {PLATFORM_EXCEPTION_NONE};
+__declspec(thread) int32_t sandbox_signal_handler_depth = 0;
+__declspec(thread) Platform_Stack_Trace_Entry* sandbox_translated_entries = NULL;
+
+void _sandbox_abort_filter(int signal)
 {
-    RaiseException(PLATFORM_EXCEPTION_ABORT, 0, 0, NULL);
+    int64_t epoch_time = platform_epoch_time();
+    int64_t perf_counter = platform_epoch_time();
+    if(sandbox_signal_handler_depth <= 0)
+        return;
+    
+    Platform_Sandbox_State* curr_state = &sandbox_state;
+    if(signal == SIGABRT)
+        curr_state->exception = PLATFORM_EXCEPTION_ABORT;
+    else if(signal == SIGTERM)
+        curr_state->exception = PLATFORM_EXCEPTION_TERMINATE;
+    else
+    {
+        assert(false && "badly registred signal handler");
+        curr_state->exception = PLATFORM_EXCEPTION_OTHER;
+    }
+    curr_state->stack_size = platform_capture_call_stack(curr_state->stack, SANDBOX_MAX_STACK, 1);
+    curr_state->epoch_time = epoch_time;
+    curr_state->perf_counter = perf_counter;
+
+    longjmp(curr_state->jump_buffer, SANDBOX_JUMP_VALUE);
 }
 
-void platform_terminate()
-{
-    RaiseException(PLATFORM_EXCEPTION_TERMINATE, 0, 0, NULL);
-}
 
-LONG WINAPI _sanbox_exception_filter(EXCEPTION_POINTERS * ExceptionInfo)
+LONG WINAPI _sandbox_exception_filter(EXCEPTION_POINTERS * ExceptionInfo)
 {
-    Platform_Sandox_Error error = PLATFORM_EXCEPTION_NONE;
+    int64_t epoch_time = platform_epoch_time();
+    int64_t perf_counter = platform_epoch_time();
+
+    if(sandbox_signal_handler_depth <= 0)
+        return EXCEPTION_CONTINUE_SEARCH;
+
+    Platform_Exception exception = PLATFORM_EXCEPTION_OTHER;
     switch(ExceptionInfo->ExceptionRecord->ExceptionCode)
     {
+        //Non errors:
+        case CONTROL_C_EXIT: return EXCEPTION_CONTINUE_SEARCH;
+        case STILL_ACTIVE: return EXCEPTION_CONTINUE_SEARCH;
+
+        //Errors:
         case EXCEPTION_ACCESS_VIOLATION:
-            error = PLATFORM_EXCEPTION_ACCESS_VIOLATION;
+            exception = PLATFORM_EXCEPTION_ACCESS_VIOLATION;
             break;
         case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
-            error = PLATFORM_EXCEPTION_ACCESS_VIOLATION;
+            exception = PLATFORM_EXCEPTION_ACCESS_VIOLATION;
             break;
         case EXCEPTION_BREAKPOINT:
-            error = PLATFORM_EXCEPTION_BREAKPOINT;
+            exception = PLATFORM_EXCEPTION_BREAKPOINT;
             break;
         case EXCEPTION_DATATYPE_MISALIGNMENT:
-            error = PLATFORM_EXCEPTION_DATATYPE_MISALIGNMENT;
+            exception = PLATFORM_EXCEPTION_DATATYPE_MISALIGNMENT;
             break;
         case EXCEPTION_FLT_DENORMAL_OPERAND:
-            error = PLATFORM_EXCEPTION_FLOAT_DENORMAL_OPERAND;
+            exception = PLATFORM_EXCEPTION_FLOAT_DENORMAL_OPERAND;
             break;
         case EXCEPTION_FLT_DIVIDE_BY_ZERO:
-            error = PLATFORM_EXCEPTION_FLOAT_DIVIDE_BY_ZERO;
+            exception = PLATFORM_EXCEPTION_FLOAT_DIVIDE_BY_ZERO;
             break;
         case EXCEPTION_FLT_INEXACT_RESULT:
-            error = PLATFORM_EXCEPTION_FLOAT_INEXACT_RESULT;
+            exception = PLATFORM_EXCEPTION_FLOAT_INEXACT_RESULT;
             break;
         case EXCEPTION_FLT_INVALID_OPERATION:
-            error = PLATFORM_EXCEPTION_FLOAT_INVALID_OPERATION;
+            exception = PLATFORM_EXCEPTION_FLOAT_INVALID_OPERATION;
             break;
         case EXCEPTION_FLT_OVERFLOW:
-            error = PLATFORM_EXCEPTION_FLOAT_OVERFLOW;
+            exception = PLATFORM_EXCEPTION_FLOAT_OVERFLOW;
             break;
         case EXCEPTION_FLT_STACK_CHECK:
-            error = PLATFORM_EXCEPTION_STACK_OVERFLOW;
+            exception = PLATFORM_EXCEPTION_STACK_OVERFLOW;
             break;
         case EXCEPTION_FLT_UNDERFLOW:
-            error = PLATFORM_EXCEPTION_FLOAT_UNDERFLOW;
+            exception = PLATFORM_EXCEPTION_FLOAT_UNDERFLOW;
             break;
         case EXCEPTION_ILLEGAL_INSTRUCTION:
-            error = PLATFORM_EXCEPTION_ILLEGAL_INSTRUCTION;
+            exception = PLATFORM_EXCEPTION_ILLEGAL_INSTRUCTION;
             break;
         case EXCEPTION_IN_PAGE_ERROR:
-            error = PLATFORM_EXCEPTION_PAGE_ERROR;
+            exception = PLATFORM_EXCEPTION_PAGE_ERROR;
             break;
         case EXCEPTION_INT_DIVIDE_BY_ZERO:
-            error = PLATFORM_EXCEPTION_INT_DIVIDE_BY_ZERO;
+            exception = PLATFORM_EXCEPTION_INT_DIVIDE_BY_ZERO;
             break;
         case EXCEPTION_INT_OVERFLOW:
-            error = PLATFORM_EXCEPTION_INT_OVERFLOW;
+            exception = PLATFORM_EXCEPTION_INT_OVERFLOW;
             break;
         case EXCEPTION_INVALID_DISPOSITION:
-            error = PLATFORM_EXCEPTION_OTHER;
+            exception = PLATFORM_EXCEPTION_OTHER;
             break;
         case EXCEPTION_NONCONTINUABLE_EXCEPTION:
-            error = PLATFORM_EXCEPTION_OTHER;
+            exception = PLATFORM_EXCEPTION_OTHER;
             break;
         case EXCEPTION_PRIV_INSTRUCTION:
-            error = PLATFORM_EXCEPTION_PRIVILAGED_INSTRUCTION;
+            exception = PLATFORM_EXCEPTION_PRIVILAGED_INSTRUCTION;
             break;
         case EXCEPTION_SINGLE_STEP:
-            error = PLATFORM_EXCEPTION_BREAKPOINT_SINGLE_STEP;
+            exception = PLATFORM_EXCEPTION_BREAKPOINT_SINGLE_STEP;
             break;
         case EXCEPTION_STACK_OVERFLOW:
-            error = PLATFORM_EXCEPTION_STACK_OVERFLOW;
+            exception = PLATFORM_EXCEPTION_STACK_OVERFLOW;
             break;
         case PLATFORM_EXCEPTION_ABORT:
-            error = PLATFORM_EXCEPTION_ABORT;
+            exception = PLATFORM_EXCEPTION_ABORT;
             break;
         case PLATFORM_EXCEPTION_TERMINATE:
-            error = PLATFORM_EXCEPTION_TERMINATE;
+            exception = PLATFORM_EXCEPTION_TERMINATE;
             break;
         default:
-            error = PLATFORM_EXCEPTION_OTHER;
+            exception = PLATFORM_EXCEPTION_OTHER;
             break;
     }
+    
+    HANDLE process = GetCurrentProcess();
+    HANDLE thread = GetCurrentThread();
 
-    sanbox_error_code = error;
-    if(sandbox_error_func != NULL && error != PLATFORM_EXCEPTION_STACK_OVERFLOW)
-        sandbox_error_func(sandbox_error_context, sanbox_error_code);
+    Platform_Sandbox_State* curr_state = &sandbox_state;
+    curr_state->epoch_time = epoch_time;
+    curr_state->perf_counter = perf_counter;
+    curr_state->exception = exception;
+    curr_state->context = *ExceptionInfo->ContextRecord;
+    curr_state->stack_size = _platform_stack_trace_walk(curr_state->context, process, thread, 0, (void**) &curr_state->stack, SANDBOX_MAX_STACK, 1);
+
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
-Platform_Sandox_Error platform_exception_sandbox(
-    void (*sandboxed_func)(void* context),   
+Platform_Exception platform_exception_sandbox(
+    void (*sandboxed_func)(void* sandbox_context),   
     void* sandbox_context,
-    void (*error_func)(void* context, Platform_Sandox_Error error_code),   
-    void* error_context
-)
+    void (*error_func)(void* error_context, Platform_Sandbox_Error error),
+    void* error_context)
 {
-    if(sandbox_is_signal_handler_set == false)
-    {
-        sandbox_is_signal_handler_set = true;
-        SetUnhandledExceptionFilter(_sanbox_exception_filter);
-        AddVectoredExceptionHandler(1, _sanbox_exception_filter);
-        SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOALIGNMENTFAULTEXCEPT | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
-    }
-        
-    Sandbox_Error_Func prev_func = sandbox_error_func;
-    void* prev_context = sandbox_error_context;
+    LPTOP_LEVEL_EXCEPTION_FILTER prev_exception_filter = SetUnhandledExceptionFilter(_sandbox_exception_filter);
+    void* vector_exception_handler = AddVectoredExceptionHandler(1, _sandbox_exception_filter);
+    int prev_error_mode = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOALIGNMENTFAULTEXCEPT | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
     
-    sandbox_error_func = error_func;
-    sandbox_error_context = error_context;
-    __try 
-    { 
-        sandboxed_func(sandbox_context);
-    } 
-    __except(1)
-    { 
-        sandbox_error_func = prev_func;
-        sandbox_error_context = prev_context;
-        return sanbox_error_code;
+    _crt_signal_t prev_abrt = signal(SIGABRT, _sandbox_abort_filter);
+    _crt_signal_t prev_term = signal(SIGTERM, _sandbox_abort_filter);
+        
+    Platform_Exception exception = PLATFORM_EXCEPTION_OTHER;
+    Platform_Sandbox_State prev_state = sandbox_state;
+    memset(&sandbox_state, 0, sizeof sandbox_state);
+
+    sandbox_signal_handler_depth += 1;
+
+    bool had_exception = false;
+    switch(setjmp(sandbox_state.jump_buffer))
+    {
+        default: {
+            __try 
+            { 
+                sandboxed_func(sandbox_context);
+            } 
+            __except(1)
+            { 
+                had_exception = true;
+            }
+            break;
+        }
+
+        case SANDBOX_JUMP_VALUE:
+            had_exception = true;
+            break;
     }
 
-    sandbox_error_func = prev_func;
-    sandbox_error_context = prev_context;
-    return PLATFORM_EXCEPTION_NONE;
+    if(had_exception)
+    {
+        //just in case we repeatedly exception or something like that
+        Platform_Sandbox_State error_state = sandbox_state;
+        exception = error_state.exception;
+
+        Platform_Stack_Trace_Entry* translated = (Platform_Stack_Trace_Entry*) _platform_internal_reallocate(sizeof(Platform_Stack_Trace_Entry) * error_state.stack_size, NULL);
+        platform_translate_call_stack(translated, (const void**) error_state.stack, error_state.stack_size);
+
+        Platform_Sandbox_Error error = {exception};
+        error.call_stack = translated;
+        error.call_stack_size = error_state.stack_size;
+        error.execution_context = &error_state.context;
+        error.execution_context_size = (int64_t) sizeof error_state.context;
+        error.epoch_time = error_state.epoch_time;
+        error.nanosec_offset = 0; //@TODO;
+
+        error_func(error_context, error);
+
+        _platform_internal_reallocate(0, translated);
+    }
+
+    sandbox_signal_handler_depth -= 1;
+    if(sandbox_signal_handler_depth < 0)
+        sandbox_signal_handler_depth = 0;
+
+    sandbox_state = prev_state;
+    signal(SIGABRT, prev_abrt);
+    signal(SIGTERM, prev_term);
+
+    SetErrorMode(prev_error_mode);
+    RemoveVectoredExceptionHandler(vector_exception_handler);
+    SetUnhandledExceptionFilter(prev_exception_filter);
+    return exception;
 }
 
-const char* platform_sandbox_error_to_string(Platform_Sandox_Error error)
+const char* platform_exception_to_string(Platform_Exception error)
 {
     switch(error)
     {
