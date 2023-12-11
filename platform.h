@@ -2,6 +2,7 @@
 #define JOT_PLATFORM
 
 #include <stdint.h>
+#include <limits.h>
 #include <stdbool.h>
 
 //This is a complete operating system abstarction layer. Its implementation is as stright forward and light as possible.
@@ -72,12 +73,17 @@ void* platform_virtual_reallocate(void* allocate_at, int64_t bytes, Platform_Vir
 void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t old_size, int64_t align);
 int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align); //returns the size in bytes of the allocated block. Useful for compatibility with APIs that expect malloc/free type allocation functions without explicit size
 
+
 //=========================================
 // Errors 
 //=========================================
 
 typedef uint32_t Platform_Error;
-enum {PLATFORM_ERROR_OK = 0};
+enum {
+    PLATFORM_ERROR_OK = 0, 
+    //... errno codes
+    PLATFORM_ERROR_OTHER = INT32_MAX,
+};
 
 //Returns a translated error message. The returned pointer is not static and shall NOT be stored as further calls to this functions will invalidate it. 
 //Thus the returned string should be immedietelly printed or copied into a different buffer
@@ -103,23 +109,20 @@ int64_t         platform_thread_get_proccessor_count();
 //initializes a new thread and immedietely starts it with the func function.
 //The thread has stack_size_or_zero bytes of stack sizes rounded up to page size
 //If stack_size_or_zero is zero or lower uses system default stack size.
-Platform_Error  platform_thread_init(Platform_Thread* thread, int (*func)(void*), void* context, int64_t stack_size_or_zero); 
-//Deinits a thread. If the thread is still running it is killed! Call platform_thread_join before to ensure it has finished
-void            platform_thread_deinit(Platform_Thread* thread); 
+//The thread automatically cleans itself up upon completion or termination.
+Platform_Error  platform_thread_launch(Platform_Thread* thread, void (*func)(void*), void* context, int64_t stack_size_or_zero); 
 
 Platform_Thread platform_thread_get_current(); //Returns handle to the calling thread
 void            platform_thread_sleep(int64_t ms); //Sleeps the calling thread for ms milliseconds
-int             platform_thread_join(Platform_Thread thread); //Blocks calling thread until the thread finishes and returns it state. Must not join the current calling thread!
 void            platform_thread_exit(int code); //Terminates a thread with an exit code
 void            platform_thread_yield(); //Yields the remainder of this thread's time slice to the OS
-
-//@TODO: make the only function!
-int             platform_threads_join(const Platform_Thread* threads, int64_t count);
+Platform_Error  platform_thread_detach(Platform_Thread thread);
+Platform_Error  platform_thread_join(const Platform_Thread* threads, int64_t count); //Blocks calling thread until all threads finish. Must not join the current calling thread!
 
 Platform_Error  platform_mutex_init(Platform_Mutex* mutex);
 void            platform_mutex_deinit(Platform_Mutex* mutex);
-Platform_Error  platform_mutex_acquire(Platform_Mutex* mutex);
-void            platform_mutex_release(Platform_Mutex* mutex);
+Platform_Error  platform_mutex_lock(Platform_Mutex* mutex);
+void            platform_mutex_unlock(Platform_Mutex* mutex);
 
 
 //=========================================
@@ -310,7 +313,7 @@ enum {
 
 typedef struct Platform_File_Watch {
     Platform_Thread thread;
-    void* data;
+    void* handle;
 } Platform_File_Watch;
 
 //Creates a watch of a diretcory monitoring for events described in the file_watch_flags. 

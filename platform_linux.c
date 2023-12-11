@@ -5,6 +5,7 @@
 #include <time.h>
 #include <stdio.h>
 #include <limits.h>
+#include <errno.h>
 
 typedef struct Platform_State {
     int64_t startup_perf_counter;
@@ -33,7 +34,219 @@ void platform_set_internal_allocator(Platform_Allocator allocator)
     (void) allocator;
 }
 
+void* _platform_internal_reallocate(int64_t new_size, void* old_ptr)
+{
+    assert(new_size >= 0)
+    if(new_size == 0)
+    {
+        free(old_ptr);
+        return NULL;
+    }
+    else
+    {
+        void* out = realloc(old_ptr, new_size);
+        if(out == NULL)
+            errno = ENOMEM;
 
+        return out;
+    }
+}
+
+//=========================================
+// Threading
+//=========================================
+#define _GNU_SOURCE
+#include <sched.h>
+#include <stdio.h>
+#include <pthread.h>
+#include <unistd.h>
+
+Platform_Error platform_error_code(bool state)
+{
+    if(state)
+        return PLATFORM_ERROR_OK;
+    else
+    {
+        Platform_Error out = (Platform_Error) (errno);
+
+        //make sure its actually an error
+        if(out == PLATFORM_ERROR_OK)
+            out = PLATFORM_ERROR_OTHER;
+        return out;
+    }
+}
+
+//typedef struct Platform_Thread {
+//    void* handle;
+//    int32_t id;
+//} Platform_Thread;
+//
+//typedef struct Platform_Mutex {
+//    void* handle;
+//} Platform_Mutex;
+
+//@TODO: remove the need to destroy thread handles. Make exit and abort sensitive to this 
+int64_t         platform_thread_get_proccessor_count()
+{
+    cpu_set_t cs;
+    CPU_ZERO(&cs);
+    sched_getaffinity(0, sizeof(cs), &cs);
+    return CPU_COUNT(&cs);
+}
+
+//initializes a new thread and immedietely starts it with the func function.
+//The thread has stack_size_or_zero bytes of stack sizes rounded up to page size
+//If stack_size_or_zero is zero or lower uses system default stack size.
+
+typedef struct Platform_Pthread_State {
+    pthread_t thread;
+    int (*func)(void*);
+    void* context;
+} Platform_Pthread_State;
+
+
+typedef struct Platform_Mutex_State {
+    pthread_mutex_t mutex;
+} Platform_Mutex_State;
+
+void _pthread_cleanup_routine(void* arg)
+{
+    assert(arg != NULL);
+    Platform_Pthread_State* thread_state = (Platform_Pthread_State*) arg;
+    _platform_internal_reallocate(0, thread_state);
+}
+
+void *_pthread_start_routine(void* arg)
+{
+    assert(arg != NULL);
+    pthread_cleanup_push(_pthread_cleanup_routine, arg);
+    Platform_Pthread_State* thread_state = (Platform_Pthread_State*) arg;
+    int ret = thread_state->func(thread_state->context);
+
+}
+
+Platform_Error  platform_thread_launch(Platform_Thread* thread, int (*func)(void*), void* context, int64_t stack_size_or_zero)
+{
+    platform_thread_deinit(thread);
+    bool state = true;
+    pthread_t thread = {0};
+    pthread_attr_t attr = {0};
+    pthread_attr_t* attr_ptr = {0};
+
+    if(stack_size_or_zero > 0)
+    {
+        attr_ptr = &attr;
+        pthread_attr_init(&attr);
+        state = state && 0 == pthread_attr_setstacksize(&attr, stack_size_or_zero);
+    }
+    
+    if(state)
+    {
+        Platform_Pthread_State* thread_state = (Platform_Pthread_State*) _platform_internal_reallocate(sizeof(Platform_Pthread_State), NULL);
+        state = thread_state != NULL;
+        if(state)
+        {
+            memset(thread_state, 0, sizeof *thread_state);
+
+            thread_state->func = func;
+            thread_state->context = context;
+            if(pthread_create(&thread_state->thread, attr_ptr, _pthread_start_routine, thread_state) != 0)
+            {
+                state = false;
+                _platform_internal_reallocate(0, thread_state);
+            }
+        }
+    }
+
+    if(stack_size_or_zero > 0)
+        pthread_attr_destroy(&attr);
+
+    return platform_error_code(state);
+}
+
+void            platform_thread_sleep(int64_t ms)
+{
+    if(ms > 10)
+        sleep(ms);
+    else
+        nanosleep(ms*1000);
+}
+
+void            platform_thread_exit(int code)
+{
+    pthread_exit((void*) code);
+}
+
+void            platform_thread_yield()
+{
+    sched_yield();
+}
+
+Platform_Error  platform_thread_detach(Platform_Thread thread)
+{
+    Platform_Pthread_State* thread_state = (Platform_Pthread_State*) thread.handle;
+    bool state = pthread_detach(thread_state->thread) == 0;
+    return platform_error_code(state);
+}
+
+Platform_Error  platform_thread_join(const Platform_Thread* threads, int64_t count)
+{
+    Platform_Error last_error = platform_error_code(true);
+    for(int64_t i = 0; i < count; i++)
+    {
+        Platform_Pthread_State* thread_state = (Platform_Pthread_State*) threads[i].handle;
+        if(pthread_join(thread_state->thread, NULL) != 0)
+            last_error = platform_error_code(false);
+    }
+
+    return last_error;
+}
+
+Platform_Error  platform_mutex_init(Platform_Mutex* mutex)
+{
+    platform_mutex_deinit(mutex);
+    bool state = true;
+    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) _platform_internal_reallocate(sizeof(Platform_Mutex_State), NULL);
+
+    state = mutex_state != NULL;
+    if(state)
+        state = pthread_mutex_init(&mutex_state->mutex, NULL) == 0;
+
+    Platform_Error error = platform_error_code(state);
+    mutex->handle = mutex_state;
+    if(!state)
+        platform_mutex_deinit(mutex);
+
+    return error;
+}
+void  platform_mutex_deinit(Platform_Mutex* mutex)
+{
+    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex.handle;
+    if(mutex_state)
+    {
+        pthread_mutex_destroy(&mutex_state->mutex);
+        _platform_internal_reallocate(0, mutex_state);
+    }
+
+    memset(mutex, 0, sizeof *mutex);
+}
+
+Platform_Error  platform_mutex_lock(Platform_Mutex* mutex)
+{
+    bool state = false;
+    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex.handle;
+    if(mutex_state)
+        state = pthread_mutex_lock(&mutex_state->mutex) == 0; 
+
+    return platform_error_code(state);
+}
+
+void platform_mutex_unlock(Platform_Mutex* mutex)
+{
+    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex.handle;
+    if(mutex_state)
+        pthread_mutex_unlock(&mutex_state->mutex);
+}
 //=========================================
 // Timings 
 //=========================================
@@ -313,14 +526,7 @@ const char* platform_null_terminate(Platform_String string)
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <errno.h>
-Platform_Error platform_error_code(bool state)
-{
-    if(state)
-        return PLATFORM_ERROR_OK;
-    else
-        return (Platform_Error) (errno);
-}
+
 
 int64_t platform_epoch_time_from_time_t(time_t time)
 {
@@ -520,7 +726,15 @@ void platform_file_memory_unmap(Platform_Memory_Mapping* mapping);
 
 const char* platform_translate_error(Platform_Error error)
 {
-    return strerror((int) error);
+    switch(error)
+    {
+        default:
+        case PLATFORM_ERROR_OK:
+            return strerror((int) error);
+
+        case PLATFORM_ERROR_OTHER,
+            return "Other platform specific error occured";
+    }
 }
 
 #include <malloc.h>

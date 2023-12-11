@@ -155,9 +155,9 @@ EXPORT void debug_allocator_deinit_allocation(Debug_Allocation* allocation);
 EXPORT void debug_allocator_deinit_allocation_array(Debug_Allocation_Array* allocations);
 
 //Prints up to get_max currectly alive allocations sorted by their time of allocation. If get_max <= 0 returns all
-EXPORT void debug_allocator_print_alive_allocations(const Debug_Allocator allocator, isize print_max); 
+EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_Type log_type, const Debug_Allocator allocator, isize print_max); 
 //Returns up to get_max last dead allocations sorted by their time of allocation. If get_max <= 0 returns up to dead_allocation_max (specified during construction)
-EXPORT void debug_allocator_print_dead_allocations(const Debug_Allocator allocator, isize print_max);
+EXPORT void debug_allocator_print_dead_allocations(const char* log_module, Log_Type log_type, const Debug_Allocator allocator, isize print_max);
 
 //Default panic handler for debug allocators. Prints if printing is enbaled and then aborts the program 
 EXPORT void debug_allocator_panic_func(Debug_Allocator* allocator, Debug_Allocator_Panic_Reason reason, Debug_Allocation allocation, isize penetration, Source_Info called_from, void* context);
@@ -330,9 +330,8 @@ EXPORT void debug_allocator_panic_func(Debug_Allocator* allocator, Debug_Allocat
     (void) penetration;
     const char* reason_str = debug_allocator_panic_reason_to_string(reason);
 
-    //log("MEMORY", LOG_TYPE_FATAL, SOURCE_INFO(), "PANIC because of %s at pointer 0x%08X " SOURCE_INFO_FMT "\n", reason_str, allocation.ptr, SOURCE_INFO_PRINT(called_from));
     LOG_FATAL("MEMORY", "PANIC because of %s at pointer 0x%08X " SOURCE_INFO_FMT, reason_str, allocation.ptr, SOURCE_INFO_PRINT(called_from));
-    debug_allocator_print_alive_allocations(*allocator, 0);
+    debug_allocator_print_alive_allocations("MEMORY", LOG_TYPE_TRACE, *allocator, 0);
     
     log_flush();
     platform_trap();
@@ -662,7 +661,7 @@ EXPORT void debug_allocator_deinit_allocation_array(Debug_Allocation_Array* allo
 
 EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void** callstack, isize callstack_size);
 
-EXPORT void debug_allocator_print_alive_allocations(const Debug_Allocator allocator, isize print_max)
+EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_Type log_type, const Debug_Allocator allocator, isize print_max)
 {
     _debug_allocator_is_invariant(&allocator);
     
@@ -670,19 +669,19 @@ EXPORT void debug_allocator_print_alive_allocations(const Debug_Allocator alloca
     if(print_max > 0)
         ASSERT(alive.size <= print_max);
 
-    LOG_INFO("MEMORY", "printing ALIVE allocations (%lli) below:", (lli)alive.size);
+    LOG(log_module, log_type, "printing ALIVE allocations (%lli) below:", (lli)alive.size);
     log_group_push();
 
     for(isize i = 0; i < alive.size; i++)
     {
         Debug_Allocation curr = alive.data[i];
-        LOG_INFO("MEMORY", "%-3lli - size %-8lli ptr: 0x%08X align: %-2lli" SOURCE_INFO_FMT,
+        LOG(log_module, log_type, "%-3lli - size %-8lli ptr: 0x%08X align: %-2lli" SOURCE_INFO_FMT,
             (lli) i, (lli) curr.size, curr.ptr, (lli) curr.align, SOURCE_INFO_PRINT(curr.allocation_source));
      
         if(allocator.captured_callstack_size > 0)
         {
             log_group_push();
-            log_captured_callstack("MEMORY", LOG_TYPE_INFO, (const void**) curr.allocation_trace.data, curr.allocation_trace.size);
+            log_captured_callstack(log_module, log_type, (const void**) curr.allocation_trace.data, curr.allocation_trace.size);
             log_group_pop();
         }
     }
@@ -693,13 +692,13 @@ EXPORT void debug_allocator_print_alive_allocations(const Debug_Allocator alloca
 
 
 
-EXPORT void debug_allocator_print_dead_allocations(const Debug_Allocator allocator, isize print_max)
+EXPORT void debug_allocator_print_dead_allocations(const char* log_module, Log_Type log_type, const Debug_Allocator allocator, isize print_max)
 {
     Debug_Allocation_Array dead = debug_allocator_get_dead_allocations(allocator, print_max);
     if(print_max > 0)
         ASSERT(dead.size <= print_max);
 
-    LOG_INFO("MEMORY", "printing DEAD allocations (%lli) below:", (lli)dead.size);
+    LOG(log_module, log_type, "printing DEAD allocations (%lli) below:", (lli)dead.size);
     
     for(isize i = 0; i < dead.size; i++)
     {
@@ -712,13 +711,13 @@ EXPORT void debug_allocator_print_dead_allocations(const Debug_Allocator allocat
 
         if(files_match)
         {
-            LOG_INFO("MEMORY", "%-3lli - size %-8lli ptr: 0x%08X align: %-2lli (%s : %3lli -> %3lli)",
+            LOG(log_module, log_type, "%-3lli - size %-8lli ptr: 0x%08X align: %-2lli (%s : %3lli -> %3lli)",
                 (lli) i, (lli) curr.size, curr.ptr, curr.align,
                 to_source.file, (lli) from_source.line, (lli) to_source.line);
         }
         else
         {
-            LOG_INFO("MEMORY", "%-3lli - size %-8lli ptr: 0x%08X align: %-2lli\n",
+            LOG(log_module, log_type, "%-3lli - size %-8lli ptr: 0x%08X align: %-2lli\n",
                 "[%-3lli] " SOURCE_INFO_FMT " -> " SOURCE_INFO_FMT,
                 (lli) i, (lli) curr.size, curr.ptr, curr.align,
                 i, SOURCE_INFO_PRINT(from_source), SOURCE_INFO_PRINT(to_source));
@@ -727,14 +726,14 @@ EXPORT void debug_allocator_print_dead_allocations(const Debug_Allocator allocat
         if(allocator.captured_callstack_size > 0)
         {
             log_group_push();
-                LOG_TRACE("MEMORY", "allocation callstack (%lli):", (lli) curr.allocation_trace.size);
+                LOG(log_module, log_type, "allocation callstack (%lli):", (lli) curr.allocation_trace.size);
                 log_group_push();
-                log_captured_callstack("MEMORY", LOG_TYPE_TRACE, (const void**) curr.allocation_trace.data, curr.allocation_trace.size);
+                log_captured_callstack(log_module, log_type, (const void**) curr.allocation_trace.data, curr.allocation_trace.size);
                 log_group_pop();
 
-                LOG_TRACE("MEMORY", "deallocation callstack (%lli):", (lli) curr.deallocation_trace.size);
+                LOG(log_module, log_type, "deallocation callstack (%lli):", (lli) curr.deallocation_trace.size);
                 log_group_push();
-                log_captured_callstack("MEMORY", LOG_TYPE_TRACE, (const void**) curr.deallocation_trace.data, curr.deallocation_trace.size);
+                log_captured_callstack(log_module, log_type, (const void**) curr.deallocation_trace.data, curr.deallocation_trace.size);
                 log_group_pop();
             log_group_pop();
         }

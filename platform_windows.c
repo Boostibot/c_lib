@@ -148,6 +148,30 @@ Platform_Error _error_code(bool state)
         return (Platform_Error) GetLastError();
 }
 
+
+void* _platform_internal_reallocate(int64_t new_size, void* old_ptr);
+
+#include  	<process.h>
+Platform_Error  platform_thread_launch(Platform_Thread* thread, void (*func)(void*), void* context, int64_t stack_size_or_zero)
+{
+    // platform_thread_deinit(thread);
+    if(stack_size_or_zero <= 0)
+        stack_size_or_zero = 0;
+    thread->handle = (void*) _beginthread(func, stack_size_or_zero, context);
+    if(thread->handle)
+        thread->id = GetThreadId(thread->handle);
+    return _error_code(thread->handle != NULL);
+}
+
+Platform_Thread platform_thread_get_current()
+{
+    Platform_Thread out = {0};
+    out.id = GetCurrentThreadId();
+    out.handle = GetCurrentThread();
+    return out;
+}
+
+#if 0
 Platform_Error  platform_thread_init(Platform_Thread* thread, int (*func)(void*), void* context, int64_t stack_size_or_zero)
 {
     platform_thread_deinit(thread);
@@ -164,13 +188,15 @@ void platform_thread_deinit(Platform_Thread* thread)
     *thread = null;
 }
 
-Platform_Thread platform_thread_get_current()
+int platform_thread_join(Platform_Thread thread)
 {
-    Platform_Thread out = {0};
-    out.id = GetCurrentThreadId();
-    out.handle = GetCurrentThread();
-    return out;
+    WaitForSingleObject(thread.handle, INFINITE);
+    DWORD code = 0;
+    GetExitCodeThread(thread.handle, &code);
+    return code;
 }
+#endif
+
 void platform_thread_yield()
 {
     SwitchToThread();
@@ -185,14 +211,37 @@ void platform_thread_exit(int code)
     ExitThread(code);
 }
 
-int platform_thread_join(Platform_Thread thread)
+Platform_Error  platform_thread_join(const Platform_Thread* threads, int64_t count)
 {
-    WaitForSingleObject(thread.handle, INFINITE);
-    DWORD code = 0;
-    GetExitCodeThread(thread.handle, &code);
-    return code;
+    if(count == 1)
+    {
+        WaitForSingleObject((HANDLE) threads[0].handle, INFINITE);
+    }
+    else
+    {
+        bool wait_for_all = true;
+        HANDLE handles[256] = {0};
+        for(int64_t i = 0; i < count;)
+        {
+            int64_t handle_count = 0;
+            for(; handle_count < 256; handle_count ++, i++)
+                handles[handle_count] = (HANDLE) threads[i].handle;
+
+            WaitForMultipleObjects(handle_count, handles, wait_for_all, INFINITE);
+        }
+    }
+
+    return PLATFORM_ERROR_OK;
 }
 
+Platform_Error platform_thread_detach(Platform_Thread thread)
+{
+    bool state = true;
+    if(thread.handle != NULL)
+        state = CloseHandle(thread.handle);
+
+    return _error_code(state);
+}
 
 Platform_Error  platform_mutex_init(Platform_Mutex* mutex)
 {
@@ -207,18 +256,16 @@ Platform_Error  platform_mutex_init(Platform_Mutex* mutex)
 void platform_mutex_deinit(Platform_Mutex* mutex)
 {
     CloseHandle((HANDLE) mutex->handle);
+    memset(mutex, 0, sizeof mutex);
 }
 
-Platform_Error platform_mutex_acquire(Platform_Mutex* mutex)
+Platform_Error platform_mutex_lock(Platform_Mutex* mutex)
 {
-    DWORD dwWaitResult = WaitForSingleObject( 
-            (HANDLE) mutex->handle, 
-            INFINITE);  // no time-out interval
-   
+    DWORD dwWaitResult = WaitForSingleObject((HANDLE) mutex->handle, INFINITE);
     return _error_code(dwWaitResult == WAIT_OBJECT_0);
 }
 
-void platform_mutex_release(Platform_Mutex* mutex)
+void platform_mutex_unlock(Platform_Mutex* mutex)
 {
     bool return_val = ReleaseMutex((HANDLE) mutex->handle);
     assert(return_val && "there is little we can do about errors appart from hoping they dont occur");
@@ -690,6 +737,9 @@ static void _w_concat(WString_Buffer* output, const wchar_t* a, const wchar_t* b
 
 const char* platform_translate_error(Platform_Error error)
 {
+    if(error == PLATFORM_ERROR_OTHER)
+        return "Other platform specific error occured";
+
     char* trasnlated = NULL;
     int64_t length = FormatMessageA(
         FORMAT_MESSAGE_ALLOCATE_BUFFER | 
@@ -1259,14 +1309,16 @@ typedef struct _Platform_File_Watch_Context {
     HANDLE watch_handle;
     bool (*user_func)(void* context);
     void* user_context;
+    bool thread_exited;
 } _Platform_File_Watch_Context;
 
 #define WATCH_ALIGN 8
 
-int _file_watch_func(void* context)
+void _file_watch_func(void* context)
 {
     _Platform_File_Watch_Context* watch_context = (_Platform_File_Watch_Context*) context;
-    int return_state = 0;
+    assert(watch_context && "badly called");
+
     while(true)
     {
         DWORD wait_state = WaitForSingleObject(watch_context->watch_handle, INFINITE);
@@ -1274,17 +1326,13 @@ int _file_watch_func(void* context)
         {
             bool user_state = watch_context->user_func(watch_context->user_context);
             if(user_state == false)
-            {
-                return_state = 0;
                 break;
-            }
         }
         //something else happened. It shouldnt but it did. We exit the thread.
         else
         {
             assert(wait_state != WAIT_ABANDONED && "only happens for mutexes");
             assert(wait_state != WAIT_TIMEOUT && "we didnt set timeout");
-            return_state = 1;
             break;
         }
 
@@ -1292,14 +1340,14 @@ int _file_watch_func(void* context)
         {
             //Some error occured
             assert(false);
-            return_state = 1;
             break;
         }
     }
 
     if(watch_context->watch_handle != INVALID_HANDLE_VALUE)
         FindCloseChangeNotification(watch_context->watch_handle);
-    return return_state;
+
+    watch_context->thread_exited = true;
 }
 
 Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_String file_or_dir_path, int32_t file_wacht_flags, bool (*async_func)(void* context), void* context)
@@ -1309,7 +1357,7 @@ Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_Str
     
     HANDLE watch_handle = INVALID_HANDLE_VALUE;
     _Platform_File_Watch_Context* watch_context = (_Platform_File_Watch_Context*) _platform_internal_reallocate(sizeof *watch_context, NULL);
-    file_watch->data = watch_context;
+    file_watch->handle = watch_context;
     Platform_Error error = PLATFORM_ERROR_OK;
     if(watch_context != NULL)
     {
@@ -1340,7 +1388,7 @@ Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_Str
             watch_context->user_context = context;
             watch_context->user_func = async_func;
             watch_context->watch_handle = watch_handle;
-            error = platform_thread_init(&file_watch->thread, _file_watch_func, watch_context, 0);
+            error = platform_thread_launch(&file_watch->thread, _file_watch_func, watch_context, 0);
         }
     }
 
@@ -1351,12 +1399,14 @@ Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_Str
 }
 void platform_file_unwatch(Platform_File_Watch* file_watch)
 {
-    _Platform_File_Watch_Context* watch_context = (_Platform_File_Watch_Context*) file_watch->data;
-    
-    platform_thread_deinit(&file_watch->thread);
+    _Platform_File_Watch_Context* watch_context = (_Platform_File_Watch_Context*) file_watch->handle;
     if(watch_context)
     {
-        FindCloseChangeNotification(watch_context->watch_handle);
+        if(watch_context->thread_exited == false)
+        {
+            TerminateThread (file_watch->thread.handle, 0);
+            FindCloseChangeNotification(watch_context->watch_handle);
+        }
         _platform_internal_reallocate(0, watch_context);
     }
     memset(file_watch, 0, sizeof *file_watch);

@@ -275,13 +275,14 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, co
     enum {TRANSLATE_AT_ONCE = 8};
     for(isize i = 0; i < callstack_size; i += TRANSLATE_AT_ONCE)
     {
-        isize offset = i * TRANSLATE_AT_ONCE;
-        isize remaining = callstack_size - offset;
+        isize remaining = callstack_size - i;
+        assert(remaining > 0);
+
         if(remaining > TRANSLATE_AT_ONCE)
             remaining = TRANSLATE_AT_ONCE;
 
         Platform_Stack_Trace_Entry translated[TRANSLATE_AT_ONCE] = {0};
-        platform_translate_call_stack(translated, callstack + offset, remaining);
+        platform_translate_call_stack(translated, callstack + i, remaining);
         
         bool found_main = _log_translated_callstack_and_check_main(log_module, log_type, translated, remaining);
         if(found_main)
