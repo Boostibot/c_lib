@@ -1,9 +1,13 @@
 #ifndef JOT_PLATFORM
 #define JOT_PLATFORM
+#define _CRT_SECURE_NO_WARNINGS /* ... i hate msvc */
 
 #include <stdint.h>
 #include <limits.h>
+
+#ifndef __cplusplus
 #include <stdbool.h>
+#endif
 
 //This is a complete operating system abstarction layer. Its implementation is as stright forward and light as possible.
 //It uses sized strings on all imputs and returns null terminated strings for maximum compatibility and performance.
@@ -23,7 +27,6 @@
 //  
 //     Further having absolute control over the system is rewarding. Having the knowledge of every single operation that goes on is
 //     immensely satisfying.
-
 
 //=========================================
 // Platform layer setup
@@ -49,6 +52,54 @@ typedef struct Platform_Allocator {
 //context is user defined argument and old_size is purely informative (can be used for tracking purposes).
 //The value pointed to by context is not copied and needs to remain valid untill call to platform_deinit()!
 void platform_set_internal_allocator(Platform_Allocator allocator);
+
+//A non exhaustive list of operating systems
+typedef enum Platform_Operating_System {
+    PLATFORM_OS_UNKNOWN     = 0,
+    PLATFORM_OS_WINDOWS     = 1,
+    PLATFORM_OS_ANDROID     = 2,
+    PLATFORM_OS_UNIX        = 3,
+    PLATFORM_OS_BSD         = 4,
+    PLATFORM_OS_APPLE_IOS   = 5,
+    PLATFORM_OS_APPLE_OSX   = 6,
+    PLATFORM_OS_SOLARIS     = 7,
+    PLATFORM_OS_HP_UX       = 8,
+    PLATFORM_OS_IBM_AIX     = 9,
+} Platform_Operating_System;
+
+typedef enum Platform_Endian {
+    PLATFORM_ENDIAN_LITTLE = 0,
+    PLATFORM_ENDIAN_BIG = 1,
+    PLATFORM_ENDIAN_OTHER = 2, //We will never use this. But just for completion.
+} Platform_Endian;
+
+#ifndef PLATFORM_OS
+    //Becomes one of the Platform_Operating_Systems based on the detected OS. (see below)
+    //One possible use of this is to select the appropiate .c file for platform.h and include it
+    // after main making the whole build unity build, greatly simpifying the build procedure.
+    //Can be user overriden by defining it before including platform.h
+    #define PLATFORM_OS          PLATFORM_OS_UNKNOWN                 
+#endif
+
+#ifndef PLATFORM_SYSTME_BITS
+    //The adress space size of the system. Ie either 64 or 32 bit.
+    //Can be user overriden by defining it before including platform.h
+    #define PLATFORM_SYSTME_BITS ((UINTPTR_MAX == 0xffffffff) ? 32 : 64)
+#endif
+
+#ifndef PLATFORM_ENDIAN
+    //The endianness of the system. Is by default PLATFORM_ENDIAN_LITTLE.
+    //Can be user overriden by defining it before including platform.h
+    #define PLATFORM_ENDIAN      PLATFORM_ENDIAN_LITTLE
+#endif
+
+//Can be used in files without including platform.h but still becomes
+// valid if platform.h is included
+#if PLATFORM_ENDIAN == PLATFORM_ENDIAN_LITTLE
+    #define PLATFORM_HAS_ENDIAN_LITTLE PLATFORM_ENDIAN_LITTLE
+#elif PLATFORM_ENDIAN == PLATFORM_ENDIAN_BIG
+    #define PLATFORM_HAS_ENDIAN_BIG    PLATFORM_ENDIAN_BIG
+#endif
 
 
 //=========================================
@@ -177,6 +228,21 @@ inline static int32_t platform_interlocked_decrement32(volatile int32_t* target)
 inline static int64_t platform_interlocked_decrement64(volatile int64_t* target);
 
 //@TODO: Interlocked read? Its not needed on x86 but is needed on other arcitectures
+
+//=========================================
+// Modifiers
+//=========================================
+
+//See below for implementation on each compiler.
+
+#define MODIFIER_RESTRICT                                   /* C's restrict keyword. see: https://en.cppreference.com/w/c/language/restrict */
+#define MODIFIER_FORCE_INLINE                               /* Ensures function will get inlined. Applied before function declartion. */
+#define MODIFIER_NO_INLINE                                  /* Ensures function will not get inlined. Applied before function declartion. */
+#define MODIFIER_THREAD_LOCAL                               /* Declares a variable thread local. Applied before variable declarition. */
+#define MODIFIER_ALIGNED(bytes)                             /* Places a variable on the stack aligned to 'bytes' */
+#define MODIFIER_FORMAT_FUNC(format_arg, format_arg_index)  /* Marks a function as formatting function. Applied before function declartion. See log.h for example */
+#define MODIFIER_FORMAT_ARG                          /* Marks a format argument. Applied before const char* format argument. See log.h for example */  
+#define MODIFIER_NORETURN                                   /* Specifices that this function will not return (for example abort, exit ...) . Applied before function declartion. */
 
 //=========================================
 // Timings
@@ -381,6 +447,8 @@ typedef struct {
 
 //Stops the debugger at the call site
 #define platform_trap() (*(char*)0 = 0)
+//Marks a piece of code as unreachable for the compiler
+#define platform_assume_unreachable() (*(char*)0 = 0)
 
 //Captures the current stack frame pointers. 
 //Saves up to stack_size pointres into the stack array and returns the number of
@@ -448,15 +516,74 @@ Platform_Exception platform_exception_sandbox(
 // (PLATFORM_EXCEPTION_ACCESS_VIOLATION -> "PLATFORM_EXCEPTION_ACCESS_VIOLATION")
 const char* platform_exception_to_string(Platform_Exception error);
 
+#if PLATFORM_OS == PLATFORM_OS_UNKNOWN
+
+    #undef PLATFORM_OS
+    #if defined(_WIN32)
+        #define PLATFORM_OS PLATFORM_OS_WINDOWS // Windows
+    #elif defined(_WIN64)
+        #define PLATFORM_OS PLATFORM_OS_WINDOWS // Windows
+    #elif defined(__CYGWIN__) && !defined(_WIN32)
+        #define PLATFORM_OS PLATFORM_OS_WINDOWS // Windows (Cygwin POSIX under Microsoft Window)
+    #elif defined(__ANDROID__)
+        #define PLATFORM_OS PLATFORM_OS_ANDROID // Android (implies Linux, so it must come first)
+    #elif defined(__linux__)
+        #define PLATFORM_OS "linux" // Debian, Ubuntu, Gentoo, Fedora, openSUSE, RedHat, Centos and other
+    #elif defined(__unix__) || !defined(__APPLE__) && defined(__MACH__)
+        #include <sys/param.h>
+        #if defined(BSD)
+            #define PLATFORM_OS PLATFORM_OS_BSD // FreeBSD, NetBSD, OpenBSD, DragonFly BSD
+        #endif
+    #elif defined(__hpux)
+        #define PLATFORM_OS PLATFORM_OS_HP_UX // HP-UX
+    #elif defined(_AIX)
+        #define PLATFORM_OS PLATFORM_OS_IBM_AIX // IBM AIX
+    #elif defined(__APPLE__) && defined(__MACH__) // Apple OSX and iOS (Darwin)
+        #include <TargetConditionals.h>
+        #if TARGET_IPHONE_SIMULATOR == 1
+            #define PLATFORM_OS PLATFORM_OS_APPLE_IOS // Apple iOS
+        #elif TARGET_OS_IPHONE == 1
+            #define PLATFORM_OS PLATFORM_OS_APPLE_IOS // Apple iOS
+        #elif TARGET_OS_MAC == 1
+            #define PLATFORM_OS PLATFORM_OS_APPLE_OSX // Apple OSX
+        #endif
+    #elif defined(__sun) && defined(__SVR4)
+        #define PLATFORM_OS PLATFORM_OS_SOLARIS // Oracle Solaris, Open Indiana
+    #else
+        #define PLATFORM_OS PLATFORM_OS_UNKNOWN
+    #endif
+
+#endif 
+
+#undef MODIFIER_RESTRICT                                   
+#undef MODIFIER_FORCE_INLINE                               
+#undef MODIFIER_NO_INLINE                                  
+#undef MODIFIER_THREAD_LOCAL                               
+#undef MODIFIER_ALIGNED                            
+#undef MODIFIER_FORMAT_FUNC 
+#undef MODIFIER_FORMAT_ARG                          
+#undef MODIFIER_NORETURN                                   
 
 // =================== INLINE IMPLEMENTATION ============================
 #if defined(_MSC_VER)
     #include <stdio.h>
     #include <intrin.h>
     #include <assert.h>
+    #include <sal.h> //for _Printf_format_string_
 
     #undef platform_trap
     #define platform_trap() __debugbreak() 
+
+    #undef platform_assume_unreachable
+    #define platform_assume_unreachable() __assume(0)
+
+    #define MODIFIER_RESTRICT                                                 __restrict
+    #define MODIFIER_FORCE_INLINE                                             __forceinline
+    #define MODIFIER_NO_INLINE                                                __declspec(noinline)
+    #define MODIFIER_THREAD_LOCAL                                             __declspec(thread)
+    #define MODIFIER_ALIGNED(bytes)                                           __declspec(align(bytes))
+    #define MODIFIER_FORMAT_FUNC(format_arg, format_arg_index)                /* empty */
+    #define MODIFIER_FORMAT_ARG                                               _Printf_format_string_  
 
     inline static void platform_compiler_memory_fence() 
     {
@@ -563,12 +690,23 @@ const char* platform_exception_to_string(Platform_Exception error);
     }
 #elif defined(__GNUC__) || defined(__clang__)
 
-
     #include <signal.h>
 
     #undef platform_trap
     // #define platform_trap() __builtin_trap() /* bad looks like a fault in program! */
     #define platform_trap() raise(SIGTRAP)
+    
+    #undef platform_assume_unreachable
+    #define platform_assume_unreachable()                                    __builtin_unreachable() /*move to platform! */
+
+    #define MODIFIER_RESTRICT                                                __restrict__
+    #define MODIFIER_FORCE_INLINE                                            __attribute__((always_inline))
+    #define MODIFIER_NO_INLINE                                               __attribute__((noinline))
+    #define MODIFIER_THREAD_LOCAL                                            __thread
+    #define MODIFIER_ALIGNED(bytes)                                          __attribute__((aligned(bytes)))
+    #define MODIFIER_FORMAT_FUNC(format_arg, format_arg_index)               __attribute__((format_arg (printf, format_arg_index, 0)))
+    #define MODIFIER_FORMAT_ARG                                      /* empty */    
+    #define MODIFIER_NORETURN                                               __attribute__((noreturn))
 
     inline static void platform_compiler_memory_fence() 
     {
@@ -581,22 +719,22 @@ const char* platform_exception_to_string(Platform_Exception error);
         __sync_synchronize();
     }
 
-#if defined(__x86_64__) || defined(__i386__)
-    #include <immintrin.h> // For _mm_pause
-    inline static void platform_processor_pause()
-    {
-        _mm_pause();
-    }
-#else
-    #include <time.h>
-    inline static void platform_processor_pause()
-    {
-        struct timespec spec = {0};
-        spec.tv_sec = 0;
-        spec.tv_nsec = 1;
-        nanosleep(spec, NULL);
-    }
-#endif
+    #if defined(__x86_64__) || defined(__i386__)
+        #include <immintrin.h> // For _mm_pause
+        inline static void platform_processor_pause()
+        {
+            _mm_pause();
+        }
+    #else
+        #include <time.h>
+        inline static void platform_processor_pause()
+        {
+            struct timespec spec = {0};
+            spec.tv_sec = 0;
+            spec.tv_nsec = 1;
+            nanosleep(spec, NULL);
+        }
+    #endif
 
     //for refernce see: https://gcc.gnu.org/onlinedocs/gcc/Other-Builtins.html
     inline static int32_t platform_find_last_set_bit32(uint32_t num)

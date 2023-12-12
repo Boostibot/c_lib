@@ -28,7 +28,7 @@
 #define ASSERT(x)               ASSERT_MSG(x, "")            /* is enabled by DO_ASSERTS */
 #define ASSERT_SLOW(x)          ASSERT_SLOW_MSG(x, "")       /* is enabled by DO_ASSERTS_SLOW */
 #define CHECK_BOUNDS(i, to)     CHECK_RANGE_BOUNDS(i, 0, to) /* if i is not within [0, to) panics. is enabled by DO_BOUNDS_CHECKS*/
-#define UNREACHABLE()           ASSUME_UNREACHABLE(), ASSERT_MSG(false, "unreachable code reached!")
+#define UNREACHABLE()           platform_assume_unreachable(), ASSERT_MSG(false, "unreachable code reached!")
 
 //If x evaluates to false executes assertion_report() with the specified message. 
 #define TEST_MSG(x, msg, ...)               (!(x) ? (assertion_report(#x, SOURCE_INFO(), (msg), ##__VA_ARGS__), (platform_trap()), abort()) : (void) 0)

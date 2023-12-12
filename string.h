@@ -190,7 +190,7 @@ EXPORT String_Array string_split(String to_split, String split_by);
     EXPORT isize string_find_first_char_far(String string, char search_for, isize from)
     {
         bool is_big_endian = false;
-        #ifdef PLATFORM_BIG_ENDIAN
+        #ifdef PLATFORM_HAS_ENDIAN_BIG
         is_big_endian = true;
         #endif
 

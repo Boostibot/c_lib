@@ -114,7 +114,7 @@ uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed)
     const uint64_t * end = data + ((uint64_t) size/8);
 
     bool is_big_endian = false;
-    #ifdef PLATFORM_BIG_ENDIAN
+    #ifdef PLATFORM_HAS_ENDIAN_BIG
     is_big_endian = true;
     #endif
 

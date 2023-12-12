@@ -330,7 +330,7 @@ EXPORT void debug_allocator_panic_func(Debug_Allocator* allocator, Debug_Allocat
     (void) penetration;
     const char* reason_str = debug_allocator_panic_reason_to_string(reason);
 
-    LOG_FATAL("MEMORY", "PANIC because of %s at pointer 0x%08X " SOURCE_INFO_FMT, reason_str, allocation.ptr, SOURCE_INFO_PRINT(called_from));
+    LOG_FATAL("MEMORY", "PANIC because of %s at pointer 0x%08llx " SOURCE_INFO_FMT, reason_str, (lli) allocation.ptr, SOURCE_INFO_PRINT(called_from));
     debug_allocator_print_alive_allocations("MEMORY", LOG_TYPE_TRACE, *allocator, 0);
     
     log_flush();
@@ -675,8 +675,8 @@ EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_
     for(isize i = 0; i < alive.size; i++)
     {
         Debug_Allocation curr = alive.data[i];
-        LOG(log_module, log_type, "%-3lli - size %-8lli ptr: 0x%08X align: %-2lli" SOURCE_INFO_FMT,
-            (lli) i, (lli) curr.size, curr.ptr, (lli) curr.align, SOURCE_INFO_PRINT(curr.allocation_source));
+        LOG(log_module, log_type, "%-3lli - size %-8lli ptr: 0x%08llx align: %-2lli" SOURCE_INFO_FMT,
+            (lli) i, (lli) curr.size, (lli) curr.ptr, (lli) curr.align, SOURCE_INFO_PRINT(curr.allocation_source));
      
         if(allocator.captured_callstack_size > 0)
         {
@@ -711,16 +711,16 @@ EXPORT void debug_allocator_print_dead_allocations(const char* log_module, Log_T
 
         if(files_match)
         {
-            LOG(log_module, log_type, "%-3lli - size %-8lli ptr: 0x%08X align: %-2lli (%s : %3lli -> %3lli)",
-                (lli) i, (lli) curr.size, curr.ptr, curr.align,
+            LOG(log_module, log_type, "%-3lli - size %-8lli ptr: 0x%08llx align: %-2lli (%s : %3lli -> %3lli)",
+                (lli) i, (lli) curr.size, (lli) curr.ptr, curr.align,
                 to_source.file, (lli) from_source.line, (lli) to_source.line);
         }
         else
         {
-            LOG(log_module, log_type, "%-3lli - size %-8lli ptr: 0x%08X align: %-2lli\n",
+            LOG(log_module, log_type, "%-3lli - size %-8lli ptr: 0x%08llx align: %-2lli\n"
                 "[%-3lli] " SOURCE_INFO_FMT " -> " SOURCE_INFO_FMT,
-                (lli) i, (lli) curr.size, curr.ptr, curr.align,
-                i, SOURCE_INFO_PRINT(from_source), SOURCE_INFO_PRINT(to_source));
+                (lli) i, (lli) curr.size, (lli) curr.ptr, (lli) curr.align,
+                (lli) i, SOURCE_INFO_PRINT(from_source), SOURCE_INFO_PRINT(to_source));
         }
         
         if(allocator.captured_callstack_size > 0)
@@ -767,10 +767,10 @@ void print_pre(Debug_Allocation_Pre_Block pre, const char* c)
 {
     LOG_DEBUG("DEBUG", "printing pre block \"%s\" from: " SOURCE_INFO_FMT, c, SOURCE_INFO_PRINT(pre.header->allocation_source));
     log_group_push();
-        LOG_DEBUG("DEBUG", "header:             %08X", pre.header);
-        LOG_DEBUG("DEBUG", "user_ptr:           %08X", pre.user_ptr);
-        LOG_DEBUG("DEBUG", "call_stack:         %08X", pre.call_stack);
-        LOG_DEBUG("DEBUG", "dead_zone:          %08X", pre.dead_zone);
+        LOG_DEBUG("DEBUG", "header:             0x%08llx", (lli) pre.header);
+        LOG_DEBUG("DEBUG", "user_ptr:           0x%08llx", (lli) pre.user_ptr);
+        LOG_DEBUG("DEBUG", "call_stack:         0x%08llx", (lli) pre.call_stack);
+        LOG_DEBUG("DEBUG", "dead_zone:          0x%08llx", (lli) pre.dead_zone);
         LOG_DEBUG("DEBUG", "dead_zone_size:     %lli", (lli) pre.dead_zone_size);
         LOG_DEBUG("DEBUG", "call_stack_size:    %lli", (lli) pre.call_stack_size);
         log_group_push();
@@ -930,8 +930,8 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
     if(self->do_printing && self->is_within_allocation == false)
     {
         self->is_within_allocation = true;
-        LOG_DEBUG("MEMORY", "size %6lli -> %-6lli ptr: 0x%08X -> 0x%08X align: %lli " SOURCE_INFO_FMT,
-            (lli) old_size, (lli) new_size, old_ptr, new_ptr, (lli) align, SOURCE_INFO_PRINT(called_from));
+        LOG_DEBUG("MEMORY", "size %6lli -> %-6lli ptr: 0x%08llx -> 0x%08llx align: %lli " SOURCE_INFO_FMT,
+            (lli) old_size, (lli) new_size, (lli) old_ptr, (lli) new_ptr, (lli) align, SOURCE_INFO_PRINT(called_from));
         self->is_within_allocation = false;
     }
 

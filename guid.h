@@ -59,7 +59,7 @@ EXPORT Id id_generate()
 
 EXPORT Guid guid_generate()
 {
-    static THREAD_LOCAL Guid _rng_state = {0};
+    static MODIFIER_THREAD_LOCAL Guid _rng_state = {0};
     Guid* rng_state = &_rng_state;
     if(rng_state->hi == 0)
     {

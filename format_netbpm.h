@@ -45,13 +45,7 @@ typedef enum Netbpm_Format_Error {
     NETBPM_FORMAT_ERROR_NOT_ENOUGH_DATA,
 } Netbpm_Format_Error;
 
-typedef enum Endian {
-    ENDIAN_UNKNOWN = 0,
-    ENDIAN_LITTLE = 1,
-    ENDIAN_BIG = 2,
-} Endian;
-
-EXPORT Endian endian_get_local();
+EXPORT Platform_Endian endian_get_local();
 EXPORT u32 endian_byteswap(u32 val);
 EXPORT Netbpm_Format netbpm_format_classify(String data);
 
@@ -134,7 +128,7 @@ INTERNAL u32 netbmp_format_error_module()
     return error_module;
 }
 
-EXPORT Endian endian_get_local()
+EXPORT Platform_Endian endian_get_local()
 {
     union {
         u8 vals[4];
@@ -143,12 +137,11 @@ EXPORT Endian endian_get_local()
 
     switch(endian_tester.val)
     {
-        case 0x11223344: return ENDIAN_BIG;
-        case 0x44332211: return ENDIAN_LITTLE;
-        default:         return ENDIAN_UNKNOWN;
+        case 0x11223344: return PLATFORM_ENDIAN_BIG;
+        case 0x44332211: return PLATFORM_ENDIAN_LITTLE;
+        default:         return PLATFORM_ENDIAN_OTHER;
     }
 }
-
 
 INTERNAL Error _netbpm_format_write_append_pgm_ppm(String_Builder* append_into, Image image, const char* magic, i32 channels)
 {
@@ -192,6 +185,7 @@ INTERNAL Error _netbpm_format_read_pgm_ppm(Image_Builder* image, String ppm, con
     int h = 0;
     int max_val = 0;
     int read_so_far = 0;
+    assert(escaped_start.data != NULL);
     int parsed = sscanf(escaped_start.data, "%2s\n%d %d\n%d\n%n", read_magic, &w, &h, &max_val, &read_so_far);
 
     if(parsed != 4)
@@ -228,12 +222,12 @@ INTERNAL Error _netbpm_format_write_append_pfm_pfmg(String_Builder* append_into,
     array_reserve(append_into, append_into->size + neeed_size + 40);
 
     f32 corrected_range = 0;
-    if(endian_get_local() == ENDIAN_LITTLE)
+    if(endian_get_local() == PLATFORM_ENDIAN_LITTLE)
         corrected_range = fabsf(range);
     else
         corrected_range = fabsf(range);
 
-    format_append_into(append_into, "%s\n%d %d\n%d\n", magic, (int) image.width, (int) image.height, corrected_range);
+    format_append_into(append_into, "%s\n%d %d\n%f\n", magic, (int) image.width, (int) image.height, corrected_range);
 
     isize size_before = append_into->size;
     array_resize(append_into, size_before + neeed_size);
@@ -264,6 +258,7 @@ INTERNAL Error _netbpm_format_read_pfm_pfmg(Image_Builder* image, String ppm, co
     int h = 0;
     f32 range = 0;
     int read_so_far = 0;
+    assert(escaped_start.data != NULL);
     int parsed = sscanf(escaped_start.data, "%2s\n%d %d\n%f\n%n", read_magic, &w, &h, &range, &read_so_far);
 
     if(parsed != 4)

@@ -129,7 +129,7 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 // ========= MACRO IMPLMENTATION ==========
 	#define _IF_NOT_PERF_START_DO_PERF_COUNTERS(name) Global_Perf_Counter_Running name = {0}
 	#define _IF_NOT_PERF_START_(name) \
-		ALIGNED(64) static Global_Perf_Counter _##name = {0}; \
+		MODIFIER_ALIGNED(64) static Global_Perf_Counter _##name = {0}; \
 		Global_Perf_Counter_Running name = global_perf_counter_start(&_##name, __LINE__, __FILE__, __FUNCTION__, #name); \
 		platform_memory_fence()
 

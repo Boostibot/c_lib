@@ -65,7 +65,7 @@ EXPORT void log_group_pop();    //Decreases indentation of subsequent log messag
 EXPORT isize log_group_depth(); //Returns the current indentation of messages
 
 EXPORT void log_flush();
-EXPORT void log_message(const char* module, Log_Type type, Source_Info source, const char* format, ...);
+EXPORT MODIFIER_FORMAT_FUNC(format, 3) void log_message(const char* module, Log_Type type, Source_Info source, MODIFIER_FORMAT_ARG const char* format, ...);
 EXPORT void vlog_message(const char* module, Log_Type type, Source_Info source, const char* format, va_list args);
 
 EXPORT void log_callstack(const char* log_module, Log_Type log_type, isize depth, isize skip);
@@ -89,7 +89,7 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 #define LOG_TRACE(module, format, ...)          PP_IF(DO_LOG_TRACE, LOG)(module, LOG_TYPE_TRACE, format, ##__VA_ARGS__)
 
 //Logs a message. Does not get dissabled.
-#define LOG_ALWAYS(module, log_type, format, ...) log_message(module, log_type, SOURCE_INFO(), format, ##__VA_ARGS__)
+#define LOG_ALWAYS(module, log_type, format, ...)   log_message(module, log_type, SOURCE_INFO(), format, ##__VA_ARGS__)
 #define VLOG_ALWAYS(module, log_type, format, args) vlog_message(module, log_type, SOURCE_INFO(), format, args)
 //Does not do anything (failed condition) but type checks the arguments
 #define LOG_NEVER(module, log_type, format, ...)  ((module && false) ? log_message(module, log_type, SOURCE_INFO(),format, ##__VA_ARGS__) : (void) 0)
@@ -186,7 +186,7 @@ EXPORT void vlog_message(const char* module, Log_Type type, Source_Info source, 
         _global_logger->log(_global_logger, module, type, _global_log_group_depth, source, format, args);
 }
 
-EXPORT void log_message(const char* module, Log_Type type, Source_Info source, const char* format, ...)
+EXPORT MODIFIER_FORMAT_FUNC(format, 3) void log_message(const char* module, Log_Type type, Source_Info source, MODIFIER_FORMAT_ARG const char* format, ...)
 {
     va_list args;               
     va_start(args, format);     

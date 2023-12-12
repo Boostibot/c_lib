@@ -199,9 +199,9 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         return self->get_stats(self);
     }
 
-    INTERNAL THREAD_LOCAL Allocator* _default_allocator = NULL;
-    INTERNAL THREAD_LOCAL Allocator* _scratch_allocator = NULL;
-    INTERNAL THREAD_LOCAL Allocator* _static_allocator = NULL;
+    INTERNAL MODIFIER_THREAD_LOCAL Allocator* _default_allocator = NULL;
+    INTERNAL MODIFIER_THREAD_LOCAL Allocator* _scratch_allocator = NULL;
+    INTERNAL MODIFIER_THREAD_LOCAL Allocator* _static_allocator = NULL;
 
     EXPORT Allocator* allocator_get_default()
     {

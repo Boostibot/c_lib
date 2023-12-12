@@ -5,27 +5,30 @@
 #include "profile.h"
 #include <stdarg.h>
 
+
+EXPORT MODIFIER_FORMAT_FUNC(format, 3) void log_message(const char* module, Log_Type type, Source_Info source, MODIFIER_FORMAT_ARG const char* format, ...);
+
 EXPORT void vformat_append_into(String_Builder* append_to, const char* format, va_list args);
 EXPORT void vformat_append_into_sized(String_Builder* append_to, String format, va_list args);
 
-EXPORT void format_append_into(String_Builder* append_to, const char* format, ...);
+EXPORT MODIFIER_FORMAT_FUNC(format, 2) void format_append_into(String_Builder* append_to, MODIFIER_FORMAT_ARG const char* format, ...);
 EXPORT void format_append_into_sized(String_Builder* append_to, String format, ...);
 
 EXPORT void vformat_into(String_Builder* into, const char* format, va_list args);
 EXPORT void vformat_into_sized(String_Builder* into, String format, va_list args);
 
-EXPORT void format_into(String_Builder* into, const char* format, ...);
+EXPORT MODIFIER_FORMAT_FUNC(format, 2) void format_into(String_Builder* into, MODIFIER_FORMAT_ARG const char* format, ...);
 EXPORT void format_into_sized(String_Builder* into, String format, ...);
 
-EXPORT String format_ephemeral(const char* format, ...);
+EXPORT MODIFIER_FORMAT_FUNC(format, 1) String format_ephemeral(MODIFIER_FORMAT_ARG const char* format, ...);
 
 #define CSTRING_ESCAPE(s) (s) == NULL ? "" : (s)
 
 #define STRING_FMT "%.*s"
-#define STRING_PRINT(string) (string).size, (string).data
+#define STRING_PRINT(string) (int) (string).size, (string).data
 
 #define SOURCE_INFO_FMT "( %s : %lli )"
-#define SOURCE_INFO_PRINT(source_info) cstring_escape((source_info).file), (source_info).line
+#define SOURCE_INFO_PRINT(source_info) cstring_escape((source_info).file), (lli) (source_info).line
 
 typedef long long int lli;
 typedef unsigned long long llu;
@@ -83,8 +86,8 @@ typedef unsigned long long llu;
 
         array_deinit(&escaped);
     }
-
-    EXPORT void format_append_into(String_Builder* append_to, const char* format, ...)
+    
+    EXPORT MODIFIER_FORMAT_FUNC(format, 2) void format_append_into(String_Builder* append_to, MODIFIER_FORMAT_ARG const char* format, ...)
     {
         va_list args;
         va_start(args, format);
@@ -112,7 +115,7 @@ typedef unsigned long long llu;
         vformat_append_into_sized(into, format, args);
     }
 
-    EXPORT void format_into(String_Builder* into, const char* format, ...)
+    EXPORT MODIFIER_FORMAT_FUNC(format, 2) void format_into(String_Builder* into, MODIFIER_FORMAT_ARG const char* format, ...)
     {
         va_list args;
         va_start(args, format);
@@ -128,7 +131,7 @@ typedef unsigned long long llu;
         va_end(args);
     }
     
-    EXPORT String format_ephemeral(const char* format, ...)
+    EXPORT MODIFIER_FORMAT_FUNC(format, 1) String format_ephemeral(MODIFIER_FORMAT_ARG const char* format, ...)
     {
         enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256};
 

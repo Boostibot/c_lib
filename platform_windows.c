@@ -1,5 +1,9 @@
 #include "platform.h"
 
+#ifdef APIENTRY
+    #undef APIENTRY
+#endif
+
 #ifndef WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
 #endif
@@ -85,7 +89,10 @@ void* platform_virtual_reallocate(void* adress, int64_t bytes, Platform_Virtual_
 
     if(action == PLATFORM_VIRTUAL_ALLOC_DECOMMIT)
     {
+        //Dissable warning about MEM_DECOMMIT without MEM_RELEASE because thats the whole point of this opperation we are doing here.
+        #pragma warning(disable:6250)
         (void) VirtualFree(adress, bytes, MEM_DECOMMIT);  
+        #pragma warning(default:6250)
         return NULL;
     }
  
@@ -157,7 +164,7 @@ Platform_Error  platform_thread_launch(Platform_Thread* thread, void (*func)(voi
     // platform_thread_deinit(thread);
     if(stack_size_or_zero <= 0)
         stack_size_or_zero = 0;
-    thread->handle = (void*) _beginthread(func, stack_size_or_zero, context);
+    thread->handle = (void*) _beginthread(func, (unsigned int) stack_size_or_zero, context);
     if(thread->handle)
         thread->id = GetThreadId(thread->handle);
     return _error_code(thread->handle != NULL);
@@ -227,7 +234,7 @@ Platform_Error  platform_thread_join(const Platform_Thread* threads, int64_t cou
             for(; handle_count < 256; handle_count ++, i++)
                 handles[handle_count] = (HANDLE) threads[i].handle;
 
-            WaitForMultipleObjects(handle_count, handles, wait_for_all, INFINITE);
+            WaitForMultipleObjects((DWORD) handle_count, handles, wait_for_all, INFINITE);
         }
     }
 
@@ -451,7 +458,7 @@ int64_t platform_calendar_time_to_epoch_time(Platform_Calendar_Time calendar_tim
 #define IO_NORMALIZE_FILE 0
 
 #define buffer_init_backed(buff, backing_size) \
-    _buffer_init_backed((Buffer_Base*) (void*) (buff), sizeof *(buff)->data, alloca((backing_size) * sizeof *(buff)->data), (backing_size))
+    _buffer_init_backed((Buffer_Base*) (void*) (buff), sizeof *(buff)->data, _malloca((backing_size) * sizeof *(buff)->data), (backing_size))
 
 #define buffer_resize(buff, new_size) \
     _buffer_resize((Buffer_Base*) (void*) (buff), sizeof *(buff)->data, (new_size))
@@ -531,6 +538,7 @@ void* _platform_internal_reallocate(int64_t new_size, void* old_ptr)
             _platform_internal_reallocate_or_malloc(found_allocator, 0, actual_old_ptr, actual_old_size);
         }
 
+        assert(out_header != NULL);
         out_header->size_and_alloc_index1 = (actual_new_size << 16) | (gp_state.allocators.size & allocator_index_mask);
         return out_header + 1;
     }
@@ -1404,7 +1412,8 @@ void platform_file_unwatch(Platform_File_Watch* file_watch)
     {
         if(watch_context->thread_exited == false)
         {
-            TerminateThread (file_watch->thread.handle, 0);
+            //@TODO: inspect if this does what we want
+            //TerminateThread (file_watch->thread.handle, 0);
             FindCloseChangeNotification(watch_context->watch_handle);
         }
         _platform_internal_reallocate(0, watch_context);
@@ -1820,7 +1829,10 @@ Platform_Exception platform_exception_sandbox(
             { 
                 sandboxed_func(sandbox_context);
             } 
-            __except(1)
+            //@TODO: verify that we need to be doing it this way.
+            //We could call _sandbox_exception_filter directly here and make this probably be a lot easier.
+            //Yeah we probably dont have to do it this way I was just being paaranoid some time back....
+            __except(GetExceptionCode() != -1)
             { 
                 had_exception = true;
             }
@@ -1863,7 +1875,8 @@ Platform_Exception platform_exception_sandbox(
     signal(SIGTERM, prev_term);
 
     SetErrorMode(prev_error_mode);
-    RemoveVectoredExceptionHandler(vector_exception_handler);
+    if(vector_exception_handler != NULL)
+        RemoveVectoredExceptionHandler(vector_exception_handler);
     SetUnhandledExceptionFilter(prev_exception_filter);
     return exception;
 }
