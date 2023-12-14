@@ -85,7 +85,6 @@ Platform_Error platform_error_code(bool state)
 //    void* handle;
 //} Platform_Mutex;
 
-//@TODO: remove the need to destroy thread handles. Make exit and abort sensitive to this 
 int64_t         platform_thread_get_proccessor_count()
 {
     cpu_set_t cs;
@@ -740,14 +739,17 @@ const char* platform_translate_error(Platform_Error error)
 #include <malloc.h>
 int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
 {
-    (void) align;
-    return (int64_t) malloc_usable_size((void*) old_ptr);
+    assert(align > 0);
+    int64_t size = 0;
+    if(old_ptr)
+        size = (int64_t) malloc_usable_size((void*) old_ptr);
+
+    return size;
 }
 
-void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t old_size, int64_t align)
+void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align)
 {
-    //Note this can maybe be 16 
-    if(align <= 8)
+    if(align <= sizeof(long long int))
     {
         if(new_size <= 0)
         {
@@ -759,7 +761,6 @@ void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t old_size
     }
     else
     {
-        (void) old_size; //@TODO: remove as an argument!
         void* out = NULL;
         if(new_size > 0)
         {

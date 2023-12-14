@@ -25,7 +25,8 @@ typedef struct {
 
 EXPORT Id id_generate();
 EXPORT Guid guid_generate();
-EXPORT u64 guid_hash(Guid guid);
+EXPORT u64 guid_hash64(Guid guid);
+EXPORT u64 guid_hash32(Guid guid);
 
 #endif
 
@@ -40,13 +41,12 @@ EXPORT Id id_generate()
     //We generate the random values by doing atomic add on a counter and hashing the result.
     //We add salt to the hash to make the sequence random between program runs.
     //Note that the hash64 function is bijective and maps 0 -> 0
-
     static i64 salt = 0;
     static i64 counter = 0;
     if(salt == 0)
         salt = platform_perf_counter_startup(); 
     
-    u64 ordered_id = platform_interlocked_increment64(&counter) + salt;
+    u64 ordered_id = platform_atomic_add64(&counter, 1) + salt;
     u64 hashed_id = hash64(ordered_id);
 
     //In case we wrap around which shouldnt even happen...

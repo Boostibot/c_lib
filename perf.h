@@ -44,18 +44,19 @@ typedef struct Perf_Counter_Stats {
 
 EXPORT Perf_Counter_Running perf_counter_start();
 EXPORT void					perf_counter_end(Perf_Counter* counter, Perf_Counter_Running running);
-EXPORT void					perf_counter_end_interlocked(Perf_Counter* counter, Perf_Counter_Running running);
-EXPORT int64_t				perf_counter_end_interlocked_custom(Perf_Counter* counter, Perf_Counter_Running running, bool detailed);
+EXPORT void					perf_counter_end_atomic(Perf_Counter* counter, Perf_Counter_Running running);
+EXPORT int64_t				perf_counter_end_atomic_custom(Perf_Counter* counter, Perf_Counter_Running running, bool detailed);
 EXPORT double				perf_counter_get_ellapsed(Perf_Counter_Running running);
 EXPORT Perf_Counter_Stats	perf_counter_get_stats(Perf_Counter counter, int64_t batch_size);
 
 //Needs implementation:
 int64_t platform_perf_counter();
 int64_t platform_perf_counter_frequency();
-inline static bool    platform_interlocked_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value);
-inline static int64_t platform_interlocked_add64(volatile int64_t* target, int64_t value);
-inline static int64_t platform_interlocked_increment64(volatile int64_t* target);
-inline static int64_t platform_interlocked_decrement64(volatile int64_t* target);
+inline static bool    platform_atomic_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value);
+inline static int32_t platform_atomic_add32(volatile int32_t* target, int32_t value);
+inline static int64_t platform_atomic_add64(volatile int64_t* target, int64_t value);
+inline static int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value);
+inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value);
 
 #endif
 
@@ -99,12 +100,12 @@ inline static int64_t platform_interlocked_decrement64(volatile int64_t* target)
 		counter->max_counter = MAX(counter->max_counter, delta);
 	}
 	
-	EXPORT int64_t perf_counter_end_interlocked_custom(Perf_Counter* counter, Perf_Counter_Running running, bool detailed)
+	EXPORT int64_t perf_counter_end_atomic_custom(Perf_Counter* counter, Perf_Counter_Running running, bool detailed)
 	{
 		int64_t delta = platform_perf_counter() - running.start;
 
 		ASSERT(counter != NULL && delta >= 0 && "invalid Global_Perf_Counter_Running submitted");
-		int64_t runs = platform_interlocked_increment64(&counter->runs); 
+		int64_t runs = platform_atomic_add64(&counter->runs, 1); 
 		
 		//only save the stats that dont need to be updated on the first run
 		if(runs == 1)
@@ -115,30 +116,30 @@ inline static int64_t platform_interlocked_decrement64(volatile int64_t* target)
 			counter->mean_estimate = delta;
 		}
 	
-		platform_interlocked_add64(&counter->counter, delta);
+		platform_atomic_add64(&counter->counter, delta);
 
 		if(detailed)
 		{
 			int64_t offset_delta = delta - counter->mean_estimate;
-			platform_interlocked_add64(&counter->sum_of_squared_offset_counters, offset_delta*offset_delta);
+			platform_atomic_add64(&counter->sum_of_squared_offset_counters, offset_delta*offset_delta);
 
 			do {
 				if(counter->min_counter <= delta)
 					break;
-			} while(platform_interlocked_compare_and_swap64(&counter->min_counter, counter->min_counter, delta) == false);
+			} while(platform_atomic_compare_and_swap64(&counter->min_counter, counter->min_counter, delta) == false);
 
 			do {
 				if(counter->max_counter >= delta)
 					break;
-			} while(platform_interlocked_compare_and_swap64(&counter->max_counter, counter->max_counter, delta) == false);
+			} while(platform_atomic_compare_and_swap64(&counter->max_counter, counter->max_counter, delta) == false);
 		}
 
 		return runs;
 	}
 	
-	EXPORT void perf_counter_end_interlocked(Perf_Counter* counter, Perf_Counter_Running running)
+	EXPORT void perf_counter_end_atomic(Perf_Counter* counter, Perf_Counter_Running running)
 	{
-		perf_counter_end_interlocked_custom(counter, running, true);
+		perf_counter_end_atomic_custom(counter, running, true);
 	}
 	EXPORT Perf_Counter_Stats perf_counter_get_stats(Perf_Counter counter, int64_t batch_size)
 	{

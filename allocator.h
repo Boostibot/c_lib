@@ -74,8 +74,8 @@ typedef struct Allocator_Set {
     Allocator* allocator_static;
 } Allocator_Set;
 
-#define DEF_ALIGN 8
-#define SIMD_ALIGN 16
+#define DEF_ALIGN PLATFORM_MAX_ALIGN
+#define SIMD_ALIGN PLATFORM_MAX_ALIGN
 
 //Attempts to call the realloc funtion of the from_allocator. Can return nullptr indicating failiure
 EXPORT void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from);

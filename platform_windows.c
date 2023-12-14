@@ -110,20 +110,10 @@ void* platform_virtual_reallocate(void* adress, int64_t bytes, Platform_Virtual_
         return VirtualAlloc(adress, bytes, MEM_COMMIT, prot);
 }
 
-void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t old_size, int64_t align)
+void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align)
 {
-    assert(align > 0 && new_size >= 0 && old_size >= 0);
+    assert(align > 0 && new_size >= 0);
     
-    (void) old_size;
-    #ifndef NDEBUG
-    if(old_ptr != NULL && old_size != 0)
-    {
-        //@TODO: Remove this. Actually refactor the entire way we do allocations
-        //int64_t correct_size = platform_heap_get_block_size(old_ptr, align);
-        //assert(old_size == correct_size && "incorrect old_size passed to platform_heap_reallocate!");
-    }
-    #endif
-
     if(new_size == 0)
     {
         _aligned_free(old_ptr);
@@ -135,7 +125,9 @@ void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t old_size
 
 int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
 {
-    int64_t size = _aligned_msize((void*) old_ptr, (size_t) align, 0);
+    int64_t size = 0;
+    if(old_ptr)
+        size = _aligned_msize((void*) old_ptr, (size_t) align, 0);
     return size;
 }
 
@@ -360,6 +352,32 @@ int64_t platform_startup_epoch_time()
     return gp_state.startup_epoch_time;
 }
 
+//returns the number of micro-seconds since the start of the epoch
+// with respect to local timezones/daylight saving times and other
+int64_t platform_epoch_time_from_local_time(int64_t local_time)
+{
+    FILETIME local_file_time = _epoch_time_to_filetime(local_time);
+    FILETIME global_file_time = {0};
+
+    bool okay = LocalFileTimeToFileTime(&local_file_time, &global_file_time);
+    assert(okay); (void) okay;
+
+    int64_t epoch_time = _filetime_to_epoch_time(global_file_time);
+    return epoch_time;
+}
+int64_t platform_local_time_from_epoch_time(int64_t epoch_time)
+{
+    FILETIME global_file_time = _epoch_time_to_filetime(epoch_time);
+    FILETIME local_file_time = {0};
+
+    bool okay = FileTimeToLocalFileTime(&global_file_time, &local_file_time);
+    assert(okay); (void) okay;
+
+    int64_t local_time = _filetime_to_epoch_time(global_file_time);
+    return local_time;
+}
+
+#if 0
 int64_t platform_local_epoch_time()
 {
     FILETIME filetime;
@@ -370,8 +388,9 @@ int64_t platform_local_epoch_time()
     int64_t epoch_time = _filetime_to_epoch_time(local_filetime);
     return epoch_time;
 }
+#endif
 
-Platform_Calendar_Time platform_epoch_time_to_calendar_time(int64_t epoch_time_usec)
+Platform_Calendar_Time platform_calendar_time_from_epoch_time(int64_t epoch_time_usec)
 {
     const int64_t _EPOCH_YEAR              = (int64_t) 1970;
     const int64_t _MILLISECOND_MICROSECOND = (int64_t) 1000;
@@ -418,10 +437,20 @@ Platform_Calendar_Time platform_epoch_time_to_calendar_time(int64_t epoch_time_u
     assert(0 <= time.millisecond && time.millisecond < 1000);
     assert(0 <= time.day_of_week && time.day_of_week < 7);
     //assert(0 <= time.day_of_year && time.day_of_year <= 365);
+    
+    #ifndef NDEBUG
+    int64_t epoch_time_roundtrip = platform_epoch_time_from_calendar_time(time);
+    if(epoch_time_roundtrip != epoch_time_usec)
+    {
+        Platform_Calendar_Time roundtrip_time = platform_calendar_time_from_epoch_time(epoch_time_roundtrip); (void) roundtrip_time;
+        assert(epoch_time_roundtrip == epoch_time_usec && "roundtrip must be correct");
+    }
+    #endif // !NDEBUG
+
     return time;
 }
 
-int64_t platform_calendar_time_to_epoch_time(Platform_Calendar_Time calendar_time)
+int64_t platform_epoch_time_from_calendar_time(Platform_Calendar_Time calendar_time)
 {
     SYSTEMTIME systime = {0};
     systime.wDay = calendar_time.day;
@@ -440,12 +469,16 @@ int64_t platform_calendar_time_to_epoch_time(Platform_Calendar_Time calendar_tim
     int64_t epoch_time = _filetime_to_epoch_time(filetime);
     epoch_time += calendar_time.microsecond;
 
-    #ifndef NDEBUG
-    Platform_Calendar_Time roundtrip = platform_epoch_time_to_calendar_time(epoch_time);
-    assert(memcmp(&roundtrip, &calendar_time, sizeof calendar_time) == 0 && "roundtrip must be correct");
-    #endif // !NDEBUG
-
     return epoch_time;
+}
+
+Platform_Calendar_Time platform_local_calendar_time_from_epoch_time(int64_t epoch_time_usec)
+{
+    return platform_calendar_time_from_epoch_time(platform_local_time_from_epoch_time(epoch_time_usec));
+}
+int64_t platform_epoch_time_from_local_calendar_time(Platform_Calendar_Time calendar_time)
+{   
+    return platform_epoch_time_from_local_time(platform_epoch_time_from_calendar_time(calendar_time));
 }
 
 //=========================================
@@ -479,7 +512,7 @@ int64_t platform_calendar_time_to_epoch_time(Platform_Calendar_Time calendar_tim
 void* _platform_internal_reallocate_or_malloc(Platform_Allocator* alloc, int64_t actual_new_size, void* actual_old_ptr, int64_t actual_old_size)
 {
     if(alloc == NULL)
-        return platform_heap_reallocate(actual_new_size, actual_old_ptr, actual_old_size, sizeof(size_t));
+        return platform_heap_reallocate(actual_new_size, actual_old_ptr, sizeof(size_t));
     else
         return alloc->reallocate(alloc->context, actual_new_size, actual_old_ptr, actual_old_size);
 }
@@ -1007,17 +1040,49 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
     return _error_code(state);
 }
 
-Platform_Error platform_directory_create(Platform_String dir_path)
+BOOL _platform_directory_exists(const wchar_t* szPath)
+{
+  DWORD dwAttrib = GetFileAttributesW(szPath);
+
+  return (dwAttrib != INVALID_FILE_ATTRIBUTES && 
+         (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
+}
+
+Platform_Error platform_directory_create(Platform_String dir_path, bool* was_just_created_or_null)
 {
     const wchar_t* path = _ephemeral_path(dir_path);
-    bool state = !!CreateDirectoryW(path, NULL);
+    bool state = true;
+    bool was_created = true;
+    if(_platform_directory_exists(path))
+        was_created = false;
+    else
+    {
+        state = !!CreateDirectoryW(path, NULL);
+        was_created = state;
+    }
+
+    if(was_just_created_or_null)
+        *was_just_created_or_null = was_created;
+
     return _error_code(state);
 }
     
-Platform_Error platform_directory_remove(Platform_String dir_path)
+Platform_Error platform_directory_remove(Platform_String dir_path, bool* was_just_deleted_or_null)
 {
     const wchar_t* path = _ephemeral_path(dir_path);
-    bool state = !!RemoveDirectoryW(path);
+    bool state = true;
+    bool was_deleted = true;
+    if(_platform_directory_exists(path) == false)
+        was_deleted = false;
+    else
+    {
+        state = !!RemoveDirectoryW(path);
+        was_deleted = state;
+    }
+
+    if(was_just_deleted_or_null)
+        *was_just_deleted_or_null = was_deleted;
+
     return _error_code(state);
 }
 
@@ -1594,6 +1659,11 @@ void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const
 
             memmove(entry->file, line.FileName, copy_size);
         }
+        
+        //null terminate everything just in case
+        entry->module[sizeof entry->module - 1] = '\0';
+        entry->file[sizeof entry->file - 1] = '\0';
+        entry->function[sizeof entry->function - 1] = '\0';
     }
 }
 

@@ -73,12 +73,12 @@ EXPORT void  malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
         #define PERF_COUNTER_START(x)
         #define PERF_COUNTER_END(x)
         #define MALLOC_ALLOCATOR_MALLOC(size) malloc(size)
-        #define MALLOC_ALLOCATOR_FREE(pointer, size) free(pointer)
+        #define MALLOC_ALLOCATOR_FREE(pointer) free(pointer)
     #else
         #include "platform.h"
         #include "profile.h"
-        #define MALLOC_ALLOCATOR_MALLOC(size) platform_heap_reallocate(size, NULL, 0, DEF_ALIGN)
-        #define MALLOC_ALLOCATOR_FREE(pointer, size) platform_heap_reallocate(0, pointer, size, DEF_ALIGN)
+        #define MALLOC_ALLOCATOR_MALLOC(size) platform_heap_reallocate(size, NULL, DEF_ALIGN)
+        #define MALLOC_ALLOCATOR_FREE(pointer) platform_heap_reallocate(0, pointer, DEF_ALIGN)
     #endif
     
     INTERNAL void* _malloc_allocator_parent_allocate(Malloc_Allocator* self, isize size, Source_Info source)
@@ -94,7 +94,7 @@ EXPORT void  malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
         if(self->parent != NULL)
             self->parent->allocate(self->parent, 0, pointer, size, DEF_ALIGN, source);
         else
-            MALLOC_ALLOCATOR_FREE(pointer, size);
+            MALLOC_ALLOCATOR_FREE(pointer);
     }
 
     INTERNAL void _malloc_allocator_assert_block_coherency(Malloc_Allocator* self, Malloc_Allocator_Block_Header* block)

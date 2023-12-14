@@ -228,7 +228,7 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
     if(type == LOG_TYPE_FLUSH)
         return;
 
-    Platform_Calendar_Time now = platform_epoch_time_to_calendar_time(platform_local_epoch_time());
+    Platform_Calendar_Time now = platform_local_calendar_time_from_epoch_time(platform_epoch_time());
     const char* color_mode = ANSI_COLOR_NORMAL;
     if(type == LOG_TYPE_ERROR || type == LOG_TYPE_FATAL)
         color_mode = ANSI_COLOR_BRIGHT_RED;
