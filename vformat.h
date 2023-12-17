@@ -5,9 +5,6 @@
 #include "profile.h"
 #include <stdarg.h>
 
-
-EXPORT MODIFIER_FORMAT_FUNC(format, 3) void log_message(const char* module, Log_Type type, Source_Info source, MODIFIER_FORMAT_ARG const char* format, ...);
-
 EXPORT void vformat_append_into(String_Builder* append_to, const char* format, va_list args);
 EXPORT void vformat_append_into_sized(String_Builder* append_to, String format, va_list args);
 

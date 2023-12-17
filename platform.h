@@ -55,14 +55,14 @@ void platform_set_internal_allocator(Platform_Allocator allocator);
 
 //A non exhaustive list of operating systems
 typedef enum Platform_Operating_System {
-    PLATFORM_OS_UNKNOWN     = 0,
+    PLATFORM_OS_UNKNOWN     = 0, 
     PLATFORM_OS_WINDOWS     = 1,
     PLATFORM_OS_ANDROID     = 2,
-    PLATFORM_OS_UNIX        = 3,
-    PLATFORM_OS_BSD         = 4,
+    PLATFORM_OS_UNIX        = 3, // Debian, Ubuntu, Gentoo, Fedora, openSUSE, RedHat, Centos and other
+    PLATFORM_OS_BSD         = 4, // FreeBSD, NetBSD, OpenBSD, DragonFly BSD
     PLATFORM_OS_APPLE_IOS   = 5,
     PLATFORM_OS_APPLE_OSX   = 6,
-    PLATFORM_OS_SOLARIS     = 7,
+    PLATFORM_OS_SOLARIS     = 7, // Oracle Solaris, Open Indiana
     PLATFORM_OS_HP_UX       = 8,
     PLATFORM_OS_IBM_AIX     = 9,
 } Platform_Operating_System;
@@ -528,7 +528,7 @@ const char* platform_exception_to_string(Platform_Exception error);
     #elif defined(__ANDROID__)
         #define PLATFORM_OS PLATFORM_OS_ANDROID // Android (implies Linux, so it must come first)
     #elif defined(__linux__)
-        #define PLATFORM_OS "linux" // Debian, Ubuntu, Gentoo, Fedora, openSUSE, RedHat, Centos and other
+        #define PLATFORM_OS PLATFORM_OS_UNIX // Debian, Ubuntu, Gentoo, Fedora, openSUSE, RedHat, Centos and other
     #elif defined(__unix__) || !defined(__APPLE__) && defined(__MACH__)
         #include <sys/param.h>
         #if defined(BSD)

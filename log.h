@@ -65,7 +65,7 @@ EXPORT void log_group_pop();    //Decreases indentation of subsequent log messag
 EXPORT isize log_group_depth(); //Returns the current indentation of messages
 
 EXPORT void log_flush();
-EXPORT MODIFIER_FORMAT_FUNC(format, 3) void log_message(const char* module, Log_Type type, Source_Info source, MODIFIER_FORMAT_ARG const char* format, ...);
+EXPORT MODIFIER_FORMAT_FUNC(format, 4) void log_message(const char* module, Log_Type type, Source_Info source, MODIFIER_FORMAT_ARG const char* format, ...);
 EXPORT void vlog_message(const char* module, Log_Type type, Source_Info source, const char* format, va_list args);
 
 EXPORT void log_callstack(const char* log_module, Log_Type log_type, isize depth, isize skip);
@@ -186,7 +186,7 @@ EXPORT void vlog_message(const char* module, Log_Type type, Source_Info source, 
         _global_logger->log(_global_logger, module, type, _global_log_group_depth, source, format, args);
 }
 
-EXPORT MODIFIER_FORMAT_FUNC(format, 3) void log_message(const char* module, Log_Type type, Source_Info source, MODIFIER_FORMAT_ARG const char* format, ...)
+EXPORT MODIFIER_FORMAT_FUNC(format, 4) void log_message(const char* module, Log_Type type, Source_Info source, MODIFIER_FORMAT_ARG const char* format, ...)
 {
     va_list args;               
     va_start(args, format);     
@@ -196,7 +196,7 @@ EXPORT MODIFIER_FORMAT_FUNC(format, 3) void log_message(const char* module, Log_
 
 EXPORT void log_flush()
 {
-    log_message("", LOG_TYPE_FLUSH, SOURCE_INFO(), "");
+    log_message("", LOG_TYPE_FLUSH, SOURCE_INFO(), "\0");
 }
 
 EXPORT const char* log_type_to_string(Log_Type type)
