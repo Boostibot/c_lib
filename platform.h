@@ -1,6 +1,8 @@
 #ifndef JOT_PLATFORM
 #define JOT_PLATFORM
+
 #define _CRT_SECURE_NO_WARNINGS /* ... i hate msvc */
+#define _GNU_SOURCE             /* and gcc as well! */
 
 #include <stdint.h>
 #include <limits.h>
@@ -54,27 +56,23 @@ typedef struct Platform_Allocator {
 void platform_set_internal_allocator(Platform_Allocator allocator);
 
 //A non exhaustive list of operating systems
-typedef enum Platform_Operating_System {
-    PLATFORM_OS_UNKNOWN     = 0, 
-    PLATFORM_OS_WINDOWS     = 1,
-    PLATFORM_OS_ANDROID     = 2,
-    PLATFORM_OS_UNIX        = 3, // Debian, Ubuntu, Gentoo, Fedora, openSUSE, RedHat, Centos and other
-    PLATFORM_OS_BSD         = 4, // FreeBSD, NetBSD, OpenBSD, DragonFly BSD
-    PLATFORM_OS_APPLE_IOS   = 5,
-    PLATFORM_OS_APPLE_OSX   = 6,
-    PLATFORM_OS_SOLARIS     = 7, // Oracle Solaris, Open Indiana
-    PLATFORM_OS_HP_UX       = 8,
-    PLATFORM_OS_IBM_AIX     = 9,
-} Platform_Operating_System;
+#define PLATFORM_OS_UNKNOWN     0 
+#define PLATFORM_OS_WINDOWS     1
+#define PLATFORM_OS_ANDROID     2
+#define PLATFORM_OS_UNIX        3 // Debian, Ubuntu, Gentoo, Fedora, openSUSE, RedHat, Centos and other
+#define PLATFORM_OS_BSD         4 // FreeBSD, NetBSD, OpenBSD, DragonFly BSD
+#define PLATFORM_OS_APPLE_IOS   5
+#define PLATFORM_OS_APPLE_OSX   6
+#define PLATFORM_OS_SOLARIS     7 // Oracle Solaris, Open Indiana
+#define PLATFORM_OS_HP_UX       8
+#define PLATFORM_OS_IBM_AIX     9
 
-typedef enum Platform_Endian {
-    PLATFORM_ENDIAN_LITTLE = 0,
-    PLATFORM_ENDIAN_BIG = 1,
-    PLATFORM_ENDIAN_OTHER = 2, //We will never use this. But just for completion.
-} Platform_Endian;
+#define PLATFORM_ENDIAN_LITTLE  0
+#define PLATFORM_ENDIAN_BIG     1
+#define PLATFORM_ENDIAN_OTHER   2 //We will never use this. But just for completion.
 
 #ifndef PLATFORM_OS
-    //Becomes one of the Platform_Operating_Systems based on the detected OS. (see below)
+    //Becomes one of the PLATFORM_OS_XXXX based on the detected OS. (see below)
     //One possible use of this is to select the appropiate .c file for platform.h and include it
     // after main making the whole build unity build, greatly simpifying the build procedure.
     //Can be user overriden by defining it before including platform.h
@@ -701,7 +699,7 @@ const char* platform_exception_to_string(Platform_Exception error);
     }
    
 #elif defined(__GNUC__) || defined(__clang__)
-
+    #define _GNU_SOURCE
     #include <signal.h>
 
     #undef platform_trap
@@ -720,7 +718,7 @@ const char* platform_exception_to_string(Platform_Exception error);
     #define MODIFIER_FORMAT_ARG                                      /* empty */    
     #define MODIFIER_NORETURN                                               __attribute__((noreturn))
 
-    typedef __MAX_ALIGN_TESTER__ char[
+    typedef char __MAX_ALIGN_TESTER__[
         __alignof__(long long int) == PLATFORM_MAX_ALIGN || 
         __alignof__(long double) == PLATFORM_MAX_ALIGN ? 1 : -1
     ];
@@ -785,7 +783,8 @@ const char* platform_exception_to_string(Platform_Exception error);
     inline static bool platform_atomic_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value)
     {
         return __atomic_compare_exchange_n(target, &old_value, new_value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
-    
+    }
+
     inline static bool platform_atomic_compare_and_swap32(volatile int32_t* target, int32_t old_value, int32_t new_value)
     {
         return __atomic_compare_exchange_n(target, &old_value, new_value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);

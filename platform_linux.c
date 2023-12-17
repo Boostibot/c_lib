@@ -1,3 +1,11 @@
+#ifndef __USE_GNU
+    #define __USE_GNU
+#endif
+
+#ifndef _GNU_SOURCE
+    #define _GNU_SOURCE
+#endif
+
 #include "platform.h"
 #include <stdlib.h>
 #include <string.h>
@@ -20,8 +28,8 @@ static int64_t platform_startup_local_epoch_time();
 void platform_init()
 {
     platform_perf_counter_startup();
-    platform_local_epoch_time();
     platform_startup_epoch_time();
+    platform_perf_counter_startup();
 }
 
 void platform_deinit()
@@ -36,7 +44,7 @@ void platform_set_internal_allocator(Platform_Allocator allocator)
 
 void* _platform_internal_reallocate(int64_t new_size, void* old_ptr)
 {
-    assert(new_size >= 0)
+    assert(new_size >= 0);
     if(new_size == 0)
     {
         free(old_ptr);
@@ -44,7 +52,7 @@ void* _platform_internal_reallocate(int64_t new_size, void* old_ptr)
     }
     else
     {
-        void* out = realloc(old_ptr, new_size);
+        void* out = realloc(old_ptr, (size_t) new_size);
         if(out == NULL)
             errno = ENOMEM;
 
@@ -99,10 +107,9 @@ int64_t         platform_thread_get_proccessor_count()
 
 typedef struct Platform_Pthread_State {
     pthread_t thread;
-    int (*func)(void*);
+    void (*func)(void*);
     void* context;
 } Platform_Pthread_State;
-
 
 typedef struct Platform_Mutex_State {
     pthread_mutex_t mutex;
@@ -115,33 +122,36 @@ void _pthread_cleanup_routine(void* arg)
     _platform_internal_reallocate(0, thread_state);
 }
 
-void *_pthread_start_routine(void* arg)
+void* _platform_pthread_start_routine(void* arg)
 {
     assert(arg != NULL);
-    pthread_cleanup_push(_pthread_cleanup_routine, arg);
-    Platform_Pthread_State* thread_state = (Platform_Pthread_State*) arg;
-    int ret = thread_state->func(thread_state->context);
 
+    //Sandly broken on WSL
+    // pthread_cleanup_push(_pthread_cleanup_routine, arg);
+    Platform_Pthread_State* thread_state = (Platform_Pthread_State*) arg;
+    thread_state->func(thread_state->context);
+    _platform_internal_reallocate(0, thread_state);
+    return NULL;
 }
 
-Platform_Error  platform_thread_launch(Platform_Thread* thread, int (*func)(void*), void* context, int64_t stack_size_or_zero)
+// #if 0
+Platform_Error platform_thread_launch(Platform_Thread* thread, void (*func)(void*), void* context, int64_t stack_size_or_zero)
 {
-    platform_thread_deinit(thread);
     bool state = true;
-    pthread_t thread = {0};
     pthread_attr_t attr = {0};
     pthread_attr_t* attr_ptr = {0};
 
+    Platform_Pthread_State* thread_state = NULL;
     if(stack_size_or_zero > 0)
     {
         attr_ptr = &attr;
         pthread_attr_init(&attr);
-        state = state && 0 == pthread_attr_setstacksize(&attr, stack_size_or_zero);
+        state = state && 0 == pthread_attr_setstacksize(&attr, (size_t) stack_size_or_zero);
     }
     
     if(state)
     {
-        Platform_Pthread_State* thread_state = (Platform_Pthread_State*) _platform_internal_reallocate(sizeof(Platform_Pthread_State), NULL);
+        thread_state = (Platform_Pthread_State*) _platform_internal_reallocate(sizeof(Platform_Pthread_State), NULL);
         state = thread_state != NULL;
         if(state)
         {
@@ -149,16 +159,23 @@ Platform_Error  platform_thread_launch(Platform_Thread* thread, int (*func)(void
 
             thread_state->func = func;
             thread_state->context = context;
-            if(pthread_create(&thread_state->thread, attr_ptr, _pthread_start_routine, thread_state) != 0)
+            if(pthread_create(&thread_state->thread, attr_ptr, _platform_pthread_start_routine, thread_state) != 0)
             {
                 state = false;
                 _platform_internal_reallocate(0, thread_state);
             }
+
         }
     }
 
     if(stack_size_or_zero > 0)
         pthread_attr_destroy(&attr);
+
+    if(state && thread_state && thread)
+    {
+        thread->handle = thread_state;
+        thread->id = 0;
+    }
 
     return platform_error_code(state);
 }
@@ -168,12 +185,16 @@ void            platform_thread_sleep(int64_t ms)
     if(ms > 10)
         sleep(ms);
     else
-        nanosleep(ms*1000);
+    {
+        struct timespec req = {0};
+        req.tv_nsec = ms*1000;
+        nanosleep(&req, NULL);
+    }
 }
 
 void            platform_thread_exit(int code)
 {
-    pthread_exit((void*) code);
+    pthread_exit((void*) (int64_t) code);
 }
 
 void            platform_thread_yield()
@@ -220,7 +241,7 @@ Platform_Error  platform_mutex_init(Platform_Mutex* mutex)
 }
 void  platform_mutex_deinit(Platform_Mutex* mutex)
 {
-    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex.handle;
+    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex->handle;
     if(mutex_state)
     {
         pthread_mutex_destroy(&mutex_state->mutex);
@@ -233,7 +254,7 @@ void  platform_mutex_deinit(Platform_Mutex* mutex)
 Platform_Error  platform_mutex_lock(Platform_Mutex* mutex)
 {
     bool state = false;
-    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex.handle;
+    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex->handle;
     if(mutex_state)
         state = pthread_mutex_lock(&mutex_state->mutex) == 0; 
 
@@ -242,10 +263,11 @@ Platform_Error  platform_mutex_lock(Platform_Mutex* mutex)
 
 void platform_mutex_unlock(Platform_Mutex* mutex)
 {
-    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex.handle;
+    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex->handle;
     if(mutex_state)
         pthread_mutex_unlock(&mutex_state->mutex);
 }
+
 //=========================================
 // Timings 
 //=========================================
@@ -325,51 +347,34 @@ Platform_Calendar_Time platform_calendar_time_from_tm(const struct tm* converted
     return out;
 }
 
-int64_t platform_local_epoch_time()
-{
-    int64_t now = platform_epoch_time();
 
-    //We abuse localtime to give us the time zone dependendedn conversion and convert its
-    //output back to microseconds. We refresh this every cache_invalidate_every to prevent
-    //drifting for long programs that would just happen to cross daylight saving time boundary but still
-    //remain very fast on rapid calls. (this function is used for logging and such)
 
-    //Having it invalidate every second should only produce minimal mistakes since the internal
-    //localtime is only second accuracy. Because of this we dont even make them a members of 
-    //Platform_State and let this function be "pure" (from the point of view of platform_init())
-    const  int64_t cache_invalidate_every = _SECOND_MICROSECS;
-    static int64_t cached_epoch_time_local = 0;
-    static int64_t cached_epoch_time = 0;
-
-    if(now - cached_epoch_time >= cache_invalidate_every)
-    {
-        time_t now_sec = (time_t) (now / _SECOND_MICROSECS);
-        Platform_Calendar_Time calendar = platform_calendar_time_from_tm(localtime(&now_sec));
-
-        int64_t now_local = platform_calendar_time_to_epoch_time(calendar);
-        now_local += now % _SECOND_MICROSECS; 
-        
-        cached_epoch_time = now;
-        cached_epoch_time_local = now_local;
-    }
-    
-    int64_t offset_micro = now - cached_epoch_time;
-    int64_t local_epoch_time = cached_epoch_time_local + offset_micro;
-
-    return local_epoch_time;
-} 
-
-Platform_Calendar_Time platform_epoch_time_to_calendar_time(int64_t epoch_time_usec)
+Platform_Calendar_Time _platform_calendar_time_from_epoch_time(int64_t epoch_time_usec, bool is_local)
 {
     time_t epoch_seconds = (time_t) (epoch_time_usec / _SECOND_MICROSECS);
-    Platform_Calendar_Time calendar = platform_calendar_time_from_tm(gmtime(&epoch_seconds));
-    calendar.microsecond = epoch_time_usec % _SECOND_MICROSECS;
-    calendar.millisecond = epoch_time_usec % _SECOND_MILLISECONDS;
+    struct tm* tm = is_local ? localtime(&epoch_seconds) : gmtime(&epoch_seconds);
+        
+    Platform_Calendar_Time calendar = platform_calendar_time_from_tm(tm);
+    int64_t remaining_micros = epoch_time_usec % _SECOND_MICROSECS;
+    calendar.microsecond = remaining_micros % 1000;
+    calendar.millisecond = remaining_micros / 1000;
     return calendar;
 }
 
+Platform_Calendar_Time platform_calendar_time_from_epoch_time(int64_t epoch_time_usec)
+{
+    Platform_Calendar_Time out = _platform_calendar_time_from_epoch_time(epoch_time_usec, false);
+    assert(platform_epoch_time_from_calendar_time(out) == epoch_time_usec);
+    return out;
+}
+
+Platform_Calendar_Time platform_local_calendar_time_from_epoch_time(int64_t epoch_time_usec)
+{
+    return _platform_calendar_time_from_epoch_time(epoch_time_usec, true);
+}
+
 //Converts calendar time to the precise epoch time (micro second time since unix epoch)
-int64_t platform_calendar_time_to_epoch_time(Platform_Calendar_Time calendar_time)
+int64_t platform_epoch_time_from_calendar_time(Platform_Calendar_Time calendar_time)
 {
     Platform_Calendar_Time c = calendar_time;
     int64_t seconds = untested_stack_overflow_calendar_to_time_t(
@@ -377,8 +382,57 @@ int64_t platform_calendar_time_to_epoch_time(Platform_Calendar_Time calendar_tim
 
     int64_t microseconds = seconds * _SECOND_MICROSECS;
     microseconds += calendar_time.microsecond;
+    microseconds += calendar_time.millisecond * 1000;
 
     return microseconds;
+}
+
+
+int64_t _sgn(int64_t val)
+{
+    return (0 < val) - (val < 0);
+}
+
+int64_t platform_epoch_time_from_local_calendar_time(Platform_Calendar_Time calendar_time)
+{
+    #ifndef NDEBUG
+    int64_t now = platform_epoch_time();
+    assert(platform_epoch_time_from_calendar_time(platform_calendar_time_from_epoch_time(now)) == now);
+    #endif
+
+    //We attempt to find a time such that when converted to local calendar time will give us the correct
+    //starting time back. We do this by calculating the error and trying to get the error as low as possible.
+    //If we overshoot we reduce the step taken.
+
+    int64_t base_time = platform_epoch_time_from_calendar_time(calendar_time);
+    int64_t represented_epoch_time = base_time;
+    int64_t last_error = INT64_MAX;
+    for(int i = 0; i < 20; i++)
+    {
+        Platform_Calendar_Time local_calendar_time_converted = platform_local_calendar_time_from_epoch_time(represented_epoch_time);
+        int64_t roundtrip_local = platform_epoch_time_from_calendar_time(local_calendar_time_converted);
+        int64_t error = base_time - roundtrip_local;
+
+        #ifndef NDEBUG
+        assert(last_error != error);
+        assert(llabs(last_error) >= llabs(error));
+        if(memcmp(&calendar_time, &local_calendar_time_converted, sizeof calendar_time) == 0)
+            assert(error == 0);
+        #endif
+
+        //If exact answer break
+        if(error == 0)
+            break;
+        //if we overshot use smaller increment
+        else if(llabs(last_error) < llabs(error))
+            error = last_error * _sgn(error) / 2;
+        else
+            represented_epoch_time += error;
+
+        last_error = error;
+    }
+
+    return represented_epoch_time;
 }
 
 //see: https://stackoverflow.com/a/57744744
@@ -612,7 +666,6 @@ Platform_Error platform_file_remove(Platform_String file_path, bool* was_just_de
 
     return platform_error_code(state);
 }
-
 //@TODO:
 //Moves or renames a file. If the file cannot be found or renamed to file that already exists, fails.
 Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path);
@@ -621,12 +674,13 @@ Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String 
 //Resizes a file. The file must exist.
 Platform_Error platform_file_resize(Platform_String file_path, int64_t size);
 
-Platform_Error platform_directory_create(Platform_String dir_path)
+Platform_Error platform_directory_create(Platform_String dir_path, bool* was_just_created_or_null)
 {
     bool state = mkdir(platform_null_terminate(dir_path), S_IRWXU | S_IRWXG | S_IRWXO) == 0;
     return platform_error_code(state);
 }
-Platform_Error platform_directory_remove(Platform_String dir_path)
+
+Platform_Error platform_directory_remove(Platform_String dir_path, bool* was_just_deleted_or_null)
 {
     bool state = rmdir(platform_null_terminate(dir_path)) == 0;
     return platform_error_code(state);
@@ -731,7 +785,7 @@ const char* platform_translate_error(Platform_Error error)
         case PLATFORM_ERROR_OK:
             return strerror((int) error);
 
-        case PLATFORM_ERROR_OTHER,
+        case PLATFORM_ERROR_OTHER:
             return "Other platform specific error occured";
     }
 }
@@ -792,8 +846,8 @@ void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align)
 #define PLATFORM_CALLSTACKS_MAX 256
 #define PLATFORM_CALLSTACK_LINE_LEN 64
 
+
 #define _GNU_SOURCE
-#define __USE_GNU
 #include <dlfcn.h>
 #include <execinfo.h>
 #include <link.h>
@@ -942,8 +996,8 @@ typedef struct Signal_Handler_State {
     int64_t epoch_time;
 } Signal_Handler_State;
 
-__thread Signal_Handler_State* platform_signal_handler_queue = NULL;
-__thread int64_t platform_signal_handler_i1 = 0;
+static __thread Signal_Handler_State* platform_signal_handler_queue = NULL;
+static __thread int64_t platform_signal_handler_i1 = 0;
 
 void platform_sighandler(int sig, struct sigcontext ctx) 
 {
@@ -1037,13 +1091,13 @@ Platform_Exception platform_exception_sandbox(
                     }
                 }
                 
-                Platform_Stack_Trace_Entry stack_trace[PLATFORM_CALLSTACKS_MAX] = {0}; 
-                platform_translate_call_stack(stack_trace, (const void**) handler->stack, handler->stack_size);
+                Platform_Stack_Trace_Entry call_stack[PLATFORM_CALLSTACKS_MAX] = {0}; 
+                platform_translate_call_stack(call_stack, (const void**) handler->stack, handler->stack_size);
 
                 Platform_Sandbox_Error sanbox_error = {0};
                 sanbox_error.exception = had_exception;
-                sanbox_error.stack_trace = stack_trace;
-                sanbox_error.stack_trace_size = handler->stack_size;
+                sanbox_error.call_stack = call_stack;
+                sanbox_error.call_stack_size = handler->stack_size;
                 sanbox_error.epoch_time = handler->epoch_time;
                 
                 //@TODO
@@ -1101,3 +1155,5 @@ const char* platform_exception_to_string(Platform_Exception error)
         case PLATFORM_EXCEPTION_OTHER: return "PLATFORM_EXCEPTION_OTHER";
     }
 }
+
+// #endif

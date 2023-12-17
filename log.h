@@ -196,7 +196,7 @@ EXPORT MODIFIER_FORMAT_FUNC(format, 4) void log_message(const char* module, Log_
 
 EXPORT void log_flush()
 {
-    log_message("", LOG_TYPE_FLUSH, SOURCE_INFO(), "\0");
+    log_message("", LOG_TYPE_FLUSH, SOURCE_INFO(), " ");
 }
 
 EXPORT const char* log_type_to_string(Log_Type type)

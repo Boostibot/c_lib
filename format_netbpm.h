@@ -45,7 +45,7 @@ typedef enum Netbpm_Format_Error {
     NETBPM_FORMAT_ERROR_NOT_ENOUGH_DATA,
 } Netbpm_Format_Error;
 
-EXPORT Platform_Endian endian_get_local();
+EXPORT int endian_get_local();
 EXPORT u32 endian_byteswap(u32 val);
 EXPORT Netbpm_Format netbpm_format_classify(String data);
 
@@ -128,7 +128,7 @@ INTERNAL u32 netbmp_format_error_module()
     return error_module;
 }
 
-EXPORT Platform_Endian endian_get_local()
+EXPORT int endian_get_local()
 {
     union {
         u8 vals[4];

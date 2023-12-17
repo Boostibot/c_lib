@@ -1,5 +1,4 @@
 #include "platform.h"
-
 #ifdef APIENTRY
     #undef APIENTRY
 #endif
