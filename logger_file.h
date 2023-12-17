@@ -89,6 +89,7 @@ EXPORT typedef struct File_Logger {
     
     FILE* file;                                     //file to whcih to print;
     f64 last_flush_time;
+    i64 init_epoch_time;
 
     File_Logger_Print console_print_func;        //defaults to NULL in which case prints to stdout (using fwrite)
     File_Logger_Print file_print_func;           //defaults to NULL in whcih case creates a file in file_directory_path and writes to it
@@ -176,7 +177,8 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
     }
 
     //Convert type to string
-    Platform_Calendar_Time c = platform_epoch_time_to_calendar_time(epoch_time);
+    //Platform_Calendar_Time c = platform_epoch_time_to_calendar_time(epoch_time);
+    Platform_Calendar_Time c = platform_local_calendar_time_from_epoch_time(epoch_time);
     
     //Try to guess size
     array_grow(append_to, size_before + message_string.size + 100 + module.size);
@@ -293,6 +295,7 @@ EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, A
     logger->console_type_filter = 0xFFFFFFFFFFFFFFFF;
     logger->console_use_filter = false;
     logger->file_use_filter = false;
+    logger->init_epoch_time = platform_epoch_time();
 
     builder_assign(&logger->file_directory_path, folder);
     builder_assign(&logger->file_prefix, prefix);
@@ -332,14 +335,15 @@ EXPORT bool file_logger_flush(File_Logger* logger)
                 builder_append(&file_name, string_from_builder(self->file_directory_path));
                 builder_append(&file_name, STRING("/"));
                 builder_append(&file_name, string_from_builder(self->file_prefix));
-                Platform_Calendar_Time calendar = platform_epoch_time_to_calendar_time(platform_local_epoch_time());
+                Platform_Calendar_Time calendar = platform_local_calendar_time_from_epoch_time(logger->init_epoch_time);
+                //Platform_Calendar_Time calendar = platform_epoch_time_to_calendar_time(platform_local_epoch_time());
                 format_append_into(&file_name, "%04d-%02d-%02d__%02d-%02d-%02d", 
                     (int) calendar.year, (int) calendar.month, (int) calendar.day, 
                     (int) calendar.hour, (int) calendar.minute, (int) calendar.second);
                     
                 builder_append(&file_name, string_from_builder(self->file_postfix));
 
-                platform_directory_create(string_from_builder(self->file_directory_path));
+                platform_directory_create(string_from_builder(self->file_directory_path), NULL);
                 self->file = fopen(cstring_from_builder(file_name), "ab");
                 
                 state = state && self->file != NULL;
@@ -375,7 +379,7 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
 
     String_Builder formatted_log = {0};
     array_init_backed(&formatted_log, self->scratch_allocator, 1024);
-    file_logger_log_append_into(self->scratch_allocator, &formatted_log, module_string, type, indentation, platform_local_epoch_time(), format, args);
+    file_logger_log_append_into(self->scratch_allocator, &formatted_log, module_string, type, indentation, platform_epoch_time(), format, args);
 
     bool print_to_console = false;
     bool print_to_file = false;

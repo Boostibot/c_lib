@@ -3,8 +3,14 @@
 
 #include <stdint.h>
 
-static
-uint64_t hash64(uint64_t value) 
+#ifndef JOT_HASH_API
+    #define JOT_HASH_API static inline
+#endif
+
+//Hashes a 64 bit value to 64 bit hash.
+//Note that this function is bijective meaning it can be reversed.
+//In particular 0 maps to 0.
+JOT_HASH_API uint64_t hash64(uint64_t value) 
 {
     //source: https://stackoverflow.com/a/12996028
     uint64_t hash = value;
@@ -14,8 +20,10 @@ uint64_t hash64(uint64_t value)
     return hash;
 }
 
-static
-uint32_t hash32(uint32_t value) 
+//Hashes a 32 bit value to 32 bit hash.
+//Note that this function is bijective meaning it can be reversed.
+//In particular 0 maps to 0.
+JOT_HASH_API uint32_t hash32(uint32_t value) 
 {
     //source: https://stackoverflow.com/a/12996028
     uint32_t hash = value;
@@ -25,34 +33,31 @@ uint32_t hash32(uint32_t value)
     return hash;
 }
 
-static
-uint64_t hash_mix64(uint64_t hash1, uint64_t hash2)
+//Mixes two prevously hashed values into one. 
+//Yileds good results even when hash1 and hash2 are hashes badly.
+JOT_HASH_API uint64_t hash_mix64(uint64_t hash1, uint64_t hash2)
 {
     hash1 ^= hash2 + 0x517cc1b727220a95 + (hash1 << 6) + (hash1 >> 2);
     return hash1;
 }
 
-static
-uint32_t hash_mix32(uint32_t hash1, uint32_t hash2)
+JOT_HASH_API uint32_t hash_mix32(uint32_t hash1, uint32_t hash2)
 {
     hash1 ^= hash2 + 0x9e3779b9 + (hash1 << 6) + (hash1 >> 2);
     return hash1;
 }
 
-static
-uint32_t hash_fold64(uint64_t hash)
+JOT_HASH_API uint32_t hash_fold64(uint64_t hash)
 {
     return hash_mix32((uint32_t) hash, (uint32_t)(hash >> 32));
 }
 
-static
-uint32_t hash64_to32(uint64_t value) 
+JOT_HASH_API uint32_t hash64_to32(uint64_t value) 
 {
     return hash_fold64(hash64(value));
 }
 
-static
-uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed)
+JOT_HASH_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed)
 {
     //source https://github.com/abrandoned/murmur2/blob/master/MurmurHash2.c
     // 'm' and 'r' are mixing constants generated offline.
@@ -100,8 +105,7 @@ uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed)
     return h;
 } 
 
-static
-uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed)
+JOT_HASH_API uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed)
 {
     //source https://github.com/abrandoned/murmur2/blob/master/MurmurHash2.c
     //& big endian support: https://github.com/niklas-ourmachinery/bitsquid-foundation/blob/master/murmur_hash.cpp
@@ -159,8 +163,7 @@ uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed)
     return h;
 } 
 
-static
-uint32_t hash32_fnv_one_at_a_time(const void* key, int64_t size, uint32_t seed)
+JOT_HASH_API uint32_t hash32_fnv_one_at_a_time(const void* key, int64_t size, uint32_t seed)
 {
     // Source: https://github.com/aappleby/smhasher/blob/master/src/Hashes.cpp
     uint32_t hash = seed;

@@ -164,8 +164,8 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 		running.name = name;
 	
 		#if !defined(PROFILE_NO_DEBUG)
-			platform_interlocked_increment32(&perf_counters_running_count);
-			platform_interlocked_increment32(&my_counter->concurrent_running_counters);
+			platform_atomic_add32(&perf_counters_running_count, 1);
+			platform_atomic_add32(&my_counter->concurrent_running_counters, 1);
 		#endif
 
 		return running;
@@ -173,15 +173,15 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 	INTERNAL void _perf_counter_end(Global_Perf_Counter_Running* running, bool detailed)
 	{
 		Global_Perf_Counter* counter = running->my_counter;
-		i64 runs = perf_counter_end_interlocked_custom(&counter->counter, running->running, detailed);
+		i64 runs = perf_counter_end_atomic_custom(&counter->counter, running->running, detailed);
 		ASSERT_MSG(running->stopped == false, "Global_Perf_Counter_Running running counter stopped more than once!");
 
 		//only save the stats that dont need to be updated on the first run
 		if(runs == 1)
 		{
-			//platform_interlocked_excahnge64 sets the value pointed to by the first argument to the second argument and returns the original value
+			//platform_atomic_excahnge64 sets the value pointed to by the first argument to the second argument and returns the original value
 			//We use this to set the head to the newly added counter and save the old previous first node so we can reference it from our counter
-			Global_Perf_Counter* prev_head = (Global_Perf_Counter*) platform_interlocked_excahnge64((volatile i64*) (void*) &perf_counters_linked_list, (i64) counter);
+			Global_Perf_Counter* prev_head = (Global_Perf_Counter*) platform_atomic_excahnge64((volatile i64*) (void*) &perf_counters_linked_list, (i64) counter);
 
 			counter->next = prev_head;
 			counter->file = running->file;
@@ -192,8 +192,8 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 		}
 	
 		#if !defined(PROFILE_NO_DEBUG)
-			platform_interlocked_decrement32(&perf_counters_running_count);
-			platform_interlocked_decrement32(&counter->concurrent_running_counters);
+			platform_atomic_sub32(&perf_counters_running_count, 1);
+			platform_atomic_sub32(&counter->concurrent_running_counters, 1);
 			ASSERT(perf_counters_running_count >= 0 && counter->concurrent_running_counters >= 0);
 		#endif
 
@@ -213,8 +213,8 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 	{
 		Global_Perf_Counter* counter = running->my_counter;
 		#if !defined(PROFILE_NO_DEBUG)
-			platform_interlocked_decrement32(&perf_counters_running_count);
-			platform_interlocked_decrement32(&counter->concurrent_running_counters);
+			platform_atomic_sub32(&perf_counters_running_count, 1);
+			platform_atomic_sub32(&counter->concurrent_running_counters, 1);
 			ASSERT(perf_counters_running_count >= 0 && counter->concurrent_running_counters >= 0);
 		#endif
 	}
@@ -233,7 +233,6 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 
 	EXPORT f64 profile_get_counter_total_running_time_s(Global_Perf_Counter counter)
 	{
-		//@TODO: hmm i should maybe rename this
 		return _safe_div((f64) counter.counter.counter, (f64) counter.counter.frquency, 0);
 	}
 	EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counter)

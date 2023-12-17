@@ -12,11 +12,6 @@ EXPORT Error file_read_entire(String file_path, String_Builder* data);
 EXPORT Error file_append_entire(String file_path, String data);
 EXPORT Error file_write_entire(String file_path, String data);
 
-#if 0
-EXPORT Error file_create(String file_path, bool* was_just_created);
-EXPORT Error file_remove(String file_path, bool* was_just_removed);
-#endif
-
 EXPORT Error  path_get_full_from(String_Builder* into, String path, String base);
 EXPORT String path_get_full_ephemeral_from(String path, String base);
 EXPORT void   path_get_relative_from(String_Builder* into, String path, String base);
@@ -31,7 +26,6 @@ EXPORT String path_get_executable();
 EXPORT String path_get_executable_directory();
 EXPORT String path_get_current_working_directory();
 EXPORT String path_get_file_directory(String file_path);
-
 
 EXPORT String path_get_name_from_path(String path);
 
@@ -333,27 +327,5 @@ EXPORT Error file_write_entire(String file_path, String contents)
 {
     return _file_write_entire_append_into(file_path, contents, "wb");
 }
-
-#if 0
-EXPORT Error file_create(String file_path, bool* was_just_created)
-{
-    PERF_COUNTER_START(c);
-
-    Platform_Error error = platform_file_create(file_path, was_just_created);
-    
-    PERF_COUNTER_END(c);
-    return error_from_platform(error);
-}
-
-EXPORT Error file_remove(String file_path, bool* was_just_removed)
-{
-    PERF_COUNTER_START(c);
-
-    Platform_Error error = platform_file_remove(file_path, was_just_removed);
-    
-    PERF_COUNTER_END(c);
-    return error_from_platform(error);
-}
-#endif
 
 #endif

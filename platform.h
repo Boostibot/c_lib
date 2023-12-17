@@ -93,6 +93,12 @@ typedef enum Platform_Endian {
     #define PLATFORM_ENDIAN      PLATFORM_ENDIAN_LITTLE
 #endif
 
+#ifndef PLATFORM_MAX_ALIGN
+    //Maximum alignment of bultin data type.
+    //If this is incorrect (either too much or too little) please correct it by defining it!
+    #define PLATFORM_MAX_ALIGN 16
+#endif
+
 //Can be used in files without including platform.h but still becomes
 // valid if platform.h is included
 #if PLATFORM_ENDIAN == PLATFORM_ENDIAN_LITTLE
@@ -100,7 +106,6 @@ typedef enum Platform_Endian {
 #elif PLATFORM_ENDIAN == PLATFORM_ENDIAN_BIG
     #define PLATFORM_HAS_ENDIAN_BIG    PLATFORM_ENDIAN_BIG
 #endif
-
 
 //=========================================
 // Virtual memory
@@ -121,8 +126,11 @@ typedef enum Platform_Memory_Protection {
 } Platform_Memory_Protection;
 
 void* platform_virtual_reallocate(void* allocate_at, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection);
-void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t old_size, int64_t align);
-int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align); //returns the size in bytes of the allocated block. Useful for compatibility with APIs that expect malloc/free type allocation functions without explicit size
+void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align);
+//Returns the size in bytes of an allocated block. 
+//old_ptr needs to be value returned from platform_heap_reallocate. Align must be the one supplied to platform_heap_reallocate.
+//If old_ptr is NULL returns 0.
+int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align); 
 
 
 //=========================================
@@ -133,7 +141,7 @@ typedef uint32_t Platform_Error;
 enum {
     PLATFORM_ERROR_OK = 0, 
     //... errno codes
-    PLATFORM_ERROR_OTHER = INT32_MAX,
+    PLATFORM_ERROR_OTHER = INT32_MAX, //Is used when the OS reports no error yet there was clearly an error.
 };
 
 //Returns a translated error message. The returned pointer is not static and shall NOT be stored as further calls to this functions will invalidate it. 
@@ -154,7 +162,6 @@ typedef struct Platform_Mutex {
     void* handle;
 } Platform_Mutex;
 
-//@TODO: remove the need to destroy thread handles. Make exit and abort sensitive to this 
 int64_t         platform_thread_get_proccessor_count();
 
 //initializes a new thread and immedietely starts it with the func function.
@@ -204,30 +211,28 @@ inline static int32_t platform_pop_count64(uint64_t num);
 //   *target = new_value;
 //   return true;
 // }
-inline static bool platform_interlocked_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value);
-inline static bool platform_interlocked_compare_and_swap32(volatile int32_t* target, int32_t old_value, int32_t new_value);
+inline static bool platform_atomic_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value);
+inline static bool platform_atomic_compare_and_swap32(volatile int32_t* target, int32_t old_value, int32_t new_value);
+
+//Performs atomically: { return *target; }
+inline static int64_t platform_atomic_load64(volatile const int64_t* target);
+inline static int32_t platform_atomic_load32(volatile const int32_t* target);
+
+//Performs atomically: { *target = value; }
+inline static void platform_atomic_store64(volatile int64_t* target, int64_t value);
+inline static void platform_atomic_store32(volatile int32_t* target, int32_t value);
 
 //Performs atomically: { int64_t copy = *target; *target = value; return copy; }
-inline static int64_t platform_interlocked_excahnge64(volatile int64_t* target, int64_t value);
-inline static int32_t platform_interlocked_excahnge32(volatile int32_t* target, int32_t value);
+inline static int64_t platform_atomic_excahnge64(volatile int64_t* target, int64_t value);
+inline static int32_t platform_atomic_excahnge32(volatile int32_t* target, int32_t value);
 
 //Performs atomically: { int64_t copy = *target; *target += value; return copy; }
-inline static int32_t platform_interlocked_add32(volatile int32_t* target, int32_t value);
-inline static int64_t platform_interlocked_add64(volatile int64_t* target, int64_t value);
+inline static int32_t platform_atomic_add32(volatile int32_t* target, int32_t value);
+inline static int64_t platform_atomic_add64(volatile int64_t* target, int64_t value);
 
-//@TODO: we dont need atomic increment if the compiler is smart enough to change: 
-// platform_interlocked_add32(target, 1) ~~~> platform_interlocked_increment32(target)
-// Test it on MSVC!
-
-//Performs atomically: { target += 1; return target}
-inline static int32_t platform_interlocked_increment32(volatile int32_t* target);
-inline static int64_t platform_interlocked_increment64(volatile int64_t* target);
-
-//Performs atomically: { target -= 1; return target}
-inline static int32_t platform_interlocked_decrement32(volatile int32_t* target);
-inline static int64_t platform_interlocked_decrement64(volatile int64_t* target);
-
-//@TODO: Interlocked read? Its not needed on x86 but is needed on other arcitectures
+//Performs atomically: { int64_t copy = *target; *target -= value; return copy; }
+inline static int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value);
+inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value);
 
 //=========================================
 // Modifiers
@@ -265,17 +270,17 @@ typedef struct Platform_Calendar_Time {
 
 //returns the number of micro-seconds since the start of the epoch.
 //This functions is very fast and suitable for fast profiling
-int64_t platform_epoch_time(); 
-//returns the number of micro-seconds since the start of the epoch
-// with respect to local timezones/daylight saving times and other
-int64_t platform_local_epoch_time();     
+int64_t platform_epoch_time();   
 //returns the number of micro-seconds between the epoch and the call to platform_init()
 int64_t platform_startup_epoch_time(); 
 
 //converts the epoch time (micro second time since unix epoch) to calendar representation
-Platform_Calendar_Time platform_epoch_time_to_calendar_time(int64_t epoch_time_usec);
+Platform_Calendar_Time platform_calendar_time_from_epoch_time(int64_t epoch_time_usec);
 //Converts calendar time to the precise epoch time (micro second time since unix epoch)
-int64_t platform_calendar_time_to_epoch_time(Platform_Calendar_Time calendar_time);
+int64_t platform_epoch_time_from_calendar_time(Platform_Calendar_Time calendar_time);
+
+Platform_Calendar_Time platform_local_calendar_time_from_epoch_time(int64_t epoch_time_usec);
+int64_t platform_epoch_time_from_local_calendar_time(Platform_Calendar_Time calendar_time);
 
 //Returns the current value of monotonic lowlevel performance counter. Is ideal for benchamrks.
 //Generally is with nanosecond precisions.
@@ -336,24 +341,22 @@ typedef struct Platform_Memory_Mapping {
 //retrieves info about the specified file or directory
 Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null);
 //Creates an empty file at the specified path. Succeeds if the file exists after the call.
-//Saves to was_just_created wheter the file was just now created. If is null doesnt save anything.
-Platform_Error platform_file_create(Platform_String file_path, bool* was_just_created);
+//Saves to was_just_created_or_null wheter the file was just now created. If is null doesnt save anything.
+Platform_Error platform_file_create(Platform_String file_path, bool* was_just_created_or_null);
 //Removes a file at the specified path. Succeeds if the file exists after the call the file does not exist.
-//Saves to was_just_deleted wheter the file was just now deleted. If is null doesnt save anything.
-Platform_Error platform_file_remove(Platform_String file_path, bool* was_just_deleted);
+//Saves to was_just_deleted_or_null wheter the file was just now deleted. If is null doesnt save anything.
+Platform_Error platform_file_remove(Platform_String file_path, bool* was_just_deleted_or_null);
 //Moves or renames a file. If the file cannot be found or renamed to file that already exists, fails.
 Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path);
 //Copies a file. If the file cannot be found or copy_to_path file that already exists, fails.
 Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String copy_from_path);
-//Resizes a file. The file must exist.
-Platform_Error platform_file_resize(Platform_String file_path, int64_t size);
-
-//@TODO: Implement was_just_created for platform_directory_create, platform_directory_remove
 
 //Makes an empty directory
-Platform_Error platform_directory_create(Platform_String dir_path);
+//Saves to was_just_created_or_null wheter the file was just now created. If is null doesnt save anything.
+Platform_Error platform_directory_create(Platform_String dir_path, bool* was_just_created_or_null);
 //Removes an empty directory
-Platform_Error platform_directory_remove(Platform_String dir_path);
+//Saves to was_just_deleted_or_null wheter the file was just now deleted. If is null doesnt save anything.
+Platform_Error platform_directory_remove(Platform_String dir_path, bool* was_just_deleted_or_null);
 
 //changes the current working directory to the new_working_dir.  
 Platform_Error platform_directory_set_current_working(Platform_String new_working_dir);    
@@ -517,7 +520,6 @@ Platform_Exception platform_exception_sandbox(
 const char* platform_exception_to_string(Platform_Exception error);
 
 #if PLATFORM_OS == PLATFORM_OS_UNKNOWN
-
     #undef PLATFORM_OS
     #if defined(_WIN32)
         #define PLATFORM_OS PLATFORM_OS_WINDOWS // Windows
@@ -552,7 +554,6 @@ const char* platform_exception_to_string(Platform_Exception error);
     #else
         #define PLATFORM_OS PLATFORM_OS_UNKNOWN
     #endif
-
 #endif 
 
 #undef MODIFIER_RESTRICT                                   
@@ -640,54 +641,65 @@ const char* platform_exception_to_string(Platform_Exception error);
     {
         return (int32_t) __popcnt64((unsigned __int64)num);
     }
+    
+    inline static int64_t platform_atomic_load64(volatile const int64_t* target)
+    {
+        return (int64_t) _InterlockedOr64((volatile long long*) target, 0);
+    }
+    inline static int32_t platform_atomic_load32(volatile const int32_t* target)
+    {
+        return (int32_t) _InterlockedOr((volatile long*) target, 0);
+    }
 
-    inline static bool platform_interlocked_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value)
+    inline static void platform_atomic_store64(volatile int64_t* target, int64_t value)
+    {
+        platform_atomic_excahnge64(target, value);
+    }
+    inline static void platform_atomic_store32(volatile int32_t* target, int32_t value)
+    {
+        platform_atomic_excahnge32(target, value);
+    }
+
+    inline static bool platform_atomic_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value)
     {
         return _InterlockedCompareExchange64((volatile long long*) target, (long long) new_value, (long long) old_value) == (long long) old_value;
     }
 
-    inline static bool platform_interlocked_compare_and_swap32(volatile int32_t* target, int32_t old_value, int32_t new_value)
+    inline static bool platform_atomic_compare_and_swap32(volatile int32_t* target, int32_t old_value, int32_t new_value)
     {
         return _InterlockedCompareExchange((volatile long*) target, (long) new_value, (long) old_value) == (long) old_value;
     }
 
-    inline static int64_t platform_interlocked_excahnge64(volatile int64_t* target, int64_t value)
+    inline static int64_t platform_atomic_excahnge64(volatile int64_t* target, int64_t value)
     {
         return (int64_t) _InterlockedExchange64((volatile long long*) target, (long long) value);
     }
 
-    inline static int32_t platform_interlocked_excahnge32(volatile int32_t* target, int32_t value)
+    inline static int32_t platform_atomic_excahnge32(volatile int32_t* target, int32_t value)
     {
         return (int32_t) _InterlockedExchange((volatile long*) target, (long) value);
     }
     
-    inline static int64_t platform_interlocked_add64(volatile int64_t* target, int64_t value)
+    inline static int64_t platform_atomic_add64(volatile int64_t* target, int64_t value)
     {
         return (int64_t) _InterlockedExchangeAdd64((volatile long long*) target, (long long) value);
     }
 
-    inline static int32_t platform_interlocked_add32(volatile int32_t* target, int32_t value)
+    inline static int32_t platform_atomic_add32(volatile int32_t* target, int32_t value)
     {
         return (int32_t) _InterlockedExchangeAdd((volatile long*) target, (long) value);
     }
-    
-    inline static int32_t platform_interlocked_increment32(volatile int32_t* target)
+
+    inline static int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value)
     {
-        return (int32_t) _InterlockedIncrement((volatile long*) target);
+        return platform_atomic_add32(target, -value);
     }
-    inline static int64_t platform_interlocked_increment64(volatile int64_t* target)
+
+    inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value)
     {
-        return (int64_t) _InterlockedIncrement64((volatile long long*) target);
+        return platform_atomic_add64(target, -value);
     }
-    
-    inline static int32_t platform_interlocked_decrement32(volatile int32_t* target)
-    {
-        return (int32_t) _InterlockedDecrement((volatile long*) target);
-    }
-    inline static int64_t platform_interlocked_decrement64(volatile int64_t* target)
-    {
-        return (int64_t) _InterlockedDecrement64((volatile long long*) target);
-    }
+   
 #elif defined(__GNUC__) || defined(__clang__)
 
     #include <signal.h>
@@ -707,6 +719,11 @@ const char* platform_exception_to_string(Platform_Exception error);
     #define MODIFIER_FORMAT_FUNC(format_arg, format_arg_index)               __attribute__((format_arg (printf, format_arg_index, 0)))
     #define MODIFIER_FORMAT_ARG                                      /* empty */    
     #define MODIFIER_NORETURN                                               __attribute__((noreturn))
+
+    typedef __MAX_ALIGN_TESTER__ char[
+        __alignof__(long long int) == PLATFORM_MAX_ALIGN || 
+        __alignof__(long double) == PLATFORM_MAX_ALIGN ? 1 : -1
+    ];
 
     inline static void platform_compiler_memory_fence() 
     {
@@ -741,7 +758,6 @@ const char* platform_exception_to_string(Platform_Exception error);
     {
         return __builtin_ffs((int) num) - 1;
     }
-    
     inline static int32_t platform_find_last_set_bit64(uint64_t num)
     {
         return __builtin_ffsll((long long) num) - 1;
@@ -766,50 +782,60 @@ const char* platform_exception_to_string(Platform_Exception error);
     }
 
     //for reference see: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fatomic-Builtins.html
-    inline static bool platform_interlocked_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value)
+    inline static bool platform_atomic_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value)
     {
         return __atomic_compare_exchange_n(target, &old_value, new_value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
-    }
-    inline static bool platform_interlocked_compare_and_swap32(volatile int32_t* target, int32_t old_value, int32_t new_value)
+    
+    inline static bool platform_atomic_compare_and_swap32(volatile int32_t* target, int32_t old_value, int32_t new_value)
     {
         return __atomic_compare_exchange_n(target, &old_value, new_value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
     }
 
-    inline static int64_t platform_interlocked_excahnge64(volatile int64_t* target, int64_t value)
+    inline static int64_t platform_atomic_load64(volatile const int64_t* target)
+    {
+        return (int64_t) __atomic_load_n(target, __ATOMIC_SEQ_CST);
+    }
+    inline static int32_t platform_atomic_load32(volatile const int32_t* target)
+    {
+        return (int32_t) __atomic_load_n(target, __ATOMIC_SEQ_CST);
+    }
+
+    inline static void platform_atomic_store64(volatile int64_t* target, int64_t value)
+    {
+        __atomic_store_n(target, value, __ATOMIC_SEQ_CST);
+    }
+    inline static void platform_atomic_store32(volatile int32_t* target, int32_t value)
+    {
+        __atomic_store_n(target, value, __ATOMIC_SEQ_CST);
+    }
+
+    inline static int64_t platform_atomic_excahnge64(volatile int64_t* target, int64_t value)
     {
         return (int64_t) __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
     }
-    inline static int32_t platform_interlocked_excahnge32(volatile int32_t* target, int32_t value)
+    inline static int32_t platform_atomic_excahnge32(volatile int32_t* target, int32_t value)
     {
         return (int32_t) __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
     }
 
-    inline static int32_t platform_interlocked_add32(volatile int32_t* target, int32_t value)
+    inline static int32_t platform_atomic_add32(volatile int32_t* target, int32_t value)
     {
         return (int32_t) __atomic_add_fetch(target, value, __ATOMIC_SEQ_CST);
     }
-    inline static int64_t platform_interlocked_add64(volatile int64_t* target, int64_t value)
+    inline static int64_t platform_atomic_add64(volatile int64_t* target, int64_t value)
     {
         return (int64_t) __atomic_add_fetch(target, value, __ATOMIC_SEQ_CST);
     }
 
-    inline static int32_t platform_interlocked_increment32(volatile int32_t* target)
+    inline static int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value)
     {
-        return platform_interlocked_add32(target, 1) + 1;
+        return (int32_t) __atomic_sub_fetch(target, value, __ATOMIC_SEQ_CST);
     }
-    inline static int64_t platform_interlocked_increment64(volatile int64_t* target)
+    inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value)
     {
-        return platform_interlocked_add64(target, 1) + 1;
+        return (int64_t) __atomic_sub_fetch(target, value, __ATOMIC_SEQ_CST);
     }
 
-    inline static int32_t platform_interlocked_decrement32(volatile int32_t* target)
-    {
-        return platform_interlocked_add32(target, -1) - 1;
-    }
-    inline static int64_t platform_interlocked_decrement64(volatile int64_t* target)
-    {
-        return platform_interlocked_add64(target, -1) - 1;
-    }
 
 #endif
 
