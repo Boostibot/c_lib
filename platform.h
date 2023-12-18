@@ -1,6 +1,9 @@
 #ifndef JOT_PLATFORM
 #define JOT_PLATFORM
 
+#undef _CRT_SECURE_NO_WARNINGS
+#undef _GNU_SOURCE
+
 #define _CRT_SECURE_NO_WARNINGS /* ... i hate msvc */
 #define _GNU_SOURCE             /* and gcc as well! */
 
@@ -66,6 +69,13 @@ void platform_set_internal_allocator(Platform_Allocator allocator);
 #define PLATFORM_OS_SOLARIS     7 // Oracle Solaris, Open Indiana
 #define PLATFORM_OS_HP_UX       8
 #define PLATFORM_OS_IBM_AIX     9
+
+#define PLATFORM_COMPILER_UNKNOWN 0
+#define PLATFORM_COMPILER_MSVC  1   
+#define PLATFORM_COMPILER_GCC   2
+#define PLATFORM_COMPILER_CLANG 3
+#define PLATFORM_COMPILER_MINGW 4
+#define PLATFORM_COMPILER_NVCC  5  //Cuda compiler
 
 #define PLATFORM_ENDIAN_LITTLE  0
 #define PLATFORM_ENDIAN_BIG     1

@@ -561,7 +561,7 @@ const char* platform_null_terminate(Platform_String string)
         else
         {
             *curr_size = alloc_size;
-            *curr_data = new_data;
+            *curr_data = (char*) new_data;
         }
     }
 
@@ -725,7 +725,7 @@ const char* platform_directory_get_current_working()
             break;
         }
 
-        dir_path = realloced_to;
+        dir_path = (char*) realloced_to;
     }
 
     printf("dir_path: %s\n", dir_path);
@@ -1041,7 +1041,7 @@ Platform_Exception platform_exception_sandbox(
     for(int64_t i = 0; i < handler_count; i++)
     {
         Signal_Error* sig_error = &error_handlers[i];
-        sig_error->action.sa_handler = (void *)platform_sighandler;
+        sig_error->action.sa_handler = (void(*)(int)) (void *)platform_sighandler;
         sigemptyset(&sig_error->action.sa_mask);
         // sigaddset(&sig_error->action.sa_mask, (int) SA_RESETHAND);
         sigaddset(&sig_error->action.sa_mask, (int) SA_NOCLDSTOP);
@@ -1094,7 +1094,7 @@ Platform_Exception platform_exception_sandbox(
                 Platform_Stack_Trace_Entry call_stack[PLATFORM_CALLSTACKS_MAX] = {0}; 
                 platform_translate_call_stack(call_stack, (const void**) handler->stack, handler->stack_size);
 
-                Platform_Sandbox_Error sanbox_error = {0};
+                Platform_Sandbox_Error sanbox_error = {PLATFORM_EXCEPTION_NONE};
                 sanbox_error.exception = had_exception;
                 sanbox_error.call_stack = call_stack;
                 sanbox_error.call_stack_size = handler->stack_size;

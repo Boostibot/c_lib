@@ -645,13 +645,13 @@ EXPORT isize lpf_lowlevel_write_entry_unescaped(String_Builder* builder, Lpf_Ent
         isize comment_newline_pos = string_find_first_char(entry.comment, '\n', 0);
         isize comment_tag_pos = string_find_first_char(entry.comment, '#', 0);
 
-        ASSERT_SLOW_MSG(newline_pos == -1, "value must not contain newlines. Value: \""STRING_FMT"\"", STRING_PRINT(entry.value));
-        ASSERT_SLOW_MSG(comment_newline_pos == -1, "comment must not contain newlines. Value: \""STRING_FMT"\"", STRING_PRINT(entry.comment));
+        ASSERT_SLOW_MSG(newline_pos == -1, "value must not contain newlines. Value: \"" STRING_FMT "\"", STRING_PRINT(entry.value));
+        ASSERT_SLOW_MSG(comment_newline_pos == -1, "comment must not contain newlines. Value: \"" STRING_FMT "\"", STRING_PRINT(entry.comment));
         if(tag_pos != -1)
             ASSERT_SLOW_MSG(options.comment_terminate_value, "If the value contains # it must be comment terminated!");
 
         if(entry.kind != LPF_KIND_COMMENT)
-            ASSERT_SLOW_MSG(comment_tag_pos == -1, "comment must not contain #. Value: \""STRING_FMT"\"", STRING_PRINT(entry.comment));
+            ASSERT_SLOW_MSG(comment_tag_pos == -1, "comment must not contain #. Value: \"" STRING_FMT "\"", STRING_PRINT(entry.comment));
     #endif
 
     char marker_char = '?';

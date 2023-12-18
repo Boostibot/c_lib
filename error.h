@@ -198,7 +198,7 @@ INTERNAL void _error_system_unregister_module(u32 module)
         return;
 
     Error_Module* registered = error_system_get_module(module);
-    if(registered == false)
+    if(registered == NULL)
         return;
 
     isize len = registered->module_name ? (isize) strlen(registered->module_name) : 0;

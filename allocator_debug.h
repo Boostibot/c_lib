@@ -64,9 +64,17 @@
 typedef struct Debug_Allocator          Debug_Allocator;
 typedef struct Debug_Allocation         Debug_Allocation;
 typedef struct Debug_Allocator_Options  Debug_Allocator_Options;
-typedef enum Debug_Allocator_Panic_Reason Debug_Allocator_Panic_Reason;
 
 DEFINE_ARRAY_TYPE(Debug_Allocation, Debug_Allocation_Array);
+
+typedef enum Debug_Allocator_Panic_Reason {
+    DEBUG_ALLOC_PANIC_NONE = 0, //no error
+    DEBUG_ALLOC_PANIC_INVALID_PTR, //the provided pointer does not point to previously allocated block
+    DEBUG_ALLOC_PANIC_INVALID_PARAMS, //size and/or alignment for the given allocation ptr do not macth or are invalid (less then zero, not power of two)
+    DEBUG_ALLOC_PANIC_OVERWRITE_BEFORE_BLOCK, //memory was written before valid user allocation segemnt
+    DEBUG_ALLOC_PANIC_OVERWRITE_AFTER_BLOCK, //memory was written after valid user allocation segemnt
+    DEBUG_ALLOC_PANIC_DEINIT_MEMORY_LEAKED, //memory usage on startup doesnt match memory usage on deinit. Only used when initialized with do_deinit_leak_check = true
+} Debug_Allocator_Panic_Reason;
 
 typedef void (*Debug_Allocator_Panic)(Debug_Allocator* allocator, Debug_Allocator_Panic_Reason reason, Debug_Allocation allocation, isize penetration, Source_Info called_from, void* context);
 
@@ -199,25 +207,6 @@ typedef struct Debug_Allocator_Options
     const char* name;
 } Debug_Allocator_Options;
 
-typedef enum Debug_Allocator_Panic_Reason
-{
-    //no error
-    DEBUG_ALLOC_PANIC_NONE = 0,
-
-    //the provided pointer does not point to previously allocated block
-    DEBUG_ALLOC_PANIC_INVALID_PTR,
-
-    //size and/or alignment for the given allocation ptr do not macth or are invalid (less then zero, not power of two)
-    DEBUG_ALLOC_PANIC_INVALID_PARAMS, 
-
-    //memory was written before valid user allocation segemnt
-    DEBUG_ALLOC_PANIC_OVERWRITE_BEFORE_BLOCK,
-    //memory was written after valid user allocation segemnt
-    DEBUG_ALLOC_PANIC_OVERWRITE_AFTER_BLOCK,
-
-    //memory usage on startup doesnt match memory usage on deinit. Only used when initialized with do_deinit_leak_check = true
-    DEBUG_ALLOC_PANIC_DEINIT_MEMORY_LEAKED,
-} Debug_Allocator_Panic_Reason;
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_DEBUG_ALLOCATOR_IMPL)) && !defined(JOT_DEBUG_ALLOCATOR_HAS_IMPL)
