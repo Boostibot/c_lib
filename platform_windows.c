@@ -1,15 +1,3 @@
-#include "platform.h"
-#ifdef APIENTRY
-    #undef APIENTRY
-#endif
-
-#ifndef WIN32_LEAN_AND_MEAN
-    #define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef UNICODE
-    #define UNICODE
-#endif 
-
 #include <locale.h>
 #include <assert.h>
 #include <windows.h>
@@ -23,7 +11,27 @@
 #include <intrin.h>
 #include <direct.h>
 #include <dwmapi.h>
+
 #pragma comment(lib, "dwmapi.lib")
+#ifdef APIENTRY
+    #undef APIENTRY
+#endif
+
+#ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef UNICODE
+    #define UNICODE
+#endif 
+
+#undef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
+#pragma warning(disable:4702) //Dissable "unrelachable code"
+#pragma warning(disable:4820) //Dissable "Padding added to struct" 
+#pragma warning(disable:4255) //Dissable "no function prototype given: converting '()' to '(void)"  
+#pragma warning(disable:5045) //Dissable "Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified"  
+
+#include "platform.h"
 
 #undef near
 #undef far
@@ -457,12 +465,12 @@ int64_t platform_epoch_time_from_calendar_time(Platform_Calendar_Time calendar_t
     systime.wHour = calendar_time.hour;
     systime.wMilliseconds = calendar_time.millisecond;
     systime.wMinute = calendar_time.minute;
-    systime.wMonth = calendar_time.month;
+    systime.wMonth = calendar_time.month + 1;
     systime.wSecond = calendar_time.second;
     systime.wYear = (WORD) calendar_time.year;
 
     FILETIME filetime;
-    bool okay = SystemTimeToFileTime(&systime, &filetime);
+    bool okay = SystemTimeToFileTime(&systime, &filetime) != 0;
     assert(okay);
 
     int64_t epoch_time = _filetime_to_epoch_time(filetime);
@@ -738,6 +746,7 @@ const wchar_t* _ephemeral_wstring_convert(Platform_String path, bool normalize_p
 
 char* _convert_to_utf8_normalize_path(String_Buffer* append_to_or_null, Platform_WString string, int normalize_flag)
 {
+    (normalize_flag);
     String_Buffer local = {0};
     String_Buffer* append_to = append_to_or_null ? append_to_or_null : &local;
 

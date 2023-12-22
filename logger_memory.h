@@ -9,7 +9,7 @@
 // the error handling startegy outlined in error.h is not enough.
 
 #include "string.h"
-#include "format.h"
+#include "vformat.h"
 #include "log.h"
 
 typedef struct Memory_Log {
@@ -77,7 +77,7 @@ EXPORT void memory_logger_log(Logger* logger, const char* module, Log_Type type,
         log.log_type = type;
         log.indentation = (i32) indentation;
         log.source = source;
-        log.epoch_time = platform_local_epoch_time();
+        log.epoch_time = platform_epoch_time();
 
         array_push(&self->logs, log);
     }

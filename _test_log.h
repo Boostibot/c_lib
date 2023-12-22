@@ -10,7 +10,7 @@ INTERNAL void test_log()
 {
 
     Debug_Allocator debug_allocator = {0};
-    debug_allocator_init_use(&debug_allocator, DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK);
+    debug_allocator_init_use(&debug_allocator, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK);
 
     {
         Memory_Logger mem_logger = {0};

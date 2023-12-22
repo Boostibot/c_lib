@@ -1,7 +1,7 @@
 #pragma once
 
 #include "_test.h"
-#include "format.h"
+#include "vformat.h"
 
 typedef enum Base64_Encode_State{
     BASE64_ENCODE_EQ,
@@ -21,68 +21,68 @@ INTERNAL void test_base64_decode(Base64_Decode_State decode_state, Base64_Decodi
 INTERNAL void test_base64(f64 max_seconds)
 {
     //ENCODE =================
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_URL, "", "");
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_UTF8, "", "");
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_URL_NO_PAD, "", "");
-    test_base64_encode(BASE64_ENCODE_NEQ, BASE64_ENCODING_URL, "a", "");
-    test_base64_encode(BASE64_ENCODE_NEQ, BASE64_ENCODING_URL, "", "a");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url(), "", "");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url_utf8(), "", "");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url_no_pad(), "", "");
+    test_base64_encode(BASE64_ENCODE_NEQ, base64_encoding_url(), "a", "");
+    test_base64_encode(BASE64_ENCODE_NEQ, base64_encoding_url(), "", "a");
 
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_URL, "a", "YQ==");
-    test_base64_encode(BASE64_ENCODE_NEQ, BASE64_ENCODING_URL, "a", "YQ=");
-    test_base64_encode(BASE64_ENCODE_NEQ, BASE64_ENCODING_URL, "a", "YQ");
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_URL_NO_PAD, "a", "YQ");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url(), "a", "YQ==");
+    test_base64_encode(BASE64_ENCODE_NEQ, base64_encoding_url(), "a", "YQ=");
+    test_base64_encode(BASE64_ENCODE_NEQ, base64_encoding_url(), "a", "YQ");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url_no_pad(), "a", "YQ");
     
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_URL, "aa", "YWE=");
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_URL_NO_PAD, "aa", "YWE");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url(), "aa", "YWE=");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url_no_pad(), "aa", "YWE");
 
-    test_base64_encode(BASE64_ENCODE_NEQ, BASE64_ENCODING_URL, "a", "eQ==");
-    test_base64_encode(BASE64_ENCODE_NEQ, BASE64_ENCODING_URL, "a", "eQ=");
-    test_base64_encode(BASE64_ENCODE_NEQ, BASE64_ENCODING_URL, "a", "eQ");
+    test_base64_encode(BASE64_ENCODE_NEQ, base64_encoding_url(), "a", "eQ==");
+    test_base64_encode(BASE64_ENCODE_NEQ, base64_encoding_url(), "a", "eQ=");
+    test_base64_encode(BASE64_ENCODE_NEQ, base64_encoding_url(), "a", "eQ");
 
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_URL, "Hello world this is a text 123", "SGVsbG8gd29ybGQgdGhpcyBpcyBhIHRleHQgMTIz");
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_URL, "non printable %^&8(6$", "bm9uIHByaW50YWJsZSAlXiY4KDYk");
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_URL, "non printable %^&8(6$a", "bm9uIHByaW50YWJsZSAlXiY4KDYkYQ==");
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_UTF8, "non printable %^&8(6$a", "bm9uIHByaW50YWJsZSAlXiY4KDYkYQ==");
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_URL_NO_PAD, "non printable %^&8(6$a", "bm9uIHByaW50YWJsZSAlXiY4KDYkYQ");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url(), "Hello world this is a text 123", "SGVsbG8gd29ybGQgdGhpcyBpcyBhIHRleHQgMTIz");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url(), "non printable %^&8(6$", "bm9uIHByaW50YWJsZSAlXiY4KDYk");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url(), "non printable %^&8(6$a", "bm9uIHByaW50YWJsZSAlXiY4KDYkYQ==");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url_utf8(), "non printable %^&8(6$a", "bm9uIHByaW50YWJsZSAlXiY4KDYkYQ==");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url_no_pad(), "non printable %^&8(6$a", "bm9uIHByaW50YWJsZSAlXiY4KDYkYQ");
     
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_UTF8, "čšžýá", "xI3FocW+w73DoQ==");
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_URL,  "čšžýá", "xI3FocW-w73DoQ==");
-    test_base64_encode(BASE64_ENCODE_EQ,  BASE64_ENCODING_URL_NO_PAD,  "čšžýá", "xI3FocW-w73DoQ");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url_utf8(), "čšžýá", "xI3FocW+w73DoQ==");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url(),  "čšžýá", "xI3FocW-w73DoQ==");
+    test_base64_encode(BASE64_ENCODE_EQ,  base64_encoding_url_no_pad(),  "čšžýá", "xI3FocW-w73DoQ");
 
     //DECODE =================
-    test_base64_decode(BASE64_DECODE_EQ,  BASE64_DECODING_UNIVERSAL, "", "");
-    test_base64_decode(BASE64_DECODE_ERR, BASE64_DECODING_UNIVERSAL, "a", "");
-    test_base64_decode(BASE64_DECODE_NEQ, BASE64_DECODING_UNIVERSAL, "", "a");
+    test_base64_decode(BASE64_DECODE_EQ,  base64_decoding_universal(), "", "");
+    test_base64_decode(BASE64_DECODE_ERR, base64_decoding_universal(), "a", "");
+    test_base64_decode(BASE64_DECODE_NEQ, base64_decoding_universal(), "", "a");
 
-    test_base64_decode(BASE64_DECODE_EQ,  BASE64_DECODING_UNIVERSAL, "YQ==", "a");
-    test_base64_decode(BASE64_DECODE_EQ,  BASE64_DECODING_UNIVERSAL, "YQ=", "a");
-    test_base64_decode(BASE64_DECODE_EQ,  BASE64_DECODING_UNIVERSAL, "YQ", "a");
+    test_base64_decode(BASE64_DECODE_EQ,  base64_decoding_universal(), "YQ==", "a");
+    test_base64_decode(BASE64_DECODE_EQ,  base64_decoding_universal(), "YQ=", "a");
+    test_base64_decode(BASE64_DECODE_EQ,  base64_decoding_universal(), "YQ", "a");
     
-    test_base64_decode(BASE64_DECODE_EQ,  BASE64_DECODING_UNIVERSAL, "YWE=", "aa");
-    test_base64_decode(BASE64_DECODE_EQ,  BASE64_DECODING_UNIVERSAL, "YWE", "aa");
+    test_base64_decode(BASE64_DECODE_EQ,  base64_decoding_universal(), "YWE=", "aa");
+    test_base64_decode(BASE64_DECODE_EQ,  base64_decoding_universal(), "YWE", "aa");
     
-    test_base64_decode(BASE64_DECODE_NEQ, BASE64_DECODING_UNIVERSAL, "eQ==", "a");
-    test_base64_decode(BASE64_DECODE_NEQ, BASE64_DECODING_UNIVERSAL, "eQ=", "a");
-    test_base64_decode(BASE64_DECODE_NEQ, BASE64_DECODING_UNIVERSAL, "eQ", "a");
+    test_base64_decode(BASE64_DECODE_NEQ, base64_decoding_universal(), "eQ==", "a");
+    test_base64_decode(BASE64_DECODE_NEQ, base64_decoding_universal(), "eQ=", "a");
+    test_base64_decode(BASE64_DECODE_NEQ, base64_decoding_universal(), "eQ", "a");
     
-    test_base64_decode(BASE64_DECODE_EQ, BASE64_DECODING_UNIVERSAL, "YQ==YQ==", "aa"); //Decoding of concatenated blocks!
-    test_base64_decode(BASE64_DECODE_NEQ, BASE64_DECODING_UNIVERSAL, "YQYQ", "aa");
+    test_base64_decode(BASE64_DECODE_EQ, base64_decoding_universal(), "YQ==YQ==", "aa"); //Decoding of concatenated blocks!
+    test_base64_decode(BASE64_DECODE_NEQ, base64_decoding_universal(), "YQYQ", "aa");
 
-    test_base64_decode(BASE64_DECODE_EQ,  BASE64_DECODING_UNIVERSAL, "SGVsbG8gd29ybGQgdGhpcyBpcyBhIHRleHQgMTIz", "Hello world this is a text 123");
-    test_base64_decode(BASE64_DECODE_EQ,  BASE64_DECODING_UNIVERSAL, "bm9uIHByaW50YWJsZSAlXiY4KDYk", "non printable %^&8(6$");
-    test_base64_decode(BASE64_DECODE_EQ,  BASE64_DECODING_UNIVERSAL, "bm9uIHByaW50YWJsZSAlXiY4KDYkYQ==", "non printable %^&8(6$a");
-    test_base64_decode(BASE64_DECODE_EQ,  BASE64_DECODING_UNIVERSAL, "bm9uIHByaW50YWJsZSAlXiY4KDYkYQ==bm9uIHByaW50YWJsZSAlXiY4KDYkYQ==", "non printable %^&8(6$anon printable %^&8(6$a");
+    test_base64_decode(BASE64_DECODE_EQ,  base64_decoding_universal(), "SGVsbG8gd29ybGQgdGhpcyBpcyBhIHRleHQgMTIz", "Hello world this is a text 123");
+    test_base64_decode(BASE64_DECODE_EQ,  base64_decoding_universal(), "bm9uIHByaW50YWJsZSAlXiY4KDYk", "non printable %^&8(6$");
+    test_base64_decode(BASE64_DECODE_EQ,  base64_decoding_universal(), "bm9uIHByaW50YWJsZSAlXiY4KDYkYQ==", "non printable %^&8(6$a");
+    test_base64_decode(BASE64_DECODE_EQ,  base64_decoding_universal(), "bm9uIHByaW50YWJsZSAlXiY4KDYkYQ==bm9uIHByaW50YWJsZSAlXiY4KDYkYQ==", "non printable %^&8(6$anon printable %^&8(6$a");
 
-    test_base64_decode(BASE64_DECODE_ERR, BASE64_DECODING_UNIVERSAL, "bm9uIHByaW50YWJs%%ZSAlXiY4KDYkYQ", "");
-    test_base64_decode(BASE64_DECODE_ERR, BASE64_DECODING_UNIVERSAL, "bm9uIHByaW50YWJs*ZSAlXiY4KDYkYQ", "");
+    test_base64_decode(BASE64_DECODE_ERR, base64_decoding_universal(), "bm9uIHByaW50YWJs%%ZSAlXiY4KDYkYQ", "");
+    test_base64_decode(BASE64_DECODE_ERR, base64_decoding_universal(), "bm9uIHByaW50YWJs*ZSAlXiY4KDYkYQ", "");
     
-    test_base64_decode(BASE64_DECODE_EQ,  BASE64_DECODING_UNIVERSAL, "X/==", "_");
-    test_base64_decode(BASE64_DECODE_EQ,  BASE64_DECODING_UNIVERSAL, "X_==", "_");
+    test_base64_decode(BASE64_DECODE_EQ,  base64_decoding_universal(), "X/==", "_");
+    test_base64_decode(BASE64_DECODE_EQ,  base64_decoding_universal(), "X_==", "_");
     
     //STRESS ROUNDTRIP TESTING =================
-    test_base64_stress(max_seconds / 3.0, BASE64_ENCODING_URL, BASE64_DECODING_UNIVERSAL);
-    test_base64_stress(max_seconds / 3.0, BASE64_ENCODING_UTF8, BASE64_DECODING_UNIVERSAL);
-    test_base64_stress(max_seconds / 3.0, BASE64_ENCODING_URL_NO_PAD, BASE64_DECODING_UNIVERSAL);
+    test_base64_stress(max_seconds / 3.0, base64_encoding_url(), base64_decoding_universal());
+    test_base64_stress(max_seconds / 3.0, base64_encoding_url_utf8(), base64_decoding_universal());
+    test_base64_stress(max_seconds / 3.0, base64_encoding_url_no_pad(), base64_decoding_universal());
 
 }
 

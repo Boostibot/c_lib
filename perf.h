@@ -84,8 +84,9 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 		int64_t delta = platform_perf_counter() - running.start;
 		ASSERT(counter != NULL && delta >= 0 && "invalid Global_Perf_Counter_Running submitted");
 
+		int64_t runs = counter->runs;
 		counter->runs += 1; 
-		if(counter->runs == 1)
+		if(runs == 0)
 		{
 			counter->frquency = platform_perf_counter_frequency();
 			counter->max_counter = INT64_MIN;
@@ -108,7 +109,7 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 		int64_t runs = platform_atomic_add64(&counter->runs, 1); 
 		
 		//only save the stats that dont need to be updated on the first run
-		if(runs == 1)
+		if(runs == 0)
 		{
 			counter->frquency = platform_perf_counter_frequency();
 			counter->max_counter = INT64_MIN;

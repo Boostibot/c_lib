@@ -238,10 +238,7 @@ EXPORT Allocator_Stats stack_allocator_get_stats(Allocator* self)
     stats.type_name = "Stack_Allocator";
     stats.parent = self_->parent;
     stats.bytes_allocated = self_->current_alloced;
-    stats.bytes_used = self_->buffer_to - self_->buffer_from;
-
     stats.max_bytes_allocated = self_->max_alloced;
-    stats.max_bytes_used = stats.bytes_used;
             
     return stats;
 }
