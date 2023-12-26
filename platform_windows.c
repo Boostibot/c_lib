@@ -126,7 +126,8 @@ void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align)
         _aligned_free(old_ptr);
         return NULL;
     }
-    return _aligned_realloc(old_ptr, (size_t) new_size, (size_t) align);
+    void* data = _aligned_realloc(old_ptr, (size_t) new_size, (size_t) align);
+    return data;
 }
 
 

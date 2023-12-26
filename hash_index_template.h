@@ -88,6 +88,7 @@ typedef struct Hash_Index
 #define hash_index_find             CC2(hash_index,_find)
 #define hash_index_find_first       CC2(hash_index,_find_first)
 #define hash_index_find_next        CC2(hash_index,_find_next)
+#define hash_index_get              CC2(hash_index,_get)
 #define hash_index_find_or_insert   CC2(hash_index,_find_or_insert)
 #define hash_index_rehash           CC2(hash_index,_rehash)
 #define hash_index_reserve          CC2(hash_index,_reserve)
@@ -105,6 +106,7 @@ EXPORT isize hash_index_find(Hash_Index table, Hash hash);
 EXPORT isize hash_index_find_first(Hash_Index table, Hash hash, isize* finished_at);
 EXPORT isize hash_index_find_next(Hash_Index table, Hash hash, isize prev_found, isize* finished_at);
 EXPORT isize hash_index_find_or_insert(Hash_Index* table, Hash hash, Value value_if_inserted);
+EXPORT Value hash_index_get(Hash_Index table, Hash hash, Value if_not_found);
 EXPORT isize hash_index_rehash(Hash_Index* table, isize to_size); //rehashes 
 EXPORT void  hash_index_reserve(Hash_Index* table, isize to_size); //reserves space such that inserting up to to_size elements will not trigger rehash
 EXPORT isize hash_index_insert(Hash_Index* table, Hash hash, Value value);
@@ -322,6 +324,15 @@ EXPORT bool  hash_index_is_entry_used(Entry entry);
         }
 
         return found;
+    }
+
+    EXPORT Value hash_index_get(Hash_Index table, Hash hash, Value if_not_found)
+    {
+        isize found = hash_index_find(table, hash);
+        if(found == -1)
+            return if_not_found;
+        else
+            return entry_value_escape(table.entries[found].value);
     }
 
     EXPORT isize hash_index_rehash(Hash_Index* table, isize to_size)
