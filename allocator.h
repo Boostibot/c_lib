@@ -96,6 +96,9 @@ EXPORT Allocator_Stats allocator_get_stats(Allocator* self);
 
 EXPORT Platform_Allocator platform_allocator_from_allocator(Allocator* alloc);
 
+EXPORT void allocator_log_stats(Allocator_Stats stats, const char* log_module, Log_Type log_type);
+EXPORT Allocator_Stats allocator_log_stats_get(Allocator* allocator, const char* log_module, Log_Type log_type);
+
 //Gets called when function requiring to always succeed fails an allocation - most often from allocator_reallocate
 //If ALLOCATOR_CUSTOM_OUT_OF_MEMORY is defines is left unimplemented
 EXPORT void allocator_out_of_memory(
@@ -302,8 +305,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     {
         ASSERT(is_power_of_two(align_to));
 
-        usize ualign = (usize) align_to;
-        usize mask = ~(ualign - 1);
+        usize mask = ~((usize) align_to - 1);
         usize ptr_num = (usize) ptr;
         ptr_num = ptr_num & mask;
 
@@ -351,6 +353,44 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
 
         return out;
     }
+    
+    EXPORT void allocator_log_stats(Allocator_Stats stats, const char* log_module, Log_Type log_type)
+    {
+        if(stats.type_name == NULL)
+            stats.type_name = "<no type name>";
+
+        if(stats.name == NULL)
+            stats.name = "<no name>";
+
+        const char* unit_str = "";
+        isize unit = 0;
+
+        LOG(log_module, log_type, "type_name:           %s", stats.type_name);
+        LOG(log_module, log_type, "name:                %s", stats.name);
+
+        unit_str = get_memory_unit(stats.bytes_allocated, &unit);
+        LOG(log_module, log_type, "bytes_allocated:     %lli %s", DIV_ROUND_UP(stats.bytes_allocated, unit), unit_str);
+        unit_str = get_memory_unit(stats.max_bytes_allocated, &unit);
+        LOG(log_module, log_type, "max_bytes_allocated: %lli %s", DIV_ROUND_UP(stats.max_bytes_allocated, unit), unit_str);
+
+        LOG(log_module, log_type, "allocation_count:    %lli", stats.allocation_count);
+        LOG(log_module, log_type, "deallocation_count:  %lli", stats.deallocation_count);
+        LOG(log_module, log_type, "reallocation_count:  %lli", stats.reallocation_count);
+    }
+
+    EXPORT Allocator_Stats allocator_log_stats_get(Allocator* allocator, const char* log_module, Log_Type log_type)
+    {
+        Allocator_Stats stats = {0};
+        if(allocator != NULL && allocator->get_stats != NULL)
+        {
+            stats = allocator_get_stats(allocator);
+            allocator_log_stats(stats, log_module, log_type);
+        }
+        else
+            LOG(log_module, log_type, "Allocator NULL or missing get_stats callback.");
+
+        return stats;
+    }
 
     #ifndef ALLOCATOR_CUSTOM_OUT_OF_MEMORY
     EXPORT void allocator_out_of_memory(
@@ -391,19 +431,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
 
         LOG_INFO(mod, "Allocator_Stats:");
         log_group_push();
-        {
-            const char* unit_str = "";
-            isize unit = 0;
-
-            unit_str = get_memory_unit(stats.bytes_allocated, &unit);
-            LOG_INFO(mod, "bytes_allocated:     %lli %s", DIV_ROUND_UP(stats.bytes_allocated, unit), unit_str);
-            unit_str = get_memory_unit(stats.max_bytes_allocated, &unit);
-            LOG_INFO(mod, "max_bytes_allocated: %lli %s", DIV_ROUND_UP(stats.max_bytes_allocated, unit), unit_str);
-
-            LOG_INFO(mod, "allocation_count:    %lli", stats.allocation_count);
-            LOG_INFO(mod, "deallocation_count:  %lli", stats.deallocation_count);
-            LOG_INFO(mod, "reallocation_count:  %lli", stats.reallocation_count);
-        }
+            allocator_log_stats(stats, mod, LOG_TYPE_INFO);
         log_group_pop();
     
         LOG_TRACE(mod, "callstack:");

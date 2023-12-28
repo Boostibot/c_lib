@@ -49,6 +49,9 @@ EXPORT int64_t				perf_counter_end_atomic_custom(Perf_Counter* counter, Perf_Cou
 EXPORT double				perf_counter_get_ellapsed(Perf_Counter_Running running);
 EXPORT Perf_Counter_Stats	perf_counter_get_stats(Perf_Counter counter, int64_t batch_size);
 
+//Prevents the compiler from optimizing the address at the ptr and/or the ptr's value
+EXPORT void perf_do_not_optimize(const void* ptr);
+
 //Needs implementation:
 int64_t platform_perf_counter();
 int64_t platform_perf_counter_frequency();
@@ -57,6 +60,7 @@ inline static int32_t platform_atomic_add32(volatile int32_t* target, int32_t va
 inline static int64_t platform_atomic_add64(volatile int64_t* target, int64_t value);
 inline static int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value);
 inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value);
+
 
 #endif
 
@@ -242,4 +246,21 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 
 		return stats;
 	}
+	
+	EXPORT void perf_do_not_optimize(const void* ptr) 
+	{ 
+		static volatile int __perf_always_zero = 0;
+		if(__perf_always_zero == 0x7FFFFFFF)
+		{
+			volatile int* vol_ptr = (volatile int*) (void*) ptr;
+			//If we would use the following line the compiler could infer that 
+			//we are only really modifying the value at ptr. Thus if we did 
+			// perf_do_not_optimize(long_array) it would gurantee no optimize only at the first element.
+			//The precise version is also not very predictable. Often the compilers decide to only keep the first element
+			// of the array no metter which one we actually request not to optimize. 
+			//
+			// __perf_always_zero = *vol_ptr;
+			__perf_always_zero = vol_ptr[*vol_ptr];
+		}
+    }
 #endif

@@ -286,8 +286,8 @@ EXPORT void image_copy(Image* to_image, Image from_image, i32 offset_x, i32 offs
     else
     {
         //Reverse order copy
-        to_image_ptr += to_image_stride + copy_height*to_image_stride;
-        from_image_ptr += from_image_stride + copy_height*from_image_stride;
+        to_image_ptr += copy_height*to_image_stride;
+        from_image_ptr += copy_height*from_image_stride;
 
         for(isize y = 0; y < copy_height; y++)
         { 
