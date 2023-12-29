@@ -1,6 +1,30 @@
 #ifndef JOT_LOG
 #define JOT_LOG
 
+// This file is focused on as-simpel-as-possible semi-structured logging.
+// That is we attempt to give logs some structure but not too much (so that it is still convinient).
+// 
+// The primary design choice is thus how much and what to keep structured. We select three primary
+// independent pieces:
+//  1) log_module - a simple string indicating from where the log came from. 
+//                  The user is free to give this location any meaning (function, file, etc.)
+//                  to group things however they please.
+// 
+//  2) log_type - a number indicating what kind of log this is (info, warn, error, etc.). See below. 
+// 
+//  3) indendtation/groups 
+// 
+// The choice to have Log_Type which qualifies some basic log categories instead of the usual 
+//  severity level approach was chosen because of the following: 
+// Severity level has the two primary problems:
+//  1) Lack of meaning:
+//     The choice between severity level 5 and 6 is largely abitrary. This is because the meaning of 
+//     severity is distacted by how rest of the codebase uses it.
+//  2) Lack of fine grained control:
+//     If we want to dissable all info messages but keep debug emssaegs we simply cannot 
+//     (assuming severity of debug is smaller then of info - which is usually the case)
+//
+
 #include "defines.h"
 #include "platform.h"
 #include <stdarg.h>
@@ -38,12 +62,6 @@ typedef struct Source_Info {
     const char* function;
 } Source_Info;
 
-#ifdef __cplusplus
-    #define SOURCE_INFO() Source_Info{__LINE__, __FILE__, __FUNCTION__}
-#else
-    #define SOURCE_INFO() (Source_Info){__LINE__, __FILE__, __FUNCTION__}
-#endif 
-
 typedef struct Logger Logger;
 typedef void (*Vlog_Func)(Logger* logger, const char* module, Log_Type type, isize indentation, Source_Info source, const char* format, va_list args);
 
@@ -56,20 +74,24 @@ EXPORT Logger* log_system_get_logger();
 //Sets the default used logger. Returns a pointer to the previous logger so it can be restored later.
 EXPORT Logger* log_system_set_logger(Logger* logger);
 
-EXPORT bool log_is_enabled();
-EXPORT void log_disable();
-EXPORT void log_enable();
+//
+EXPORT u64  log_get_mask();
+EXPORT u64  log_set_mask(u64 mask);
+EXPORT u64  log_disable(isize log_type);
+EXPORT u64  log_enable(isize log_type);
+EXPORT bool log_is_enabled(isize log_type);
 
-EXPORT void log_group_push();   //Increases indentation of subsequent log messages
-EXPORT void log_group_pop();    //Decreases indentation of subsequent log messages
+EXPORT void  log_group_push();   //Increases indentation of subsequent log messages
+EXPORT void  log_group_pop();    //Decreases indentation of subsequent log messages
 EXPORT isize log_group_depth(); //Returns the current indentation of messages
 
-EXPORT void log_flush();
 EXPORT MODIFIER_FORMAT_FUNC(format, 4) void log_message(const char* module, Log_Type type, Source_Info source, MODIFIER_FORMAT_ARG const char* format, ...);
 EXPORT void vlog_message(const char* module, Log_Type type, Source_Info source, const char* format, va_list args);
+EXPORT void log_flush();
 
-EXPORT void log_callstack(const char* log_module, Log_Type log_type, isize depth, isize skip);
-EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void** callstack, isize callstack_size);
+EXPORT MODIFIER_FORMAT_FUNC(format, 4) void log_callstack(const char* log_module, Log_Type log_type, isize skip, MODIFIER_FORMAT_ARG const char* format, ...);
+EXPORT void log_just_callstack(const char* log_module, Log_Type log_type, isize depth, isize skip);
+EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void* const* callstack, isize callstack_size);
 EXPORT void log_translated_callstack(const char* log_module, Log_Type log_type, const Platform_Stack_Trace_Entry* translated, isize callstack_size);
 
 EXPORT const char* log_type_to_string(Log_Type type);
@@ -78,7 +100,7 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 
 //Default logging facility. Logs a message into the provided module cstring with log_type type (info, warn, error...)
 #define LOG(module, log_type, format, ...)      PP_IF(DO_LOG, LOG_ALWAYS)(module, log_type, format, ##__VA_ARGS__)
-#define VLOG(module, log_type, format, args)      PP_IF(DO_LOG, LOG_ALWAYS)(module, log_type, format, args)
+#define VLOG(module, log_type, format, args)    PP_IF(DO_LOG, LOG_ALWAYS)(module, log_type, format, args)
 
 //Logs a message type into the provided module cstring.
 #define LOG_INFO(module, format, ...)           PP_IF(DO_LOG_INFO, LOG)(module, LOG_TYPE_INFO, format, ##__VA_ARGS__)
@@ -132,15 +154,22 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 #define PP_IF(CONDITION_DEFINE, x)         PP_CONCAT(_IF_NOT_, CONDITION_DEFINE)(x)
 #define _IF_NOT_(x) x
 
+#ifdef __cplusplus
+    #define SOURCE_INFO() Source_Info{__LINE__, __FILE__, __FUNCTION__}
+#else
+    #define SOURCE_INFO() (Source_Info){__LINE__, __FILE__, __FUNCTION__}
+#endif 
+
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_LOG_IMPL)) && !defined(JOT_LOG_HAS_IMPL)
 #define JOT_LOG_HAS_IMPL
 
+//Is stateless so it can not be MODIFIER_THREAD_LOCAL
 static Logger _global_def_logger = {def_logger_func};
-static Logger* _global_logger = &_global_def_logger;
-static isize _global_log_group_depth = 0;
-static bool _global_log_enabled = true;
+static MODIFIER_THREAD_LOCAL Logger* _global_logger = &_global_def_logger;
+static MODIFIER_THREAD_LOCAL isize _global_log_group_depth = 0;
+static MODIFIER_THREAD_LOCAL u64 _global_log_mask = ~(u64) 0; //All channels on!
 
 EXPORT Logger* log_system_get_logger()
 {
@@ -167,23 +196,50 @@ EXPORT isize log_group_depth()
     return _global_log_group_depth;
 }
 
-EXPORT bool log_is_enabled()
+EXPORT u64 log_get_mask()
 {
-    return _global_log_enabled;
+    return _global_log_mask;
 }
-EXPORT void log_disable()
+EXPORT u64 log_set_mask(u64 mask)
 {
-    _global_log_enabled = false;
+    u64* gloabl_mask = &_global_log_mask;
+    u64 prev = *gloabl_mask; 
+    *gloabl_mask = mask;
+    return prev;
 }
-EXPORT void log_enable()
+EXPORT bool log_is_enabled(isize log_type)
 {
-    _global_log_enabled = true;
+    u64 log_bit = (u64) 1 << log_type;
+    bool enabled = (log_bit & _global_log_mask) > 0;
+    return enabled;
+}
+
+EXPORT u64 log_disable(isize log_type)
+{
+    u64* mask = &_global_log_mask;
+    u64 prev = *mask; 
+    u64 log_bit = (u64) 1 << log_type;
+    *mask = *mask & ~log_bit;
+    return prev;
+}
+EXPORT u64 log_enable(isize log_type)
+{
+    u64* mask = &_global_log_mask;
+    u64 prev = *mask; 
+    u64 log_bit = (u64) 1 << log_type;
+    *mask = *mask | log_bit;
+    return prev;
 }
 
 EXPORT void vlog_message(const char* module, Log_Type type, Source_Info source, const char* format, va_list args)
 {
-    if(_global_logger && _global_log_enabled)
-        _global_logger->log(_global_logger, module, type, _global_log_group_depth, source, format, args);
+    bool static_enabled = false;
+    #ifdef DO_LOG
+        static_enabled = true;
+    #endif
+    Logger* global_logger = _global_logger;
+    if(static_enabled && global_logger && log_is_enabled(type))
+        global_logger->log(global_logger, module, type, _global_log_group_depth, source, format, args);
 }
 
 EXPORT MODIFIER_FORMAT_FUNC(format, 4) void log_message(const char* module, Log_Type type, Source_Info source, MODIFIER_FORMAT_ARG const char* format, ...)
@@ -244,7 +300,20 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
     printf(ANSI_COLOR_NORMAL"\n");
 }
 
-EXPORT void log_callstack(const char* log_module, Log_Type log_type, isize depth, isize skip)
+
+EXPORT MODIFIER_FORMAT_FUNC(format, 4) void log_callstack(const char* log_module, Log_Type log_type, isize skip, MODIFIER_FORMAT_ARG const char* format, ...)
+{
+    va_list args;               
+    va_start(args, format);     
+    VLOG(log_module, log_type, format, args);                    
+    va_end(args);   
+    
+    log_group_push();
+    log_just_callstack(log_module, log_type, -1, skip + 1);
+    log_group_pop();
+}
+
+EXPORT void log_just_callstack(const char* log_module, Log_Type log_type, isize depth, isize skip)
 {
     void* stack[256] = {0};
     if(depth < 0 || depth > 256)
@@ -267,7 +336,7 @@ INTERNAL bool _log_translated_callstack_and_check_main(const char* log_module, L
 }
 
 
-EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void** callstack, isize callstack_size)
+EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void* const* callstack, isize callstack_size)
 {
     if(callstack_size < 0 || callstack == NULL)
         callstack_size = 0;

@@ -181,7 +181,7 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
     Platform_Calendar_Time c = platform_local_calendar_time_from_epoch_time(epoch_time);
     
     //Try to guess size
-    array_grow(append_to, size_before + message_string.size + 100 + module.size);
+    array_reserve(append_to, size_before + message_string.size + 100 + module.size);
 
     const char* type_str = log_type_to_string(type);
     if(strlen(type_str) > 0)
@@ -301,7 +301,7 @@ EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, A
     builder_assign(&logger->file_prefix, prefix);
     builder_assign(&logger->file_postfix, postfix);
 
-    array_grow(&logger->buffer, flush_every_bytes);
+    array_reserve(&logger->buffer, flush_every_bytes);
 }
 
 EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc)

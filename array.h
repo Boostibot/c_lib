@@ -67,13 +67,11 @@ EXPORT void _array_init(void* array, isize item_size, Allocator* allocator, Sour
 EXPORT void _array_init_backed(void* array, isize item_size, Allocator* allocator, void* backing, int64_t backing_size, Source_Info from);
 EXPORT void _array_deinit(void* array, isize item_size, Source_Info from);
 EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, Source_Info from); 
-EXPORT void _array_grow_capacity(void* array, isize item_size, isize capacity_at_least, Source_Info from); 
 EXPORT bool _array_is_invariant(const void* array, isize item_size);
 EXPORT bool _array_is_backed(const void* array, isize item_size);
 EXPORT Allocator* _array_get_allocator(const void* array, isize item_size);
 EXPORT isize _array_resize(void* array, isize item_size, isize to_size, Source_Info from);
-EXPORT void _array_reserve(void* array, isize item_size, isize to_capacity, bool do_growth, Source_Info from);
-EXPORT void _array_prepare_push(void* array, isize item_size, Source_Info from);
+EXPORT void _array_reserve(void* array, isize item_size, isize to_capacity, Source_Info from);
 EXPORT void _array_append(void* array, isize item_size, const void* data, isize data_count, Source_Info from);
 EXPORT void _array_unappend(void* array, isize item_size, isize data_count);
 EXPORT void _array_clear(void* array, isize item_size);
@@ -118,13 +116,10 @@ EXPORT void _array_clear(void* array, isize item_size);
     _array_is_backed(&(array), sizeof *(array).data)
 
 //If the array capacity is lower than to_capacity sets the capacity to to_capacity. 
+//If setting of capacity is required and the new capcity is less then one geometric growth 
+// step away from current capacity grows instead.
 #define array_reserve(array_ptr, to_capacity) \
-    _array_reserve(array_ptr, sizeof *(array_ptr)->data, to_capacity, false, SOURCE_INFO()) 
-
-//Grows the array capacity so that capacity is greater or equal to to_capacity. 
-//Differes from reserves in that it always follows geometric progression.
-#define array_grow(array_ptr, to_capacity) \
-    _array_reserve(array_ptr, sizeof *(array_ptr)->data, to_capacity, true, SOURCE_INFO()) 
+    _array_reserve(array_ptr, sizeof *(array_ptr)->data, to_capacity, SOURCE_INFO()) 
 
 //Sets the array size to the specied to_size. 
 //If the to_size is smaller than current size simply dicards further items
@@ -158,7 +153,7 @@ EXPORT void _array_clear(void* array, isize item_size);
 
 //Appends a single item to the end of the array
 #define array_push(array_ptr, item_value)            \
-    _array_reserve(array_ptr, sizeof *(array_ptr)->data, (array_ptr)->size + 1, true, SOURCE_INFO()), \
+    _array_reserve(array_ptr, sizeof *(array_ptr)->data, (array_ptr)->size + 1, SOURCE_INFO()), \
     (array_ptr)->data[(array_ptr)->size++] = item_value \
 
 //Removes a single item from the end of the array
@@ -318,23 +313,10 @@ EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, So
     ASSERT(_array_is_invariant(array, item_size));
 }
 
-EXPORT void _array_grow_capacity(void* array, isize item_size, isize capacity_at_least, Source_Info from)
-{
-    ASSERT(_array_is_invariant(array, item_size));
-    ASSERT(capacity_at_least >= 0);
-    
-    u8_Array* base = (u8_Array*) array;
-    isize new_capacity = base->capacity;
-    while(new_capacity < capacity_at_least)
-        new_capacity = new_capacity * 3/2 + 8;
-
-    _array_set_capacity(array, item_size, new_capacity, from);
-}
-
 EXPORT isize _array_resize(void* array, isize item_size, isize to_size, Source_Info from)
 {
     u8_Array* base = (u8_Array*) array;
-    _array_reserve(base, item_size, to_size, false, from);
+    _array_reserve(base, item_size, to_size, from);
     isize size_before = base->size;
     if(to_size > base->size)
         memset(base->data + base->size*item_size, 0, (size_t) ((to_size - base->size)*item_size));
@@ -345,25 +327,27 @@ EXPORT isize _array_resize(void* array, isize item_size, isize to_size, Source_I
     return size_before;
 }
 
-EXPORT void _array_reserve(void* array, isize item_size, isize to_fit, bool do_growth, Source_Info from)
+EXPORT void _array_reserve(void* array, isize item_size, isize to_fit, Source_Info from)
 {
     ASSERT(_array_is_invariant(array, item_size));
     ASSERT(to_fit >= 0);
     u8_Array* base = (u8_Array*) array;
     if(base->capacity > to_fit)
         return;
+        
+    isize new_capacity = to_fit;
+    isize growth_step = base->capacity * 3/2 + 8;
+    if(new_capacity < growth_step)
+        new_capacity = growth_step;
 
-    if(do_growth)
-        _array_grow_capacity(array, item_size, to_fit + 1, from);
-    else
-        _array_set_capacity(array, item_size, to_fit + 1, from);
+    _array_set_capacity(array, item_size, new_capacity + 1, from);
 }
 
 EXPORT void _array_append(void* array, isize item_size, const void* data, isize data_count, Source_Info from)
 {
     ASSERT(data_count >= 0 && item_size > 0);
     u8_Array* base = (u8_Array*) array;
-    _array_reserve(base, item_size, base->size+data_count, true, from);
+    _array_reserve(base, item_size, base->size+data_count, from);
     memmove(base->data + item_size * base->size, data, (size_t) (item_size * data_count));
     base->size += data_count;
     memset(base->data + base->size*item_size, 0, (size_t) item_size);

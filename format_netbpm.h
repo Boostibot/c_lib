@@ -49,20 +49,20 @@ EXPORT int endian_get_local();
 EXPORT u32 endian_byteswap(u32 val);
 EXPORT Netbpm_Format netbpm_format_classify(String data);
 
-EXPORT Error netbpm_format_pgm_write_into(String_Builder* into, Image image);
-EXPORT Error netbpm_format_pgm_read_into(Image_Builder* image, String ppm);
+EXPORT Error netbpm_format_pgm_write_into(String_Builder* into, Subimage image);
+EXPORT Error netbpm_format_pgm_read_into(Image* image, String ppm);
 
-EXPORT Error netbpm_format_ppm_write_into(String_Builder* into, Image image);
-EXPORT Error netbpm_format_ppm_read_into(Image_Builder* image, String ppm);
+EXPORT Error netbpm_format_ppm_write_into(String_Builder* into, Subimage image);
+EXPORT Error netbpm_format_ppm_read_into(Image* image, String ppm);
 
-EXPORT Error netbpm_format_pfmg_write_into(String_Builder* into, Image image, f32 range);
-EXPORT Error netbpm_format_pfmg_read_into(Image_Builder* image, String ppm);
+EXPORT Error netbpm_format_pfmg_write_into(String_Builder* into, Subimage image, f32 range);
+EXPORT Error netbpm_format_pfmg_read_into(Image* image, String ppm);
 
-EXPORT Error netbpm_format_pfm_write_into(String_Builder* into, Image image, f32 range);
-EXPORT Error netbpm_format_pfm_read_into(Image_Builder* image, String ppm);
+EXPORT Error netbpm_format_pfm_write_into(String_Builder* into, Subimage image, f32 range);
+EXPORT Error netbpm_format_pfm_read_into(Image* image, String ppm);
 
-EXPORT Error netbpm_format_pam_write_into(String_Builder* into, Image image);
-EXPORT Error netbpm_format_pam_read_into(Image_Builder* image, String ppm);
+EXPORT Error netbpm_format_pam_write_into(String_Builder* into, Subimage image);
+EXPORT Error netbpm_format_pam_read_into(Image* image, String ppm);
 
 #endif
 
@@ -143,9 +143,9 @@ EXPORT int endian_get_local()
     }
 }
 
-INTERNAL Error _netbpm_format_write_append_pgm_ppm(String_Builder* append_into, Image image, const char* magic, i32 channels)
+INTERNAL Error _netbpm_format_write_append_pgm_ppm(String_Builder* append_into, Subimage image, const char* magic, i32 channels)
 {
-    if(image.pixel_format != PIXEL_FORMAT_U8 && image_channel_count(image) != channels)
+    if(image.type != PIXEL_TYPE_U8 && subimage_channel_count(image) != channels)
         return error_make(netbmp_format_error_module(), NETBPM_FORMAT_ERROR_BAD_TYPE);
 
     isize pixel_count = image.width * image.height;
@@ -160,19 +160,19 @@ INTERNAL Error _netbpm_format_write_append_pgm_ppm(String_Builder* append_into, 
     array_resize(append_into, size_before + neeed_size);
 
     u8* dest = (u8*) append_into->data + size_before;
-    if(image_is_contiguous(image))
+    if(subimage_is_contiguous(image))
         memcpy(dest, image.pixels, (size_t) neeed_size);
     else
     {
         isize line_bytes = image.width * image.pixel_size;
         for(isize y = 0; y < image.height; y++)
-            memcpy(dest + line_bytes*y, image_at(image, 0, (i32) y), (size_t) line_bytes);
+            memcpy(dest + line_bytes*y, subimage_at(image, 0, (i32) y), (size_t) line_bytes);
     }
 
     return ERROR_OK;
 }
 
-INTERNAL Error _netbpm_format_read_pgm_ppm(Image_Builder* image, String ppm, const char* magic, i32 channels)
+INTERNAL Error _netbpm_format_read_pgm_ppm(Image* image, String ppm, const char* magic, i32 channels)
 {
     Error out_error = {0};
     String_Builder escaped_start = {0};
@@ -201,8 +201,8 @@ INTERNAL Error _netbpm_format_read_pgm_ppm(Image_Builder* image, String ppm, con
         else
         {
             Allocator* alloc = image->allocator;
-            image_builder_init(image, alloc, channels, PIXEL_FORMAT_U8);
-            image_builder_resize(image, w, h);
+            image_init(image, alloc, channels, PIXEL_TYPE_U8);
+            image_resize(image, w, h);
             memcpy(image->pixels, ppm.data, (size_t) needed_size);
         }
     }
@@ -211,9 +211,9 @@ INTERNAL Error _netbpm_format_read_pgm_ppm(Image_Builder* image, String ppm, con
     return out_error;
 }
 
-INTERNAL Error _netbpm_format_write_append_pfm_pfmg(String_Builder* append_into, Image image, const char* magic, i32 channels, f32 range)
+INTERNAL Error _netbpm_format_write_append_pfm_pfmg(String_Builder* append_into, Subimage image, const char* magic, i32 channels, f32 range)
 {
-    if(image.pixel_format != PIXEL_FORMAT_F32 && image_channel_count(image) != channels)
+    if(image.type != PIXEL_TYPE_F32 && subimage_channel_count(image) != channels)
         return error_make(netbmp_format_error_module(), NETBPM_FORMAT_ERROR_BAD_TYPE);
         
     isize pixel_count = image.width * image.height;
@@ -233,19 +233,19 @@ INTERNAL Error _netbpm_format_write_append_pfm_pfmg(String_Builder* append_into,
     array_resize(append_into, size_before + neeed_size);
 
     u8* dest = (u8*) append_into->data + size_before;
-    if(image_is_contiguous(image))
+    if(subimage_is_contiguous(image))
         memcpy(dest, image.pixels, (size_t) neeed_size);
     else
     {
         isize line_bytes = image.width * image.pixel_size;
         for(isize y = 0; y < image.height; y++)
-            memcpy(dest + line_bytes*y, image_at(image, 0, (i32) y), (size_t) line_bytes);
+            memcpy(dest + line_bytes*y, subimage_at(image, 0, (i32) y), (size_t) line_bytes);
     }
 
     return ERROR_OK;
 }
 
-INTERNAL Error _netbpm_format_read_pfm_pfmg(Image_Builder* image, String ppm, const char* magic, i32 channels)
+INTERNAL Error _netbpm_format_read_pfm_pfmg(Image* image, String ppm, const char* magic, i32 channels)
 {
     Error out_error = {0};
     String_Builder escaped_start = {0};
@@ -274,8 +274,8 @@ INTERNAL Error _netbpm_format_read_pfm_pfmg(Image_Builder* image, String ppm, co
         else
         {
             Allocator* alloc = image->allocator;
-            image_builder_init(image, alloc, channels, PIXEL_FORMAT_F32);
-            image_builder_resize(image, w, h);
+            image_init(image, alloc, channels, PIXEL_TYPE_F32);
+            image_resize(image, w, h);
             memcpy(image->pixels, ppm.data, (size_t) needed_size);
         }
     }
@@ -284,56 +284,56 @@ INTERNAL Error _netbpm_format_read_pfm_pfmg(Image_Builder* image, String ppm, co
     return out_error;
 }
 
-EXPORT Error netbpm_format_pgm_write_into(String_Builder* into, Image image)
+EXPORT Error netbpm_format_pgm_write_into(String_Builder* into, Subimage image)
 {
     array_clear(into);
     return _netbpm_format_write_append_pgm_ppm(into, image, "P5", 1);
 }
 
-EXPORT Error netbpm_format_ppm_write_into(String_Builder* into, Image image)
+EXPORT Error netbpm_format_ppm_write_into(String_Builder* into, Subimage image)
 {
     array_clear(into);
     return _netbpm_format_write_append_pgm_ppm(into, image, "P6", 3);
 }
 
-EXPORT Error netbpm_format_pgm_read_into(Image_Builder* image, String ppm)
+EXPORT Error netbpm_format_pgm_read_into(Image* image, String ppm)
 {
     return _netbpm_format_read_pgm_ppm(image, ppm, "P5", 1);
 }
 
-EXPORT Error netbpm_format_ppm_read_into(Image_Builder* image, String ppm)
+EXPORT Error netbpm_format_ppm_read_into(Image* image, String ppm)
 {
     return _netbpm_format_read_pgm_ppm(image, ppm, "P6", 3);
 }
 
-EXPORT Error netbpm_format_pfmg_write_into(String_Builder* into, Image image, f32 range)
+EXPORT Error netbpm_format_pfmg_write_into(String_Builder* into, Subimage image, f32 range)
 {
     array_clear(into);
     return _netbpm_format_write_append_pfm_pfmg(into, image, "Pf", 1, range);
 }
 
-EXPORT Error netbpm_format_pfm_write_into(String_Builder* into, Image image, f32 range)
+EXPORT Error netbpm_format_pfm_write_into(String_Builder* into, Subimage image, f32 range)
 {
     array_clear(into);
     return _netbpm_format_write_append_pfm_pfmg(into, image, "PF", 3, range);
 }
 
-EXPORT Error netbpm_format_pfmg_read_into(Image_Builder* image, String ppm)
+EXPORT Error netbpm_format_pfmg_read_into(Image* image, String ppm)
 {
     return _netbpm_format_read_pfm_pfmg(image, ppm, "Pf", 1);
 }
 
-EXPORT Error netbpm_format_pfm_read_into(Image_Builder* image, String ppm)
+EXPORT Error netbpm_format_pfm_read_into(Image* image, String ppm)
 {
     return _netbpm_format_read_pfm_pfmg(image, ppm, "PF", 3);
 }
 
-EXPORT Error netbpm_format_pam_write_into(String_Builder* into, Image image)
+EXPORT Error netbpm_format_pam_write_into(String_Builder* into, Subimage image)
 {
     array_clear(into);
     String_Builder* append_into = into;
 
-    isize channels = image_channel_count(image);
+    isize channels = subimage_channel_count(image);
     isize neeed_size = image.width * image.height * image.pixel_size;
     
     array_reserve(append_into, append_into->size + neeed_size + 200);
@@ -341,9 +341,9 @@ EXPORT Error netbpm_format_pam_write_into(String_Builder* into, Image image)
     const char* tuple_type = NULL;
     int max_val = 0;
     int depth = 0;
-    if(channels <= 4 && (image.pixel_format == PIXEL_FORMAT_U8 || image.pixel_format == PIXEL_FORMAT_U16))
+    if(channels <= 4 && (image.type == PIXEL_TYPE_U8 || image.type == PIXEL_TYPE_U16))
     {
-        max_val = image.pixel_format == PIXEL_FORMAT_U8 ? 255 : 65535;
+        max_val = image.type == PIXEL_TYPE_U8 ? 255 : 65535;
         depth = (int) channels;
         switch(channels)
         {
@@ -354,19 +354,19 @@ EXPORT Error netbpm_format_pam_write_into(String_Builder* into, Image image)
             default: ASSERT(false); break;
         }
     }
-    else if(image.pixel_format == PIXEL_FORMAT_F32)
+    else if(image.type == PIXEL_TYPE_F32)
     {   
         depth = image.pixel_size;
         tuple_type = "FLOATS";
         max_val = 255;
     }
-    else if(image.pixel_format == PIXEL_FORMAT_U24)
+    else if(image.type == PIXEL_TYPE_U24)
     {
         depth = image.pixel_size;
         tuple_type = "U24";
         max_val = 255;
     }
-    else if(image.pixel_format == PIXEL_FORMAT_U32)
+    else if(image.type == PIXEL_TYPE_U32)
     {
         depth = image.pixel_size;
         tuple_type = "U32";
@@ -392,20 +392,20 @@ EXPORT Error netbpm_format_pam_write_into(String_Builder* into, Image image)
     array_resize(append_into, size_before + neeed_size);
 
     u8* dest = (u8*) append_into->data + size_before;
-    if(image_is_contiguous(image))
+    if(subimage_is_contiguous(image))
         memcpy(dest, image.pixels, (size_t) neeed_size);
     else
     {
         isize line_bytes = image.width * image.pixel_size;
         for(isize y = 0; y < image.height; y++)
-            memcpy(dest + line_bytes*y, image_at(image, 0, (i32) y), (size_t) line_bytes);
+            memcpy(dest + line_bytes*y, subimage_at(image, 0, (i32) y), (size_t) line_bytes);
     }
 
     return ERROR_OK;
 }
 
 #include "parse.h"
-EXPORT Error netbpm_format_pam_read_into(Image_Builder* image, String ppm)
+EXPORT Error netbpm_format_pam_read_into(Image* image, String ppm)
 {
     const Error INVALID_HEADER = error_make(netbmp_format_error_module(), NETBPM_FORMAT_ERROR_INVALID_HEADER);
     isize file_pos = 0;
@@ -416,7 +416,7 @@ EXPORT Error netbpm_format_pam_read_into(Image_Builder* image, String ppm)
     isize height = -1;
     isize maxval = -1;
     isize depth = -1;
-    Image_Pixel_Format pixel_format = PIXEL_FORMAT_U8;
+    Pixel_Type type = PIXEL_TYPE_U8;
 
     Error out_error = {0};
     while(file_pos < ppm.size && error_is_ok(out_error))
@@ -495,13 +495,13 @@ EXPORT Error netbpm_format_pam_read_into(Image_Builder* image, String ppm)
 
             String tuple_type = string_range(line, from, to);
             if(string_is_equal(tuple_type, STRING("FLOATS"))) 
-                pixel_format = PIXEL_FORMAT_U8;
+                type = PIXEL_TYPE_U8;
             else if(string_is_equal(tuple_type, STRING("U24"))) 
-                pixel_format = PIXEL_FORMAT_U24;
+                type = PIXEL_TYPE_U24;
             else if(string_is_equal(tuple_type, STRING("U32"))) 
-                pixel_format = PIXEL_FORMAT_U32;
+                type = PIXEL_TYPE_U32;
             else if(string_is_equal(tuple_type, STRING("BYTES"))) 
-                pixel_format = PIXEL_FORMAT_U8;
+                type = PIXEL_TYPE_U8;
         }
         else
         {
@@ -516,14 +516,14 @@ EXPORT Error netbpm_format_pam_read_into(Image_Builder* image, String ppm)
     else
     {
         isize pixel_size = 1*depth;
-        if(pixel_format == PIXEL_FORMAT_U8 && maxval > 255)
+        if(type == PIXEL_TYPE_U8 && maxval > 255)
         {
-            pixel_size = PIXEL_FORMAT_U16;
+            pixel_size = PIXEL_TYPE_U16;
             pixel_size = 2*depth;
         }
         
-        if(image_pixel_format_size(pixel_format) == 0 || pixel_size % image_pixel_format_size(pixel_format) != 0)
-            pixel_format = PIXEL_FORMAT_U8;
+        if(pixel_type_size(type) == 0 || pixel_size % pixel_type_size(type) != 0)
+            type = PIXEL_TYPE_U8;
 
         isize pixel_count = width * height;
         isize needed_size = pixel_count * pixel_size;
@@ -532,12 +532,7 @@ EXPORT Error netbpm_format_pam_read_into(Image_Builder* image, String ppm)
         if(image_data.size < needed_size)
             out_error = error_make(netbmp_format_error_module(), NETBPM_FORMAT_ERROR_NOT_ENOUGH_DATA);
         else
-        {
-            Allocator* alloc = image->allocator;
-            image_builder_init_from_pixel_size(image, alloc, (i32) pixel_size, (Image_Pixel_Format) pixel_format);
-            image_builder_resize(image, (i32) width, (i32) height);
-            memcpy(image->pixels, ppm.data, (size_t) needed_size);
-        }
+            image_reshape_pixel_size(image, width, height, pixel_size, type, ppm.data);
     }
 
     return out_error;

@@ -15,9 +15,6 @@ EXPORT void callstack_capture_and_translate(Stack_Trace* into, isize depth, isiz
 EXPORT void callstack_capture(ptr_Array* callstack, isize depth, isize skip);
 EXPORT void callstack_translate(Stack_Trace* into, const void** callstack, isize callstack_size);
 
-EXPORT void log_callstack(const char* log_module, Log_Type log_type, isize depth, isize skip);
-EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void** callstack, isize callstack_size);
-
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_LOG_MISC_IMPL)) && !defined(JOT_LOG_MISC_HAS_IMPL)
@@ -27,7 +24,6 @@ enum { _DEF_CALLSTACK_SIZE = 64 };
 
 EXPORT void callstack_capture(ptr_Array* callstack, isize depth, isize skip)
 {
-    
     isize captured_depth = 0;
     if(depth >= 0)
     {
@@ -49,7 +45,7 @@ EXPORT void callstack_capture(ptr_Array* callstack, isize depth, isize skip)
     }
 }
 
-EXPORT void callstack_translate(Stack_Trace* into, const void** callstack, isize callstack_size)
+EXPORT void callstack_translate(Stack_Trace* into, const void* const* callstack, isize callstack_size)
 {
     array_resize(into, callstack_size);
     platform_translate_call_stack(into->data, callstack, callstack_size);

@@ -17,7 +17,6 @@ INTERNAL void test_array_stress(f64 max_seconds)
 		PUSH,
 		POP,
 		RESERVE,
-		GROW,
 		RESIZE,
 		APPEND,
 		COPY, //when we assign between the two arrays we switch and use the otehr one
@@ -34,7 +33,6 @@ INTERNAL void test_array_stress(f64 max_seconds)
 	probabilities[PUSH]				= 50;
 	probabilities[POP]				= 10;
 	probabilities[RESERVE]			= 5;
-	probabilities[GROW]				= 5;
 	probabilities[RESIZE]			= 5;
 	probabilities[APPEND]			= 20;
 	probabilities[COPY]			    = 5;
@@ -58,8 +56,6 @@ INTERNAL void test_array_stress(f64 max_seconds)
 	i64_Array* other_array = &array2;
 	
 	Discrete_Distribution dist = random_discrete_make(probabilities, ACTION_ENUM_COUNT);
-	//*random_state() = random_state_from_seed(1);
-	
 
 	isize max_size = 0;
 	isize max_capacity = 0;
@@ -69,7 +65,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 		if(clock_s() - start >= max_seconds && i >= MIN_ITERS)
 			break;
 
-		i32 action = random_discrete(dist);
+		i32 action = random_discrete(&dist);
 		TEST(_array_is_invariant(arr, sizeof *arr->data));
 		
 		bool is_reserve = true;
@@ -125,17 +121,11 @@ INTERNAL void test_array_stress(f64 max_seconds)
 				break;
 			}
 			
-			case RESERVE: 
-				is_reserve = true;
-			case GROW: {
-				is_reserve = false;
+			case RESERVE: {
 				isize size_before = arr->size;
 				isize capacity_before = arr->capacity;
 				isize capacity = random_range(0, MAX_CAPACITY);
-				if(is_reserve)
-					array_reserve(arr, capacity);
-				else
-					array_grow(arr, capacity);
+				array_reserve(arr, capacity);
 
 				TEST(size_before == arr->size);
 				TEST(capacity_before <= arr->capacity);

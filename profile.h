@@ -1,4 +1,4 @@
-#ifndef JOT_PROFILE
+﻿#ifndef JOT_PROFILE
 #define JOT_PROFILE
 
 #include "platform.h"
@@ -69,6 +69,7 @@ void main()
 //Locally enables perf counters (can be toggled just like ASSERT macros)
 #define DO_PERF_COUNTERS
 
+//Makes all counters detailed. This is the default.
 #define PROFILE_DO_ONLY_DETAILED_COUNTERS
 
 //typedef void (*Global_Perf_Counter_User_Format_Func)(const Global_Perf_Counter* counter, String_Builder* into);
@@ -98,7 +99,7 @@ typedef struct Global_Perf_Counter
 typedef struct Global_Perf_Counter_Running
 {
 	Global_Perf_Counter* my_counter;
-	Perf_Counter_Running running;
+	i64 running;
 	i64 line;
 	const char* file;
 	const char* function;
@@ -116,10 +117,10 @@ EXPORT i64 profile_get_total_running_counters_count();
 EXPORT f64 profile_get_counter_total_running_time_s(Global_Perf_Counter counter);
 EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counter);
 
-#define PERF_COUNTER_START(name) PP_ID(PP_CONCAT(_IF_NOT_PERF_START_, DO_PERF_COUNTERS)(name))
-#define PERF_COUNTER_END(name) PP_ID(PP_CONCAT(_IF_NOT_PERF_END_, DO_PERF_COUNTERS)(name))
-#define PERF_COUNTER_END_DETAILED(name) PP_ID(PP_CONCAT(_IF_NOT_PERF_END_DETAILED_, DO_PERF_COUNTERS)(name))
-#define PERF_COUNTER_END_DISCARD(name, fake_run) PP_ID(PP_CONCAT(_IF_NOT_PERF_END_DISCARD_, DO_PERF_COUNTERS)(name, fake_run))
+#define PERF_COUNTER_START(name)		PP_ID(PP_CONCAT(_IF_NOT_PERF_START_,		DO_PERF_COUNTERS)(name))
+#define PERF_COUNTER_END(name)			PP_ID(PP_CONCAT(_IF_NOT_PERF_END_,			DO_PERF_COUNTERS)(name))
+#define PERF_COUNTER_END_DETAILED(name)	PP_ID(PP_CONCAT(_IF_NOT_PERF_END_DETAILED_, DO_PERF_COUNTERS)(name))
+#define PERF_COUNTER_END_DISCARD(name)	PP_ID(PP_CONCAT(_IF_NOT_PERF_END_DISCARD_,	DO_PERF_COUNTERS)(name))
 
 #ifdef PROFILE_DO_ONLY_DETAILED_COUNTERS
 	#undef PERF_COUNTER_END
@@ -130,17 +131,16 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 	#define _IF_NOT_PERF_START_DO_PERF_COUNTERS(name) Global_Perf_Counter_Running name = {0}
 	#define _IF_NOT_PERF_START_(name) \
 		MODIFIER_ALIGNED(64) static Global_Perf_Counter _##name = {0}; \
-		Global_Perf_Counter_Running name = global_perf_counter_start(&_##name, __LINE__, __FILE__, __FUNCTION__, #name); \
-		platform_memory_fence()
+		Global_Perf_Counter_Running name = global_perf_counter_start(&_##name, __LINE__, __FILE__, __FUNCTION__, #name); 
 
 	#define _IF_NOT_PERF_END_DO_PERF_COUNTERS(name) (void) (name)
-	#define _IF_NOT_PERF_END_(name) platform_memory_fence(), global_perf_counter_end(&(name))
+	#define _IF_NOT_PERF_END_(name) global_perf_counter_end(&(name))
 	
 	#define _IF_NOT_PERF_END_DETAILED_DO_PERF_COUNTERS(name) (void) (name)
-	#define _IF_NOT_PERF_END_DETAILED_(name) platform_memory_fence(), global_perf_counter_end_detailed(&(name))
+	#define _IF_NOT_PERF_END_DETAILED_(name) global_perf_counter_end_detailed(&(name))
 
-	#define _IF_NOT_PERF_END_DISCARD_DO_PERF_COUNTERS(name, fake_run) (void) (name), (void) (fake_run)
-	#define _IF_NOT_PERF_END_DISCARD_(name, fake_run) platform_memory_fence(), (fake_run) ? global_perf_counter_end_discard(&(name)) : global_perf_counter_end_detailed(&(name))
+	#define _IF_NOT_PERF_END_DISCARD_DO_PERF_COUNTERS(name) (void) (name)
+	#define _IF_NOT_PERF_END_DISCARD_(name) global_perf_counter_end_discard(&(name))
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PROFILE_IMPL)) && !defined(JOT_PROFILE_HAS_IMPL)
@@ -156,7 +156,7 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 	EXPORT Global_Perf_Counter_Running global_perf_counter_start(Global_Perf_Counter* my_counter, i32 line, const char* file, const char* function, const char* name)
 	{
 		Global_Perf_Counter_Running running = {0};
-		running.running = perf_counter_start();
+		running.running = perf_start();
 		running.my_counter = my_counter;
 		running.line = line;
 		running.file = file;
@@ -170,10 +170,11 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 
 		return running;
 	}
-	INTERNAL void _perf_counter_end(Global_Perf_Counter_Running* running, bool detailed)
+
+	INTERNAL void _perf_counter_end(Global_Perf_Counter_Running* running, bool is_detailed)
 	{
 		Global_Perf_Counter* counter = running->my_counter;
-		i64 runs = perf_counter_end_atomic_custom(&counter->counter, running->running, detailed);
+		i64 runs = perf_end_atomic_custom(&counter->counter, running->running, is_detailed);
 		ASSERT_MSG(running->stopped == false, "Global_Perf_Counter_Running running counter stopped more than once!");
 
 		//only save the stats that dont need to be updated on the first run
@@ -188,7 +189,7 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 			counter->line = (i32) running->line;
 			counter->function = running->function;
 			counter->name = running->name;
-			counter->is_detailed = detailed;
+			counter->is_detailed = is_detailed;
 		}
 	
 		#if !defined(PROFILE_NO_DEBUG)
@@ -209,6 +210,7 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 	{
 		_perf_counter_end(running, true);
 	}
+
 	EXPORT void global_perf_counter_end_discard(Global_Perf_Counter_Running* running)
 	{
 		Global_Perf_Counter* counter = running->my_counter;
@@ -226,6 +228,7 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 		else
 			return num/den;
 	}
+
 	INTERNAL i64 _profile_get_counter_freq(Global_Perf_Counter counter)
 	{
 		return counter.counter.frquency ? counter.counter.frquency : platform_perf_counter_frequency();
@@ -249,4 +252,5 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 	{
 		return perf_counters_running_count;
 	}
+
 #endif

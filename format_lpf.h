@@ -629,7 +629,6 @@ EXPORT isize lpf_lowlevel_write_entry_unescaped(String_Builder* builder, Lpf_Ent
     LPF_PERF_COUNTER_START(c);
     
     LPF_PERF_COUNTER_START(realloc_and_logic_c);
-    //array_grow(builder, builder->size + 30 + entry.value.size + entry.comment.size + entry.type.size + entry.label.size);
     
     #if defined(DO_ASSERTS_SLOW)
         for(isize i = 0; i < entry.label.size; i++)
@@ -1001,7 +1000,7 @@ EXPORT void lpf_write_entry(Lpf_Writer* writer, String_Builder* builder, Lpf_Ent
         //estimate the needed size
         isize real_segment_count = MAX(comment_segments.size, 1);
         isize expected_size = comment.size + real_segment_count * (LINE_EXTRA + options.line_indentation);
-        array_grow(builder, builder->size + expected_size);
+        array_reserve(builder, builder->size + expected_size);
 
         for(isize i = 0; i < comment_segments.size; i++)
         {
@@ -1061,7 +1060,7 @@ EXPORT void lpf_write_entry(Lpf_Writer* writer, String_Builder* builder, Lpf_Ent
             isize real_segment_count = MAX(value_segments.size, 1);
             isize inline_comment_size = LINE_EXTRA + comment.size;
             isize expected_size = value.size + real_segment_count*(LINE_EXTRA+options.line_indentation+pad_prefix_to) + inline_comment_size;
-            array_grow(builder, builder->size + expected_size);
+            array_reserve(builder, builder->size + expected_size);
         }
         
         LPF_PERF_COUNTER_START(value_segments_c);

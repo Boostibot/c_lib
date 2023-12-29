@@ -1560,55 +1560,68 @@ int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t sk
 #define MAX_MODULES 128 
 #define MAX_NAME_LEN 2048
 
+//@TODO: move into state!
+CRITICAL_SECTION stack_trace_lock = {0};
 
+//typedef struct {
+//    bool init;
+//    HANDLE process;
+//    DWORD error;
+//} Stack_Trace_State;
 
 static void _platform_stack_trace_init(const char* search_path)
 {
     if(gp_state.stack_trace_init)
         return;
 
+    InitializeCriticalSection(&stack_trace_lock);
+    EnterCriticalSection(&stack_trace_lock);
+
     gp_state.stack_trace_process = GetCurrentProcess();
     if (!SymInitialize(gp_state.stack_trace_process, search_path, false)) 
     {
         assert(false);
         gp_state.stack_trace_error = GetLastError();
-        return;
     }
-
-    DWORD symOptions = SymGetOptions();
-    symOptions |= SYMOPT_LOAD_LINES | SYMOPT_UNDNAME;
-    SymSetOptions(symOptions);
-    
-    DWORD module_handles_size_needed = 0;
-    HMODULE module_handles[MAX_MODULES] = {0};
-    TCHAR module_filename[MAX_NAME_LEN] = {0};
-    TCHAR module_name[MAX_NAME_LEN] = {0};
-    EnumProcessModules(gp_state.stack_trace_process, module_handles, sizeof(module_handles), &module_handles_size_needed);
-    
-    DWORD module_count = module_handles_size_needed/sizeof(HMODULE);
-    for(int64_t i = 0; i < module_count; i++)
+    else
     {
-        HMODULE module_handle = module_handles[i];
-        assert(module_handle != 0);
-        MODULEINFO module_info = {0};
-        GetModuleInformation(gp_state.stack_trace_process, module_handle, &module_info, sizeof(module_info));
-        GetModuleFileNameExW(gp_state.stack_trace_process, module_handle, module_filename, sizeof(module_filename));
-        GetModuleBaseNameW(gp_state.stack_trace_process, module_handle, module_name, sizeof(module_name));
-        
-        bool load_state = SymLoadModuleExW(gp_state.stack_trace_process, 0, module_filename, module_name, (DWORD64)module_info.lpBaseOfDll, (DWORD) module_info.SizeOfImage, 0, 0);
-        if(load_state == false)
+        DWORD symOptions = SymGetOptions();
+        symOptions |= SYMOPT_LOAD_LINES | SYMOPT_UNDNAME;
+        SymSetOptions(symOptions);
+    
+        DWORD module_handles_size_needed = 0;
+        HMODULE module_handles[MAX_MODULES] = {0};
+        TCHAR module_filename[MAX_NAME_LEN] = {0};
+        TCHAR module_name[MAX_NAME_LEN] = {0};
+        EnumProcessModules(gp_state.stack_trace_process, module_handles, sizeof(module_handles), &module_handles_size_needed);
+    
+        DWORD module_count = module_handles_size_needed/sizeof(HMODULE);
+        for(int64_t i = 0; i < module_count; i++)
         {
-            assert(false);
-            gp_state.stack_trace_error = GetLastError();
+            HMODULE module_handle = module_handles[i];
+            assert(module_handle != 0);
+            MODULEINFO module_info = {0};
+            GetModuleInformation(gp_state.stack_trace_process, module_handle, &module_info, sizeof(module_info));
+            GetModuleFileNameExW(gp_state.stack_trace_process, module_handle, module_filename, sizeof(module_filename));
+            GetModuleBaseNameW(gp_state.stack_trace_process, module_handle, module_name, sizeof(module_name));
+        
+            bool load_state = SymLoadModuleExW(gp_state.stack_trace_process, 0, module_filename, module_name, (DWORD64)module_info.lpBaseOfDll, (DWORD) module_info.SizeOfImage, 0, 0);
+            if(load_state == false)
+            {
+                assert(false);
+                gp_state.stack_trace_error = GetLastError();
+            }
         }
     }
-
+    
     gp_state.stack_trace_init = true;
+    LeaveCriticalSection(&stack_trace_lock);
 }
 
 static void _platform_stack_trace_deinit()
 {
     SymCleanup(gp_state.stack_trace_process);
+    DeleteCriticalSection(&stack_trace_lock);
 }
 
 void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void** stack, int64_t stack_size)
@@ -1617,6 +1630,7 @@ void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const
         return;
 
     _platform_stack_trace_init("");
+    EnterCriticalSection(&stack_trace_lock);
     char symbol_info_data[sizeof(SYMBOL_INFO) + MAX_NAME_LEN + 1] = {0};
 
     DWORD offset_from_symbol = 0;
@@ -1674,10 +1688,14 @@ void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const
         entry->file[sizeof entry->file - 1] = '\0';
         entry->function[sizeof entry->function - 1] = '\0';
     }
+    LeaveCriticalSection(&stack_trace_lock);
 }
 
 static int64_t _platform_stack_trace_walk(CONTEXT context, HANDLE process, HANDLE thread, DWORD image_type, void** frames, int64_t frame_count, int64_t skip_count)
 {
+    //Should have probably be init by this point but whatever...
+    _platform_stack_trace_init("");
+
     STACKFRAME64 frame = {0};
     #ifdef _M_IX86
         DWORD native_image = IMAGE_FILE_MACHINE_I386;
@@ -1712,11 +1730,15 @@ static int64_t _platform_stack_trace_walk(CONTEXT context, HANDLE process, HANDL
     if(image_type == 0)
         image_type = native_image; 
     
+    EnterCriticalSection(&stack_trace_lock);
     (void) process;
     int64_t i = 0;
     for(; i < frame_count; i++)
     {
-        bool ok = StackWalk64(native_image, gp_state.stack_trace_process, thread, &frame, &context, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL);
+        CONTEXT* escaped_context = native_image == IMAGE_FILE_MACHINE_I386 
+            ? NULL
+            : &context;
+        bool ok = StackWalk64(native_image, gp_state.stack_trace_process, thread, &frame, escaped_context, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL);
         if (ok == false)
             break;
 
@@ -1726,9 +1748,13 @@ static int64_t _platform_stack_trace_walk(CONTEXT context, HANDLE process, HANDL
             i --;
             continue;
         }
-
-        frames[i] = (void*) frame.AddrPC.Offset;
+        
+        if (frame.AddrPC.Offset != 0)
+            frames[i] = (void*) frame.AddrPC.Offset;
+        else
+            break;
     }
+    LeaveCriticalSection(&stack_trace_lock);
     
     return i;
 }
@@ -1876,7 +1902,7 @@ LONG WINAPI _sandbox_exception_filter(EXCEPTION_POINTERS * ExceptionInfo)
     curr_state->perf_counter = perf_counter;
     curr_state->exception = exception;
     curr_state->context = *ExceptionInfo->ContextRecord;
-    curr_state->stack_size = _platform_stack_trace_walk(curr_state->context, process, thread, 0, (void**) &curr_state->stack, SANDBOX_MAX_STACK, 1);
+    curr_state->stack_size = _platform_stack_trace_walk(curr_state->context, process, thread, 0, (void**) &curr_state->stack, SANDBOX_MAX_STACK, 0);
 
     return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -1887,14 +1913,14 @@ Platform_Exception platform_exception_sandbox(
     void (*error_func)(void* error_context, Platform_Sandbox_Error error),
     void* error_context)
 {
-    LPTOP_LEVEL_EXCEPTION_FILTER prev_exception_filter = SetUnhandledExceptionFilter(_sandbox_exception_filter);
+    //LPTOP_LEVEL_EXCEPTION_FILTER prev_exception_filter = SetUnhandledExceptionFilter(_sandbox_exception_filter);
     void* vector_exception_handler = AddVectoredExceptionHandler(1, _sandbox_exception_filter);
     int prev_error_mode = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOALIGNMENTFAULTEXCEPT | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
     
     _crt_signal_t prev_abrt = signal(SIGABRT, _sandbox_abort_filter);
     _crt_signal_t prev_term = signal(SIGTERM, _sandbox_abort_filter);
         
-    Platform_Exception exception = PLATFORM_EXCEPTION_OTHER;
+    Platform_Exception exception = PLATFORM_EXCEPTION_NONE;
     Platform_Sandbox_State prev_state = sandbox_state;
     memset(&sandbox_state, 0, sizeof sandbox_state);
 
@@ -1904,15 +1930,10 @@ Platform_Exception platform_exception_sandbox(
     switch(setjmp(sandbox_state.jump_buffer))
     {
         default: {
-            __try 
-            { 
+            __try { 
                 sandboxed_func(sandbox_context);
             } 
-            //@TODO: verify that we need to be doing it this way.
-            //We could call _sandbox_exception_filter directly here and make this probably be a lot easier.
-            //Yeah we probably dont have to do it this way I was just being paaranoid some time back....
-            __except(GetExceptionCode() != -1)
-            { 
+            __except(_sandbox_exception_filter(GetExceptionInformation())) { 
                 had_exception = true;
             }
             break;
@@ -1929,20 +1950,16 @@ Platform_Exception platform_exception_sandbox(
         Platform_Sandbox_State error_state = sandbox_state;
         exception = error_state.exception;
 
-        Platform_Stack_Trace_Entry* translated = (Platform_Stack_Trace_Entry*) _platform_internal_reallocate(sizeof(Platform_Stack_Trace_Entry) * error_state.stack_size, NULL);
-        platform_translate_call_stack(translated, (const void**) error_state.stack, error_state.stack_size);
-
         Platform_Sandbox_Error error = {exception};
-        error.call_stack = translated;
+        error.call_stack = error_state.stack;
         error.call_stack_size = error_state.stack_size;
         error.execution_context = &error_state.context;
         error.execution_context_size = (int64_t) sizeof error_state.context;
         error.epoch_time = error_state.epoch_time;
         error.nanosec_offset = 0; //@TODO;
 
-        error_func(error_context, error);
-
-        _platform_internal_reallocate(0, translated);
+        if(error_func)
+            error_func(error_context, error);
     }
 
     sandbox_signal_handler_depth -= 1;
@@ -1956,7 +1973,7 @@ Platform_Exception platform_exception_sandbox(
     SetErrorMode(prev_error_mode);
     if(vector_exception_handler != NULL)
         RemoveVectoredExceptionHandler(vector_exception_handler);
-    SetUnhandledExceptionFilter(prev_exception_filter);
+    //SetUnhandledExceptionFilter(prev_exception_filter);
     return exception;
 }
 
@@ -2034,6 +2051,7 @@ void platform_init()
 
     _platform_set_console_utf8();
     _platform_set_console_output_escape_sequences();
+    _platform_stack_trace_init("");
 }
 void platform_deinit()
 {

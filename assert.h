@@ -84,10 +84,7 @@ void default_assertion_report(const char* expression, Source_Info source, const 
                 log_group_pop();
             }
 
-            log_message("assert", LOG_TYPE_TRACE, source, "callstack:");
-            log_group_push();
-                log_callstack("assert", LOG_TYPE_TRACE, -1, 1);
-            log_group_pop();
+            log_callstack("assert", LOG_TYPE_TRACE, -1, "callstack:");
         log_group_pop();
     }
 

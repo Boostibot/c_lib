@@ -97,7 +97,7 @@ INTERNAL void test_hash_index64_stress(f64 max_seconds)
 		if(clock_s() - start >= max_seconds && i >= MIN_ITERS)
 			break;
 
-		Action action = (Action) random_discrete(dist);
+		Action action = (Action) random_discrete(&dist);
 		array_push(&history, action);
 
 		switch(action)
@@ -333,7 +333,7 @@ INTERNAL void test_hash_index32_stress(f64 max_seconds)
 		if(clock_s() - start >= max_seconds && i >= MIN_ITERS)
 			break;
 
-		Action action = (Action) random_discrete(dist);
+		Action action = (Action) random_discrete(&dist);
 		array_push(&history, action);
 
 		switch(action)

@@ -434,10 +434,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
             allocator_log_stats(stats, mod, LOG_TYPE_INFO);
         log_group_pop();
     
-        LOG_TRACE(mod, "callstack:");
-        log_group_push();
-            log_callstack(mod, LOG_TYPE_TRACE, -1, 1);
-        log_group_pop();
+        log_callstack(mod, LOG_TYPE_TRACE, 1, "callstack:");
         
         log_group_push();
 

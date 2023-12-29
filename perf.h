@@ -26,11 +26,7 @@ typedef struct Perf_Counter {
 	int64_t min_counter;
 } Perf_Counter;
 
-typedef struct Perf_Counter_Running {
-	int64_t start;
-} Perf_Counter_Running;
-
-typedef struct Perf_Counter_Stats {
+typedef struct Perf_Stats {
 	int64_t runs;
 	int64_t batch_size;
 
@@ -40,17 +36,26 @@ typedef struct Perf_Counter_Stats {
 	double max_s;
 	double standard_deviation_s;
 	double normalized_standard_deviation_s; //(σ/μ)
-} Perf_Counter_Stats;
+} Perf_Stats;
 
-EXPORT Perf_Counter_Running perf_counter_start();
-EXPORT void					perf_counter_end(Perf_Counter* counter, Perf_Counter_Running running);
-EXPORT void					perf_counter_end_atomic(Perf_Counter* counter, Perf_Counter_Running running);
-EXPORT int64_t				perf_counter_end_atomic_custom(Perf_Counter* counter, Perf_Counter_Running running, bool detailed);
-EXPORT double				perf_counter_get_ellapsed(Perf_Counter_Running running);
-EXPORT Perf_Counter_Stats	perf_counter_get_stats(Perf_Counter counter, int64_t batch_size);
+EXPORT int64_t		perf_start();
+EXPORT void			perf_end(Perf_Counter* counter, int64_t measure);
+EXPORT void			perf_end_atomic(Perf_Counter* counter, int64_t measure);
+EXPORT int64_t		perf_end_atomic_custom(Perf_Counter* counter, int64_t measure, bool detailed);
+EXPORT double		perf_get_ellapsed(int64_t measure);
+EXPORT Perf_Stats	perf_get_stats(Perf_Counter counter, int64_t batch_size);
 
-//Prevents the compiler from optimizing the address at the ptr and/or the ptr's value
+//Prevents the compiler from optimizing the variable at the ptr and/or the ptr's value.
 EXPORT void perf_do_not_optimize(const void* ptr);
+
+typedef bool (*Benchamrk_Func)(void* context);
+
+//bechmarks func and returns the resulting stats. Executes for total 'time' seconds but discards any results priot to 'warmup'.
+//Calls the func 'batch_size' times per single measurement but corrects for it in returned stats.
+// 'batch_size' should be set abover 1 for for very very short functions (typically non iterative math functions).
+//If the 'func' returns false discards this measurement. This is good for functions that dont know when they will need to prepare another sets of data.
+//'context' is passed into 'func'.
+Perf_Stats perf_benchmark(f64 warmup, f64 time, isize batch_size, Benchamrk_Func func, void* context);
 
 //Needs implementation:
 int64_t platform_perf_counter();
@@ -61,21 +66,19 @@ inline static int64_t platform_atomic_add64(volatile int64_t* target, int64_t va
 inline static int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value);
 inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value);
 
-
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PERF_IMPL)) && !defined(JOT_PERF_HAS_IMPL)
 #define JOT_PERF_HAS_IMPL
 
-	EXPORT Perf_Counter_Running perf_counter_start()
+	EXPORT int64_t perf_start()
 	{
-		Perf_Counter_Running running = {platform_perf_counter()};
-		return running;
+		return platform_perf_counter();
 	}
 	
-	EXPORT double perf_counter_get_ellapsed(Perf_Counter_Running running)
+	EXPORT double perf_get_ellapsed(int64_t measure)
 	{
-		int64_t delta = platform_perf_counter() - running.start;
+		int64_t delta = platform_perf_counter() - measure;
 		static double freq = 0;
 		if(freq == 0)
 			freq = (double) platform_perf_counter_frequency();
@@ -83,9 +86,9 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 		return (double) delta / freq;
 	}
 
-	EXPORT void perf_counter_end(Perf_Counter* counter, Perf_Counter_Running running)
+	EXPORT void perf_end(Perf_Counter* counter, int64_t measure)
 	{
-		int64_t delta = platform_perf_counter() - running.start;
+		int64_t delta = platform_perf_counter() - measure;
 		ASSERT(counter != NULL && delta >= 0 && "invalid Global_Perf_Counter_Running submitted");
 
 		int64_t runs = counter->runs;
@@ -105,9 +108,9 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 		counter->max_counter = MAX(counter->max_counter, delta);
 	}
 	
-	EXPORT int64_t perf_counter_end_atomic_custom(Perf_Counter* counter, Perf_Counter_Running running, bool detailed)
+	EXPORT int64_t perf_end_atomic_custom(Perf_Counter* counter, int64_t measure, bool detailed)
 	{
-		int64_t delta = platform_perf_counter() - running.start;
+		int64_t delta = platform_perf_counter() - measure;
 
 		ASSERT(counter != NULL && delta >= 0 && "invalid Global_Perf_Counter_Running submitted");
 		int64_t runs = platform_atomic_add64(&counter->runs, 1); 
@@ -142,11 +145,11 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 		return runs;
 	}
 	
-	EXPORT void perf_counter_end_atomic(Perf_Counter* counter, Perf_Counter_Running running)
+	EXPORT void perf_end_atomic(Perf_Counter* counter, int64_t measure)
 	{
-		perf_counter_end_atomic_custom(counter, running, true);
+		perf_end_atomic_custom(counter, measure, true);
 	}
-	EXPORT Perf_Counter_Stats perf_counter_get_stats(Perf_Counter counter, int64_t batch_size)
+	EXPORT Perf_Stats perf_get_stats(Perf_Counter counter, int64_t batch_size)
 	{
 		if(batch_size <= 0)
 			batch_size = 1;
@@ -158,7 +161,7 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 		ASSERT(counter.max_counter * counter.runs >= counter.counter && "max must be bigger than sum");
         
 		//batch_size is in case we 'batch' our tested function: 
-		// ie instead of running the tested function once we run it 100 times
+		// ie instead of measure the tested function once we run it 100 times
 		// this just means that each run is multiplied batch_size times
 		int64_t iters = batch_size * (counter.runs);
         
@@ -194,7 +197,7 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 
 		ASSERT(mean_s >= 0 && min_s >= 0 && max_s >= 0);
 
-		//We assume that summing all running times in a batch 
+		//We assume that summing all measure times in a batch 
 		// (and then dividing by its size = making an average)
 		// is equivalent to picking random samples from the original distribution
 		// => Central limit theorem applies which states:
@@ -209,7 +212,7 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 		//                   = deviation_sampling / sqrt(samples)
 
 		double sqrt_batch_size = sqrt((double) batch_size);
-		Perf_Counter_Stats stats = {0};
+		Perf_Stats stats = {0};
 
 		//since min and max are also somewhere within the confidence interval
 		// keeping the same confidence in them requires us to also apply the same correction
@@ -263,4 +266,26 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 			__perf_always_zero = vol_ptr[*vol_ptr];
 		}
     }
+	
+	Perf_Stats perf_benchmark(f64 warmup, f64 time, isize batch_size, Benchamrk_Func func, void* context)
+	{
+		Perf_Counter counter = {0};
+		for(int64_t start = perf_start(); ;)
+		{
+			f64 ellapsed = perf_get_ellapsed(start);
+			if(ellapsed >= time)
+				break;
+
+			int64_t measure = perf_start();
+			u8 keep = true;
+			for(isize i = 0; i < batch_size; i++)
+				keep &= (u8) func(context);
+
+			if(keep && ellapsed >= warmup)
+				perf_end(&counter, measure);
+		}
+
+		return perf_get_stats(counter, batch_size);
+	}
+
 #endif

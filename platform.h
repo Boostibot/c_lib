@@ -470,7 +470,7 @@ int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t sk
 
 //Translates captured stack into helpful entries. Operates on fixed width strings to guarantee this function
 //will never fail yet translate all needed stack frames. 
-void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void** stack, int64_t stack_size);
+void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void* const* stack, int64_t stack_size);
 
 typedef enum Platform_Exception {
     PLATFORM_EXCEPTION_NONE = 0,
@@ -501,7 +501,7 @@ typedef struct Platform_Sandbox_Error {
     Platform_Exception exception;
     
     //A translated stack trace and its size
-    const Platform_Stack_Trace_Entry* call_stack; 
+    const void* const* call_stack; 
     int64_t call_stack_size;
 
     //Platform specific data containing the cpu state and its size (so that it can be copied and saved)
@@ -515,12 +515,13 @@ typedef struct Platform_Sandbox_Error {
 
 //Launches the sandboxed_func inside a sendbox protecting the outside environment 
 // from any exceptions, including hardware exceptions that might occur inside sandboxed_func.
-//If an exception occurs collects execution context including stack pointers and gracefuly recovers. 
+//If an exception occurs collects execution context including stack pointers and calls
+// 'error_func_or_null' if not null. Gracefuly recovers from all errors. 
 //Returns the error that occured or PLATFORM_EXCEPTION_NONE = 0 on success.
 Platform_Exception platform_exception_sandbox(
     void (*sandboxed_func)(void* sandbox_context),   
     void* sandbox_context,
-    void (*error_func)(void* error_context, Platform_Sandbox_Error error),
+    void (*error_func_or_null)(void* error_context, Platform_Sandbox_Error error),
     void* error_context);
 
 //Convertes the sandbox error to string. The string value is the name of the enum

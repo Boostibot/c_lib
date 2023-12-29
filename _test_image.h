@@ -1,30 +1,58 @@
 #pragma once
 
 #include "image.h"
-//#include "_test.h"
+#include "_test.h"
+#include "allocator_debug.h"
 
 INTERNAL void test_image_builder_copy()
 {
-    Image_Builder from_image  = {0};
-    image_builder_init(&from_image, allocator_get_default(), 1, PIXEL_FORMAT_U16);
-    image_builder_resize(&from_image, 4, 4);
+    Debug_Allocator allocator = {0};
+    debug_allocator_init_use(&allocator, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_CAPTURE_CALLSTACK | DEBUG_ALLOCATOR_KEEP_HISTORY);
 
-    for(isize x = 0; x < 4; x++)
-        for(isize y = 0; y < 4; y++)
-            *(u16*) image_builder_at(from_image, x, y) = x + y*4;
+    {
+        Image from_image  = {0};
+        image_init(&from_image, allocator_get_default(), 1, PIXEL_TYPE_U16);
+        image_reserve(&from_image, 1000);
+        image_resize(&from_image, 4, 4);
 
-    Image_Builder to_image = {0};
-    image_builder_init(&from_image, allocator_get_default(), 1, PIXEL_FORMAT_U16);
-    image_builder_resize(&to_image, 2, 2);
+        for(u16 x = 0; x < 4; x++)
+            for(u16 y = 0; y < 4; y++)
+                *(u16*) image_at(from_image, x, y) = x + y*4;
+    
+        u16 pattern[16] = {0};
+        for(u16 i = 0; i < 16; i++)
+            pattern[i] = i;
 
-    Image from_imagev = image_portion(image_from_builder(from_image), 1, 1, 2, 2);
-    Image to_imagev = image_from_builder(to_image);
+        TEST(memcmp(from_image.pixels, pattern, sizeof(pattern)) == 0);
 
-    image_copy(&to_imagev, from_imagev, 0, 0);
-    TEST(*(u16*) image_builder_at(to_image, 0, 0) == 5);
-    TEST(*(u16*) image_builder_at(to_image, 1, 0) == 6);
-    TEST(*(u16*) image_builder_at(to_image, 0, 1) == 9);
-    TEST(*(u16*) image_builder_at(to_image, 1, 1) == 10);
+        Image to_image = {0};
+        image_init(&to_image, allocator_get_default(), 1, PIXEL_TYPE_U16);
+        image_resize(&to_image, 2, 2);
+
+        Subimage from_imagev = image_portion(from_image, 1, 1, 2, 2);
+        Subimage to_imagev = subimage_make(to_image);
+
+        subimage_copy(to_imagev, from_imagev, 0, 0);
+        TEST(*(u16*) image_at(to_image, 0, 0) == 5);
+        TEST(*(u16*) image_at(to_image, 1, 0) == 6);
+        TEST(*(u16*) image_at(to_image, 0, 1) == 9);
+        TEST(*(u16*) image_at(to_image, 1, 1) == 10);
+
+        image_resize(&from_image, 2, 2);
+        TEST(*(u16*) image_at(from_image, 0, 0) == 0);
+        TEST(*(u16*) image_at(from_image, 1, 0) == 1);
+        TEST(*(u16*) image_at(from_image, 0, 1) == 4);
+        TEST(*(u16*) image_at(from_image, 1, 1) == 5);
+
+        image_deinit(&from_image);
+        image_deinit(&to_image);
+        
+        Debug_Allocation_Array allocations = debug_allocator_get_dead_allocations(allocator, -1);
+        TEST(allocations.size <= 2);
+        array_deinit(&allocations);
+    }
+
+    debug_allocator_deinit(&allocator);
 }
 
 INTERNAL void test_image()

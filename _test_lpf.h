@@ -29,11 +29,6 @@ Lpf_Test_Entry lpf_test_entry(Lpf_Kind kind, const char* label, const char* type
 
 void lpf_test_string_eq(String expected, String obtained)
 {
-    if(string_is_equal(expected, obtained) == false)
-    {
-        file_write_entire(STRING("_lpf_test_failed_expected.txt"), expected);
-        file_write_entire(STRING("_lpf_test_failed_obtained.txt"), obtained);
-    }
     TEST_MSG(string_is_equal(expected, obtained),
             "expected: '\n"STRING_FMT"\n'\n"
             "obtained: '\n"STRING_FMT"\n'", 

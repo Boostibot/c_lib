@@ -21,7 +21,11 @@ EXPORT const char*      cstring_from_builder(String_Builder builder);
 //if string is NULL returns 0 else strlen(string)
 EXPORT isize safe_strlen(const char* string, isize max_size_or_minus_one);
 
-
+//Tiles pattern_size bytes long pattern across field of field_size bytes. 
+//The first occurance of pattern is placed at the very start of field and subsequent repetions
+//follow. 
+//If the field_size % pattern_size != 0 the last repetition of pattern is trimmed.
+//If pattern_size == 0 field is filled with zeros instead.
 EXPORT void memset_pattern(void *field, isize field_size, const void* pattern, isize pattern_size);
 
 //Returns a String contained within string builder. The data portion of the string MIGHT be null and in that case its size == 0
@@ -115,10 +119,15 @@ EXPORT String_Array string_split(String to_split, String split_by);
 
     EXPORT isize string_find_first(String in_str, String search_for, isize from)
     {
-        CHECK_BOUNDS(from, in_str.size);
+        ASSERT(from >= 0);
+
+        //if there is not enough space for any occurence we return not found.
+        if(from + search_for.size > in_str.size)
+            return -1;
+        
         if(search_for.size == 0)
             return from;
-        
+
         ASSERT(from >= 0);
         isize to = in_str.size - search_for.size + 1;
         for(isize i = from; i < to; i++)
@@ -142,11 +151,14 @@ EXPORT String_Array string_split(String to_split, String split_by);
       
     EXPORT isize string_find_last_from(String in_str, String search_for, isize from)
     {
-        CHECK_BOUNDS(from, in_str.size);
+        ASSERT(from >= 0);
+        if(from + search_for.size > in_str.size)
+            return -1;
+
         if(search_for.size == 0)
             return from;
 
-        ASSERT(false && "UNTESTED!");
+        ASSERT_MSG(false, "UNTESTED! @TODO: test!");
         ASSERT(from >= 0);
         isize start = from;
         if(in_str.size - start < search_for.size)
@@ -283,6 +295,10 @@ EXPORT String_Array string_split(String to_split, String split_by);
     #include <intrin.h>
     EXPORT isize string_find_first_char_sse(String string, char c, isize from)
     {
+        ASSERT(from >= 0);
+        if(string.size == 0 || from >= string.size)
+            return -1;
+
         char* end = (char*) string.data + string.size;
         char* start = (char*) string.data + from;
         char* aligned_data = (char*) align_backward(start, 16);

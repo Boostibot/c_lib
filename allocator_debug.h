@@ -648,8 +648,6 @@ EXPORT void debug_allocator_deinit_allocation_array(Debug_Allocation_Array* allo
     array_deinit(allocations);
 }
 
-EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void** callstack, isize callstack_size);
-
 EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_Type log_type, const Debug_Allocator allocator, isize print_max)
 {
     _debug_allocator_is_invariant(&allocator);
@@ -670,7 +668,7 @@ EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_
         if(allocator.captured_callstack_size > 0)
         {
             log_group_push();
-            log_captured_callstack(log_module, log_type, (const void**) curr.allocation_trace.data, curr.allocation_trace.size);
+            log_captured_callstack(log_module, log_type, curr.allocation_trace.data, curr.allocation_trace.size);
             log_group_pop();
         }
     }

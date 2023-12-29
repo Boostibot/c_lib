@@ -18,6 +18,7 @@ EXPORT MODIFIER_FORMAT_FUNC(format, 2) void format_into(String_Builder* into, MO
 EXPORT void format_into_sized(String_Builder* into, String format, ...);
 
 EXPORT MODIFIER_FORMAT_FUNC(format, 1) String format_ephemeral(MODIFIER_FORMAT_ARG const char* format, ...);
+EXPORT const char* escape_string_ephemeral(String string);
 
 #define CSTRING_ESCAPE(s) (s) == NULL ? "" : (s)
 
@@ -159,4 +160,42 @@ typedef unsigned long long llu;
         String out = string_from_builder(*curr);
         return out;
     }
+
+    EXPORT const char* escape_string_ephemeral(String string)
+    {
+        enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256, PAGE_MIN_SIZE = 1024};
+
+        const char* string_end = string.data + string.size;
+
+        //If string end is not on different memory page we cannot cause segfault and thus we can 
+        // freely check if the string is escaped. If it is already escaped we simply return it.
+        if((size_t) string_end % PAGE_MIN_SIZE != 0)
+        {
+            if(*string_end == '\0')
+                return string.data;
+        }
+
+        static String_Builder ephemeral_strings[EPHEMERAL_SLOTS] = {0};
+        static isize slot = 0;
+
+        String_Builder* curr = &ephemeral_strings[slot % EPHEMERAL_SLOTS];
+        
+        //We periodacally shrink the strinks so that we can use this
+        //function regulary for small and big strings without fearing that we will
+        //use too much memory
+        if(slot % RESET_EVERY < EPHEMERAL_SLOTS)
+        {
+            if(curr->capacity == 0 || curr->capacity > KEPT_SIZE)
+            {
+                array_init(curr, allocator_get_static());
+                isize required_capacity = MAX(string.size, KEPT_SIZE);
+                array_reserve(curr, required_capacity);
+            }
+        }
+
+        slot += 1;
+        builder_assign(curr, string);
+        return curr->data;
+    }
+
 #endif
