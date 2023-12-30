@@ -93,11 +93,8 @@ EXPORT void* allocator_allocate_cleared(Allocator* from_allocator, isize new_siz
 
 //Retrieves stats from the allocator. The stats can be only partially filled.
 EXPORT Allocator_Stats allocator_get_stats(Allocator* self);
-
 EXPORT Platform_Allocator platform_allocator_from_allocator(Allocator* alloc);
 
-EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator);
-EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_type, Allocator_Stats stats);
 
 //Gets called when function requiring to always succeed fails an allocation - most often from allocator_reallocate
 //If ALLOCATOR_CUSTOM_OUT_OF_MEMORY is defines is left unimplemented
@@ -116,9 +113,6 @@ EXPORT Allocator_Set allocator_set_scratch(Allocator* new_scratch);
 EXPORT Allocator_Set allocator_set_static(Allocator* new_scratch);
 EXPORT Allocator_Set allocator_set_both(Allocator* new_default, Allocator* new_scratch);
 EXPORT Allocator_Set allocator_set(Allocator_Set backup); 
-
-//Returns memory unit and saves the unit size in unit_or_null. If unit_or_null is null does not save anything.
-EXPORT const char* get_memory_unit(isize bytes, isize *unit_or_null);
 
 EXPORT bool  is_power_of_two(isize num);
 EXPORT bool  is_power_of_two_or_zero(isize num);
@@ -141,6 +135,27 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     #define stack_allocate(size, align) \
         __builtin_alloca_with_align((size_t) size, (size_t) align)
 #endif
+
+//
+
+typedef struct Memory_Format {
+    const char* unit;
+    isize unit_value;
+    f64 fraction;
+
+    i32 whole;
+    i32 remainder;
+} Memory_Format;
+
+EXPORT Memory_Format get_memory_format(isize bytes);
+
+#define MEMORY_FMT "%.2lf%s"
+#define MEMORY_PRINT(bytes) get_memory_format((bytes)).fraction, get_memory_format((bytes)).unit
+//@NOTE We call the fucntion twice. Its not optimal however I dont think its gonna be used in perf critical situations
+
+EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator);
+EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_type, Allocator_Stats stats);
+
 
 #endif
 
@@ -311,8 +326,8 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
 
         return (void*) ptr_num;
     }
-    
-    EXPORT const char* get_memory_unit(isize bytes, isize *unit_or_null)
+
+    EXPORT Memory_Format get_memory_format(isize bytes)
     {
         isize TB = (isize) 1000*1000*1000*1000;
         isize GB = (isize) 1000*1000*1000;
@@ -320,36 +335,38 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         isize KB = (isize) 1000;
         isize B = (isize) 1;
 
-        const char* out = "";
-        isize unit = 1;
+        Memory_Format out = {0};
+        out.unit = "";
+        out.unit_value = 1;
         if(bytes > TB)
         {
-            out = "TB";
-            unit = TB;
+            out.unit = "TB";
+            out.unit_value = TB;
         }
         else if(bytes > GB)
         {
-            out = "GB";
-            unit = GB;
+            out.unit = "GB";
+            out.unit_value = GB;
         }
         else if(bytes > MB)
         {
-            out = "MB";
-            unit = MB;
+            out.unit = "MB";
+            out.unit_value = MB;
         }
         else if(bytes > KB)
         {
-            out = "KB";
-            unit = KB;
+            out.unit = "KB";
+            out.unit_value = KB;
         }
         else
         {
-            out = "B";
-            unit = B;
+            out.unit = "B";
+            out.unit_value = B;
         }
 
-        if(unit_or_null)
-            *unit_or_null = unit;
+        out.fraction = (f64) bytes / (f64) out.unit_value;
+        out.whole = (i32) (bytes / out.unit_value);
+        out.remainder = (i32) (bytes / out.unit_value);
 
         return out;
     }
@@ -368,10 +385,8 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         LOG(log_module, log_type, "type_name:           %s", stats.type_name);
         LOG(log_module, log_type, "name:                %s", stats.name);
 
-        unit_str = get_memory_unit(stats.bytes_allocated, &unit);
-        LOG(log_module, log_type, "bytes_allocated:     %lli %s", DIV_ROUND_UP(stats.bytes_allocated, unit), unit_str);
-        unit_str = get_memory_unit(stats.max_bytes_allocated, &unit);
-        LOG(log_module, log_type, "max_bytes_allocated: %lli %s", DIV_ROUND_UP(stats.max_bytes_allocated, unit), unit_str);
+        LOG(log_module, log_type, "bytes_allocated:     " MEMORY_FMT, MEMORY_PRINT(stats.bytes_allocated));
+        LOG(log_module, log_type, "max_bytes_allocated: " MEMORY_FMT, MEMORY_PRINT(stats.max_bytes_allocated));
 
         LOG(log_module, log_type, "allocation_count:    %lli", stats.allocation_count);
         LOG(log_module, log_type, "deallocation_count:  %lli", stats.deallocation_count);

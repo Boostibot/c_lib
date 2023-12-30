@@ -4,7 +4,7 @@
 #include "allocator.h"
 #include <limits.h>
 
-//@TODO: flip_x flip_y and remove those from the load image 
+//@TODO: flip_x, flip_y, rotate 90
 //@TODO: set_chanels, convert
 
 //some of the predefined pixel formats.
@@ -27,6 +27,11 @@ typedef enum Pixel_Type {
     PIXEL_TYPE_F16 = -21,
     PIXEL_TYPE_F32 = -23,
     PIXEL_TYPE_F64 = -27,
+
+    //Any negative number not occupied by previous declarations
+    // is considered invalid. This one is just a predefined constant 
+    // guaranteed to remain invalid in the future.
+    PIXEL_TYPE_INVALID = INT32_MIN
 } Pixel_Type;
 
 // A storage of 2D array of pixels holding the bare minimum to be usable. 
@@ -145,6 +150,7 @@ EXPORT const char* pixel_type_name(Pixel_Type pixel_type)
         case PIXEL_TYPE_F32: return "f32";
         case PIXEL_TYPE_F64: return "f64";
 
+        case PIXEL_TYPE_INVALID: 
         default: 
         {
             if(pixel_type > 0)
@@ -175,7 +181,8 @@ EXPORT i32 pixel_type_size(Pixel_Type pixel_type)
         case PIXEL_TYPE_F16: return 2;
         case PIXEL_TYPE_F32: return 4;
         case PIXEL_TYPE_F64: return 8;
-
+        
+        case PIXEL_TYPE_INVALID: 
         default: {
             if(pixel_type > 0)
                 return (i32) pixel_type;
