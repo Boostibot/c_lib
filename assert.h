@@ -74,18 +74,14 @@ void default_assertion_report(const char* expression, Source_Info source, const 
 
     void default_assertion_report(const char* expression, Source_Info source, const char* message, va_list args)
     {
-        log_message("assert", LOG_TYPE_FATAL, source, "TEST(%s) TEST/ASSERT failed! (%s : %lli) ", expression, source.file, source.line);
-        log_group_push();
-            if(message != NULL && strlen(message) != 0)
-            {
-                log_message("assert", LOG_TYPE_FATAL, source, "message:");
-                log_group_push();
-                    vlog_message("assert", LOG_TYPE_FATAL, source, message, args);
-                log_group_pop();
-            }
+        log_message("assert", LOG_FATAL, source, "TEST(%s) TEST/ASSERT failed! (%s : %lli) ", expression, source.file, source.line);
+        if(message != NULL && strlen(message) != 0)
+        {
+            log_message(">assert", LOG_FATAL, source, "message:");
+                vlog_message(">>assert", LOG_FATAL, source, message, args);
+        }
 
-            log_callstack("assert", LOG_TYPE_TRACE, -1, "callstack:");
-        log_group_pop();
+        log_callstack(">assert", LOG_TRACE, -1, "callstack:");
     }
 
 #endif

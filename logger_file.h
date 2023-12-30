@@ -68,7 +68,7 @@ EXPORT typedef struct File_Logger {
     f64   flush_every_seconds;                      //defaults to 2ms
     
     //A binary mask to specify which log types to output. 
-    //For example LOG_TYPE_INFO has value 0 so its bitmask is 1 << 0 or 1 << LOG_TYPE_INFO
+    //For example LOG_INFO has value 0 so its bitmask is 1 << 0 or 1 << LOG_INFO
     u64 file_type_filter;                       //defaults to all 1s in binary ie 0xFFFFFFFFFFFFFFFF    
     u64 console_type_filter;                    //defaults to all 1s in binary ie 0xFFFFFFFFFFFFFFFF
     
@@ -367,7 +367,7 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
 {
     PERF_COUNTER_START(counter);
     File_Logger* self = (File_Logger*) (void*) logger;
-    if(type == LOG_TYPE_FLUSH)
+    if(type == LOG_FLUSH)
     {
         file_logger_flush(self);
         return;
@@ -385,7 +385,7 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
     bool print_to_file = false;
 
     //Determines wheter or not to print the message to conosle and file
-    if((type > LOG_TYPE_ENUM_MAX) || (((i64) 1 << type) & self->console_type_filter))
+    if((type > LOG_ENUM_MAX) || (((i64) 1 << type) & self->console_type_filter))
     {
         if(self->console_use_filter == false)
             print_to_console = true;
@@ -402,7 +402,7 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
         }
     }
 
-    if((type > LOG_TYPE_ENUM_MAX) || (((i64) 1 << type) & self->file_type_filter))
+    if((type > LOG_ENUM_MAX) || (((i64) 1 << type) & self->file_type_filter))
     {
         if(self->file_use_filter == false)
             print_to_file = true;
@@ -422,11 +422,13 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
     if(print_to_console)
     {
         const char* color_mode = ANSI_COLOR_NORMAL;
-        if(type == LOG_TYPE_ERROR || type == LOG_TYPE_FATAL)
+        if(type == LOG_ERROR || type == LOG_FATAL)
             color_mode = ANSI_COLOR_BRIGHT_RED;
-        else if(type == LOG_TYPE_WARN)
+        else if(type == LOG_WARN)
             color_mode = ANSI_COLOR_YELLOW;
-        else if(type == LOG_TYPE_TRACE || type == LOG_TYPE_DEBUG)
+        else if(type == LOG_SUCCESS)
+            color_mode = ANSI_COLOR_GREEN;
+        else if(type == LOG_TRACE || type == LOG_DEBUG)
             color_mode = ANSI_COLOR_GRAY;
 
         if(self->console_print_func)
@@ -455,7 +457,7 @@ EXPORT void file_logger_console_add_module_filter(File_Logger* logger, String mo
 
 EXPORT void file_logger_console_add_type_filter(File_Logger* logger, isize type)
 {
-    if(type <= LOG_TYPE_ENUM_MAX)
+    if(type <= LOG_ENUM_MAX)
         logger->console_type_filter |= (i64) 1 << type;
 }
 EXPORT void file_logger_console_set_none_type_filter(File_Logger* logger)

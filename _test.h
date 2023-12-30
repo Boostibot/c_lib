@@ -76,9 +76,7 @@ EXPORT void _run_test_recover(void* context, Platform_Sandbox_Error error)
     if(error.exception != PLATFORM_EXCEPTION_ABORT)
     {
         LOG_ERROR("TEST", "FAILED! Exception occured: %s", platform_exception_to_string(error.exception));
-        log_group_push();
-        log_captured_callstack("TEST", LOG_TYPE_TRACE, error.call_stack, error.call_stack_size);
-        log_group_pop();
+        log_captured_callstack(">TEST", LOG_TRACE, error.call_stack, error.call_stack_size);
     }
 }
 

@@ -4,15 +4,24 @@
 // This file is focused on as-simpel-as-possible semi-structured logging.
 // That is we attempt to give logs some structure but not too much (so that it is still convinient).
 // 
-// The primary design choice is thus how much and what to keep structured. We select three primary
-// independent pieces:
-//  1) log_module - a simple string indicating from where the log came from. 
+// We use three primary pieces of information for our logs:
+//  1) Log module - a simple string indicating from where the log came from. 
 //                  The user is free to give this location any meaning (function, file, etc.)
-//                  to group things however they please.
+//                  to group things however they please. 
 // 
-//  2) log_type - a number indicating what kind of log this is (info, warn, error, etc.). See below. 
+//  2) Log type - a number indicating what kind of log this is (info, warn, error, etc.).
+//                These numbers can range from 0-63 (some slots are already taken). This
+//                enables us to store the mask of allowed types as single 64 bit number
+//                which can in turn be used to silence certain logs really easily.
 // 
-//  3) indendtation/groups 
+//  3) Indentation - a visual indicator to the hierarchy of messages. 
+//                   This can be used to separate function calls. The simple global
+//                   implementation also nests (as long as we remeber to call pop 
+//                   when we are done). 
+// 
+// Log module in combination with log type enables us to extremely easily locate desired properties
+// in the resulting log files. We grep for example for just LOG_ERROR from RENDER module. we can then 
+// reconstruct the call stack from indetation.
 // 
 // The choice to have Log_Type which qualifies some basic log categories instead of the usual 
 //  severity level approach was chosen because of the following: 
@@ -20,10 +29,58 @@
 //  1) Lack of meaning:
 //     The choice between severity level 5 and 6 is largely abitrary. This is because the meaning of 
 //     severity is distacted by how rest of the codebase uses it.
+// 
 //  2) Lack of fine grained control:
 //     If we want to dissable all info messages but keep debug emssaegs we simply cannot 
 //     (assuming severity of debug is smaller then of info - which is usually the case)
-//
+
+#ifdef _LOG_EXAMPLE
+
+void log_example_nested();
+
+void log_example()
+{
+    //We have chose to call this 'module' EXAMPLES
+    //Usually we choose modules based on logical units
+    // instead of code units. So for example RENDER, IO, INPUT
+    // instead of log_example or My_Class
+    LOG_INFO("EXAMPLES", "Starting examples!");
+    
+    LOG_DEBUG("EXAMPLES", "current time %i", clock());
+
+    //Increases indentation for all subsequent calls untill log_group_pop is called
+    //This can be used for example to distinguish nested functions such as now
+    log_group_push(); 
+    //Also dissable debug prints
+    u64 mask = log_disable(LOG_DEBUG);
+
+        log_example_nested();
+
+    //Restore previous state
+    log_set_mask(mask);
+    log_group_pop();
+    LOG_INFO("EXAMPLES", "example finished");
+}
+
+void log_example_nested()
+{
+    LOG_INFO("EXAMPLES", "Inside nested func");
+    LOG_DEBUG("EXAMPLES", "this print will not show because we dissabled debug");
+
+    //All logs whose modules start by ">" are indented +1 more than usual.
+    //This is extremely convenient for small groups.
+    if(clock() == 0)
+        LOG_SUCCESS(">EXAMPLES", "OK");
+    else
+    {
+        LOG_ERROR(">EXAMPLES", "ERROR OCCURED!");
+        // ">" can be used multiple times and even works for custom fucntions
+        // (because they will eventually call the standard vlog_message)
+        log_callstack(">>EXAMPLES", LOG_TRACE, 0, "printing callstack below:");
+    }
+}
+
+#endif
 
 #include "defines.h"
 #include "platform.h"
@@ -33,7 +90,8 @@
 
 #ifndef LOG_CUSTOM_SETTINGS
     #define DO_LOG          /* Disables all log types */   
-    #define DO_LOG_INFO     
+    #define DO_LOG_INFO
+    #define DO_LOG_SUCCESS
     #define DO_LOG_WARN 
     #define DO_LOG_ERROR
     #define DO_LOG_FATAL
@@ -44,17 +102,18 @@
     #endif
 #endif
 
-typedef enum Log_Type {
-    LOG_TYPE_FLUSH = 0, //only flushes the log but doesnt print anything
-    LOG_TYPE_INFO,  //Used to print general info.
-    LOG_TYPE_WARN,  //Used to print near error conditions
-    LOG_TYPE_ERROR, //Used to print errors
-    LOG_TYPE_FATAL, //Used to print errors just before giving up some important action
-    LOG_TYPE_DEBUG, //Used to print log for debug purposes. Is only logged in debug builds
-    LOG_TYPE_TRACE, //Used to print log for step debug purposes (prinf("HERE") and such). Is only logged in step debug builds
-
-    LOG_TYPE_ENUM_MAX = 63, //This is the maximum value log types are allowed to have without being ignored.
-} Log_Type;
+typedef i32 Log_Type;
+enum {
+    LOG_ENUM_MAX = 63,  //This is the maximum value log types are allowed to have without being ignored.
+    LOG_FLUSH = 63,     //only flushes the log but doesnt log anything
+    LOG_INFO = 0,       //Used to log general info.
+    LOG_SUCCESS = 1,    //Used to log the opposites of errors
+    LOG_WARN = 2,       //Used to log near error conditions
+    LOG_ERROR = 3,      //Used to log errors
+    LOG_FATAL = 4,      //Used to log errors just before giving up some important action
+    LOG_DEBUG = 5,      //Used to log for debug purposes. Is only logged in debug builds
+    LOG_TRACE = 6,      //Used to log for step debug purposes (prinf("HERE") and such). Is only logged in step debug builds
+};
 
 typedef struct Source_Info {
     int64_t line;
@@ -103,12 +162,13 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 #define VLOG(module, log_type, format, args)    PP_IF(DO_LOG, LOG_ALWAYS)(module, log_type, format, args)
 
 //Logs a message type into the provided module cstring.
-#define LOG_INFO(module, format, ...)           PP_IF(DO_LOG_INFO, LOG)(module, LOG_TYPE_INFO, format, ##__VA_ARGS__)
-#define LOG_WARN(module, format, ...)           PP_IF(DO_LOG_WARN, LOG)(module, LOG_TYPE_WARN, format, ##__VA_ARGS__)
-#define LOG_ERROR(module, format, ...)          PP_IF(DO_LOG_ERROR, LOG)(module, LOG_TYPE_ERROR, format, ##__VA_ARGS__)
-#define LOG_FATAL(module, format, ...)          PP_IF(DO_LOG_FATAL, LOG)(module, LOG_TYPE_FATAL, format, ##__VA_ARGS__)
-#define LOG_DEBUG(module, format, ...)          PP_IF(DO_LOG_DEBUG, LOG)(module, LOG_TYPE_DEBUG, format, ##__VA_ARGS__)
-#define LOG_TRACE(module, format, ...)          PP_IF(DO_LOG_TRACE, LOG)(module, LOG_TYPE_TRACE, format, ##__VA_ARGS__)
+#define LOG_INFO(module, format, ...)           PP_IF(DO_LOG_INFO, LOG)(module, LOG_INFO, format, ##__VA_ARGS__)
+#define LOG_SUCCESS(module, format, ...)        PP_IF(DO_LOG_SUCCESS, LOG)(module, LOG_SUCCESS, format, ##__VA_ARGS__)
+#define LOG_WARN(module, format, ...)           PP_IF(DO_LOG_WARN, LOG)(module, LOG_WARN, format, ##__VA_ARGS__)
+#define LOG_ERROR(module, format, ...)          PP_IF(DO_LOG_ERROR, LOG)(module, LOG_ERROR, format, ##__VA_ARGS__)
+#define LOG_FATAL(module, format, ...)          PP_IF(DO_LOG_FATAL, LOG)(module, LOG_FATAL, format, ##__VA_ARGS__)
+#define LOG_DEBUG(module, format, ...)          PP_IF(DO_LOG_DEBUG, LOG)(module, LOG_DEBUG, format, ##__VA_ARGS__)
+#define LOG_TRACE(module, format, ...)          PP_IF(DO_LOG_TRACE, LOG)(module, LOG_TRACE, format, ##__VA_ARGS__)
 
 //Logs a message. Does not get dissabled.
 #define LOG_ALWAYS(module, log_type, format, ...)   log_message(module, log_type, SOURCE_INFO(), format, ##__VA_ARGS__)
@@ -132,6 +192,7 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 //Gets expanded when the particular type is dissabled.
 #define _IF_NOT_DO_LOG(ignore)              LOG_NEVER
 #define _IF_NOT_DO_LOG_INFO(ignore)         LOG_NEVER
+#define _IF_NOT_DO_LOG_SUCCESS(ignore)      LOG_NEVER
 #define _IF_NOT_DO_LOG_WARN(ignore)         LOG_NEVER
 #define _IF_NOT_DO_LOG_ERROR(ignore)        LOG_NEVER
 #define _IF_NOT_DO_LOG_FATAL(ignore)        LOG_NEVER
@@ -167,6 +228,8 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 
 //Is stateless so it can not be MODIFIER_THREAD_LOCAL
 static Logger _global_def_logger = {def_logger_func};
+
+
 static MODIFIER_THREAD_LOCAL Logger* _global_logger = &_global_def_logger;
 static MODIFIER_THREAD_LOCAL isize _global_log_group_depth = 0;
 static MODIFIER_THREAD_LOCAL u64 _global_log_mask = ~(u64) 0; //All channels on!
@@ -239,7 +302,12 @@ EXPORT void vlog_message(const char* module, Log_Type type, Source_Info source, 
     #endif
     Logger* global_logger = _global_logger;
     if(static_enabled && global_logger && log_is_enabled(type))
-        global_logger->log(global_logger, module, type, _global_log_group_depth, source, format, args);
+    {
+        isize extra_indentation = 0;
+        for(; module[extra_indentation] == '>'; extra_indentation++);
+
+        global_logger->log(global_logger, module + extra_indentation, type, _global_log_group_depth + extra_indentation, source, format, args);
+    }
 }
 
 EXPORT MODIFIER_FORMAT_FUNC(format, 4) void log_message(const char* module, Log_Type type, Source_Info source, MODIFIER_FORMAT_ARG const char* format, ...)
@@ -252,21 +320,21 @@ EXPORT MODIFIER_FORMAT_FUNC(format, 4) void log_message(const char* module, Log_
 
 EXPORT void log_flush()
 {
-    log_message("", LOG_TYPE_FLUSH, SOURCE_INFO(), " ");
+    log_message("", LOG_FLUSH, SOURCE_INFO(), " ");
 }
 
 EXPORT const char* log_type_to_string(Log_Type type)
 {
     switch(type)
     {
-        case LOG_TYPE_FLUSH: return "FLUSH"; break;
-        case LOG_TYPE_INFO: return "INFO"; break;
-        case LOG_TYPE_WARN: return "WARN"; break;
-        case LOG_TYPE_ERROR: return "ERROR"; break;
-        case LOG_TYPE_FATAL: return "FATAL"; break;
-        case LOG_TYPE_DEBUG: return "DEBUG"; break;
-        case LOG_TYPE_TRACE: return "TRACE"; break;
-        case LOG_TYPE_ENUM_MAX:
+        case LOG_FLUSH: return "FLUSH"; break;
+        case LOG_INFO: return "INFO"; break;
+        case LOG_SUCCESS: return "SUCCESS"; break;
+        case LOG_WARN: return "WARN"; break;
+        case LOG_ERROR: return "ERROR"; break;
+        case LOG_FATAL: return "FATAL"; break;
+        case LOG_DEBUG: return "DEBUG"; break;
+        case LOG_TRACE: return "TRACE"; break;
         default: return "";
     }
 }
@@ -281,16 +349,18 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 {
     (void) logger;
     (void) source;
-    if(type == LOG_TYPE_FLUSH)
+    if(type == LOG_FLUSH)
         return;
 
     Platform_Calendar_Time now = platform_local_calendar_time_from_epoch_time(platform_epoch_time());
     const char* color_mode = ANSI_COLOR_NORMAL;
-    if(type == LOG_TYPE_ERROR || type == LOG_TYPE_FATAL)
+    if(type == LOG_ERROR || type == LOG_FATAL)
         color_mode = ANSI_COLOR_BRIGHT_RED;
-    else if(type == LOG_TYPE_WARN)
+    else if(type == LOG_WARN)
         color_mode = ANSI_COLOR_YELLOW;
-    else if(type == LOG_TYPE_TRACE || type == LOG_TYPE_DEBUG)
+    else if(type == LOG_SUCCESS)
+        color_mode = ANSI_COLOR_GREEN;
+    else if(type == LOG_TRACE || type == LOG_DEBUG)
         color_mode = ANSI_COLOR_GRAY;
 
     printf("%s%02i:%02i:%02i %03i %5s %6s: ", color_mode, now.hour, now.minute, now.second, now.millisecond, log_type_to_string(type), module);

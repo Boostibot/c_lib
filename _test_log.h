@@ -33,12 +33,10 @@ INTERNAL void test_log()
             file_logger_init_use(&logger, &debug_allocator.allocator, &debug_allocator.allocator);
             LOG_INFO("TEST_LOG", "iterating all entitites");
 
-            log_group_push();
             for(int i = 0; i < 5; i++)
-                LOG_INFO("TEST_LOG", 
+                LOG_INFO(">TEST_LOG", 
                     "entity id:%d found\n"
                     "Hello from entity", i);
-            log_group_pop();
 
             LOG_FATAL("TEST_LOG", 
                 "Fatal error encountered!\n"

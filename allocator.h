@@ -96,8 +96,8 @@ EXPORT Allocator_Stats allocator_get_stats(Allocator* self);
 
 EXPORT Platform_Allocator platform_allocator_from_allocator(Allocator* alloc);
 
-EXPORT void allocator_log_stats(Allocator_Stats stats, const char* log_module, Log_Type log_type);
-EXPORT Allocator_Stats allocator_log_stats_get(Allocator* allocator, const char* log_module, Log_Type log_type);
+EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator);
+EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_type, Allocator_Stats stats);
 
 //Gets called when function requiring to always succeed fails an allocation - most often from allocator_reallocate
 //If ALLOCATOR_CUSTOM_OUT_OF_MEMORY is defines is left unimplemented
@@ -354,7 +354,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         return out;
     }
     
-    EXPORT void allocator_log_stats(Allocator_Stats stats, const char* log_module, Log_Type log_type)
+    EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_type, Allocator_Stats stats)
     {
         if(stats.type_name == NULL)
             stats.type_name = "<no type name>";
@@ -377,14 +377,14 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         LOG(log_module, log_type, "deallocation_count:  %lli", stats.deallocation_count);
         LOG(log_module, log_type, "reallocation_count:  %lli", stats.reallocation_count);
     }
-
-    EXPORT Allocator_Stats allocator_log_stats_get(Allocator* allocator, const char* log_module, Log_Type log_type)
+    
+    EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator)
     {
         Allocator_Stats stats = {0};
         if(allocator != NULL && allocator->get_stats != NULL)
         {
             stats = allocator_get_stats(allocator);
-            allocator_log_stats(stats, log_module, log_type);
+            log_allocator_stats_provided(log_module, log_type, stats);
         }
         else
             LOG(log_module, log_type, "Allocator NULL or missing get_stats callback.");
@@ -407,36 +407,28 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         if(stats.name == NULL)
             stats.name = "<no name>";
 
-        const char* mod = "memory";
-        LOG_FATAL(mod, "Allocator %s %s reported out of memory! (%s : %lli)", stats.type_name, stats.name, called_from.file, called_from.line);
+        LOG_FATAL("memory", "Allocator %s %s reported out of memory! (%s : %lli)", stats.type_name, stats.name, called_from.file, called_from.line);
 
-        log_group_push();
-        LOG_INFO(mod, "new_size:    %lli B", new_size);
-        if(old_ptr != NULL)
-            LOG_INFO(mod, "old_ptr:     0x%p", old_ptr);
-        else
-            LOG_INFO(mod, "old_ptr:     NULL");
-        LOG_INFO(mod, "old_size:    %lli B", old_size);
-        LOG_INFO(mod, "align:       %lli B", align);
+            LOG_INFO(">memory", "new_size:    %lli B", new_size);
+            if(old_ptr != NULL)
+                LOG_INFO(">memory", "old_ptr:     0x%08llx", (lli) old_ptr);
+            else
+                LOG_INFO(">memory", "old_ptr:     NULL");
+            LOG_INFO(">memory", "old_size:    %lli B", old_size);
+            LOG_INFO(">memory", "align:       %lli B", align);
         
-        if(format_string != NULL && strlen(format_string) > 0)
-        {
-            log_group_push();
+            if(format_string != NULL && strlen(format_string) > 0)
+            {
                 va_list args;               
                 va_start(args, format_string);     
-                VLOG(mod, LOG_TYPE_FATAL, format_string, args);
+                VLOG(">>memory", LOG_FATAL, format_string, args);
                 va_end(args);  
-            log_group_pop();
-        }
+            }
 
-        LOG_INFO(mod, "Allocator_Stats:");
-        log_group_push();
-            allocator_log_stats(stats, mod, LOG_TYPE_INFO);
-        log_group_pop();
+            LOG_INFO(">memory", "Allocator_Stats:");
+                log_allocator_stats_provided(">>memory", LOG_INFO, stats);
     
-        log_callstack(mod, LOG_TYPE_TRACE, 1, "callstack:");
-        
-        log_group_push();
+            log_callstack(">memory", LOG_TRACE, 1, "callstack:");
 
         log_flush();
         platform_trap(); 

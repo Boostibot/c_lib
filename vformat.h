@@ -28,8 +28,6 @@ EXPORT const char* escape_string_ephemeral(String string);
 #define SOURCE_INFO_FMT "( %s : %lli )"
 #define SOURCE_INFO_PRINT(source_info) cstring_escape((source_info).file), (lli) (source_info).line
 
-typedef long long int lli;
-typedef unsigned long long llu;
 #endif // !JOT_VFORMAT
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_VFORMAT_IMPL)) && !defined(JOT_VFORMAT_HAS_IMPL)

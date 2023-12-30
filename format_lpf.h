@@ -1591,9 +1591,7 @@ EXPORT Lpf_Error lpf_read_custom(String source, Lpf_Dyn_Entry* into, const Lpf_F
             {
                 String line = string_range(source, last_source_i, next_source_i);
                 LOG_ERROR("LPF", "Error %s reading lpf file on line %lli depth %lli", lpf_error_to_string(entry.error), (lli) entry.line_number, (lli) entry.depth);
-                log_group_push();
-                    LOG_ERROR("LPF", STRING_FMT, STRING_PRINT(line));
-                log_group_pop();
+                    LOG_ERROR(">LPF", STRING_FMT, STRING_PRINT(line));
             }
 
             if(options->stop_on_error)

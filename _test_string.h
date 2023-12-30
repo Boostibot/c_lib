@@ -94,11 +94,10 @@ static void bemchmark_find_first(isize max_size, int max_value, f64 discard, f64
     }
 
     LOG_INFO("TEST", "printing results for max_size: %lli max_value: %lli", (lli) max_size, (lli) max_value);
-    log_group_push();
         for(isize case_i = 0; case_i < STATIC_ARRAY_SIZE(cases); case_i ++)
         {
             Test_Case* test_case = &cases[case_i];
-            LOG_INFO("TEST", "%20s total: %15.8lf avg: %12.8lf runs: %-8lli σ/μ %13.6lf [%13.6lf %13.6lf] (ms) found: %lli", 
+            LOG_INFO(">TEST", "%20s total: %15.8lf avg: %12.8lf runs: %-8lli σ/μ %13.6lf [%13.6lf %13.6lf] (ms) found: %lli", 
                     test_case->name,
 			        test_case->stats.total_s*1000,
 			        test_case->stats.average_s*1000,
@@ -109,7 +108,6 @@ static void bemchmark_find_first(isize max_size, int max_value, f64 discard, f64
                     test_case->num_found
 		        );
         }
-    log_group_pop();
 
     array_deinit(&data);
 }

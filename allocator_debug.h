@@ -320,7 +320,7 @@ EXPORT void debug_allocator_panic_func(Debug_Allocator* allocator, Debug_Allocat
     const char* reason_str = debug_allocator_panic_reason_to_string(reason);
 
     LOG_FATAL("MEMORY", "PANIC because of %s at pointer 0x%08llx " SOURCE_INFO_FMT, reason_str, (lli) allocation.ptr, SOURCE_INFO_PRINT(called_from));
-    debug_allocator_print_alive_allocations("MEMORY", LOG_TYPE_TRACE, *allocator, 0);
+    debug_allocator_print_alive_allocations("MEMORY", LOG_TRACE, *allocator, 0);
     
     log_flush();
     platform_trap();
@@ -753,21 +753,16 @@ INTERNAL bool _debug_allocator_is_aligned(void* ptr, isize alignment)
 void print_pre(Debug_Allocation_Pre_Block pre, const char* c)
 {
     LOG_DEBUG("DEBUG", "printing pre block \"%s\" from: " SOURCE_INFO_FMT, c, SOURCE_INFO_PRINT(pre.header->allocation_source));
-    log_group_push();
-        LOG_DEBUG("DEBUG", "header:             0x%08llx", (lli) pre.header);
-        LOG_DEBUG("DEBUG", "user_ptr:           0x%08llx", (lli) pre.user_ptr);
-        LOG_DEBUG("DEBUG", "call_stack:         0x%08llx", (lli) pre.call_stack);
-        LOG_DEBUG("DEBUG", "dead_zone:          0x%08llx", (lli) pre.dead_zone);
-        LOG_DEBUG("DEBUG", "dead_zone_size:     %lli", (lli) pre.dead_zone_size);
-        LOG_DEBUG("DEBUG", "call_stack_size:    %lli", (lli) pre.call_stack_size);
-        log_group_push();
-        LOG_DEBUG("DEBUG", "header.size:                %lli", (lli) pre.header->size);
-        LOG_DEBUG("DEBUG", "header.align:               %lli", (lli) pre.header->align);
-        LOG_DEBUG("DEBUG", "header.block_start_offset:  %lli", (lli) pre.header->block_start_offset);
-        LOG_DEBUG("DEBUG", "header.allocation_time_s:   %lf", pre.header->allocation_time_s);
-        log_group_pop();
-
-    log_group_pop();
+        LOG_DEBUG(">DEBUG", "header:             0x%08llx", (lli) pre.header);
+        LOG_DEBUG(">DEBUG", "user_ptr:           0x%08llx", (lli) pre.user_ptr);
+        LOG_DEBUG(">DEBUG", "call_stack:         0x%08llx", (lli) pre.call_stack);
+        LOG_DEBUG(">DEBUG", "dead_zone:          0x%08llx", (lli) pre.dead_zone);
+        LOG_DEBUG(">DEBUG", "dead_zone_size:     %lli", (lli) pre.dead_zone_size);
+        LOG_DEBUG(">DEBUG", "call_stack_size:    %lli", (lli) pre.call_stack_size);
+            LOG_DEBUG(">>DEBUG", "header.size:                %lli", (lli) pre.header->size);
+            LOG_DEBUG(">>DEBUG", "header.align:               %lli", (lli) pre.header->align);
+            LOG_DEBUG(">>DEBUG", "header.block_start_offset:  %lli", (lli) pre.header->block_start_offset);
+            LOG_DEBUG(">>DEBUG", "header.allocation_time_s:   %lf", pre.header->allocation_time_s);
 }
 
 EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr_, isize old_size, isize align, Source_Info called_from)
