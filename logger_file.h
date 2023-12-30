@@ -107,8 +107,8 @@ EXPORT bool file_logger_flush(File_Logger* logger);
 
 EXPORT void file_logger_deinit(File_Logger* logger);
 EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc, isize flush_every_bytes, f64 flush_every_seconds, String folder, String prefix, String postfix);
-EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc);
-EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc);
+EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc, const char* folder);
+EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc, const char* folder);
 
 EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* append_to, String module, Log_Type type, isize indentation, i64 epoch_time, const char* format, va_list args);
 EXPORT void file_logger_log_into(Allocator* scratch, String_Builder* append_to, String module, Log_Type type, isize indentation, i64 epoch_time, const char* format, va_list args);
@@ -304,14 +304,14 @@ EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, A
     array_reserve(&logger->buffer, flush_every_bytes);
 }
 
-EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc)
+EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc, const char* folder)
 {
-    file_logger_init_custom(logger, def_alloc, scratch_alloc, PAGE_BYTES, 2.0 / 1000, STRING("logs"), STRING(""), STRING(".txt"));
+    file_logger_init_custom(logger, def_alloc, scratch_alloc, PAGE_BYTES, 2.0 / 1000, string_make(folder), STRING(""), STRING(".txt"));
 }
 
-EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc)
+EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc, const char* folder)
 {
-    file_logger_init(logger, def_alloc, scratch_alloc);
+    file_logger_init(logger, def_alloc, scratch_alloc, folder);
     logger->prev_logger = log_system_set_logger(&logger->logger);
     logger->has_prev_logger = true;
 }

@@ -66,16 +66,14 @@ EXPORT void _run_test_try(void* context)
         break;
         default: UNREACHABLE();
     }
-
-    LOG_INFO("TEST", "OK");
 }
 
 EXPORT void _run_test_recover(void* context, Platform_Sandbox_Error error)
 {
-    (void) context;
+    Test_Run_Context* c = (Test_Run_Context*) context;
     if(error.exception != PLATFORM_EXCEPTION_ABORT)
     {
-        LOG_ERROR("TEST", "FAILED! Exception occured: %s", platform_exception_to_string(error.exception));
+        LOG_ERROR("TEST", "Exception occured: %s", c->name, platform_exception_to_string(error.exception));
         log_captured_callstack(">TEST", LOG_TRACE, error.call_stack, error.call_stack_size);
     }
 }
@@ -100,6 +98,11 @@ EXPORT bool run_test(void* func, const char* name, Test_Func_Type type, f64 max_
     log_group_push();
     bool success = platform_exception_sandbox(_run_test_try, &context, _run_test_recover, &context) == 0;
     log_group_pop();
+    if(success)
+        LOG_SUCCESS("TEST", "%s OK", name);
+    else
+        LOG_ERROR("TEST", "%s FAILED", name);
+
     return success;
 }
 

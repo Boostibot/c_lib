@@ -8,7 +8,7 @@
 
 INTERNAL void test_log()
 {
-    LOG_WARN("TEST", "Ignore all logs below since they are a test!");
+    LOG_INFO("TEST", "Ignore all logs below since they are a test!");
     log_group_push();
 
     Debug_Allocator debug_allocator = {0};
@@ -30,7 +30,7 @@ INTERNAL void test_log()
 
         {
             File_Logger logger = {0};
-            file_logger_init_use(&logger, &debug_allocator.allocator, &debug_allocator.allocator);
+            file_logger_init_use(&logger, &debug_allocator.allocator, &debug_allocator.allocator, "logs");
             LOG_INFO("TEST_LOG", "iterating all entitites");
 
             for(int i = 0; i < 5; i++)
@@ -38,8 +38,8 @@ INTERNAL void test_log()
                     "entity id:%d found\n"
                     "Hello from entity", i);
 
-            LOG_FATAL("TEST_LOG", 
-                "Fatal error encountered!\n"
+            LOG_DEBUG("TEST_LOG", 
+                "Debug info\n"
                 "Some more info\n" 
                 "%d-%d", 10, 20);
             
@@ -50,5 +50,5 @@ INTERNAL void test_log()
     debug_allocator_deinit(&debug_allocator);
     log_group_pop();
     
-    LOG_WARN("TEST", "Tetsing log finished!");
+    LOG_INFO("TEST", "Tetsing log finished!");
 }

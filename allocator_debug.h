@@ -58,7 +58,6 @@
 #include "time.h"
 #include "log.h"
 #include "profile.h"
-#include "callstack.h"
 #include "vformat.h"
 
 typedef struct Debug_Allocator          Debug_Allocator;
@@ -418,8 +417,6 @@ EXPORT Debug_Allocation debug_allocator_get_allocation(const Debug_Allocator* se
     allocation.align = pre.header->align;
     allocation.size = pre.header->size;
 
-    //Stack_Trace_Entry allocation_source = _debug_allocator_source_to_trace(pre.header->allocation_source);
-    //array_push(&allocation.allocation_source, allocation_source); 
     allocation.allocation_source = pre.header->allocation_source;
     allocation.allocation_time_s = pre.header->allocation_time_s;
     allocation.ptr = pre.user_ptr;

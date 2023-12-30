@@ -367,7 +367,6 @@ EXPORT void	 random_state_bytes(Random_State* state, void* into, int64_t size);
 		random_state_shuffle(random_state(), elements, element_count, element_size); 
 	}
 
-
 	EXPORT void random_bytes(void* into, int64_t size)
 	{
 		random_state_bytes(random_state(), into, size);

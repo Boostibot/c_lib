@@ -329,7 +329,7 @@ EXPORT const char* log_type_to_string(Log_Type type)
     {
         case LOG_FLUSH: return "FLUSH"; break;
         case LOG_INFO: return "INFO"; break;
-        case LOG_SUCCESS: return "SUCCESS"; break;
+        case LOG_SUCCESS: return "SUCC"; break;
         case LOG_WARN: return "WARN"; break;
         case LOG_ERROR: return "ERROR"; break;
         case LOG_FATAL: return "FATAL"; break;
@@ -364,10 +364,26 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
         color_mode = ANSI_COLOR_GRAY;
 
     printf("%s%02i:%02i:%02i %03i %5s %6s: ", color_mode, now.hour, now.minute, now.second, now.millisecond, log_type_to_string(type), module);
-    for(isize i = 0; i < indentation; i++)
-        printf("   ");
-    vprintf(format, args);
-    printf(ANSI_COLOR_NORMAL"\n");
+
+    //We only do fancy stuff when there is something to print.
+    //We also only print extra newline if there is none already.
+    isize fmt_size = strlen(format);
+    bool print_newline = true;
+    if(fmt_size > 0)
+    {
+        for(isize i = 0; i < indentation; i++)
+            printf("   ");
+
+        vprintf(format, args);
+        if(format[fmt_size - 1] == '\n')
+            print_newline = false; 
+    }
+
+    if(print_newline)
+        printf(ANSI_COLOR_NORMAL"\n");
+    else
+        printf(ANSI_COLOR_NORMAL);
+        
 }
 
 

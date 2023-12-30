@@ -32,11 +32,14 @@
 // for better compatibility 
 // such as using char, wchar and char32_t in c++
 #ifndef UNICODE_OWN_TYPES
-typedef uint8_t  utf8_t;
-typedef uint16_t utf16_t;
+typedef char     utf8_t;
+typedef wchar_t  utf16_t;
 typedef uint32_t utf32_t;
 typedef uint32_t codepoint_t;
+
+#ifndef JOT_DEFINES
 typedef int64_t  isize;            //size can be signed or unsigned
+#endif
 #endif
 
 #define UNICODE_MAX 0x10FFFF                /* The highest valid Unicode codepoint */
@@ -47,37 +50,36 @@ typedef int64_t  isize;            //size can be signed or unsigned
 
 // =========================== HIGH LEVEL INTERFACE ===========================
 
-// All these functions do the following.
-// (We only describe the first one. The rest is the same except with different names and types of arguments):
+// All these functions do the following:
 //
-// Tries to convert from an array pointed to by `utf8` reading up to `utf8_len` items. 
-// Writes into the array pointed to by `utf16_or_null` up to `utf16_len` items. 
-// Returns the total ammount of items written into `utf16_or_null` and also saves the reading position into
-// `utf8_finished_at`. `utf8_finished_at` must NOT be a NULL pointer. 
-// The fuction read and converted all codepoints successfully iff `utf8_finished_at` ==  `utf8_len`.
-//    If encounters an error sequence in the read data (`utf8`):
-//        If replacement_policy is UNICODE_ERROR_SKIP:
-//           skip the character and start parsing from the enxt one.
-//        If replacement_policy is a valid codepoint_t:
-//           replaces the error codepoint with replacement_policy. 
-//        else: 
-//           stops parsing and returns with error (`utf8_finished_at` != `utf8_len`).
-// 
-// The `utf16_or_null` argument can be null. In that case `utf16_len` is ignored and nothing is written. 
-// Returns the number of items that would have been written if `utf16_or_null` wasnt null. 
-// Errors are handled the same way as in the not null case.
-// This can be used to get the needed size of a buffer into which to convert.
+// Tries to convert from an array pointed to by `source` reading up to `source_len` items. 
+// If `target_or_null` is not null:
+//    writes into it up to `target_max_len` converted characters
+//    Returns the total number of items written into `target_or_null`.
+// else 
+//    Returns the needed number of `target_or_null` items for the conversion NOT including the
+//    null termination.
+// If `source_finished_at_or_null` is not null saves to it the position where the function finished
+//   (so that it can be resumed from that point on after we increased size of `target_or_null` for example).
+// The fuction read and converted all codepoints successfully iff *source_finished_at_or_null == source_len.
+//    If encounters an error sequence in the `source`:
+//        If `replecement` is UNICODE_ERROR_SKIP:
+//           skip the character and start parsing from the next one.
+//        If `replecement` is UNCIODE_INVALID or any valid codepoint_t:
+//           replaces the error codepoint with `replecement`. 
+//        If `replecement` is  UNICODE_ERROR or any other invalid codepoint:
+//           stops parsing early and returns (thus indicating error).
 //
 // See examples below for usage.
 
-EXPORT isize unicode_utf8_to_utf16(utf16_t* utf16_or_null, isize utf16_len, utf8_t const* utf8, isize utf8_len, isize* utf8_finished_at, codepoint_t replacement_policy);
-EXPORT isize unicode_utf8_to_utf32(utf32_t* utf32_or_null, isize utf32_len, utf8_t const* utf8, isize utf8_len, isize* utf8_finished_at, codepoint_t replacement_policy);
+EXPORT isize unicode_utf8_to_utf16(utf16_t* target_or_null, isize target_max_len, utf8_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
+EXPORT isize unicode_utf8_to_utf32(utf32_t* target_or_null, isize target_max_len, utf8_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
 
-EXPORT isize unicode_utf16_to_utf8(utf8_t* utf8_or_null, isize utf8_len, utf16_t const* utf16, isize utf16_len, isize* utf16_finished_at, codepoint_t replacement_policy);
-EXPORT isize unicode_utf16_to_utf32(utf32_t* utf32_or_null, isize utf32_len, utf16_t const* utf16, isize utf16_len, isize* utf16_finished_at, codepoint_t replacement_policy);
+EXPORT isize unicode_utf16_to_utf8(utf8_t* target_or_null, isize target_max_len, utf16_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
+EXPORT isize unicode_utf16_to_utf32(utf32_t* target_or_null, isize target_max_len, utf16_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
 
-EXPORT isize unicode_utf32_to_utf8(utf8_t* utf8_or_null, isize utf8_len, utf32_t const* utf32, isize utf32_len, isize* utf32_finished_at, codepoint_t replacement_policy);
-EXPORT isize unicode_utf32_to_utf16(utf16_t* utf16_or_null, isize utf16_len, utf32_t const* utf32, isize utf32_len, isize* utf32_finished_at, codepoint_t replacement_policy);
+EXPORT isize unicode_utf32_to_utf8(utf8_t* target_or_null, isize target_max_len, utf32_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
+EXPORT isize unicode_utf32_to_utf16(utf16_t* target_or_null, isize target_max_len, utf32_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
 
 // =========================== CODE POINT INTERFACE ===========================
  
@@ -142,27 +144,19 @@ EXPORT bool unicode_codepoint_is_surrogate(codepoint_t codepoint);
 
 static void unicode_example()
 {
-    assert(sizeof(wchar_t) == sizeof(utf16_t) && "On this platform wide strings are utf16");
-
     wchar_t utf16[] = L"Hello this is an utf16 stream with some non ascii chars: Φφ,Χχ,Ψψ,Ωω";
     isize utf16_len = wcslen(utf16);
 
     char utf8[512] = "";
-    isize utf8_len = 511;
-
-    isize reading_finished_at = 0;
 
     //Converts the the string replacing any potential errors with UNCIODE_INVALID (�)
-    unicode_utf16_to_utf8((utf8_t*) utf8, utf8_len, (const utf16_t*) utf16, utf16_len, &reading_finished_at, UNCIODE_INVALID);
-    assert(reading_finished_at == utf16_len);
+    isize utf8_len = unicode_utf16_to_utf8((utf8_t*) utf8, sizeof(utf8), (const utf16_t*) utf16, utf16_len, NULL, UNCIODE_INVALID);
 
     printf("String (or portion of it) converted: %s\n", utf8);
 }
 
 static void unicode_example_checks()
 {
-    assert(sizeof(wchar_t) == sizeof(utf16_t) && "On this platform wide strings are utf16");
-
     wchar_t utf16[] = L"Hello this is an utf16 stream with some non ascii chars: Φφ,Χχ,Ψψ,Ωω";
     isize utf16_len = wcslen(utf16);
 
@@ -554,7 +548,7 @@ EXPORT isize unicode_codepoint_encode_utf32(codepoint_t codepoint, utf32_t* utf3
                                                                                                                                                                                                                     \
         for (;;)                                                                                                                                                                                                    \
         {                                                                                                                                                                                                           \
-            codepoint_t codepoint = 0;                                                                                                                                                                                 \
+            codepoint_t codepoint = 0;                                                                                                                                                                              \
             isize read_size = 0;                                                                                                                                                                                    \
             isize write_size = 0;                                                                                                                                                                                   \
                                                                                                                                                                                                                     \
@@ -591,8 +585,8 @@ EXPORT isize unicode_codepoint_encode_utf32(codepoint_t codepoint, utf32_t* utf3
             read_index += read_size;                                                                                                                                                                                \
             write_index += write_size;                                                                                                                                                                              \
         }                                                                                                                                                                                                           \
-                                                                                                                                                                                                                    \
-        *read_finished_at = read_index;                                                                                                                                                                             \
+        if(read_finished_at)                                                                                                                                                                                        \
+            *read_finished_at = read_index;                                                                                                                                                                         \
         return write_index;                                                                                                                                                                                         \
     }                                                                                                                                                                                                               \
     

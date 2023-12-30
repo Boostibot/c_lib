@@ -44,6 +44,12 @@
 //Add our example so we can run it
 #define _UNICODE_EXAMPLE
 
+#include "log.h"
+
+#ifdef JOT_LOG
+#define printf(format, ...) LOG_INFO("TEST", (format), ##__VA_ARGS__)
+#endif
+
 #include "unicode.h"
 #include <string.h>
 #include <stdlib.h>
@@ -51,16 +57,22 @@
 #include <time.h>
 #include <locale.h> //so that visual studio actually prints our strings
 
+
+#ifndef TEST_MSG
+#include <assert.h>
+#define TEST_MSG(a, msg, ...) (!(a) ? printf(msg, ##__VA_ARGS__), assert((a) && (msg)) : (void) 0)
+#endif // !TEST_MSG
+
 //Handcrafted tests between utfs
-void test_unicode_utf8_to_utf16();
-void test_unicode_utf16_to_utf8();
+static void test_unicode_utf8_to_utf16();
+static void test_unicode_utf16_to_utf8();
 
 //Test all conversion directions by generating a sequence of random UTF codepoints
 //And testing if round trips are losless.
-void test_unicode_stress_roundtrips(double max_time);
+static void test_unicode_stress_roundtrips(double max_time);
 
 //Runs all tests
-void test_unicode(double max_time)
+static void test_unicode(double max_time)
 {
     (void) max_time;
     setlocale(LC_ALL, "en_US.UTF-8"); //so that visual studio actually prints our strings
@@ -84,11 +96,6 @@ void test_unicode(double max_time)
     printf("unicode stress testing finished!\n");
 }
 
-#ifndef TEST_MSG
-#include <assert.h>
-#define TEST_MSG(a, msg, ...) (!(a) ? printf((msg), ##__VA_ARGS__), assert((a) && (msg)) : (void) 0)
-#endif // !TEST_MSG
-
 typedef long long lli;
 
 typedef struct Test_Unicode_Fail_At
@@ -103,10 +110,10 @@ typedef enum Test_Unicode_Compare{
     TEST_UNI_NOT_EQUAL,
 } Test_Unicode_Compare;
 
-void test_unicode_single_utf8_to_utf16(Test_Unicode_Compare compare, const char* input, const wchar_t* expected_output, Test_Unicode_Fail_At fail_at, codepoint_t replacement);
-void test_unicode_single_utf16_to_utf8(Test_Unicode_Compare compare, const wchar_t* input, const char* expected_output, Test_Unicode_Fail_At fail_at, codepoint_t replacement);
+static void test_unicode_single_utf8_to_utf16(Test_Unicode_Compare compare, const char* input, const wchar_t* expected_output, Test_Unicode_Fail_At fail_at, codepoint_t replacement);
+static void test_unicode_single_utf16_to_utf8(Test_Unicode_Compare compare, const wchar_t* input, const char* expected_output, Test_Unicode_Fail_At fail_at, codepoint_t replacement);
 
-void test_unicode_utf8_to_utf16()
+static void test_unicode_utf8_to_utf16()
 {
     Test_Unicode_Fail_At SUCCEED = {true};
     test_unicode_single_utf8_to_utf16(TEST_UNI_EQUAL,     "", L"",                           SUCCEED, UNICODE_ERROR);
@@ -189,7 +196,7 @@ void test_unicode_utf8_to_utf16()
     }
 }
 
-void test_unicode_utf16_to_utf8()
+static void test_unicode_utf16_to_utf8()
 {
     Test_Unicode_Fail_At SUCCEED = {true};
     test_unicode_single_utf16_to_utf8(TEST_UNI_EQUAL,     L"", "",                           SUCCEED, UNICODE_ERROR);
@@ -215,7 +222,7 @@ void test_unicode_utf16_to_utf8()
         L"Αα,Ββ,Γγ,Δδ,Εε,Ζζ,Ηη,Θθ,Ιι,Κκ,Λλ,Μμ,Νν,Ξξ,Οο,Ππ,Ρρ,Σσ/ς,Ττ,Υυ,Φφ,Χχ,Ψψ,Ωω", SUCCEED, UNICODE_ERROR);
 }
 
-void test_unicode_single_utf8_to_utf16(Test_Unicode_Compare compare, const char* input, const wchar_t* expected_output, Test_Unicode_Fail_At fail_at, codepoint_t replacement)
+static void test_unicode_single_utf8_to_utf16(Test_Unicode_Compare compare, const char* input, const wchar_t* expected_output, Test_Unicode_Fail_At fail_at, codepoint_t replacement)
 {
     ASSERT(input != NULL && expected_output != NULL);
 
@@ -268,7 +275,7 @@ void test_unicode_single_utf8_to_utf16(Test_Unicode_Compare compare, const char*
     free(converted);
 }
 
-void test_unicode_single_utf16_to_utf8(Test_Unicode_Compare compare, const wchar_t* input, const char* expected_output, Test_Unicode_Fail_At fail_at, codepoint_t replacement)
+static void test_unicode_single_utf16_to_utf8(Test_Unicode_Compare compare, const wchar_t* input, const char* expected_output, Test_Unicode_Fail_At fail_at, codepoint_t replacement)
 {
     ASSERT(input != NULL && expected_output != NULL);
 
@@ -320,7 +327,7 @@ static uint64_t _unicode_random_splitmix(uint64_t* state);
 static bool _unicode_are_memory_block_equal(const void* a, isize a_size, const void* b, isize b_size, isize type_size);
 
 
-void test_unicode_stress_roundtrips(double max_time)
+static void test_unicode_stress_roundtrips(double max_time)
 {
     enum {
         MAX_SIZE = 1024*4, 
@@ -472,3 +479,6 @@ static bool _unicode_are_memory_block_equal(const void* a, isize a_size, const v
     return state;
 }
 
+#ifdef printf
+#undef printf
+#endif

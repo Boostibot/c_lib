@@ -17,7 +17,7 @@ INTERNAL void test_gcd();
 
 INTERNAL void test_all()
 {
-    LOG_WARN("TEST", "RUNNING ALL TESTS");
+    LOG_INFO("TEST", "RUNNING ALL TESTS");
     int total_count = 0;
     int passed_count = 0;
 
@@ -43,7 +43,7 @@ INTERNAL void test_all()
     #undef INCR
 
     if(passed_count == total_count)
-        LOG_WARN("TEST", "TESTING FINISHED! passed %i of %i test uwu", total_count, passed_count);
+        LOG_SUCCESS("TEST", "TESTING FINISHED! passed %i of %i test uwu", total_count, passed_count);
     else
         LOG_WARN("TEST", "TESTING FINISHED! passed %i of %i tests", total_count, passed_count);
 }
@@ -72,5 +72,6 @@ INTERNAL void test_gcd()
     TEST(gcd(6, 12) == 6);
     TEST(gcd(12, 12) == 12);
     TEST(gcd(10, 12) == 2);
+    TEST(1 == 0);
     *(char*)NULL = 0;
 }

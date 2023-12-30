@@ -67,7 +67,7 @@ typedef union Mat2 {
     };
 } Mat2;
 
-typedef union Mat {
+typedef union Mat3 {
     Vec3 col[3];
 
     float m[3][3];
