@@ -329,31 +329,31 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
 
     EXPORT Memory_Format get_memory_format(isize bytes)
     {
-        isize TB = (isize) 1000*1000*1000*1000;
-        isize GB = (isize) 1000*1000*1000;
-        isize MB = (isize) 1000*1000;
-        isize KB = (isize) 1000;
+        isize TB = TEBI_BYTE;
+        isize GB = GIBI_BYTE;
+        isize MB = MEBI_BYTE;
+        isize KB = KIBI_BYTE;
         isize B = (isize) 1;
 
         Memory_Format out = {0};
         out.unit = "";
         out.unit_value = 1;
-        if(bytes > TB)
+        if(bytes >= TB)
         {
             out.unit = "TB";
             out.unit_value = TB;
         }
-        else if(bytes > GB)
+        else if(bytes >= GB)
         {
             out.unit = "GB";
             out.unit_value = GB;
         }
-        else if(bytes > MB)
+        else if(bytes >= MB)
         {
             out.unit = "MB";
             out.unit_value = MB;
         }
-        else if(bytes > KB)
+        else if(bytes >= KB)
         {
             out.unit = "KB";
             out.unit_value = KB;
@@ -446,7 +446,7 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
             log_callstack(">memory", LOG_TRACE, 1, "callstack:");
 
         log_flush();
-        platform_trap(); 
+        platform_debug_break(); 
         abort();
     }
     #endif

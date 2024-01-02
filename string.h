@@ -198,7 +198,7 @@ EXPORT String_Array string_split(String to_split, String split_by);
         isize found_vanila = string_find_first_char_vanilla(string, search_for, from);
         if(found_vanila != found_unsafe)
         {
-            platform_trap();
+            platform_debug_break();
             found_unsafe = string_find_first_char_sse(string, search_for, from);
             found_vanila = string_find_first_char_vanilla(string, search_for, from);
         }

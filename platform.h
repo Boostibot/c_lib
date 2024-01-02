@@ -166,29 +166,45 @@ typedef struct Platform_Thread {
     int32_t id;
 } Platform_Thread;
 
+//A handle to fast (ie non kernel code) recursive mutex. (pthread_mutex_t on linux, CRITICAL_SECTION win32)
 typedef struct Platform_Mutex {
     void* handle;
 } Platform_Mutex;
 
-int64_t         platform_thread_get_proccessor_count();
+//@TODO: thread processor afinity!
+
+//@NOTE: We made pretty much all of the threaded functions (except init-like) into non failing
+//       even though they CAN internally return error (we just assert). That is because:
+// 1) One can generally do very little when a mutex fails.
+// 2) All* error return values are due to a programmer mistake
+// 3) All error values require no further action 
+//   (ie if it failed then it failed and I cannot do anything about it apart from not calling this function)
+// 4) On win32 these functions never fail.
+//
+// *pthread_mutex_lock has a fail state on too many recursive locks and insufficient privilages which are
+// not programmer mistake. However in practice they will not happend and if they do we are doing something
+// very specific and a custom impkementation is prefered (or we can just change this).
 
 //initializes a new thread and immedietely starts it with the func function.
 //The thread has stack_size_or_zero bytes of stack sizes rounded up to page size
 //If stack_size_or_zero is zero or lower uses system default stack size.
 //The thread automatically cleans itself up upon completion or termination.
+//All threads 
 Platform_Error  platform_thread_launch(Platform_Thread* thread, void (*func)(void*), void* context, int64_t stack_size_or_zero); 
 
+int64_t         platform_thread_get_proccessor_count();
 Platform_Thread platform_thread_get_current(); //Returns handle to the calling thread
 void            platform_thread_sleep(int64_t ms); //Sleeps the calling thread for ms milliseconds
 void            platform_thread_exit(int code); //Terminates a thread with an exit code
 void            platform_thread_yield(); //Yields the remainder of this thread's time slice to the OS
-Platform_Error  platform_thread_detach(Platform_Thread thread);
-Platform_Error  platform_thread_join(const Platform_Thread* threads, int64_t count); //Blocks calling thread until all threads finish. Must not join the current calling thread!
+void            platform_thread_detach(Platform_Thread thread);
+void            platform_thread_join(const Platform_Thread* threads, int64_t count); //Blocks calling thread until all threads finish. Must not join the current calling thread!
 
 Platform_Error  platform_mutex_init(Platform_Mutex* mutex);
 void            platform_mutex_deinit(Platform_Mutex* mutex);
-Platform_Error  platform_mutex_lock(Platform_Mutex* mutex);
+void            platform_mutex_lock(Platform_Mutex* mutex);
 void            platform_mutex_unlock(Platform_Mutex* mutex);
+bool            platform_mutex_try_lock(Platform_Mutex* mutex); //Tries to lock a mutex. Returns true if mutex was locked successfully. If it was not returns false without waiting.
 
 
 //=========================================
@@ -254,7 +270,7 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 #define MODIFIER_THREAD_LOCAL                               /* Declares a variable thread local. Applied before variable declarition. */
 #define MODIFIER_ALIGNED(bytes)                             /* Places a variable on the stack aligned to 'bytes' */
 #define MODIFIER_FORMAT_FUNC(format_arg, format_arg_index)  /* Marks a function as formatting function. Applied before function declartion. See log.h for example */
-#define MODIFIER_FORMAT_ARG                          /* Marks a format argument. Applied before const char* format argument. See log.h for example */  
+#define MODIFIER_FORMAT_ARG                                 /* Marks a format argument. Applied before const char* format argument. See log.h for example */  
 #define MODIFIER_NORETURN                                   /* Specifices that this function will not return (for example abort, exit ...) . Applied before function declartion. */
 
 //=========================================
@@ -457,7 +473,7 @@ typedef struct {
 } Platform_Stack_Trace_Entry;
 
 //Stops the debugger at the call site
-#define platform_trap() (*(char*)0 = 0)
+#define platform_debug_break() (*(char*)0 = 0)
 //Marks a piece of code as unreachable for the compiler
 #define platform_assume_unreachable() (*(char*)0 = 0)
 
@@ -581,8 +597,8 @@ const char* platform_exception_to_string(Platform_Exception error);
     #include <assert.h>
     #include <sal.h> //for _Printf_format_string_
 
-    #undef platform_trap
-    #define platform_trap() __debugbreak() 
+    #undef platform_debug_break
+    #define platform_debug_break() __debugbreak() 
 
     #undef platform_assume_unreachable
     #define platform_assume_unreachable() __assume(0)
@@ -713,9 +729,9 @@ const char* platform_exception_to_string(Platform_Exception error);
     #define _GNU_SOURCE
     #include <signal.h>
 
-    #undef platform_trap
-    // #define platform_trap() __builtin_trap() /* bad looks like a fault in program! */
-    #define platform_trap() raise(SIGTRAP)
+    #undef platform_debug_break
+    // #define platform_debug_break() __builtin_trap() /* bad looks like a fault in program! */
+    #define platform_debug_break() raise(SIGTRAP)
     
     #undef platform_assume_unreachable
     #define platform_assume_unreachable()                                    __builtin_unreachable() /*move to platform! */

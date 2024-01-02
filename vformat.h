@@ -22,11 +22,7 @@ EXPORT const char* escape_string_ephemeral(String string);
 
 #define CSTRING_ESCAPE(s) (s) == NULL ? "" : (s)
 
-#define STRING_FMT "%.*s"
-#define STRING_PRINT(string) (int) (string).size, (string).data
 
-#define SOURCE_INFO_FMT "( %s : %lli )"
-#define SOURCE_INFO_PRINT(source_info) cstring_escape((source_info).file), (lli) (source_info).line
 
 #endif // !JOT_VFORMAT
 

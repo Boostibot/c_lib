@@ -322,7 +322,7 @@ EXPORT void debug_allocator_panic_func(Debug_Allocator* allocator, Debug_Allocat
     debug_allocator_print_alive_allocations("MEMORY", LOG_TRACE, *allocator, 0);
     
     log_flush();
-    platform_trap();
+    platform_debug_break();
     abort();
 }
 

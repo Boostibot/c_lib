@@ -70,7 +70,7 @@ EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, So
 EXPORT bool _array_is_invariant(const void* array, isize item_size);
 EXPORT bool _array_is_backed(const void* array, isize item_size);
 EXPORT Allocator* _array_get_allocator(const void* array, isize item_size);
-EXPORT isize _array_resize(void* array, isize item_size, isize to_size, Source_Info from);
+EXPORT isize _array_resize(void* array, isize item_size, isize to_size, bool zero_new, Source_Info from);
 EXPORT void _array_reserve(void* array, isize item_size, isize to_capacity, Source_Info from);
 EXPORT void _array_append(void* array, isize item_size, const void* data, isize data_count, Source_Info from);
 EXPORT void _array_unappend(void* array, isize item_size, isize data_count);
@@ -99,10 +99,14 @@ EXPORT void _array_clear(void* array, isize item_size);
     //As sich we disable it when JOT_MEM_DEBUG is on.
 #endif // ARRAY_DEBUG
 
+
 //Initializes the array using backing_array_size elements alloced at backing_array as backing store.
 //Only triggers a proper reallocation once the capacity required is grater than backed_elements_count.
 #define array_init_backed_from_memory(array_ptr, allocator, backed_elements, backed_elements_count) \
     _array_init_backed(array_ptr, sizeof *(array_ptr)->data, allocator, backed_elements, backed_elements_count, SOURCE_INFO())
+    
+//Initializes the array and preallocates it to the desired size
+#define array_init_capacity(array_ptr, alloc, capacity) array_init((array_ptr), (alloc)), array_reserve((array_ptr), (capacity))
 
 //Deallocates and resets the array
 #define array_deinit(array_ptr) \
@@ -125,8 +129,12 @@ EXPORT void _array_clear(void* array, isize item_size);
 //If the to_size is smaller than current size simply dicards further items
 //If the to_size is greater than current size zero initializes the newly added items
 #define array_resize(array_ptr, to_size)              \
-    _array_resize(array_ptr, sizeof *(array_ptr)->data, to_size, SOURCE_INFO()) 
-    
+    _array_resize(array_ptr, sizeof *(array_ptr)->data, to_size, true, SOURCE_INFO()) 
+   
+//Just like array_resize except doesnt zero initialized newly added region
+#define array_resize_for_overwrite(array_ptr, to_size)              \
+    _array_resize(array_ptr, sizeof *(array_ptr)->data, to_size, false, SOURCE_INFO()) 
+
 //Sets the array size to 0. Does not deallocate the array
 #define array_clear(array_ptr) \
     _array_clear(array_ptr, sizeof *(array_ptr)->data)
@@ -171,6 +179,10 @@ EXPORT void _array_clear(void* array, isize item_size);
 //Returns a pointer to i-th item. Also does bounds checking.
 #define array_get(array, index) \
     (CHECK_BOUNDS(index, (array).size), &(array).data[index]) 
+
+//Returns the total size of the array in bytes
+#define array_byte_size(array) \
+    ((array).size * (isize) sizeof *(array).data)
 
 #endif
 
@@ -313,12 +325,12 @@ EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, So
     ASSERT(_array_is_invariant(array, item_size));
 }
 
-EXPORT isize _array_resize(void* array, isize item_size, isize to_size, Source_Info from)
+EXPORT isize _array_resize(void* array, isize item_size, isize to_size, bool zero_new, Source_Info from)
 {
     u8_Array* base = (u8_Array*) array;
     _array_reserve(base, item_size, to_size, from);
     isize size_before = base->size;
-    if(to_size > base->size)
+    if(zero_new && to_size > base->size)
         memset(base->data + base->size*item_size, 0, (size_t) ((to_size - base->size)*item_size));
         
     base->size = to_size;

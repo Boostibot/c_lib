@@ -133,7 +133,6 @@ EXPORT Logger* log_system_get_logger();
 //Sets the default used logger. Returns a pointer to the previous logger so it can be restored later.
 EXPORT Logger* log_system_set_logger(Logger* logger);
 
-//
 EXPORT u64  log_get_mask();
 EXPORT u64  log_set_mask(u64 mask);
 EXPORT u64  log_disable(isize log_type);
@@ -198,6 +197,16 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 #define _IF_NOT_DO_LOG_FATAL(ignore)        LOG_NEVER
 #define _IF_NOT_DO_LOG_DEBUG(ignore)        LOG_NEVER
 #define _IF_NOT_DO_LOG_TRACE(ignore)        LOG_NEVER
+
+
+#define TIME_FMT "%02i:%02i:%02i %03i"
+#define TIME_PRINT(c) (int)(c).hour, (int)(c).minute, (int)(c).second, (int)(c).millisecond
+
+#define STRING_FMT "%.*s"
+#define STRING_PRINT(string) (int) (string).size, (string).data
+
+#define SOURCE_INFO_FMT "( %s : %i )"
+#define SOURCE_INFO_PRINT(source_info) (source_info).file, (int) (source_info).line
 
 //Pre-Processor (PP) utils
 #define PP_STRINGIFY_(x)        #x

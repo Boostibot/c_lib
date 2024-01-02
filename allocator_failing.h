@@ -15,11 +15,12 @@ typedef struct Failing_Allocator
     void* panic_context;
 } Failing_Allocator;
 
-EXPORT void failling_allocator_init(Failing_Allocator* self, Failing_Allocator_Panic panic_func, void* panic_context);
+EXPORT void failling_allocator_init(Failing_Allocator* self, Failing_Allocator_Panic panic_func_or_null, void* panic_context);
 EXPORT void failling_allocator_deinit(Failing_Allocator* self);
 
 EXPORT void* failling_allocator_allocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from);
 EXPORT Allocator_Stats failling_allocator_get_stats(Allocator* self);
+EXPORT Allocator* allocator_get_failing();
 
 #endif
 
@@ -28,12 +29,12 @@ EXPORT Allocator_Stats failling_allocator_get_stats(Allocator* self);
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_FAILING_IMPL)) && !defined(JOT_ALLOCATOR_FAILING_HAS_IMPL)
 #define JOT_ALLOCATOR_FAILING_HAS_IMPL
 
-EXPORT void failling_allocator_init(Failing_Allocator* self, Failing_Allocator_Panic panic_func, void* panic_context)
+EXPORT void failling_allocator_init(Failing_Allocator* self, Failing_Allocator_Panic panic_func_or_null, void* panic_context)
 {
     self->allocator.allocate = failling_allocator_allocate;
     self->allocator.get_stats = failling_allocator_get_stats;
     self->panic_context = panic_context;
-    self->panic_func = panic_func;
+    self->panic_func = panic_func_or_null;
 }
 
 EXPORT void failling_allocator_deinit(Failing_Allocator* self)
@@ -52,10 +53,17 @@ EXPORT void* failling_allocator_allocate(Allocator* self_, isize new_size, void*
 
 EXPORT Allocator_Stats failling_allocator_get_stats(Allocator* self)
 {
+    (void) self;
     Allocator_Stats stats = {0};
     stats.type_name = "Failing_Allocator";
     stats.is_top_level = true;
     return stats;
+}
+
+EXPORT Allocator* allocator_get_failing()
+{
+    static Failing_Allocator alloc = {failling_allocator_allocate, failling_allocator_get_stats};
+    return &alloc.allocator;
 }
 
 #endif

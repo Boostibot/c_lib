@@ -139,26 +139,33 @@ int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
     return size;
 }
 
+
+Platform_Error _paltform_get_last_error_code_if(bool state)
+{
+    Platform_Error err = PLATFORM_ERROR_OK;
+    if(!state)
+    {
+        err = (Platform_Error) GetLastError();
+        //If we failed yet there is no errror 
+        // set to custom error.
+        if(err == 0)
+            err = PLATFORM_ERROR_OTHER;
+    }
+    return err;
+}
+
+void* _platform_internal_reallocate(int64_t new_size, void* old_ptr);
+
 //=========================================
 // Threading
 //=========================================
+#include  	<process.h>
+
 int64_t platform_thread_get_proccessor_count()
 {
     return GetCurrentProcessorNumber();
 }
 
-Platform_Error _error_code(bool state)
-{
-    if(state)
-        return PLATFORM_ERROR_OK;
-    else
-        return (Platform_Error) GetLastError();
-}
-
-
-void* _platform_internal_reallocate(int64_t new_size, void* old_ptr);
-
-#include  	<process.h>
 Platform_Error  platform_thread_launch(Platform_Thread* thread, void (*func)(void*), void* context, int64_t stack_size_or_zero)
 {
     // platform_thread_deinit(thread);
@@ -167,7 +174,11 @@ Platform_Error  platform_thread_launch(Platform_Thread* thread, void (*func)(voi
     thread->handle = (void*) _beginthread(func, (unsigned int) stack_size_or_zero, context);
     if(thread->handle)
         thread->id = GetThreadId(thread->handle);
-    return _error_code(thread->handle != NULL);
+
+    if(thread->handle)
+        return PLATFORM_ERROR_OK;
+    else
+        return (Platform_Error) GetLastError();
 }
 
 Platform_Thread platform_thread_get_current()
@@ -177,32 +188,6 @@ Platform_Thread platform_thread_get_current()
     out.handle = GetCurrentThread();
     return out;
 }
-
-#if 0
-Platform_Error  platform_thread_init(Platform_Thread* thread, int (*func)(void*), void* context, int64_t stack_size_or_zero)
-{
-    platform_thread_deinit(thread);
-    PTHREAD_START_ROUTINE cast_func = (PTHREAD_START_ROUTINE) (void*) func;
-    if(stack_size_or_zero <= 0)
-        stack_size_or_zero = 0;
-    thread->handle = CreateThread(0, stack_size_or_zero, cast_func, context, 0, (LPDWORD) &thread->id);
-    return _error_code(thread->handle != NULL);
-}
-void platform_thread_deinit(Platform_Thread* thread)
-{
-    Platform_Thread null = {0};
-    CloseHandle(thread->handle);
-    *thread = null;
-}
-
-int platform_thread_join(Platform_Thread thread)
-{
-    WaitForSingleObject(thread.handle, INFINITE);
-    DWORD code = 0;
-    GetExitCodeThread(thread.handle, &code);
-    return code;
-}
-#endif
 
 void platform_thread_yield()
 {
@@ -218,7 +203,7 @@ void platform_thread_exit(int code)
     ExitThread(code);
 }
 
-Platform_Error  platform_thread_join(const Platform_Thread* threads, int64_t count)
+void platform_thread_join(const Platform_Thread* threads, int64_t count)
 {
     if(count == 1)
     {
@@ -237,47 +222,55 @@ Platform_Error  platform_thread_join(const Platform_Thread* threads, int64_t cou
             WaitForMultipleObjects((DWORD) handle_count, handles, wait_for_all, INFINITE);
         }
     }
-
-    return PLATFORM_ERROR_OK;
 }
 
-Platform_Error platform_thread_detach(Platform_Thread thread)
+void platform_thread_detach(Platform_Thread thread)
 {
-    bool state = true;
+    assert(thread.handle);
     if(thread.handle != NULL)
-        state = CloseHandle(thread.handle);
-
-    return _error_code(state);
+    {
+        bool state = CloseHandle(thread.handle);
+        assert(state);
+    }
 }
 
-Platform_Error  platform_mutex_init(Platform_Mutex* mutex)
+Platform_Error platform_mutex_init(Platform_Mutex* mutex)
 {
     platform_mutex_deinit(mutex);
-    Platform_Mutex out = {0};
-    out.handle = (void*) CreateMutexW(NULL, FALSE, L"platform_mutex_create");
-    *mutex = out;
+    CRITICAL_SECTION* section = calloc(1, sizeof *section);
+    if(section != 0)
+        InitializeCriticalSection(section);
 
-    return _error_code(out.handle != NULL);
+    mutex->handle = section;
+    return _paltform_get_last_error_code_if(section != NULL);
 }
 
 void platform_mutex_deinit(Platform_Mutex* mutex)
 {
-    CloseHandle((HANDLE) mutex->handle);
-    memset(mutex, 0, sizeof mutex);
+    if(mutex->handle)
+    {
+        DeleteCriticalSection((CRITICAL_SECTION*) mutex->handle);
+        memset(mutex, 0, sizeof mutex);
+    }
 }
 
-Platform_Error platform_mutex_lock(Platform_Mutex* mutex)
+void platform_mutex_lock(Platform_Mutex* mutex)
 {
-    DWORD dwWaitResult = WaitForSingleObject((HANDLE) mutex->handle, INFINITE);
-    return _error_code(dwWaitResult == WAIT_OBJECT_0);
+    assert(mutex->handle != NULL);
+    EnterCriticalSection((CRITICAL_SECTION*) mutex->handle);
 }
 
 void platform_mutex_unlock(Platform_Mutex* mutex)
 {
-    bool return_val = ReleaseMutex((HANDLE) mutex->handle);
-    assert(return_val && "there is little we can do about errors appart from hoping they dont occur");
+    assert(mutex->handle != NULL);
+    LeaveCriticalSection((CRITICAL_SECTION*) mutex->handle);
 }
 
+bool platform_mutex_try_lock(Platform_Mutex* mutex)
+{
+    assert(mutex->handle != NULL);
+    return (bool) TryEnterCriticalSection((CRITICAL_SECTION*) mutex->handle);
+}   
 
 //=========================================
 // Timings
@@ -846,7 +839,7 @@ Platform_Error platform_file_create(Platform_String file_path, bool* was_just_cr
 
     CloseHandle(handle);
 
-    return _error_code(state);
+    return _paltform_get_last_error_code_if(state);
 }
 Platform_Error platform_file_remove(Platform_String file_path, bool* was_deleted_deleted)
 {
@@ -865,7 +858,7 @@ Platform_Error platform_file_remove(Platform_String file_path, bool* was_deleted
             *was_deleted_deleted = false;
     }
 
-    return _error_code(state);
+    return _paltform_get_last_error_code_if(state);
 }
 
 Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path)
@@ -874,7 +867,7 @@ Platform_Error platform_file_move(Platform_String new_path, Platform_String old_
     const wchar_t* old_path_norm = _ephemeral_path(old_path);
     bool state = !!MoveFileExW(old_path_norm, new_path_norm, MOVEFILE_COPY_ALLOWED);
     
-    return _error_code(state);
+    return _paltform_get_last_error_code_if(state);
 }
 
 Platform_Error platform_file_copy(Platform_String new_path, Platform_String old_path)
@@ -883,7 +876,7 @@ Platform_Error platform_file_copy(Platform_String new_path, Platform_String old_
     const wchar_t* old_path_norm = _ephemeral_path(old_path);
     bool state = !!CopyFileW(old_path_norm, new_path_norm, true);
     
-    return _error_code(state);
+    return _paltform_get_last_error_code_if(state);
 }
 
 void platform_file_memory_unmap(Platform_Memory_Mapping* mapping)
@@ -1032,7 +1025,7 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
     if(native_info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
         info.link_type = _get_link_type(path);
     if(!state)
-        return _error_code(state);
+        return _paltform_get_last_error_code_if(state);
             
     info.created_epoch_time = _filetime_to_epoch_time(native_info.ftCreationTime);
     info.last_access_epoch_time = _filetime_to_epoch_time(native_info.ftLastAccessTime);
@@ -1046,7 +1039,7 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
 
     if(info_or_null)
         *info_or_null = info;
-    return _error_code(state);
+    return _paltform_get_last_error_code_if(state);
 }
 
 BOOL _platform_directory_exists(const wchar_t* szPath)
@@ -1073,7 +1066,7 @@ Platform_Error platform_directory_create(Platform_String dir_path, bool* was_jus
     if(was_just_created_or_null)
         *was_just_created_or_null = was_created;
 
-    return _error_code(state);
+    return _paltform_get_last_error_code_if(state);
 }
     
 Platform_Error platform_directory_remove(Platform_String dir_path, bool* was_just_deleted_or_null)
@@ -1092,7 +1085,7 @@ Platform_Error platform_directory_remove(Platform_String dir_path, bool* was_jus
     if(was_just_deleted_or_null)
         *was_just_deleted_or_null = was_deleted;
 
-    return _error_code(state);
+    return _paltform_get_last_error_code_if(state);
 }
 
 static char* _alloc_full_path(String_Buffer* buffer_or_null, const wchar_t* local_path, int normalize_flag)
@@ -1184,7 +1177,7 @@ static Platform_Error _directory_list_contents_alloc(const wchar_t* directory_pa
     first.visitor = _directory_iterate_init(directory_path, WIO_FILE_MASK_ALL);
 
     if(_directory_iterate_has(&first.visitor) == false)
-        error = _error_code(false);
+        error = _paltform_get_last_error_code_if(false);
     else
     {
         buffer_append(&first.path, directory_path_str.data, directory_path_str.size); //TODO: no path copying!
@@ -1305,7 +1298,7 @@ Platform_Error platform_directory_set_current_working(Platform_String new_workin
 
     bool state = _wchdir(path) == 0;
     gp_state.current_working_generation += 1;
-    return _error_code(state);
+    return _paltform_get_last_error_code_if(state);
 }
 
 const char* platform_directory_get_current_working()
@@ -1369,7 +1362,7 @@ const char* platform_get_executable_path_process()
             }
         }
         
-        printf("%s\n", platform_translate_error(_error_code(false)));
+        printf("%s\n", platform_translate_error(_paltform_get_last_error_code_if(false)));
         assert(had_success);
         _alloc_full_path(&gp_state.directory_executable_cached, wide.data, IO_NORMALIZE_FILE);
         buffer_deinit(&wide);
@@ -1463,7 +1456,7 @@ Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_Str
         
         const wchar_t* path = _ephemeral_path(file_or_dir_path);
         watch_handle = FindFirstChangeNotificationW(path, watch_subtree, notify_filter);
-        error = _error_code(watch_handle != INVALID_HANDLE_VALUE);
+        error = _paltform_get_last_error_code_if(watch_handle != INVALID_HANDLE_VALUE);
 
         if(error == PLATFORM_ERROR_OK)
         {

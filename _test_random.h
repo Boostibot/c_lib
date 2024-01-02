@@ -156,6 +156,7 @@ INTERNAL void test_random_bool()
 	TEST(norm_max_diff < RANDOM_TEST_EPSILON);
 }
 
+
 INTERNAL void test_random()
 {
 	test_random_f32();
