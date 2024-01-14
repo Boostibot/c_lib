@@ -152,6 +152,7 @@ static void unicode_example()
     //Converts the the string replacing any potential errors with UNCIODE_INVALID (�)
     isize utf8_len = unicode_utf16_to_utf8((utf8_t*) utf8, sizeof(utf8), (const utf16_t*) utf16, utf16_len, NULL, UNCIODE_INVALID);
 
+    assert(utf8_len == (isize) strlen(utf8));
     printf("String (or portion of it) converted: %s\n", utf8);
 }
 

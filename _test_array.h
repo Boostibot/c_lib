@@ -68,7 +68,6 @@ INTERNAL void test_array_stress(f64 max_seconds)
 		i32 action = random_discrete(&dist);
 		TEST(_array_is_invariant(arr, sizeof *arr->data));
 		
-		bool is_reserve = true;
 		switch(action)
 		{
 			case INIT: {

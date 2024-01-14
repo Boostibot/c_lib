@@ -55,10 +55,9 @@ typedef struct Platform_WString {
 DEFINE_BUFFER_TYPE(void,               Buffer_Base)
 DEFINE_BUFFER_TYPE(char,               String_Buffer)
 DEFINE_BUFFER_TYPE(wchar_t,            WString_Buffer)
-DEFINE_BUFFER_TYPE(Platform_Allocator, Platform_Allocator_Buffer)
 
 typedef struct Platform_State {
-    Platform_Allocator_Buffer allocators;
+    Platform_Allocator allocator;
 
     int64_t startup_perf_counter;
     int64_t perf_counter_freq;
@@ -75,9 +74,6 @@ typedef struct Platform_State {
     int64_t current_working_cached_generation;
     int64_t current_working_generation;
 
-    bool   stack_trace_init;
-    HANDLE stack_trace_process;
-    DWORD  stack_trace_error;
 } Platform_State;
 
 Platform_State gp_state = {0};
@@ -510,77 +506,12 @@ int64_t platform_epoch_time_from_local_calendar_time(Platform_Calendar_Time cale
     (buffer_reserve((buff), (buff)->size + 1), \
     (buff)->data[(buff)->size++] = (item))
 
-void* _platform_internal_reallocate_or_malloc(Platform_Allocator* alloc, int64_t actual_new_size, void* actual_old_ptr, int64_t actual_old_size)
-{
-    if(alloc == NULL)
-        return platform_heap_reallocate(actual_new_size, actual_old_ptr, sizeof(size_t));
-    else
-        return alloc->reallocate(alloc->context, actual_new_size, actual_old_ptr, actual_old_size);
-}
-   
 void* _platform_internal_reallocate(int64_t new_size, void* old_ptr)
 {
-    typedef struct Header {
-        int64_t size_and_alloc_index1;
-    } Header;
-
-    int64_t actual_new_size = 0;
-    int64_t actual_old_size = 0;
-    void* actual_old_ptr = NULL;
-    Platform_Allocator* found_allocator = NULL;
-    Platform_Allocator* current_allocator = NULL;
-    if(gp_state.allocators.size > 0)
-        current_allocator = &gp_state.allocators.data[gp_state.allocators.size - 1];
-    const int64_t allocator_index_mask = ((int64_t) 1 << 16) - 1;
-    
-    if(new_size == 0 && old_ptr == NULL)
-        return NULL;
-
-    if(old_ptr != NULL)
-    {
-        Header* header = (Header*) old_ptr - 1;
-        actual_old_ptr = header;
-        actual_old_size = header->size_and_alloc_index1 >> 16;
-        assert(actual_old_size >= sizeof(Header));
-        int64_t allocator_index = header->size_and_alloc_index1 & allocator_index_mask;
-
-        if(allocator_index > 0)
-            found_allocator = &gp_state.allocators.data[allocator_index - 1];
-    }
-
-    if(new_size != 0)
-    {
-        actual_new_size = new_size + sizeof(Header);
-        Header* out_header = NULL;
-        if(found_allocator == current_allocator)
-        {
-            out_header = (Header*) _platform_internal_reallocate_or_malloc(current_allocator, actual_new_size, actual_old_ptr, actual_old_size);
-        }
-        //Very rarely we will actually want to switch allocator half way through usage of platform.
-        //In those cases we want to convert everything to the new allocator. 
-        //Thus we alloc using the new copy over and dealloc.
-        else
-        {
-            out_header = (Header*) _platform_internal_reallocate_or_malloc(current_allocator, actual_new_size, NULL, 0);
-            int64_t min_size = actual_old_size - sizeof(Header);
-            if(min_size > new_size)
-                min_size = new_size; 
-
-            if(out_header && min_size > 0)
-                memcpy(out_header + 1, old_ptr, min_size);
-            
-            _platform_internal_reallocate_or_malloc(found_allocator, 0, actual_old_ptr, actual_old_size);
-        }
-
-        assert(out_header != NULL);
-        out_header->size_and_alloc_index1 = (actual_new_size << 16) | (gp_state.allocators.size & allocator_index_mask);
-        return out_header + 1;
-    }
+    if(gp_state.allocator.reallocate)
+        return gp_state.allocator.reallocate(gp_state.allocator.context, new_size, old_ptr);
     else
-    {
-        _platform_internal_reallocate_or_malloc(found_allocator, 0, actual_old_ptr, actual_old_size);
-        return NULL;
-    }
+        return platform_heap_reallocate(new_size, old_ptr, sizeof(size_t));
 }
 
 static void _buffer_deinit(Buffer_Base* buffer)
@@ -646,52 +577,6 @@ static void _buffer_append(Buffer_Base* buffer, int64_t item_size, const void* d
     memset((char*) buffer->data + buffer->size*item_size, 0, item_size);
 }
 
-//@TODO: shrink!
-static Platform_WString _wstring(const wchar_t* str)
-{
-    Platform_WString out = {L"", 0};
-    if(str != NULL)
-    {
-        out.data = str;
-        out.size = (int64_t) wcslen(str);
-    }
-    return out;
-}
-static Platform_String _string(const char* str)
-{
-    Platform_String out = {"", 0};
-    if(str != NULL)
-    {
-        out.data = str;
-        out.size = (int64_t) strlen(str);
-    }
-    return out;
-}
-
-static Platform_String string_from_buffer(String_Buffer buffer)
-{
-    Platform_String out = {buffer.data, buffer.size};
-    if(out.size <= 0)
-    {
-        out.data = "";
-        out.size = 0;
-    }
-
-    return out;
-}
-
-static Platform_WString wstring_from_buffer(WString_Buffer buffer)
-{
-    Platform_WString out = {buffer.data, buffer.size};
-    if(out.size <= 0)
-    {
-        out.data = L"";
-        out.size = 0;
-    }
-
-    return out;
-}
-
 static char* _utf16_to_utf8(String_Buffer* append_to, Platform_WString str) 
 {
     int utf8len = WideCharToMultiByte(CP_UTF8, 0, str.data, (int) str.size, NULL, 0, NULL, NULL);
@@ -708,9 +593,10 @@ static wchar_t* _utf8_to_utf16(WString_Buffer* append_to, Platform_String str)
     return append_to->data;
 }
 
+
 const wchar_t* _ephemeral_wstring_convert(Platform_String path, bool normalize_path)
 {
-    enum {RESET_EVERY = 8, MAX_SIZE = 512, MIN_SIZE = MAX_PATH};
+    enum {RESET_EVERY = 8, MAX_SIZE = MAX_PATH*2, MIN_SIZE = MAX_PATH};
     int64_t *slot = &gp_state.ephemeral_strings_slot;
     WString_Buffer* curr = &gp_state.ephemeral_strings[*slot % _EPHEMERAL_STRING_SIMULTANEOUS];
 
@@ -767,9 +653,9 @@ const wchar_t* _ephemeral_path(Platform_String path)
 
 static void _w_concat(WString_Buffer* output, const wchar_t* a, const wchar_t* b, const wchar_t* c)
 {
-    int64_t a_size = _wstring(a).size;
-    int64_t b_size = _wstring(b).size;
-    int64_t c_size = _wstring(c).size;
+    int64_t a_size = a ? wcslen(a) : 0;
+    int64_t b_size = b ? wcslen(b) : 0;
+    int64_t c_size = c ? wcslen(c) : 0;
     int64_t composite_size = a_size + b_size + c_size;
         
     buffer_resize(output, composite_size);
@@ -1101,7 +987,8 @@ static char* _alloc_full_path(String_Buffer* buffer_or_null, const wchar_t* loca
         needed_size = GetFullPathNameW(local_path, (DWORD) full_path.size, full_path.data, NULL);
     }
     
-    char* out = _convert_to_utf8_normalize_path(buffer_or_null, wstring_from_buffer(full_path), normalize_flag);
+    Platform_WString full_path_str = {full_path.data, full_path.size};
+    char* out = _convert_to_utf8_normalize_path(buffer_or_null, full_path_str, normalize_flag);
     buffer_deinit(&full_path);
     return out;
 }
@@ -1168,7 +1055,9 @@ static Platform_Error _directory_list_contents_alloc(const wchar_t* directory_pa
     Platform_Error error = PLATFORM_ERROR_OK;
     Dir_Context_Buffer stack = {0};
     WString_Buffer built_path = {0};
-    Platform_WString directory_path_str = _wstring(directory_path);
+    Platform_WString directory_path_str = {0};
+    directory_path_str.data = directory_path;
+    directory_path_str.size = directory_path ? wcslen(directory_path) : 0;
 
     buffer_init_backed(&built_path, IO_LOCAL_BUFFER_SIZE);
     buffer_init_backed(&stack, 16);
@@ -1378,6 +1267,7 @@ static void _platform_cached_directory_deinit()
     buffer_deinit(&gp_state.directory_current_working_cached);
 }
 
+/*
 typedef bool (*_File_Watch_Func)(void* context);
 
 typedef struct _Platform_File_Watch_Context {
@@ -1386,8 +1276,6 @@ typedef struct _Platform_File_Watch_Context {
     void* user_context;
     bool thread_exited;
 } _Platform_File_Watch_Context;
-
-#define WATCH_ALIGN 8
 
 void _file_watch_func(void* context)
 {
@@ -1487,6 +1375,44 @@ void platform_file_unwatch(Platform_File_Watch* file_watch)
     }
     memset(file_watch, 0, sizeof *file_watch);
 }
+*/
+
+//=========================================
+// DLL management
+//=========================================
+
+Platform_Error platform_dll_load(Platform_DLL* dll, Platform_String path)
+{
+    const wchar_t* wpath = _ephemeral_wstring_convert(path, false);
+    HMODULE hmodule = LoadLibraryW((const WCHAR*)wpath);
+    
+    if(dll)
+        dll->handle = (void*) hmodule;
+
+    if(hmodule == NULL)
+        return (Platform_Error) GetLastError();
+    else
+        return (PLATFORM_ERROR_OK);
+}
+
+void platform_dll_unload(Platform_DLL* dll)
+{
+     HMODULE hmodule = (HMODULE)dll->handle;
+     FreeLibrary(hmodule);
+     memset(dll, 0, sizeof *dll);
+}
+
+void* platform_dll_get_function(Platform_DLL* dll, Platform_String name)
+{
+    String_Buffer temp = {0};
+    buffer_init_backed(&temp, 256);
+    buffer_append(&temp, name.data, name.size);
+    HMODULE hmodule = (HMODULE)dll->handle;
+    void* result = (void*) GetProcAddress(hmodule, temp.data);
+
+    buffer_deinit(&temp);
+    return result;
+}
 
 //=========================================
 // Window managmenet
@@ -1527,6 +1453,8 @@ Platform_Window_Popup_Controls platform_window_make_popup(Platform_Window_Popup_
     }
 }
 
+//CALLSTACK
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <windows.h>
@@ -1553,28 +1481,26 @@ int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t sk
 #define MAX_MODULES 128 
 #define MAX_NAME_LEN 2048
 
-//@TODO: move into state!
-CRITICAL_SECTION stack_trace_lock = {0};
+typedef struct {
+    CRITICAL_SECTION lock;
+    bool   init;
+    DWORD  error;
+} Stack_Trace_State;
 
-//typedef struct {
-//    bool init;
-//    HANDLE process;
-//    DWORD error;
-//} Stack_Trace_State;
+Stack_Trace_State stack_trace_state = {0};
 
 static void _platform_stack_trace_init(const char* search_path)
 {
-    if(gp_state.stack_trace_init)
+    if(stack_trace_state.init)
         return;
 
-    InitializeCriticalSection(&stack_trace_lock);
-    EnterCriticalSection(&stack_trace_lock);
+    InitializeCriticalSection(&stack_trace_state.lock);
+    EnterCriticalSection(&stack_trace_state.lock);
 
-    gp_state.stack_trace_process = GetCurrentProcess();
-    if (!SymInitialize(gp_state.stack_trace_process, search_path, false)) 
+    if (!SymInitialize(GetCurrentProcess(), search_path, false)) 
     {
         assert(false);
-        gp_state.stack_trace_error = GetLastError();
+        stack_trace_state.error = GetLastError();
     }
     else
     {
@@ -1586,7 +1512,7 @@ static void _platform_stack_trace_init(const char* search_path)
         HMODULE module_handles[MAX_MODULES] = {0};
         TCHAR module_filename[MAX_NAME_LEN] = {0};
         TCHAR module_name[MAX_NAME_LEN] = {0};
-        EnumProcessModules(gp_state.stack_trace_process, module_handles, sizeof(module_handles), &module_handles_size_needed);
+        EnumProcessModules(GetCurrentProcess(), module_handles, sizeof(module_handles), &module_handles_size_needed);
     
         DWORD module_count = module_handles_size_needed/sizeof(HMODULE);
         for(int64_t i = 0; i < module_count; i++)
@@ -1594,27 +1520,27 @@ static void _platform_stack_trace_init(const char* search_path)
             HMODULE module_handle = module_handles[i];
             assert(module_handle != 0);
             MODULEINFO module_info = {0};
-            GetModuleInformation(gp_state.stack_trace_process, module_handle, &module_info, sizeof(module_info));
-            GetModuleFileNameExW(gp_state.stack_trace_process, module_handle, module_filename, sizeof(module_filename));
-            GetModuleBaseNameW(gp_state.stack_trace_process, module_handle, module_name, sizeof(module_name));
+            GetModuleInformation(GetCurrentProcess(), module_handle, &module_info, sizeof(module_info));
+            GetModuleFileNameExW(GetCurrentProcess(), module_handle, module_filename, sizeof(module_filename));
+            GetModuleBaseNameW(GetCurrentProcess(), module_handle, module_name, sizeof(module_name));
         
-            bool load_state = SymLoadModuleExW(gp_state.stack_trace_process, 0, module_filename, module_name, (DWORD64)module_info.lpBaseOfDll, (DWORD) module_info.SizeOfImage, 0, 0);
+            bool load_state = SymLoadModuleExW(GetCurrentProcess(), 0, module_filename, module_name, (DWORD64)module_info.lpBaseOfDll, (DWORD) module_info.SizeOfImage, 0, 0);
             if(load_state == false)
             {
                 assert(false);
-                gp_state.stack_trace_error = GetLastError();
+                stack_trace_state.error = GetLastError();
             }
         }
     }
     
-    gp_state.stack_trace_init = true;
-    LeaveCriticalSection(&stack_trace_lock);
+    stack_trace_state.init = true;
+    LeaveCriticalSection(&stack_trace_state.lock);
 }
 
 static void _platform_stack_trace_deinit()
 {
-    SymCleanup(gp_state.stack_trace_process);
-    DeleteCriticalSection(&stack_trace_lock);
+    SymCleanup(GetCurrentProcess());
+    DeleteCriticalSection(&stack_trace_state.lock);
 }
 
 void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void** stack, int64_t stack_size)
@@ -1623,7 +1549,7 @@ void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const
         return;
 
     _platform_stack_trace_init("");
-    EnterCriticalSection(&stack_trace_lock);
+    EnterCriticalSection(&stack_trace_state.lock);
     char symbol_info_data[sizeof(SYMBOL_INFO) + MAX_NAME_LEN + 1] = {0};
 
     DWORD offset_from_symbol = 0;
@@ -1646,7 +1572,7 @@ void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const
         symbol_info->SizeOfStruct = sizeof(SYMBOL_INFO);
         symbol_info->MaxNameLen = MAX_NAME_LEN;
         DWORD64 displacement = 0;
-        SymFromAddr(gp_state.stack_trace_process, address, &displacement, symbol_info);
+        SymFromAddr(GetCurrentProcess(), address, &displacement, symbol_info);
             
         if (symbol_info->Name[0] != '\0')
         {
@@ -1655,7 +1581,7 @@ void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const
            
         IMAGEHLP_MODULE module_info = {0};
         module_info.SizeOfStruct = sizeof(IMAGEHLP_MODULE);
-        bool module_info_state = SymGetModuleInfo64(gp_state.stack_trace_process, address, &module_info);
+        bool module_info_state = SymGetModuleInfo64(GetCurrentProcess(), address, &module_info);
         if(module_info_state)
         {
             int64_t copy_size = sizeof module_info.ImageName;
@@ -1665,7 +1591,7 @@ void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const
             memmove(entry->module, module_info.ImageName, copy_size);
         }
             
-        if (SymGetLineFromAddr64(gp_state.stack_trace_process, address, &offset_from_symbol, &line)) 
+        if (SymGetLineFromAddr64(GetCurrentProcess(), address, &offset_from_symbol, &line)) 
         {
             entry->line = line.LineNumber;
             
@@ -1681,7 +1607,7 @@ void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const
         entry->file[sizeof entry->file - 1] = '\0';
         entry->function[sizeof entry->function - 1] = '\0';
     }
-    LeaveCriticalSection(&stack_trace_lock);
+    LeaveCriticalSection(&stack_trace_state.lock);
 }
 
 static int64_t _platform_stack_trace_walk(CONTEXT context, HANDLE process, HANDLE thread, DWORD image_type, void** frames, int64_t frame_count, int64_t skip_count)
@@ -1723,7 +1649,7 @@ static int64_t _platform_stack_trace_walk(CONTEXT context, HANDLE process, HANDL
     if(image_type == 0)
         image_type = native_image; 
     
-    EnterCriticalSection(&stack_trace_lock);
+    EnterCriticalSection(&stack_trace_state.lock);
     (void) process;
     int64_t i = 0;
     for(; i < frame_count; i++)
@@ -1731,7 +1657,7 @@ static int64_t _platform_stack_trace_walk(CONTEXT context, HANDLE process, HANDL
         CONTEXT* escaped_context = native_image == IMAGE_FILE_MACHINE_I386 
             ? NULL
             : &context;
-        bool ok = StackWalk64(native_image, gp_state.stack_trace_process, thread, &frame, escaped_context, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL);
+        bool ok = StackWalk64(native_image, process, thread, &frame, escaped_context, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL);
         if (ok == false)
             break;
 
@@ -1747,7 +1673,7 @@ static int64_t _platform_stack_trace_walk(CONTEXT context, HANDLE process, HANDL
         else
             break;
     }
-    LeaveCriticalSection(&stack_trace_lock);
+    LeaveCriticalSection(&stack_trace_state.lock);
     
     return i;
 }
@@ -1760,26 +1686,24 @@ typedef void (*Sandbox_Error_Func)(void* error_context, Platform_Sandbox_Error e
 #include <setjmp.h>
 #include <signal.h>
 
+#pragma warning(disable:4324) //Dissable "structure was padded due to alignment specifier"
 typedef struct Platform_Sandbox_State {
     Platform_Exception exception;
     void* stack[SANDBOX_MAX_STACK];
     int64_t stack_size;
     int64_t epoch_time;
-    int64_t perf_counter;
 
+    int32_t signal_handler_depth;
     jmp_buf jump_buffer;
     CONTEXT context;
 } Platform_Sandbox_State;
 
 __declspec(thread) Platform_Sandbox_State sandbox_state = {PLATFORM_EXCEPTION_NONE};
-__declspec(thread) int32_t sandbox_signal_handler_depth = 0;
-__declspec(thread) Platform_Stack_Trace_Entry* sandbox_translated_entries = NULL;
 
 void _sandbox_abort_filter(int signal)
 {
     int64_t epoch_time = platform_epoch_time();
-    int64_t perf_counter = platform_epoch_time();
-    if(sandbox_signal_handler_depth <= 0)
+    if(sandbox_state.signal_handler_depth <= 0)
         return;
     
     Platform_Sandbox_State* curr_state = &sandbox_state;
@@ -1794,18 +1718,15 @@ void _sandbox_abort_filter(int signal)
     }
     curr_state->stack_size = platform_capture_call_stack(curr_state->stack, SANDBOX_MAX_STACK, 1);
     curr_state->epoch_time = epoch_time;
-    curr_state->perf_counter = perf_counter;
 
     longjmp(curr_state->jump_buffer, SANDBOX_JUMP_VALUE);
 }
 
-
 LONG WINAPI _sandbox_exception_filter(EXCEPTION_POINTERS * ExceptionInfo)
 {
     int64_t epoch_time = platform_epoch_time();
-    int64_t perf_counter = platform_epoch_time();
 
-    if(sandbox_signal_handler_depth <= 0)
+    if(sandbox_state.signal_handler_depth <= 0)
         return EXCEPTION_CONTINUE_SEARCH;
 
     Platform_Exception exception = PLATFORM_EXCEPTION_OTHER;
@@ -1892,7 +1813,6 @@ LONG WINAPI _sandbox_exception_filter(EXCEPTION_POINTERS * ExceptionInfo)
 
     Platform_Sandbox_State* curr_state = &sandbox_state;
     curr_state->epoch_time = epoch_time;
-    curr_state->perf_counter = perf_counter;
     curr_state->exception = exception;
     curr_state->context = *ExceptionInfo->ContextRecord;
     curr_state->stack_size = _platform_stack_trace_walk(curr_state->context, process, thread, 0, (void**) &curr_state->stack, SANDBOX_MAX_STACK, 0);
@@ -1917,7 +1837,7 @@ Platform_Exception platform_exception_sandbox(
     Platform_Sandbox_State prev_state = sandbox_state;
     memset(&sandbox_state, 0, sizeof sandbox_state);
 
-    sandbox_signal_handler_depth += 1;
+    sandbox_state.signal_handler_depth += 1;
 
     bool had_exception = false;
     switch(setjmp(sandbox_state.jump_buffer))
@@ -1949,15 +1869,14 @@ Platform_Exception platform_exception_sandbox(
         error.execution_context = &error_state.context;
         error.execution_context_size = (int64_t) sizeof error_state.context;
         error.epoch_time = error_state.epoch_time;
-        error.nanosec_offset = 0; //@TODO;
 
         if(error_func)
             error_func(error_context, error);
     }
 
-    sandbox_signal_handler_depth -= 1;
-    if(sandbox_signal_handler_depth < 0)
-        sandbox_signal_handler_depth = 0;
+    sandbox_state.signal_handler_depth -= 1;
+    if(sandbox_state.signal_handler_depth < 0)
+        sandbox_state.signal_handler_depth = 0;
 
     sandbox_state = prev_state;
     signal(SIGABRT, prev_abrt);
@@ -2028,14 +1947,11 @@ void _platform_set_console_utf8()
     SetConsoleCP(CP_UTF8);
     setlocale(LC_ALL, ".UTF-8");
 }
-void platform_set_internal_allocator(Platform_Allocator allocator)
-{
-    assert(gp_state.allocators.size < UINT16_MAX);
-    buffer_push(&gp_state.allocators, allocator);
-}
 
-void platform_init()
+void platform_init(Platform_Allocator* allocator)
 {
+    if(allocator)
+        gp_state.allocator = *allocator;
     platform_deinit();
 
     platform_perf_counter();

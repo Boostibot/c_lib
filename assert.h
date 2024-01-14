@@ -31,7 +31,7 @@
 #define UNREACHABLE()           platform_assume_unreachable(), ASSERT_MSG(false, "unreachable code reached!")
 
 //If x evaluates to false executes assertion_report() with the specified message. 
-#define TEST_MSG(x, msg, ...)               (!(x) ? (assertion_report(#x, SOURCE_INFO(), (msg), ##__VA_ARGS__), (platform_debug_break()), abort()) : (void) 0)
+#define TEST_MSG(x, msg, ...)               (!(x) ? (assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, (msg), ##__VA_ARGS__), abort()) : (void) 0)
 #define ASSERT_MSG(x, msg, ...)             PP_IF(DO_ASSERTS,       TEST_MSG)(x, msg, ##__VA_ARGS__)
 #define ASSERT_SLOW_MSG(x, msg, ...)        PP_IF(DO_ASSERTS_SLOW,  TEST_MSG)(x, msg, ##__VA_ARGS__)
 #define CHECK_RANGE_BOUNDS(i, from, to)     PP_IF(DO_BOUNDS_CHECKS, TEST_MSG)((from) <= (i) && (i) < (to), \
@@ -41,15 +41,13 @@
 //Gets called when assertion fails. 
 //Does not have to terminate process since that is done at call site by the assert macro itself.
 //if ASSERT_CUSTOM_REPORT is defined is left unimplemented
-void assertion_report(const char* expression, Source_Info source, const char* message, ...);
-
-void default_assertion_report(const char* expression, Source_Info source, const char* message, va_list args);
+EXPORT MODIFIER_FORMAT_FUNC(format, 5) void assertion_report(const char* expression, int line, const char* file, const char* function, MODIFIER_FORMAT_ARG const char* format, ...);
 
 //==================== IMPLEMENTATION =======================
 
     //Doesnt do anything (failed branch) but still properly expands x and msg so it can be type checked.
     //Dissabled asserts expand to this.
-    #define DISSABLED_TEST_MSG(x, msg, ...)           (0 ? ((void) (x), assertion_report("", SOURCE_INFO(), (msg), ##__VA_ARGS__)) : (void) 0)
+    #define DISSABLED_TEST_MSG(x, msg, ...)           (0 ? ((void) (x), assertion_report("", 0, "", "", (msg), ##__VA_ARGS__)) : (void) 0)
 
     //If dissabled expand to this
     #define _IF_NOT_DO_ASSERTS(ignore)         DISSABLED_TEST_MSG
@@ -63,25 +61,24 @@ void default_assertion_report(const char* expression, Source_Info source, const 
 #define JOT_ASSERT_HAS_IMPL
 
     #ifndef ASSERT_CUSTOM_REPORT
-        void assertion_report(const char* expression, Source_Info source, const char* message, ...)
+
+        EXPORT MODIFIER_FORMAT_FUNC(format, 5) void assertion_report(const char* expression, int line, const char* file, const char* function, MODIFIER_FORMAT_ARG const char* format, ...)
         {
-            va_list args;               
-            va_start(args, message);     
-            default_assertion_report(expression, source, message, args);                    
-            va_end(args);  
+            Source_Info source = {line, file, function};
+            log_message("assert", LOG_FATAL, source, "TEST(%s) TEST/ASSERT failed! (%s : %lli) ", expression, source.file, source.line);
+            if(format != NULL && strlen(format) != 0)
+            {
+                log_message(">assert", LOG_FATAL, source, "message:");
+
+                va_list args;               
+                va_start(args, format);     
+                vlog_message(">>assert", LOG_FATAL, source, format, args);
+                va_end(args);  
+            }
+
+            log_callstack(">assert", LOG_TRACE, -1, "callstack:");
         }
     #endif
 
-    void default_assertion_report(const char* expression, Source_Info source, const char* message, va_list args)
-    {
-        log_message("assert", LOG_FATAL, source, "TEST(%s) TEST/ASSERT failed! (%s : %lli) ", expression, source.file, source.line);
-        if(message != NULL && strlen(message) != 0)
-        {
-            log_message(">assert", LOG_FATAL, source, "message:");
-                vlog_message(">>assert", LOG_FATAL, source, message, args);
-        }
-
-        log_callstack(">assert", LOG_TRACE, -1, "callstack:");
-    }
 
 #endif

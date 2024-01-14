@@ -34,29 +34,8 @@
 //     immensely satisfying.
 
 //=========================================
-// Platform layer setup
+// Define flags
 //=========================================
-
-//Initializes the platform layer interface. 
-//Should be called before calling any other function.
-void platform_init();
-
-//Deinitializes the platform layer, freeing all allocated resources back to os.
-//platform_init() should be called before using any other fucntion again!
-void platform_deinit();
-
-typedef struct Platform_Allocator {
-    void* (*reallocate)(void* context, int64_t new_size, void* old_ptr, int64_t old_size);
-    void* context;
-} Platform_Allocator;
-
-//Sets a different allocator used for internal allocations. This allocator must never fail (for the moment).
-//The semantics must be quivalent to:
-//   if(new_size == 0) return free(old_ptr);
-//   else              return realloc(old_ptr, new_size);
-//context is user defined argument and old_size is purely informative (can be used for tracking purposes).
-//The value pointed to by context is not copied and needs to remain valid untill call to platform_deinit()!
-void platform_set_internal_allocator(Platform_Allocator allocator);
 
 //A non exhaustive list of operating systems
 #define PLATFORM_OS_UNKNOWN     0 
@@ -76,6 +55,7 @@ void platform_set_internal_allocator(Platform_Allocator allocator);
 #define PLATFORM_COMPILER_CLANG 3
 #define PLATFORM_COMPILER_MINGW 4
 #define PLATFORM_COMPILER_NVCC  5  //Cuda compiler
+#define PLATFORM_COMPILER_NVCC_DEVICE 6  //Cuda compiler device code (kernels)
 
 #define PLATFORM_ENDIAN_LITTLE  0
 #define PLATFORM_ENDIAN_BIG     1
@@ -87,6 +67,11 @@ void platform_set_internal_allocator(Platform_Allocator allocator);
     // after main making the whole build unity build, greatly simpifying the build procedure.
     //Can be user overriden by defining it before including platform.h
     #define PLATFORM_OS          PLATFORM_OS_UNKNOWN                 
+#endif
+
+#ifndef PLATFORM_COMPILER
+    //Becomes one of the PLATFORM_COMPILER_XXX based on the detected compiler. (see below). Can be overriden.
+    #define PLATFORM_COMPILER          PLATFORM_COMPILER_UNKNOWN                 
 #endif
 
 #ifndef PLATFORM_SYSTME_BITS
@@ -114,6 +99,27 @@ void platform_set_internal_allocator(Platform_Allocator allocator);
 #elif PLATFORM_ENDIAN == PLATFORM_ENDIAN_BIG
     #define PLATFORM_HAS_ENDIAN_BIG    PLATFORM_ENDIAN_BIG
 #endif
+
+//=========================================
+// Platform layer setup
+//=========================================
+// 
+//The semantics must be quivalent to:
+//   if(new_size == 0) {free(old_ptr); return NULL;}
+//   else              return realloc(old_ptr, new_size);
+//The value pointed to by context is not copied and needs to remain valid untill call to platform_deinit()!
+typedef struct Platform_Allocator {
+    void* (*reallocate)(void* context, int64_t new_size, void* old_ptr);
+    void* context;
+} Platform_Allocator;
+
+//Initializes the platform layer interface. 
+//Should be called before calling any other function.
+void platform_init(Platform_Allocator* allocator_or_null);
+
+//Deinitializes the platform layer, freeing all allocated resources back to os.
+//platform_init() should be called before using any other fucntion again!
+void platform_deinit();
 
 //=========================================
 // Virtual memory
@@ -395,26 +401,41 @@ Platform_Error platform_directory_list_contents_alloc(Platform_String directory_
 //Frees previously allocated file list
 void platform_directory_list_contents_free(Platform_Directory_Entry* entries);
 
-enum {
-    PLATFORM_FILE_WATCH_CHANGE      = 1,
-    PLATFORM_FILE_WATCH_DIR_NAME    = 2,
-    PLATFORM_FILE_WATCH_FILE_NAME   = 4,
-    PLATFORM_FILE_WATCH_ATTRIBUTES  = 8,
-    PLATFORM_FILE_WATCH_RECURSIVE   = 16,
-    PLATFORM_FILE_WATCH_ALL         = 31,
-};
-
 typedef struct Platform_File_Watch {
-    Platform_Thread thread;
     void* handle;
 } Platform_File_Watch;
 
-//Creates a watch of a diretcory monitoring for events described in the file_watch_flags. 
-//The async_func get called on another thread every time the appropriate action happens. This thread is in blocked state otherwise.
-//If async_func returns false the file watch is closed and no further actions are reported.
-Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_String dir_path, int32_t file_watch_flags, bool (*async_func)(void* context), void* context);
-//Deinits the file watch stopping the monitoring thread.
-void platform_file_unwatch(Platform_File_Watch* file_watch);
+typedef enum Platform_File_Watch_Flag {
+    PLATFORM_FILE_WATCH_CREATED     = 1,
+    PLATFORM_FILE_WATCH_DELETED     = 2,
+    PLATFORM_FILE_WATCH_MODIFIED    = 4,
+    PLATFORM_FILE_WATCH_RENAMED     = 8,
+    PLATFORM_FILE_WATCH_DIRECTORY   = 1 << 30,
+} Platform_File_Watch_Flag;
+ 
+typedef struct Platform_File_Watch_Event {
+    Platform_File_Watch_Flag flag;
+    Platform_File_Watch handle;
+    Platform_String path;
+    Platform_String old_path; //only used in case of PLATFORM_FILE_WATCH_RENAMED to store the previous path.
+} Platform_File_Watch_Event;
+
+//Creates a watch of a directory or a single file. 
+//file_watch_flags is a bitwise combination of members of Platform_File_Watch_Flag specifying which events we to be reported.
+//If file file_watch_or_null is present saves to it a handle to unwatch this watch else doesnt save anything.
+//If PLATFORM_FILE_WATCH_DIRECTORY flags is set interprets file_path as directory path and watches it.
+//Returns Platform_Error indicating wheter the operation was successfull. 
+//Note that the directory in which the watched file resides (or the watched directory itself) must exist else returns error.
+Platform_Error platform_file_watch(Platform_File_Watch* file_watch_or_null, Platform_String file_path, int32_t file_watch_flags);
+//Deinits a give watch represetn by file_watch_or_null. If file_watch_or_null is null uses file_path to remove specified watch instead.
+//Note that if using file_path to unwatch and there are multiple watches watching the same file removes all of them.
+Platform_Error platform_file_unwatch(Platform_File_Watch* file_watch_or_null, Platform_String file_path);
+//Polls watch events from the given file watch. 
+//Returns true if event was polled and false if there are no events in the qeuue.
+//If `file_watch_or_null` is null polls from all watches.
+//Note that once event is polled it is removed from the queue.
+//Note that this functions is implemented efficiently and in case of no events is practically free.
+bool platform_file_watch_poll(Platform_File_Watch* file_watch_or_null, Platform_File_Watch_Event* event);
 
 //Memory maps the file pointed to by file_path and saves the adress and size of the mapped block into mapping. 
 //If the desired_size_or_zero == 0 maps the entire file. 
@@ -428,6 +449,18 @@ void platform_file_unwatch(Platform_File_Watch* file_watch);
 Platform_Error platform_file_memory_map(Platform_String file_path, int64_t desired_size_or_zero, Platform_Memory_Mapping* mapping);
 //Unmpas the previously mapped file. If mapping is a result of failed platform_file_memory_map does nothing.
 void platform_file_memory_unmap(Platform_Memory_Mapping* mapping);
+
+//=========================================
+// DLL management
+//=========================================
+
+typedef struct Platform_DLL {
+    void* handle;
+} Platform_DLL;
+
+Platform_Error platform_dll_load(Platform_DLL* dll, Platform_String path);
+void platform_dll_unload(Platform_DLL* dll);
+void* platform_dll_get_function(Platform_DLL* dll, Platform_String name);
 
 //=========================================
 // Window managmenet
@@ -506,7 +539,7 @@ typedef enum Platform_Exception {
     PLATFORM_EXCEPTION_PRIVILAGED_INSTRUCTION,
     PLATFORM_EXCEPTION_BREAKPOINT,
     PLATFORM_EXCEPTION_BREAKPOINT_SINGLE_STEP,
-    PLATFORM_EXCEPTION_STACK_OVERFLOW, //cannot be caught inside error_func because of obvious reasons
+    PLATFORM_EXCEPTION_STACK_OVERFLOW,
     PLATFORM_EXCEPTION_ABORT,
     PLATFORM_EXCEPTION_TERMINATE = 0x0001000,
     PLATFORM_EXCEPTION_OTHER = 0x0001001,
@@ -524,9 +557,8 @@ typedef struct Platform_Sandbox_Error {
     const void* execution_context;
     int64_t execution_context_size;
 
-    //The epoch time of the exception and offset in nanoseconds to the exact time 
+    //The epoch time of the exception
     int64_t epoch_time;
-    int64_t nanosec_offset;
 } Platform_Sandbox_Error;
 
 //Launches the sandboxed_func inside a sendbox protecting the outside environment 
@@ -544,7 +576,7 @@ Platform_Exception platform_exception_sandbox(
 // (PLATFORM_EXCEPTION_ACCESS_VIOLATION -> "PLATFORM_EXCEPTION_ACCESS_VIOLATION")
 const char* platform_exception_to_string(Platform_Exception error);
 
-#if PLATFORM_OS == PLATFORM_OS_UNKNOWN
+#if !defined(PLATFORM_OS) || PLATFORM_OS == PLATFORM_OS_UNKNOWN
     #undef PLATFORM_OS
     #if defined(_WIN32)
         #define PLATFORM_OS PLATFORM_OS_WINDOWS // Windows
@@ -580,6 +612,28 @@ const char* platform_exception_to_string(Platform_Exception error);
         #define PLATFORM_OS PLATFORM_OS_UNKNOWN
     #endif
 #endif 
+
+
+#if !defined(PLATFORM_COMPILER) || PLATFORM_COMPILER == PLATFORM_COMPILER_UNKNOWN
+    #undef PLATFORM_COMPILER
+    
+    #if defined(_MSC_VER)
+        #define PLATFORM_COMPILER PLATFORM_COMPILER_MSVC
+    #elif defined(__GNUC__)
+        #define PLATFORM_COMPILER PLATFORM_COMPILER_GCC
+    #elif defined(__clang__)
+        #define PLATFORM_COMPILER PLATFORM_COMPILER_CLANG
+    #elif defined(__MINGW32__)
+        #define PLATFORM_COMPILER PLATFORM_COMPILER_MINGW
+    #elif defined(__CUDACC__)
+        #define PLATFORM_COMPILER PLATFORM_COMPILER_NVCC
+    #elif defined(__CUDA_ARCH__)
+        #define PLATFORM_COMPILER PLATFORM_COMPILER_NVCC_DEVICE
+    #else
+        #define PLATFORM_COMPILER PLATFORM_COMPILER_UNKNOWN
+    #endif
+
+#endif
 
 #undef MODIFIER_RESTRICT                                   
 #undef MODIFIER_FORCE_INLINE                               

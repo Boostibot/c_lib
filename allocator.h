@@ -93,8 +93,6 @@ EXPORT void* allocator_allocate_cleared(Allocator* from_allocator, isize new_siz
 
 //Retrieves stats from the allocator. The stats can be only partially filled.
 EXPORT Allocator_Stats allocator_get_stats(Allocator* self);
-EXPORT Platform_Allocator platform_allocator_from_allocator(Allocator* alloc);
-
 
 //Gets called when function requiring to always succeed fails an allocation - most often from allocator_reallocate
 //If ALLOCATOR_CUSTOM_OUT_OF_MEMORY is defines is left unimplemented
@@ -279,18 +277,6 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
         return prev;
     }
     
-    INTERNAL void* _platform_allocator_allocate(void* context, int64_t new_size, void* old_ptr, int64_t old_size)
-    {
-        Allocator* alloc = (Allocator*) context;
-        return alloc->allocate(alloc, new_size, old_ptr, old_size, DEF_ALIGN, SOURCE_INFO());
-    }
-
-    EXPORT Platform_Allocator platform_allocator_from_allocator(Allocator* alloc)
-    {
-        Platform_Allocator out = {_platform_allocator_allocate, alloc};
-        return out;
-    }
-
     EXPORT bool is_power_of_two_or_zero(isize num) 
     {
         usize n = (usize) num;
@@ -378,9 +364,6 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
 
         if(stats.name == NULL)
             stats.name = "<no name>";
-
-        const char* unit_str = "";
-        isize unit = 0;
 
         LOG(log_module, log_type, "type_name:           %s", stats.type_name);
         LOG(log_module, log_type, "name:                %s", stats.name);

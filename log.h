@@ -227,6 +227,16 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 #ifdef __cplusplus
     #define SOURCE_INFO() Source_Info{__LINE__, __FILE__, __FUNCTION__}
 #else
+    
+    //because msvc is stupid and treats brace initialization as variables?
+    //Therefore when in siutation where it detects it doesnt need to use he declared Source_Info it emits
+    // warning C4189: '$S263': local variable is initialized but not referenced
+    static Source_Info _source_info(int line, const char* file, const char* function)
+    {
+        return (Source_Info){line, file, function};
+    }
+
+    //#define SOURCE_INFO() _source_info(__LINE__, __FILE__, __FUNCTION__)
     #define SOURCE_INFO() (Source_Info){__LINE__, __FILE__, __FUNCTION__}
 #endif 
 
