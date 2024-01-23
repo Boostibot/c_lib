@@ -208,16 +208,16 @@ EXPORT bool _array_is_backed(const void* array, isize item_size)
 {
     (void) item_size;
     u8_Array* base = (u8_Array*) array;
-    bool is_backed = (usize) base->allocator & 1;
+    bool is_backed = (usize) base->allocator & 2;
     return is_backed;
 }
 
 INTERNAL Allocator* _set_allocator_bits(Allocator* alloc, bool to)
 {
     if(to)
-        return (Allocator*) ((usize) alloc | 1);
+        return (Allocator*) ((usize) alloc | (usize)2);
     else
-        return (Allocator*) ((usize) alloc & ~(usize)3);
+        return (Allocator*) ((usize) alloc & ~(usize)2);
 }
 
 EXPORT Allocator* _array_get_allocator(const void* array, isize item_size)

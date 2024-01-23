@@ -277,9 +277,7 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 				break;
 
 			int64_t measure = perf_start();
-			u8 keep = true;
-			for(isize i = 0; i < batch_size; i++)
-				keep &= (u8) func(context);
+			bool keep = func(context);
 
 			if(keep && ellapsed >= warmup)
 				perf_end(&counter, measure);

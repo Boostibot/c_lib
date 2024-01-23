@@ -53,6 +53,11 @@ EXPORT void stack_allocator_init(Stack_Allocator* allocator, void* buffer, isize
     stack_allocator_deinit(allocator);
 
     allocator->parent = parent;
+    if(buffer == NULL && buffer_size > 0 && parent != NULL)
+    {
+        buffer = allocator_allocate(parent, buffer_size, DEF_ALIGN, SOURCE_INFO());
+    }
+
     allocator->buffer_from = (uint8_t*) buffer;
     allocator->buffer_to = allocator->buffer_from + buffer_size ;
 
