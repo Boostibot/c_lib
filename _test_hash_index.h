@@ -2,6 +2,7 @@
 
 #include "_test.h"
 #include "hash_index.h"
+#include "hash_index2.h"
 
 #include <string.h>
 
@@ -30,7 +31,7 @@ INTERNAL isize u32_array_find(u32_Array array, u32 looking_for)
 	return -1;
 }
 
-INTERNAL void test_hash_index64_stress(f64 max_seconds)
+INTERNAL void test_hash_index_stress(f64 max_seconds)
 {
 	//max_seconds = 0;
 	isize mem_before = allocator_get_stats(allocator_get_default()).bytes_allocated;
@@ -80,8 +81,8 @@ INTERNAL void test_hash_index64_stress(f64 max_seconds)
 	char backing2[BACKING] = {0};
 
 	char* backing = backing1;
-	Hash_Index64 table = {0};
-	Hash_Index64 other_table = {0};
+	Hash_Index table = {0};
+	Hash_Index other_table = {0};
 	Discrete_Distribution dist = random_discrete_make(probabilities, ACTION_ENUM_COUNT);
 	*random_state() = random_state_from_seed(1);
 
@@ -103,16 +104,16 @@ INTERNAL void test_hash_index64_stress(f64 max_seconds)
 		switch(action)
 		{
 			case INIT: {
-				hash_index64_deinit(&table);
+				hash_index_deinit(&table);
 				array_clear(&truth_key_array);
 				array_clear(&truth_val_array);
 
-				hash_index64_init(&table, allocator_get_default());
+				hash_index_init(&table, allocator_get_default());
 				break;
 			}
 
 			case DEINIT: {
-				hash_index64_deinit(&table);
+				hash_index_deinit(&table);
 				array_clear(&truth_key_array);
 				array_clear(&truth_val_array);
 
@@ -122,7 +123,7 @@ INTERNAL void test_hash_index64_stress(f64 max_seconds)
 			case INSERT: {
 				while(true)
 				{
-					u64 val = random_u64();
+					u64 val = hash_index_escape_value(random_u64());
 					u64 key = random_u64();
 					
 					//if we were extra unlucky and geenrated the same key try again
@@ -134,8 +135,8 @@ INTERNAL void test_hash_index64_stress(f64 max_seconds)
 					array_push(&truth_key_array, key);
 					array_push(&truth_val_array, val);
 
-					isize inserted = hash_index64_insert(&table, key, val);
-					isize found = hash_index64_find(table, key);
+					isize inserted = hash_index_insert(&table, key, val);
+					isize found = hash_index_find(table, key);
 				
 					TEST(table.entries != NULL);
 					TEST(memcmp(&inserted, &found, sizeof found) == 0 && "The inserted value must be findable");
@@ -162,13 +163,14 @@ INTERNAL void test_hash_index64_stress(f64 max_seconds)
 					array_pop(&truth_key_array);
 					array_pop(&truth_val_array);
 
-					isize found = hash_index64_find(table, key);
+					isize found = hash_index_find(table, key);
 
 					TEST(found != -1);
 					TEST(table.entries[found].value == val);
-					hash_index64_remove(&table, found);
+					hash_index_remove(&table, found);
 				
-					isize found_after = hash_index64_find(table, key);
+					isize found_after = hash_index_find(table, key);
+					TEST(found_after == -1);
 					TEST(found_after == -1);
 				}
 
@@ -176,7 +178,7 @@ INTERNAL void test_hash_index64_stress(f64 max_seconds)
 			}
 
 			case CLEAR: {
-				hash_index64_clear(&table);
+				hash_index_clear(&table);
 				array_clear(&truth_key_array);
 				array_clear(&truth_val_array);
 				break;
@@ -184,7 +186,7 @@ INTERNAL void test_hash_index64_stress(f64 max_seconds)
 
 			case COPY: {
 				//copy
-				hash_index64_copy(&other_table, table);
+				hash_index_copy(&other_table, table);
 				array_copy(&other_truth_val_array, truth_val_array);
 				array_copy(&other_truth_key_array, truth_key_array);
 				
@@ -202,13 +204,13 @@ INTERNAL void test_hash_index64_stress(f64 max_seconds)
 
 			case REHASH: {
 				isize rehash_to = random_range(0, MAX_CAPACITY);
-				hash_index64_rehash(&table, rehash_to);
+				hash_index_rehash(&table, rehash_to);
 				break;
 			}
 
 			case RESERVE: {
 				isize rehash_to = random_range(0, MAX_CAPACITY);
-				hash_index64_reserve(&table, rehash_to);
+				hash_index_reserve(&table, rehash_to);
 				break;
 			}
 
@@ -231,10 +233,10 @@ INTERNAL void test_hash_index64_stress(f64 max_seconds)
 			u64 key = truth_key_array.data[j];
 			u64 val = truth_val_array.data[j];
 
-			isize found = hash_index64_find(table, key);
+			isize found = hash_index_find(table, key);
 			TEST(table.entries != NULL);
 			TEST(0 <= found && found < table.entries_count && "The returned index must be valid");
-			Hash_Index64_Entry entry = table.entries[found];
+			Hash_Index_Entry entry = table.entries[found];
 				
 			TEST(entry.hash == key && entry.value == val && "The entry must be inserted properly");
 		}
@@ -247,7 +249,7 @@ INTERNAL void test_hash_index64_stress(f64 max_seconds)
 			//(again extrenely statistically unlikely that it will fail 1 / 10^19 chance)
 			if(u64_array_find(truth_key_array, key) == -1)
 			{
-				isize found = hash_index64_find(table, key);
+				isize found = hash_index_find(table, key);
 				TEST(found == -1 && "must not be found");
 			}
 		}
@@ -259,8 +261,8 @@ INTERNAL void test_hash_index64_stress(f64 max_seconds)
 	array_deinit(&other_truth_val_array);
 	array_deinit(&history);
 	random_discrete_deinit(&dist);
-	hash_index64_deinit(&table);
-	hash_index64_deinit(&other_table);
+	hash_index_deinit(&table);
+	hash_index_deinit(&other_table);
 
 	isize mem_after = allocator_get_stats(allocator_get_default()).bytes_allocated;
 	TEST(mem_before == mem_after);
@@ -504,6 +506,6 @@ INTERNAL void test_hash_index32_stress(f64 max_seconds)
 
 INTERNAL void test_hash_index(f64 max_seconds)
 {
-	test_hash_index64_stress(max_seconds/2);
+	test_hash_index_stress(max_seconds/2);
 	test_hash_index32_stress(max_seconds/2);
 }
