@@ -10,7 +10,6 @@ INTERNAL void test_array_stress(f64 max_seconds)
 	enum Action 
 	{
 		INIT,
-		INIT_BACKED,
 		DEINIT,
 		CLEAR,
 		SET_CAPACITY,
@@ -26,7 +25,6 @@ INTERNAL void test_array_stress(f64 max_seconds)
 
 	i32 probabilities[ACTION_ENUM_COUNT] = {0};
 	probabilities[INIT]				= 1;
-	probabilities[INIT_BACKED]		= 1;
 	probabilities[DEINIT]           = 1;
 	probabilities[CLEAR]			= 2;
 	probabilities[SET_CAPACITY]		= 2;
@@ -40,19 +38,13 @@ INTERNAL void test_array_stress(f64 max_seconds)
 	enum {
 		MAX_ITERS = 1000*1000*10,
 		MIN_ITERS = 100,
-		BACKING = 125,
 		MAX_CAPACITY = 1000*10,
 	};
 
-	i64 buffer1[BACKING] = {0};
-	i64 buffer2[BACKING] = {0};
 	i64_Array array1 = {0};
 	i64_Array array2 = {0};
 
-	i64* buffer = buffer1;
 	i64_Array* arr = &array1;
-	
-	i64* other_buffer = buffer2;
 	i64_Array* other_array = &array2;
 	
 	Discrete_Distribution dist = random_discrete_make(probabilities, ACTION_ENUM_COUNT);
@@ -73,12 +65,6 @@ INTERNAL void test_array_stress(f64 max_seconds)
 			case INIT: {
 				array_deinit(arr);
 				array_init(arr, allocator_get_default());
-				break;
-			}
-			
-			case INIT_BACKED: {
-				array_deinit(arr);
-				array_init_backed_from_memory(arr, allocator_get_default(), buffer, BACKING);
 				break;
 			}
 			
@@ -160,7 +146,6 @@ INTERNAL void test_array_stress(f64 max_seconds)
 				TEST(other_array->capacity >= other_array->size);
 
 				swap_any(&other_array, &arr, sizeof(arr));
-				swap_any(&other_buffer, &buffer, sizeof(buffer));
 
 				break;
 			}

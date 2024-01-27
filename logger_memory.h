@@ -68,7 +68,7 @@ EXPORT void memory_logger_log(Logger* logger, const char* module, Log_Type type,
     Memory_Logger* self = (Memory_Logger*) (void*) logger;
     if(self->total_log_count % self->log_every_nth == 0 && self->total_log_count < self->max_logs)
     {
-        Allocator* alloc = array_get_allocator(self->logs);
+        Allocator* alloc = self->logs.allocator;
         Memory_Log log = {alloc};
         array_reserve(&log.module_and_message, 255);
         builder_append(&log.module_and_message, string_make(module));

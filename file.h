@@ -236,7 +236,7 @@ EXPORT Error file_read_entire_append_into(String file_path, String_Builder* appe
     isize read_bytes = 0;
 
     String_Builder escaped_path = {0};
-    array_init_backed(&escaped_path, allocator_get_scratch(), 512);
+    array_init_with_capacity(&escaped_path, allocator_get_scratch(), 512);
     builder_append(&escaped_path, file_path);
 
     const char* full_path = cstring_from_builder(escaped_path);
@@ -282,7 +282,7 @@ EXPORT Error _file_write_entire_append_into(String file_path, String written, co
     isize wrote_bytes = 0;
     
     String_Builder escaped_path = {0};
-    array_init_backed(&escaped_path, allocator_get_scratch(), 512);
+    array_init_with_capacity(&escaped_path, allocator_get_scratch(), 512);
     builder_append(&escaped_path, file_path);
     
     const char* full_path = cstring_from_builder(escaped_path);

@@ -23,15 +23,7 @@
 // 1) EXPERIMENTAL: All arrays are null terminated with null termination of the size of the element. 
 //    This is done so that we dont need a separate structure for strings but might incur too much overhead - we will see about this. 
 // 
-// 2) EXPERIMENTAL: The lowest order bit of the allocator pointer to hold if the data needs to be deallocated. 
-//    This of course enables quick "borrowing" which can be used to pass data into an interface that accepts
-//    a dynamic array without actually needing the full functionality. It can also (and probably more importantly) be used for stack backing
-//    arrays - we allocate lets say 128B array on the stack and only dynamically allocate if we need to resize to more than 128B. This can 
-//    potentially give us a lot of speed.
-//    The downside is that in c we cannot really ensure that the allocator with set bit will be handled properly. 
-//    This is to say if we backed allocate an array and then use that allocator to initiaze other structures it will not be correct
-//
-// 3) Because the functions are implemented as macros we make them all Source_Info transparent. We track locations of all allocations
+// 2) Because the functions are implemented as macros we make them all Source_Info transparent. We track locations of all allocations
 //    for debugging purposes. Normally we use Source_Info fromn the allocation site - here however we use Source_Info from the use site of the
 //    array function.
 
@@ -64,17 +56,13 @@ typedef i64_Array isize_Array;
 typedef u64_Array usize_Array;
 
 EXPORT void _array_init(void* array, isize item_size, Allocator* allocator, Source_Info from);
-EXPORT void _array_init_backed(void* array, isize item_size, Allocator* allocator, void* backing, int64_t backing_size, Source_Info from);
 EXPORT void _array_deinit(void* array, isize item_size, Source_Info from);
 EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, Source_Info from); 
 EXPORT bool _array_is_invariant(const void* array, isize item_size);
-EXPORT bool _array_is_backed(const void* array, isize item_size);
-EXPORT Allocator* _array_get_allocator(const void* array, isize item_size);
-EXPORT isize _array_resize(void* array, isize item_size, isize to_size, bool zero_new, Source_Info from);
+EXPORT void _array_resize(void* array, isize item_size, isize to_size, bool zero_new, Source_Info from);
 EXPORT void _array_reserve(void* array, isize item_size, isize to_capacity, Source_Info from);
 EXPORT void _array_append(void* array, isize item_size, const void* data, isize data_count, Source_Info from);
 EXPORT void _array_unappend(void* array, isize item_size, isize data_count);
-EXPORT void _array_clear(void* array, isize item_size);
 
 #define array_set_capacity(array_ptr, capacity) \
     _array_set_capacity(array_ptr, sizeof *(array_ptr)->data, capacity, SOURCE_INFO())
@@ -84,40 +72,15 @@ EXPORT void _array_clear(void* array, isize item_size);
 //All data structers in this library need to be zero init to be valid!
 #define array_init(array_ptr, allocator) \
     _array_init(array_ptr, sizeof *(array_ptr)->data, allocator, SOURCE_INFO())
-
-//Initializes the array using backed_elements_count elements alloced on the stack as backing store.
-//Only triggers a proper reallocation once the capacity required is grater than backed_elements_count.
-#ifndef JOT_MEM_DEBUG
-    #define array_init_backed(array_ptr, allocator, backed_elements_count) \
-        char PP_CONCAT(_backing_buffer_, __LINE__)[(backed_elements_count) * sizeof *(array_ptr)->data]; \
-        _array_init_backed(array_ptr, sizeof *(array_ptr)->data, allocator, PP_CONCAT(_backing_buffer_, __LINE__), (backed_elements_count), SOURCE_INFO())
-#else
-    #define array_init_backed(array_ptr, allocator, backed_elements_count) \
-        array_init(array_ptr, allocator)
-
-    //Backing hides small allocations making it harder to catch memory leaks during testing.
-    //As sich we disable it when JOT_MEM_DEBUG is on.
-#endif // ARRAY_DEBUG
-
-
-//Initializes the array using backing_array_size elements alloced at backing_array as backing store.
-//Only triggers a proper reallocation once the capacity required is grater than backed_elements_count.
-#define array_init_backed_from_memory(array_ptr, allocator, backed_elements, backed_elements_count) \
-    _array_init_backed(array_ptr, sizeof *(array_ptr)->data, allocator, backed_elements, backed_elements_count, SOURCE_INFO())
     
 //Initializes the array and preallocates it to the desired size
-#define array_init_capacity(array_ptr, alloc, capacity) array_init((array_ptr), (alloc)), array_reserve((array_ptr), (capacity))
+#define array_init_with_capacity(array_ptr, allocator, capacity) \
+    array_init((array_ptr), (allocator)), \
+    array_reserve((array_ptr), (capacity))
 
 //Deallocates and resets the array
 #define array_deinit(array_ptr) \
     _array_deinit(array_ptr, sizeof *(array_ptr)->data, SOURCE_INFO())
-
-//Returns the allocator from the array. Raw .allocator field contains lowest bit that indicates whether is backed or not!
-#define array_get_allocator(array) \
-    _array_get_allocator(&(array), sizeof *(array).data)
-    
-#define array_is_backed(array) \
-    _array_is_backed(&(array), sizeof *(array).data)
 
 //If the array capacity is lower than to_capacity sets the capacity to to_capacity. 
 //If setting of capacity is required and the new capcity is less then one geometric growth 
@@ -137,7 +100,7 @@ EXPORT void _array_clear(void* array, isize item_size);
 
 //Sets the array size to 0. Does not deallocate the array
 #define array_clear(array_ptr) \
-    _array_clear(array_ptr, sizeof *(array_ptr)->data)
+    array_resize_for_overwrite(array_ptr, 0)
 
 //Appends item_count items to the end of the array growing it
 #define array_append(array_ptr, items, item_count) \
@@ -146,10 +109,6 @@ EXPORT void _array_clear(void* array, isize item_size);
     (void) (0 ? *(array_ptr)->data = *(items), 0 : 0), \
     _array_append(array_ptr, sizeof *(array_ptr)->data, items, item_count, SOURCE_INFO())
     
-//Removes item_count items from the end of the array shrinking it
-#define array_unappend(array_ptr, item_count) \
-    _array_unappend(array_ptr, sizeof *(array_ptr)->data, item_count)
-        
 //Discards current items in the array and replaces them with the provided items
 #define array_assign(array_ptr, items, item_count) \
     array_clear(array_ptr), \
@@ -168,17 +127,9 @@ EXPORT void _array_clear(void* array, isize item_size);
 #define array_pop(array_ptr) \
     _array_unappend(array_ptr, sizeof *(array_ptr)->data, 1) \
     
-//Returns the value of the first item. The array must not be empty!
-#define array_first(array) \
-    (CHECK_BOUNDS(0, (array).size), &(array).data[0])
-
 //Returns the value of the last item. The array must not be empty!
 #define array_last(array) \
     (CHECK_BOUNDS(0, (array).size), &(array).data[(array).size - 1])
-
-//Returns a pointer to i-th item. Also does bounds checking.
-#define array_get(array, index) \
-    (CHECK_BOUNDS(index, (array).size), &(array).data[index]) 
 
 //Returns the total size of the array in bytes
 #define array_byte_size(array) \
@@ -198,33 +149,14 @@ EXPORT bool _array_is_invariant(const void* array, isize item_size)
     if(base->size == 0)
         is_size_correct = true;
 
+    if(base->capacity > 0)
+        is_capacity_correct = is_capacity_correct && base->allocator != NULL;
+
     bool is_data_correct = (base->data == NULL) == (base->capacity == 0);
     bool item_size_correct = item_size > 0;
     bool result = is_capacity_correct && is_size_correct && is_data_correct && item_size_correct;
     ASSERT(result);
     return result;
-}
-EXPORT bool _array_is_backed(const void* array, isize item_size)
-{
-    (void) item_size;
-    u8_Array* base = (u8_Array*) array;
-    bool is_backed = (usize) base->allocator & 2;
-    return is_backed;
-}
-
-INTERNAL Allocator* _set_allocator_bits(Allocator* alloc, bool to)
-{
-    if(to)
-        return (Allocator*) ((usize) alloc | (usize)2);
-    else
-        return (Allocator*) ((usize) alloc & ~(usize)2);
-}
-
-EXPORT Allocator* _array_get_allocator(const void* array, isize item_size)
-{
-    (void) item_size;
-    u8_Array* base = (u8_Array*) array;
-    return _set_allocator_bits(base->allocator, false);
 }
 
 EXPORT void _array_init(void* array, isize item_size, Allocator* allocator, Source_Info from)
@@ -235,36 +167,15 @@ EXPORT void _array_init(void* array, isize item_size, Allocator* allocator, Sour
     base->allocator = allocator;
 }
 
-EXPORT void _array_init_backed(void* array, isize item_size, Allocator* allocator, void* backing, int64_t backing_item_count, Source_Info from)
-{
-    u8_Array* base = (u8_Array*) array;
-    _array_deinit(array, item_size, from);
-
-    if(backing_item_count > 0)
-    {
-        base->data = (u8*) backing;
-        base->capacity = backing_item_count;
-        base->allocator = _set_allocator_bits(allocator, true);
-        memset(base->data, 0, (size_t) (backing_item_count * item_size));
-    }
-    else
-    {
-        base->allocator = _set_allocator_bits(allocator, false);
-    }
-
-    ASSERT(_array_is_invariant(array, item_size));
-}
 
 EXPORT void _array_deinit(void* array, isize item_size, Source_Info from)
 {
     u8_Array* base = (u8_Array*) array;
-    ASSERT(array != NULL);
+    ASSERT(base != NULL);
     ASSERT(_array_is_invariant(array, item_size));
-    if(_array_is_backed(array, item_size) == false && base->data != NULL)
-        allocator_deallocate(base->allocator, base->data, base->capacity * item_size, DEF_ALIGN, from);
+    allocator_deallocate(base->allocator, base->data, base->capacity * item_size, DEF_ALIGN, from);
     
-    u8_Array null = {0};
-    *base = null;
+    memset(base, 0, sizeof *base);
 }
 
 EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, Source_Info from)
@@ -275,10 +186,8 @@ EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, So
 
     if(capacity == 0)
     {
-        if(_array_is_backed(array, item_size) == false && base->data != NULL)
-            allocator_deallocate(base->allocator, base->data, base->capacity * item_size, DEF_ALIGN, from);
+        allocator_deallocate(base->allocator, base->data, base->capacity * item_size, DEF_ALIGN, from);
             
-        base->allocator = _set_allocator_bits(base->allocator, false);
         base->capacity = 0;
         base->size = 0;
         base->data = NULL;
@@ -287,29 +196,10 @@ EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, So
 
     isize old_byte_size = item_size * base->capacity;
     isize new_byte_size = item_size * capacity;
-    Allocator* alloc = _set_allocator_bits(base->allocator, false);
-    if(alloc == NULL)
-    {
+    if(base->allocator == NULL)
         base->allocator = allocator_get_default();
-        alloc = base->allocator;
-    }
-        
-    if(_array_is_backed(array, item_size))
-    {
-        isize copy_size = old_byte_size;
-        if(copy_size > new_byte_size)
-            copy_size = new_byte_size;
 
-        void* new_data = allocator_allocate(alloc, new_byte_size, DEF_ALIGN, from);
-        memmove(new_data, base->data, (size_t) copy_size);
-        base->data = (uint8_t*) new_data;
-    }
-    else
-    {
-        base->data = (uint8_t*) allocator_reallocate(alloc, new_byte_size, base->data, old_byte_size, DEF_ALIGN, from);
-    }
-    
-    base->allocator = alloc;
+    base->data = (uint8_t*) allocator_reallocate(base->allocator, new_byte_size, base->data, old_byte_size, DEF_ALIGN, from);
 
     //Clear the allocated to 0
     if(new_byte_size > old_byte_size)
@@ -325,18 +215,16 @@ EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, So
     ASSERT(_array_is_invariant(array, item_size));
 }
 
-EXPORT isize _array_resize(void* array, isize item_size, isize to_size, bool zero_new, Source_Info from)
+EXPORT void _array_resize(void* array, isize item_size, isize to_size, bool zero_new, Source_Info from)
 {
     u8_Array* base = (u8_Array*) array;
     _array_reserve(base, item_size, to_size, from);
-    isize size_before = base->size;
     if(zero_new && to_size > base->size)
         memset(base->data + base->size*item_size, 0, (size_t) ((to_size - base->size)*item_size));
         
     base->size = to_size;
     memset(base->data + base->size*item_size, 0, (size_t)  item_size);
     ASSERT(_array_is_invariant(array, item_size));
-    return size_before;
 }
 
 EXPORT void _array_reserve(void* array, isize item_size, isize to_fit, Source_Info from)
@@ -360,7 +248,7 @@ EXPORT void _array_append(void* array, isize item_size, const void* data, isize 
     ASSERT(data_count >= 0 && item_size > 0);
     u8_Array* base = (u8_Array*) array;
     _array_reserve(base, item_size, base->size+data_count, from);
-    memmove(base->data + item_size * base->size, data, (size_t) (item_size * data_count));
+    memcpy(base->data + item_size * base->size, data, (size_t) (item_size * data_count));
     base->size += data_count;
     memset(base->data + base->size*item_size, 0, (size_t) item_size);
     ASSERT(_array_is_invariant(array, item_size));
@@ -375,13 +263,5 @@ EXPORT void _array_unappend(void* array, isize item_size, isize data_count)
 
     if(data_count > 0)
         memset(base->data + base->size*item_size, 0, (size_t) item_size);
-}
-
-EXPORT void _array_clear(void* array, isize item_size)
-{
-    (void) item_size;
-    ASSERT(_array_is_invariant(array, item_size));
-    u8_Array* base = (u8_Array*) array;
-    base->size = 0;
 }
 #endif

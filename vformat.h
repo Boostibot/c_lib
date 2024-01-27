@@ -71,7 +71,7 @@ EXPORT const char* escape_string_ephemeral(String string);
     EXPORT void vformat_append_into_sized(String_Builder* append_to, String format, va_list args)
     {
         String_Builder escaped = {0};
-        array_init_backed(&escaped, allocator_get_scratch(), 1024);
+        array_init_with_capacity(&escaped, allocator_get_scratch(), 1024);
         builder_append(&escaped, format);
     
         vformat_append_into(append_to, cstring_from_builder(escaped), args);

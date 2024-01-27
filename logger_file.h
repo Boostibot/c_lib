@@ -138,8 +138,8 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
     
     String_Builder formatted_module = {0};
     String_Builder formatted_message = {0};
-    array_init_backed(&formatted_module, scratch, 64);
-    array_init_backed(&formatted_message, scratch, 512);
+    array_init_with_capacity(&formatted_module, scratch, 64);
+    array_init_with_capacity(&formatted_message, scratch, 512);
 
     //formats module: "module name" -> "MODULE_NAME    "
     //                                 <--------------->
@@ -330,7 +330,7 @@ EXPORT bool file_logger_flush(File_Logger* logger)
             if(self->file == NULL)
             {
                 String_Builder file_name = {0};
-                array_init_backed(&file_name, self->scratch_allocator, 256);
+                array_init_with_capacity(&file_name, self->scratch_allocator, 256);
 
                 builder_append(&file_name, string_from_builder(self->file_directory_path));
                 builder_append(&file_name, STRING("/"));
@@ -378,7 +378,7 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
     String module_string = string_make(module);
 
     String_Builder formatted_log = {0};
-    array_init_backed(&formatted_log, self->scratch_allocator, 1024);
+    array_init_with_capacity(&formatted_log, self->scratch_allocator, 1024);
     file_logger_log_append_into(self->scratch_allocator, &formatted_log, module_string, type, indentation, platform_epoch_time(), format, args);
 
     bool print_to_console = false;

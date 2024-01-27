@@ -504,7 +504,7 @@ EXPORT bool serialize_int_count_typed(Lpf_Dyn_Entry* entry, void* value, isize v
         else
         {
             String_Builder formatted = {0};
-            array_init_backed(&formatted, allocator_get_scratch(), 256);
+            array_init_with_capacity(&formatted, allocator_get_scratch(), 256);
 
             for(isize i = 0; i < count; i ++)
             {

@@ -609,7 +609,8 @@ EXPORT void lpf_builder_pad_to(String_Builder* builder, isize to_size, char with
     if(builder->size >= to_size)
         return;
 
-    isize size_before = array_resize(builder, to_size);
+    isize size_before = builder->size;
+    array_resize(builder, to_size);
     memset(builder->data + size_before, with, builder->size - size_before);
 }
 
@@ -882,11 +883,11 @@ EXPORT void lpf_write_entry(Lpf_Writer* writer, String_Builder* builder, Lpf_Ent
 
     Allocator* scratch = allocator_get_scratch();
 
-    array_init_backed(&value_segments, scratch, SEGMENTS);
-    array_init_backed(&comment_segments, scratch, SEGMENTS);
-    array_init_backed(&escaped_inline_comment, scratch, LOCAL_BUFF);
-    array_init_backed(&escaped_label_builder, scratch, LOCAL_BUFF);
-    array_init_backed(&escaped_type_builder, scratch, LOCAL_BUFF);
+    array_init_with_capacity(&value_segments, scratch, SEGMENTS);
+    array_init_with_capacity(&comment_segments, scratch, SEGMENTS);
+    array_init_with_capacity(&escaped_inline_comment, scratch, LOCAL_BUFF);
+    array_init_with_capacity(&escaped_label_builder, scratch, LOCAL_BUFF);
+    array_init_with_capacity(&escaped_type_builder, scratch, LOCAL_BUFF);
 
     //Escape label
     if(label.size > 0)
@@ -1223,7 +1224,7 @@ EXPORT void lpf_dyn_entry_map(Lpf_Dyn_Entry* dyn, void(*preorder_func)(Lpf_Dyn_E
         DEFINE_ARRAY_TYPE(Iterator, Iterator_Array);
         
         Iterator_Array iterators = {0};
-        array_init_backed(&iterators, allocator_get_scratch(), 32);
+        array_init_with_capacity(&iterators, allocator_get_scratch(), 32);
         
         Iterator top_level_it = {dyn, 0};
         array_push(&iterators, top_level_it);
@@ -1637,7 +1638,7 @@ EXPORT void lpf_write_custom(String_Builder* source, Lpf_Dyn_Entry root, const L
     Allocator_Set prev_allocs = allocator_set_default(allocator_get_scratch());
     
     Iterator_Array iterators = {0};
-    array_init_backed(&iterators, NULL, 32);
+    array_init_with_capacity(&iterators, NULL, 32);
 
     Iterator top_level_it = {&root, 0, lpf_max_child_prefix(&root, options->pad_prefix_to)};
     array_push(&iterators, top_level_it);
