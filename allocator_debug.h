@@ -50,7 +50,6 @@
 #include "array.h"
 #include "hash_index.h"
 #include "hash.h"
-#include "time.h"
 #include "log.h"
 #include "profile.h"
 #include "vformat.h"
@@ -85,6 +84,8 @@ typedef struct Debug_Allocator
                                  //icurs huge performance costs. can be safely toggled during runtime.
     bool do_deinit_leak_check;   //If the memory use on initialization and deinitializtion does not match panics.
                                  //can be toggled during runtime. 
+    bool is_init; //prevents double init
+    bool is_within_allocation;  //prevents infinite recursion on logging functions
 
     isize captured_callstack_size; //number of stack frames to capture on each allocation. Defaults to 0.
                                    //If this is greater than 0 replaces passed source info in reports
@@ -101,24 +102,7 @@ typedef struct Debug_Allocator
     isize reallocation_count;
 
     Allocator_Set allocator_backup;
-    bool is_init; //prevents double init
-    bool is_within_allocation;  //prevents infinite recursion on logging functions
 } Debug_Allocator;
-
-typedef enum Debug_Allocation_Sort_Criteria {
-    DEBUG_ALLOCATOR_SORT_RECENT_ALLOCATED_FIRST,
-    DEBUG_ALLOCATOR_SORT_RECENT_ALLOCATED_LAST,
-
-    DEBUG_ALLOCATOR_SORT_RECENT_DEALLOCATED_FIRST,
-    DEBUG_ALLOCATOR_SORT_RECENT_DEALLOCATED_LAST,
-    
-    DEBUG_ALLOCATOR_SORT_BIGGER_FIRST,
-    DEBUG_ALLOCATOR_SORT_BIGGER_LAST,
-    
-    DEBUG_ALLOCATOR_SORT_ALIGNED_FIRST,
-    DEBUG_ALLOCATOR_SORT_ALIGNED_LAST,
-} Debug_Allocation_Sort_Criteria;
-
 
 #define DEBUG_ALLOCATOR_CONTINUOUS          (u64) 1  /* do_contnual_checks = true */
 #define DEBUG_ALLOCATOR_PRINT               (u64) 2  /* do_printing = true */
@@ -145,14 +129,10 @@ EXPORT Allocator_Stats debug_allocator_get_stats(Allocator* self_);
 EXPORT Debug_Allocation       debug_allocator_get_allocation(const Debug_Allocator* allocator, void* ptr); 
 //Returns up to get_max currectly alive allocations sorted by their time of allocation. If get_max <= 0 returns all
 EXPORT Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debug_Allocator allocator, isize print_max);
-EXPORT void debug_allocator_deinit_allocation(Debug_Allocation* allocation);
-EXPORT void debug_allocator_deinit_allocation_array(Debug_Allocation_Array* allocations);
 
 //Prints up to get_max currectly alive allocations sorted by their time of allocation. If get_max <= 0 returns all
 EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_Type log_type, const Debug_Allocator allocator, isize print_max); 
 
-//Default panic handler for debug allocators. Prints if printing is enbaled and then aborts the program 
-EXPORT void debug_allocator_panic_func(Debug_Allocator* allocator, Debug_Allocator_Panic_Reason reason, Debug_Allocation allocation, isize penetration, Source_Info called_from, void* context);
 //Converts a panic reason to string
 EXPORT const char* debug_allocator_panic_reason_to_string(Debug_Allocator_Panic_Reason reason);
 
@@ -161,11 +141,8 @@ typedef struct Debug_Allocation {
     isize size;
     isize align;
     Source_Info allocation_source;
-    Source_Info deallocation_source;
-    f64 allocation_time_s;
-    f64 deallocation_time_s;
-    ptr_Array allocation_trace;
-    ptr_Array deallocation_trace;
+    i64 allocation_epoch_time;
+    void** allocation_trace;
 } Debug_Allocation;
 
 typedef struct Debug_Allocator_Options
@@ -202,8 +179,7 @@ typedef struct Debug_Allocator_Options
 
 EXPORT void debug_allocator_init_custom(Debug_Allocator* debug, Allocator* parent, Debug_Allocator_Options options)
 {
-    ASSERT(debug->is_init == false && "must not be init!");
-
+    debug_allocator_deinit(debug);
     hash_index_init(&debug->alive_allocations_hash, parent);
 
     if(options.dead_zone_size == 0)
@@ -211,9 +187,6 @@ EXPORT void debug_allocator_init_custom(Debug_Allocator* debug, Allocator* paren
     if(options.dead_zone_size < 0)
         options.dead_zone_size = 0;
     options.dead_zone_size = DIV_ROUND_UP(options.dead_zone_size, DEF_ALIGN)*DEF_ALIGN;
-
-    if(options.panic_handler == NULL)
-        options.panic_handler = debug_allocator_panic_func;
 
     debug->captured_callstack_size = options.captured_callstack_size;
     debug->do_deinit_leak_check = options.do_deinit_leak_check;
@@ -253,41 +226,12 @@ EXPORT void debug_allocator_init_use(Debug_Allocator* debug, Allocator* parent, 
     debug->allocator_backup = allocator_set_both(&debug->allocator, &debug->allocator);
 }
 
-INTERNAL void* _debug_allocator_panic(Debug_Allocator* self, Debug_Allocator_Panic_Reason reason, void* ptr, isize penetration, Source_Info called_from);
-
-
-EXPORT const char* debug_allocator_panic_reason_to_string(Debug_Allocator_Panic_Reason reason)
-{
-    switch(reason)
-    {
-        case DEBUG_ALLOC_PANIC_NONE:                    return "DEBUG_ALLOC_PANIC_NONE";
-        case DEBUG_ALLOC_PANIC_INVALID_PTR:             return "DEBUG_ALLOC_PANIC_INVALID_PTR";
-        case DEBUG_ALLOC_PANIC_INVALID_PARAMS:          return "DEBUG_ALLOC_PANIC_INVALID_PARAMS"; 
-        case DEBUG_ALLOC_PANIC_OVERWRITE_BEFORE_BLOCK:  return "DEBUG_ALLOC_PANIC_OVERWRITE_BEFORE_BLOCK";
-        case DEBUG_ALLOC_PANIC_OVERWRITE_AFTER_BLOCK:   return "DEBUG_ALLOC_PANIC_OVERWRITE_AFTER_BLOCK";
-        case DEBUG_ALLOC_PANIC_DEINIT_MEMORY_LEAKED:    return "DEBUG_ALLOC_PANIC_DEINIT_MEMORY_LEAKED";
-        default: return "DEBUG_ALLOC_PANIC_NONE";
-    }
-}
-
-EXPORT void debug_allocator_panic_func(Debug_Allocator* allocator, Debug_Allocator_Panic_Reason reason, Debug_Allocation allocation, isize penetration, Source_Info called_from, void* context)
-{   
-    (void) context;
-    const char* reason_str = debug_allocator_panic_reason_to_string(reason);
-
-    LOG_FATAL("MEMORY", "PANIC because of %s at pointer 0x%08llx (penetration: %lli)" SOURCE_INFO_FMT, reason_str, (lli) allocation.ptr, penetration, SOURCE_INFO_PRINT(called_from));
-    debug_allocator_print_alive_allocations("MEMORY", LOG_TRACE, *allocator, 0);
-    
-    log_flush();
-    abort();
-}
-
 typedef struct Debug_Allocation_Header {
     isize size;
     i32 align;
     i32 block_start_offset;
     Source_Info allocation_source;
-    f64 allocation_time_s;
+    i64 allocation_epoch_time;
 } Debug_Allocation_Header;
 
 typedef struct Debug_Allocation_Pre_Block {
@@ -303,11 +247,6 @@ typedef struct Debug_Allocation_Post_Block {
     u8* dead_zone;
     isize dead_zone_size;
 } Debug_Allocation_Post_Block;
-
-typedef struct Debug_Allocation_Block {
-    Debug_Allocation_Pre_Block pre;
-    Debug_Allocation_Post_Block post;
-} Debug_Allocation_Block;
 
 INTERNAL Debug_Allocation_Pre_Block _debug_allocator_get_pre_block(const Debug_Allocator* self, void* user_ptr)
 {
@@ -348,12 +287,12 @@ INTERNAL Debug_Alloc_Sizes _debug_allocator_allocation_sizes(const Debug_Allocat
     return out;
 }
 
-INTERNAL int _debug_allocation_alloc_time_compare(const void* a, const void* b)
+INTERNAL int _debug_allocation_alloc_time_compare(const void* a_, const void* b_)
 {
-    Debug_Allocation* a_ = (Debug_Allocation*) a;
-    Debug_Allocation* b_ = (Debug_Allocation*) b;
+    Debug_Allocation* a = (Debug_Allocation*) a_;
+    Debug_Allocation* b = (Debug_Allocation*) b_;
 
-    if(a_->allocation_time_s < b_->allocation_time_s)
+    if(a->allocation_epoch_time < b->allocation_epoch_time)
         return -1;
     else
         return 1;
@@ -387,7 +326,6 @@ INTERNAL Debug_Allocator_Panic_Reason _debug_allocator_check_block(const Debug_A
     if(align_or_zero > 0 && pre.header->align != align_or_zero)
         return DEBUG_ALLOC_PANIC_INVALID_PARAMS;
         
-    //If is not properly aligned
     if((u64) user_ptr % pre.header->align != 0)
         return DEBUG_ALLOC_PANIC_INVALID_PARAMS;
 
@@ -450,7 +388,40 @@ INTERNAL bool _debug_allocator_is_invariant(const Debug_Allocator* allocator)
     return true;
 }
 
+EXPORT const char* debug_allocator_panic_reason_to_string(Debug_Allocator_Panic_Reason reason)
+{
+    switch(reason)
+    {
+        case DEBUG_ALLOC_PANIC_NONE:                    return "DEBUG_ALLOC_PANIC_NONE";
+        case DEBUG_ALLOC_PANIC_INVALID_PTR:             return "DEBUG_ALLOC_PANIC_INVALID_PTR";
+        case DEBUG_ALLOC_PANIC_INVALID_PARAMS:          return "DEBUG_ALLOC_PANIC_INVALID_PARAMS"; 
+        case DEBUG_ALLOC_PANIC_OVERWRITE_BEFORE_BLOCK:  return "DEBUG_ALLOC_PANIC_OVERWRITE_BEFORE_BLOCK";
+        case DEBUG_ALLOC_PANIC_OVERWRITE_AFTER_BLOCK:   return "DEBUG_ALLOC_PANIC_OVERWRITE_AFTER_BLOCK";
+        case DEBUG_ALLOC_PANIC_DEINIT_MEMORY_LEAKED:    return "DEBUG_ALLOC_PANIC_DEINIT_MEMORY_LEAKED";
+        default: return "DEBUG_ALLOC_PANIC_NONE";
+    }
+}
 
+INTERNAL void* _debug_allocator_panic(Debug_Allocator* self, Debug_Allocator_Panic_Reason reason, void* ptr, isize interpenetration, Source_Info called_from)
+{
+    Debug_Allocation allocation = {0};
+    allocation.ptr = ptr;
+
+    if(self->panic_handler != NULL)
+        self->panic_handler(self, reason, allocation, interpenetration, called_from, self->panic_context);
+    else
+    {
+        const char* reason_str = debug_allocator_panic_reason_to_string(reason);
+
+        LOG_FATAL("MEMORY", "PANIC because of %s at pointer 0x%08llx (penetration: %lli)" SOURCE_INFO_FMT, reason_str, (lli) allocation.ptr, interpenetration, SOURCE_INFO_PRINT(called_from));
+        debug_allocator_print_alive_allocations("MEMORY", LOG_TRACE, *self, 0);
+    
+        log_flush();
+        abort();
+    }
+
+    return NULL;
+}
 EXPORT void debug_allocator_deinit(Debug_Allocator* allocator)
 {
     if(allocator->bytes_allocated != 0 && allocator->do_deinit_leak_check)
@@ -499,18 +470,9 @@ EXPORT Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debug_
             allocation.size = pre.header->size;
 
             allocation.allocation_source = pre.header->allocation_source;
-            allocation.allocation_time_s = pre.header->allocation_time_s;
+            allocation.allocation_epoch_time = pre.header->allocation_epoch_time;
             allocation.ptr = pre.user_ptr;
-            array_init(&allocation.allocation_trace, allocator.parent);
-            array_reserve(&allocation.allocation_trace, pre.call_stack_size);
-
-            for(isize i = 0; i < pre.call_stack_size; i++)
-            {
-                if(pre.call_stack[i] == NULL)
-                    break;
-
-                array_push(&allocation.allocation_trace, pre.call_stack[i]);
-            }
+            allocation.allocation_trace = pre.call_stack;
 
             array_push(&out, allocation);
         }
@@ -518,25 +480,10 @@ EXPORT Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debug_
     
     qsort(out.data, (size_t) out.size, sizeof *out.data, _debug_allocation_alloc_time_compare);
 
-    //ASSERT(out.size <= count);
     array_resize(&out, count);
-
     return out;
 }
 
-EXPORT void debug_allocator_deinit_allocation(Debug_Allocation* allocation)
-{
-    array_deinit(&allocation->allocation_trace);
-    array_deinit(&allocation->deallocation_trace);
-}
-
-EXPORT void debug_allocator_deinit_allocation_array(Debug_Allocation_Array* allocations)
-{
-    for(isize i = 0; i < allocations->size; i++)
-        debug_allocator_deinit_allocation(&allocations->data[i]);
-
-    array_deinit(allocations);
-}
 
 EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_Type log_type, const Debug_Allocator allocator, isize print_max)
 {
@@ -558,40 +505,24 @@ EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_
         if(allocator.captured_callstack_size > 0)
         {
             log_group_push();
-            log_captured_callstack(log_module, log_type, curr.allocation_trace.data, curr.allocation_trace.size);
+            log_captured_callstack(log_module, log_type, curr.allocation_trace, allocator.captured_callstack_size);
             log_group_pop();
         }
     }
 
     log_group_pop();
-    debug_allocator_deinit_allocation_array(&alive);
-}
-
-INTERNAL void* _debug_allocator_panic(Debug_Allocator* self, Debug_Allocator_Panic_Reason reason, void* ptr, isize interpenetration, Source_Info called_from)
-{
-    Debug_Allocation allocation = {0};
-    allocation.ptr = ptr;
-
-    if(self->panic_handler != NULL)
-        self->panic_handler(self, reason, allocation, interpenetration, called_from, self->panic_context);
-    else
-        debug_allocator_panic_func(self, reason, allocation, interpenetration, called_from, self->panic_context);
-
-    return NULL;
+    array_deinit(&alive);
 }
 
 EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr_, isize old_size, isize align, Source_Info called_from)
 {
     PERF_COUNTER_START(c);
 
-    f64 curr_time = clock_s();
     Debug_Allocator* self = (Debug_Allocator*) (void*) self_;
     _debug_allocator_is_invariant(self);
 
     Debug_Alloc_Sizes new_sizes = _debug_allocator_allocation_sizes(self, new_size, align);
-
-    isize total_new_size = new_sizes.total_size;
-    isize total_old_size = _debug_allocator_allocation_sizes(self, old_size, align).total_size;
+    Debug_Alloc_Sizes old_sizes = _debug_allocator_allocation_sizes(self, old_size, align);
 
     u8* old_block_ptr = NULL;
     u8* new_block_ptr = NULL;
@@ -603,10 +534,8 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
     //Check old_ptr if any for correctness
     if(old_ptr != NULL)
     {
-        Debug_Allocation_Pre_Block pre = _debug_allocator_get_pre_block(self, old_ptr);
-        ASSERT((u64) pre.header % DEF_ALIGN == 0 && "Needs to be aligned");
-
         isize interpenetration = 0;
+        Debug_Allocation_Pre_Block pre = _debug_allocator_get_pre_block(self, old_ptr);
         Debug_Allocator_Panic_Reason reason = _debug_allocator_check_block(self, old_ptr, &interpenetration, &hash_found, old_size, align);
         if(reason != DEBUG_ALLOC_PANIC_NONE)
         {
@@ -617,7 +546,7 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
         old_block_ptr = (u8*) pre.header - pre.header->block_start_offset;
     }
 
-    new_block_ptr = (u8*) self->parent->allocate(self->parent, total_new_size, old_block_ptr, total_old_size, DEF_ALIGN, called_from);
+    new_block_ptr = (u8*) self->parent->allocate(self->parent, new_sizes.total_size, old_block_ptr, old_sizes.total_size, DEF_ALIGN, called_from);
     
     //if failed return failiure and do nothing
     if(new_block_ptr == NULL && new_size != 0)
@@ -630,36 +559,32 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
     if(old_ptr != NULL)
     {
         ASSERT(hash_found != -1 && "must be found!");
-
         hash_index_remove(&self->alive_allocations_hash, hash_found);
     }
 
     //if allocated/reallocated (new block exists)
     if(new_size != 0)
     {
-        Debug_Allocation_Block new_block = {0};
-        
         isize fixed_align = MAX(align, DEF_ALIGN);
         u8* user_ptr = (u8*) align_forward(new_block_ptr + new_sizes.preamble_size, fixed_align);
 
-        new_block.pre = _debug_allocator_get_pre_block(self, user_ptr);
-        new_block.post = _debug_allocator_get_post_block(self, user_ptr, new_size);
+        Debug_Allocation_Pre_Block new_pre = _debug_allocator_get_pre_block(self, user_ptr);
+        Debug_Allocation_Post_Block new_post = _debug_allocator_get_post_block(self, user_ptr, new_size);
 
-        new_block.pre.header->align = (i32) align;
-        new_block.pre.header->size = new_size;
-        new_block.pre.header->block_start_offset = (i32) ((u8*) new_block.pre.header - new_block_ptr);
-        ASSERT(new_block.pre.header->block_start_offset <= align && "must be less then align");
-
-        new_ptr = (u8*) new_block.pre.user_ptr;
+        new_pre.header->align = (i32) align;
+        new_pre.header->size = new_size;
+        new_pre.header->block_start_offset = (i32) ((u8*) new_pre.header - new_block_ptr);
+        new_pre.header->allocation_source = called_from;
+        new_pre.header->allocation_epoch_time = platform_epoch_time();
+        ASSERT(new_pre.header->block_start_offset <= align && "must be less then align");
 
         if(self->captured_callstack_size > 0)
-            platform_capture_call_stack(new_block.pre.call_stack, new_block.pre.call_stack_size, 1);
+            platform_capture_call_stack(new_pre.call_stack, new_pre.call_stack_size, 1);
 
-        new_block.pre.header->allocation_source = called_from;
-        new_block.pre.header->allocation_time_s = curr_time;
-        memset(new_block.pre.dead_zone, DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) new_block.pre.dead_zone_size);
-        memset(new_block.post.dead_zone, DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) new_block.post.dead_zone_size);
+        memset(new_pre.dead_zone, DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) new_pre.dead_zone_size);
+        memset(new_post.dead_zone, DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) new_post.dead_zone_size);
         
+        new_ptr = (u8*) new_pre.user_ptr;
         u64 hashed = hash64((u64) new_ptr);
         ASSERT(hash_index_find(self->alive_allocations_hash, hashed) == -1 && "Must not be added already!");
 
@@ -686,7 +611,6 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
     else
         self->reallocation_count += 1;
     
-    self->is_within_allocation = false; //just to be sure...
     _debug_allocator_is_invariant(self);
     PERF_COUNTER_END(c);
     return new_ptr;
