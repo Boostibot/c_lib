@@ -7,7 +7,7 @@
 INTERNAL void test_image_builder_copy()
 {
     Debug_Allocator allocator = {0};
-    debug_allocator_init_use(&allocator, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_CAPTURE_CALLSTACK | DEBUG_ALLOCATOR_KEEP_HISTORY);
+    debug_allocator_init_use(&allocator, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_CAPTURE_CALLSTACK);
 
     {
         Image from_image  = {0};
@@ -47,9 +47,7 @@ INTERNAL void test_image_builder_copy()
         image_deinit(&from_image);
         image_deinit(&to_image);
         
-        Debug_Allocation_Array allocations = debug_allocator_get_dead_allocations(allocator, -1);
-        TEST(allocations.size <= 2);
-        array_deinit(&allocations);
+        TEST(allocator.allocation_count <= 2);
     }
 
     debug_allocator_deinit(&allocator);
