@@ -24,13 +24,12 @@
 // if(serialize_(serialize_locate(entry, "my_val", action), &my_val, action) == false && action == READ)
 //    my_val = def;
 //
-// @TODO: make base64 write directly into entry!
+// @TODO: make base16 write directly into entry!
 
 #include "format_lpf.h"
 #include "parse.h"
 #include "vformat.h"
 #include "math.h"
-#include "base64.h"
 #include "guid.h"
 
 typedef enum Read_Or_Write {
@@ -47,10 +46,10 @@ typedef struct Serialize_Enum {
 
 #define SERIALIZE_ENUM_VALUE(ENUM_VALUE) BRACE_INIT(Serialize_Enum){STRING(#ENUM_VALUE), ENUM_VALUE}
 
-EXPORT void base64_encode_append_into(String_Builder* into, const void* data, isize len, Base64_Encoding encoding);
-EXPORT bool base64_decode_append_into(String_Builder* into, const void* data, isize len, Base64_Decoding decoding);
-EXPORT void base64_encode_into(String_Builder* into, const void* data, isize len, Base64_Encoding encoding);
-EXPORT bool base64_decode_into(String_Builder* into, const void* data, isize len, Base64_Decoding decoding);
+EXPORT void base16_encode_append_into(String_Builder* into, const void* data, isize len);
+EXPORT isize base16_decode_append_into(String_Builder* into, const void* data, isize len);
+EXPORT void base16_encode_into(String_Builder* into, const void* data, isize len);
+EXPORT isize base16_decode_into(String_Builder* into, const void* data, isize len);
 
 //Attempts to locate an entry within children of into and return pointer to it. 
 //If it cannot find it: returns NULL if action is read or creates it if action is write.
@@ -66,8 +65,8 @@ EXPORT void           serialize_entry_set_identity(Lpf_Dyn_Entry* entry, String 
 EXPORT bool serialize_write_raw(Lpf_Dyn_Entry* entry, String val, String type);
 EXPORT bool serialize_read_raw(Lpf_Dyn_Entry* entry, String_Builder* val, String def);
 
-EXPORT bool serialize_write_base64(Lpf_Dyn_Entry* entry, String val, String type);
-EXPORT bool serialize_read_base64(Lpf_Dyn_Entry* entry, String_Builder* val, String def);
+EXPORT bool serialize_write_base16(Lpf_Dyn_Entry* entry, String val, String type);
+EXPORT bool serialize_read_base16(Lpf_Dyn_Entry* entry, String_Builder* val, String def);
 
 EXPORT bool serialize_write_string(Lpf_Dyn_Entry* entry, String val, String type);
 EXPORT bool serialize_read_string(Lpf_Dyn_Entry* entry, String_Builder* val, String def);
@@ -82,7 +81,7 @@ EXPORT bool serialize_comment(Lpf_Dyn_Entry* entry, String comment, Read_Or_Writ
 
 EXPORT bool serialize_raw_typed(Lpf_Dyn_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action);
 EXPORT bool serialize_string_typed(Lpf_Dyn_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action);
-EXPORT bool serialize_base64_typed(Lpf_Dyn_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action);
+EXPORT bool serialize_base16_typed(Lpf_Dyn_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action);
 EXPORT bool serialize_int_typed(Lpf_Dyn_Entry* entry, void* int_value, isize int_type_size, i64 def, String type, Read_Or_Write action);
 EXPORT bool serialize_uint_typed(Lpf_Dyn_Entry* entry, void* int_value, isize int_type_size, u64 def, String type, Read_Or_Write action);
 EXPORT bool serialize_float_typed(Lpf_Dyn_Entry* entry, void* float_value, isize float_type_size, void* def, String type, Read_Or_Write action);
@@ -113,7 +112,7 @@ EXPORT bool serialize_f32(Lpf_Dyn_Entry* entry, f32* val, f32 def, Read_Or_Write
 EXPORT bool serialize_string(Lpf_Dyn_Entry* entry, String_Builder* val, String def, Read_Or_Write action);
 EXPORT bool serialize_name(Lpf_Dyn_Entry* entry, String_Builder* val, String def, Read_Or_Write action);
 EXPORT bool serialize_raw(Lpf_Dyn_Entry* entry, String_Builder* val, String def, Read_Or_Write action);
-EXPORT bool serialize_base64(Lpf_Dyn_Entry* entry, String_Builder* val, String def, Read_Or_Write action);
+EXPORT bool serialize_base16(Lpf_Dyn_Entry* entry, String_Builder* val, String def, Read_Or_Write action);
 
 EXPORT bool serialize_vec2(Lpf_Dyn_Entry* entry, Vec2* val, Vec2 def, Read_Or_Write action);
 EXPORT bool serialize_vec3(Lpf_Dyn_Entry* entry, Vec3* val, Vec3 def, Read_Or_Write action);
@@ -132,46 +131,77 @@ EXPORT bool serialize_quat(Lpf_Dyn_Entry* entry, Quat* val, Quat def, Read_Or_Wr
 
 
 
-EXPORT void base64_encode_append_into(String_Builder* into, const void* data, isize len, Base64_Encoding encoding)
+EXPORT void base16_encode_append_into(String_Builder* into, const void* data, isize len)
 {
     isize size_before = into->size;
-    isize needed = base64_encode_max_output_length(len);
-    array_resize(into, size_before + needed);
-
-    isize actual_size = base64_encode(into->data + size_before, data, len, encoding);
-    array_resize(into, size_before + actual_size);
-}
-
-EXPORT bool base64_decode_append_into(String_Builder* into, const void* data, isize len, Base64_Decoding decoding)
-{
-    isize size_before = into->size;
-    isize needed = base64_decode_max_output_length(len);
-    array_resize(into, size_before + needed);
+    array_resize(into, size_before + 2*len);
     
-    isize error_at = 0;
-    isize actual_size = base64_decode(into->data + size_before, data, len, decoding, &error_at);
-    if(error_at == -1)
+    for(isize i = 0; i < len; i++)
     {
-        array_resize(into, size_before + actual_size);
-        return true;
-    }
-    else
-    {
-        array_resize(into, size_before);
-        return false;
+        u8 val = ((u8*) data)[i];
+
+        u8 lo = val & 0xF;
+        u8 hi = val >> 4;
+
+        //Just think how much faster everything could have been if ascii
+        // was layed out like 0-9 : a-z : A-Z. We would be truly living 
+        // in a different and better wold
+        char lo_num = '0' + lo;
+        char hi_num = '0' + hi;
+        
+        char lo_letter = 'a' + lo - 9;
+        char hi_letter = 'a' + hi - 9;
+
+        char lo_char = lo <= 9 ? lo_num : lo_letter;
+        char hi_char = hi <= 9 ? hi_num : hi_letter;
+
+        into->data[size_before + 2*i] = hi_char;
+        into->data[size_before + 2*i + 1] = lo_char;
     }
 }
 
-EXPORT void base64_encode_into(String_Builder* into, const void* data, isize len, Base64_Encoding encoding)
+EXPORT isize base16_decode_append_into(String_Builder* into, const void* data, isize len)
 {
-    array_clear(into);
-    base64_encode_append_into(into, data, len, encoding);
+    isize size_before = into->size;
+    array_resize(into, size_before + len/2);
+    
+    for(isize i = 0; i < len; i += 2)
+    {
+        char hi_char = ((char*) data)[i];
+        char lo_char = ((char*) data)[i + 1];
+
+        u8 lo_val1 = lo_char - '9';
+        u8 lo_val2 = lo_char - 'a' + 9;
+        u8 lo_val3 = lo_char - 'A' + 9;
+        
+        u8 hi_val1 = hi_char - '9';
+        u8 hi_val2 = hi_char - 'a' + 9;
+        u8 hi_val3 = hi_char - 'A' + 9;
+
+        u8 lo_val = MIN(MIN(lo_val1, lo_val2), lo_val3);
+        u8 hi_val = MIN(MIN(hi_val1, hi_val2), hi_val3);
+
+        if(lo_val > 15 || hi_val > 15)
+            return i + 1;
+
+        u8 val = hi_val << 4 | lo_val;
+
+        into->data[size_before + i] = (char) val;
+    }
+
+    return 0;
 }
 
-EXPORT bool base64_decode_into(String_Builder* into, const void* data, isize len, Base64_Decoding decoding)
+EXPORT void base16_encode_into(String_Builder* into, const void* data, isize len)
 {
     array_clear(into);
-    return base64_decode_append_into(into, data, len, decoding);
+    base16_encode_append_into(into, data, len);
+}
+
+EXPORT isize base16_decode_into(String_Builder* into, const void* data, isize len)
+{
+    array_clear(into);
+    return base16_decode_append_into(into, data, len);
 }
 
 
@@ -311,18 +341,12 @@ EXPORT bool serialize_read_name(Lpf_Dyn_Entry* entry, String_Builder* val, Strin
     return state;
 }
 
-EXPORT bool serialize_write_base64(Lpf_Dyn_Entry* entry, String val, String type)
+EXPORT bool serialize_write_base16(Lpf_Dyn_Entry* entry, String val, String type)
 {
     //@TODO: this can be done directly int entry string since the size is exact!
     //       implement entry_set_texts_capacity or something similar
-    String_Builder encoded = {0};
-    array_init_backed(&encoded, allocator_get_scratch(), 256);
-
-    isize max_size = base64_encode_max_output_length(val.size);
-    array_resize(&encoded, max_size); 
-        
-    isize actual_size = base64_encode(encoded.data, val.data, val.size, base64_encoding_url());
-    array_resize(&encoded, actual_size); 
+    String_Builder encoded = {allocator_get_scratch()};
+    base16_encode_append_into(&encoded, val.data, val.size);
 
     serialize_entry_set_identity(entry, type, string_from_builder(encoded), LPF_KIND_ENTRY, LPF_FLAG_WHITESPACE_AGNOSTIC);
     array_deinit(&encoded);
@@ -330,7 +354,7 @@ EXPORT bool serialize_write_base64(Lpf_Dyn_Entry* entry, String val, String type
     return true;
 }
 
-EXPORT bool serialize_read_base64(Lpf_Dyn_Entry* entry, String_Builder* val, String def)
+EXPORT bool serialize_read_base16(Lpf_Dyn_Entry* entry, String_Builder* val, String def)
 {
     if(entry == NULL)
     {
@@ -340,12 +364,11 @@ EXPORT bool serialize_read_base64(Lpf_Dyn_Entry* entry, String_Builder* val, Str
 
     Lpf_Entry readable = lpf_entry_from_dyn_entry(*entry);
     String trimmed = string_trim_whitespace(readable.value);
-    isize max_size = base64_decode_max_output_length(trimmed.size);
-    array_resize(val, max_size); 
-        
-    isize actual_size = base64_decode(val->data, trimmed.data, trimmed.size, base64_decoding_universal(), NULL);
-    array_resize(val, actual_size); 
-    return true;
+    isize broke_at = base16_decode_into(val, trimmed.data, trimmed.size);
+    if(broke_at != 0);
+        builder_assign(val, def);
+
+    return broke_at == 0;
 }
 
 EXPORT bool serialize_scope(Lpf_Dyn_Entry* entry, String type, u16 format_flags, Read_Or_Write action)
@@ -411,12 +434,12 @@ EXPORT bool serialize_string_typed(Lpf_Dyn_Entry* entry, String_Builder* val, St
         return serialize_write_string(entry, string_from_builder(*val), type);
 }
 
-EXPORT bool serialize_base64_typed(Lpf_Dyn_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action)
+EXPORT bool serialize_base16_typed(Lpf_Dyn_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action)
 {
     if(action == SERIALIZE_READ)
-        return serialize_read_base64(entry, val, def);
+        return serialize_read_base16(entry, val, def);
     else
-        return serialize_write_base64(entry, string_from_builder(*val), type);
+        return serialize_write_base16(entry, string_from_builder(*val), type);
 }
 
 void set_variable_sized_int(void* integer, isize integer_type_size, i64 value)
@@ -698,9 +721,9 @@ EXPORT bool serialize_raw(Lpf_Dyn_Entry* entry, String_Builder* val, String def,
 {
     return serialize_raw_typed(entry, val, def, STRING("raw"), action);
 }
-EXPORT bool serialize_base64(Lpf_Dyn_Entry* entry, String_Builder* val, String def, Read_Or_Write action)
+EXPORT bool serialize_base16(Lpf_Dyn_Entry* entry, String_Builder* val, String def, Read_Or_Write action)
 {
-    return serialize_base64_typed(entry, val, def, STRING("base64"), action);
+    return serialize_base16_typed(entry, val, def, STRING("base16"), action);
 }
 
 
