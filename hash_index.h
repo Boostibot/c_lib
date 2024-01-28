@@ -339,9 +339,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val);
     {
         hash_index_reserve(table, table->size + 1);
         isize finish_at = 0;
-        uint64_t mask = (uint64_t) table->entries_count - 1;
-        uint64_t start_at = hash & mask;
-        isize found = _lin_probe_hash_find_from(table->entries, table->entries_count, hash, start_at, &finish_at);
+        isize found = _lin_probe_hash_find_from(table->entries, table->entries_count, hash, hash, &finish_at);
             
         if(found == -1)
         {
