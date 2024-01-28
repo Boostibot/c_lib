@@ -91,7 +91,7 @@ INTERNAL void test_base64_encode(Base64_Encode_State encode_state, Base64_Encodi
     String input_ = string_make(input);
     String expected_ = string_make(expected);
     String_Builder encoded_buffer = {0};
-    array_init_backed(&encoded_buffer, allocator_get_scratch(), 512);
+    array_init_with_capacity(&encoded_buffer, allocator_get_scratch(), 512);
 
     base64_encode_into(&encoded_buffer, input_.data, input_.size, encoding);
     String ecnoded_result = string_from_builder(encoded_buffer);
@@ -107,7 +107,7 @@ INTERNAL void test_base64_decode(Base64_Decode_State decode_state, Base64_Decodi
     String input_ = string_make(input);
     String expected_ = string_make(expected);
     String_Builder decoded_buffer = {0};
-    array_init_backed(&decoded_buffer, allocator_get_scratch(), 512);
+    array_init_with_capacity(&decoded_buffer, allocator_get_scratch(), 512);
 
     bool decode_ok = base64_decode_into(&decoded_buffer, input_.data, input_.size, decoding);
     String decoded_result = string_from_builder(decoded_buffer);

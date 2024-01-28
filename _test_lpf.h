@@ -57,7 +57,7 @@ void lpf_test_lowlevel_read(const char* ctext, Lpf_Test_Entry test_entry)
 void lpf_test_write(Lpf_Format_Options options, Lpf_Test_Entry test_entry, const char* ctext, u16 flags)
 {
     String_Builder into = {0};
-    array_init_backed(&into, allocator_get_scratch(), 256);
+    array_init_with_capacity(&into, allocator_get_scratch(), 256);
 
     Lpf_Entry entry = {0};
     entry.label = string_make(test_entry.label);

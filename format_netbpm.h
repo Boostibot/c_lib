@@ -176,7 +176,7 @@ INTERNAL Error _netbpm_format_read_pgm_ppm(Image* image, String ppm, const char*
 {
     Error out_error = {0};
     String_Builder escaped_start = {0};
-    array_init_backed(&escaped_start, allocator_get_scratch(), 128);
+    array_init_with_capacity(&escaped_start, allocator_get_scratch(), 128);
     String just_start = string_safe_head(ppm, escaped_start.capacity - 1);
     builder_assign(&escaped_start, just_start);
     
@@ -249,7 +249,7 @@ INTERNAL Error _netbpm_format_read_pfm_pfmg(Image* image, String ppm, const char
 {
     Error out_error = {0};
     String_Builder escaped_start = {0};
-    array_init_backed(&escaped_start, allocator_get_scratch(), 128);
+    array_init_with_capacity(&escaped_start, allocator_get_scratch(), 128);
     String just_start = string_safe_head(ppm, escaped_start.capacity - 1);
     builder_assign(&escaped_start, just_start);
 

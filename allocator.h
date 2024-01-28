@@ -3,6 +3,7 @@
 
 #include "defines.h"
 #include "assert.h"
+#include "arena.h"
 #include "profile.h"
 #include <string.h>
 
@@ -125,7 +126,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
 #define GIBI_BYTE   ((int64_t) 1 << 30)
 #define TEBI_BYTE   ((int64_t) 1 << 40)
 
-
+//move to platform!
 #ifdef _MSC_VER
     #define stack_allocate(size, align) \
         ((align) <= 8) ? _alloca((size_t) size) : align_forward(_alloca((size_t) ((size) + (align)), align)
@@ -133,8 +134,6 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     #define stack_allocate(size, align) \
         __builtin_alloca_with_align((size_t) size, (size_t) align)
 #endif
-
-//
 
 typedef struct Memory_Format {
     const char* unit;
@@ -156,20 +155,32 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
 
 
 #endif
-
+#define JOT_ALL_IMPL
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_IMPL)) && !defined(JOT_ALLOCATOR_HAS_IMPL)
 #define JOT_ALLOCATOR_HAS_IMPL
+
+    INTERNAL MODIFIER_THREAD_LOCAL Allocator* _default_allocator = NULL;
+    INTERNAL MODIFIER_THREAD_LOCAL Allocator* _scratch_allocator = NULL;
+    INTERNAL MODIFIER_THREAD_LOCAL Allocator* _static_allocator = NULL;
+    INTERNAL MODIFIER_THREAD_LOCAL Arena _scratch_arena = {0};
 
     EXPORT void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from)
     {
         PERF_COUNTER_START(c);
-        ASSERT(new_size >= 0 && old_size >= 0 && is_power_of_two(align) && "provided arguments must be valid!");
         void* out = NULL;
-        //if is dealloc and old_ptr is NULL do nothing. 
-        //This is equivalent to free(NULL)
-        if(new_size != 0 || old_ptr != NULL)
+        ASSERT(new_size >= 0 && old_size >= 0 && is_power_of_two(align) && "provided arguments must be valid!");
+        //If is arena
+        if((u64) from_allocator & 1)
         {
-            out = from_allocator->allocate(from_allocator, new_size, old_ptr, old_size, align, called_from);
+            i32 tag = (i32) ((u64) from_allocator >> 2);
+            out = arena_push(&_scratch_arena, tag, new_size, align);
+        }
+        else 
+        {
+            //if is dealloc and old_ptr is NULL do nothing. 
+            //This is equivalent to free(NULL)
+            if(new_size != 0 || old_ptr != NULL)
+                out = from_allocator->allocate(from_allocator, new_size, old_ptr, old_size, align, called_from);
         }
             
         PERF_COUNTER_END(c);
@@ -212,12 +223,39 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
 
     EXPORT Allocator_Stats allocator_get_stats(Allocator* self)
     {
-        return self->get_stats(self);
+        Allocator_Stats stats = {0};
+        //If is arena
+        if((u64) self & 1)
+        {
+            stats.name = "Thread_Scratch_Arena";
+            stats.type_name = "Arena";
+            stats.is_top_level = true;
+            stats.bytes_allocated = _scratch_arena.size;
+            stats.max_bytes_allocated = stats.bytes_allocated;
+        }
+        else
+            stats = self->get_stats(self);
+
+        return stats;
     }
 
-    INTERNAL MODIFIER_THREAD_LOCAL Allocator* _default_allocator = NULL;
-    INTERNAL MODIFIER_THREAD_LOCAL Allocator* _scratch_allocator = NULL;
-    INTERNAL MODIFIER_THREAD_LOCAL Allocator* _static_allocator = NULL;
+    EXPORT Arena* allocator_get_arena()
+    {
+        return &_scratch_arena;
+    }
+
+    EXPORT Allocator* allocator_acquire_arena()
+    {
+        i32 tag = arena_get_level(&_scratch_arena);
+        Allocator* out = (Allocator*) ((u64) tag << 2 | 1);
+        return out;
+    }
+    
+    EXPORT void allocator_release_arena(Allocator* arena_alloc)
+    {
+        i32 tag = (i32) ((u64) arena_alloc >> 2);
+        arena_pop(&_scratch_arena, tag);
+    }
 
     EXPORT Allocator* allocator_get_default()
     {
