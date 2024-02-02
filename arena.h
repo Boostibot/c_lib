@@ -71,6 +71,7 @@ void arena_init_custom(Arena* arena, void* data, isize size, isize reserved_size
     _arena_debug_check_invarinats(arena);
 }
 
+//TODO: remove needless generality
 isize arena_def_commit_func(void* addr, isize size, isize reserved_size, bool commit)
 {
     isize commit_to = 0;

@@ -258,10 +258,10 @@ bool benchmark_hash_index_fifo_bench(isize iter, void* _context)
     Hash_Index* index = &context->index;
     u64_Array* keys = &context->keys;
     u64_Array* vals = &context->vals;
-    isize to_size = keys->size / 2 + 1;
+    isize to_size = keys->size / 2;
 
     //u64_Array* lookup = &context->lookup;
-    if(iter > 0)
+    if(iter > 0 && index->size + index->entries_removed + BENCH_HASH_INDEX_FIFO_BATCH <= keys->size)
     {
         for(isize i = 0; i < BENCH_HASH_INDEX_FIFO_BATCH; i++)
         {
@@ -272,11 +272,13 @@ bool benchmark_hash_index_fifo_bench(isize iter, void* _context)
             u64 removed_key = keys->data[curr_remove];
             isize found = hash_index_find(*index, removed_key);
             if(found != -1)
+            {
                 hash_index_remove(index, found);
+                hash_index_insert(index, keys->data[curr_insert], keys->data[curr_insert]);
+            }
             else
                 ASSERT(false);
 
-            hash_index_insert(index, keys->data[curr_insert], keys->data[curr_insert]);
             //perf_do_not_optimize(&found);
 
             for(isize k = 0; k < context->fifo_num_lookups; k++)
@@ -299,10 +301,13 @@ bool benchmark_hash_index_fifo_bench(isize iter, void* _context)
     }
     else
     {
-        context->fifo_sum_probe_length = 0;
-        context->fifo_sum_item_count = 0;
-        context->fifo_sum_removed_count = 0;
-        context->fifo_iterations = 0;
+        if(iter == 0)
+        {
+            context->fifo_sum_probe_length = 0;
+            context->fifo_sum_item_count = 0;
+            context->fifo_sum_removed_count = 0;
+            context->fifo_iterations = 0;
+        }
 
         hash_index_deinit(index);
         allocator_release_arena(context->arena);
@@ -344,7 +349,7 @@ void benchmark_hash_index_lookup()
     f64 warmup = 0.3;
     f64 time = 1;
     
-    const char* name = "HOOD";
+    const char* name = "LINEAR";
     //I am lazy so to get stats for different Hash_Indeces you have to change the implementation.
     //Its a lot easier in the short term than having 5 different versions of the same file flying about
     for(isize j = 0; j < STATIC_ARRAY_SIZE(load_factors); j++)
@@ -621,88 +626,91 @@ HOOD remove
  //Removal is lookup + the cost for removal. Surprisingly HOOD is 
  // proably doing okay even whith the backshifting. The rest are 
  // fairly similar
-
+ 
 LINEAR fifo
- 14.312 ( 0.738 -  1.240) size          64.28 capacity          128 load 70%
- 14.570 ( 1.505 -  0.538) size         510.81 capacity         1024 load 70%
- 26.301 ( 1.717 -  0.512) size        4116.28 capacity         8192 load 70%
- 23.038 ( 0.532 -  1.006) size       32680.06 capacity        65536 load 70%
- 28.951 ( 0.513 -  1.001) size      261762.92 capacity       524288 load 70%
- 65.883 ( 1.466 -  0.592) size     2221612.20 capacity      4194304 load 70%
- 48.544 ( 0.450 -  0.882) size    17079597.52 capacity     33554432 load 70%
- 
+ 11.837 ( 0.547 -  0.375) size          62.01 capacity          128 load 70%
+ 11.826 ( 0.471 -  0.494) size         509.78 capacity         1024 load 70%
+ 13.662 ( 0.391 -  0.497) size        4097.53 capacity         8192 load 70%
+ 16.109 ( 0.419 -  0.499) size       32752.46 capacity        65536 load 70%
+ 19.138 ( 0.355 -  0.500) size      261940.07 capacity       524288 load 70%
+ 36.724 ( 0.348 -  0.494) size     2107621.34 capacity      4194304 load 70%
+ 43.706 ( 0.346 -  0.494) size    17225494.49 capacity     33554432 load 70%
+
 DOUBLE fifo
- 15.716 ( 0.430 -  1.160) size          64.23 capacity          128 load 70%
- 15.465 ( 0.933 -  0.532) size         513.58 capacity         1024 load 70%
- 23.035 ( 1.062 -  0.514) size        4093.40 capacity         8192 load 70%
- 24.703 ( 0.464 -  1.006) size       32956.93 capacity        65536 load 70%
- 36.852 ( 0.422 -  1.000) size      269872.83 capacity       524288 load 70%
- 72.122 ( 0.910 -  0.592) size     2159162.64 capacity      4194304 load 70%
- 55.430 ( 0.369 -  0.787) size    17378692.33 capacity     33554432 load 70%
- 
+ 11.776 ( 0.469 -  0.375) size          62.26 capacity          128 load 70%
+ 12.264 ( 0.385 -  0.494) size         510.46 capacity         1024 load 70%
+ 13.822 ( 0.332 -  0.497) size        4095.46 capacity         8192 load 70%
+ 16.083 ( 0.359 -  0.499) size       32768.40 capacity        65536 load 70%
+ 19.330 ( 0.310 -  0.500) size      261653.45 capacity       524288 load 70%
+ 43.702 ( 0.302 -  0.493) size     2092133.38 capacity      4194304 load 70%
+ 52.932 ( 0.286 -  0.431) size    17398456.42 capacity     33554432 load 70%
+
 QUADRATIC fifo
- 14.976 ( 0.390 -  1.156) size          64.28 capacity          128 load 70%
- 14.409 ( 1.265 -  0.535) size         511.48 capacity         1024 load 70%
- 25.597 ( 1.410 -  0.512) size        4097.08 capacity         8192 load 70%
- 22.679 ( 0.512 -  1.000) size       32831.74 capacity        65536 load 70%
- 27.601 ( 0.496 -  0.999) size      262660.40 capacity       524288 load 70%
- 62.479 ( 1.087 -  0.577) size     2225260.49 capacity      4194304 load 70%
- 47.875 ( 0.427 -  0.898) size    17157759.89 capacity     33554432 load 70%
- 
-HOOD fifo (the average probe length is broken)
- 11.504 (613987.361 -  0.000) size      64.17 capacity          128 load 70%
- 12.133 (62562.115 -  0.000) size      512.03 capacity         1024 load 70%
- 17.707 (6520.385 -  0.000) size      4092.29 capacity         8192 load 70%
- 31.357 (447.448 -  0.000) size      32900.02 capacity        65536 load 70%
- 40.495 (46.088 -  0.000) size      262136.31 capacity       524288 load 70%
- 62.696 ( 3.930 -  0.000) size     2097236.95 capacity      4194304 load 70%
- 69.284 ( 0.688 -  0.000) size    16848894.72 capacity     33554432 load 70%
+ 12.045 ( 0.246 -  0.375) size          61.82 capacity          128 load 70%
+ 12.161 ( 0.403 -  0.494) size         509.43 capacity         1024 load 70%
+ 13.913 ( 0.396 -  0.497) size        4101.48 capacity         8192 load 70%
+ 16.130 ( 0.382 -  0.499) size       32717.53 capacity        65536 load 70%
+ 18.840 ( 0.328 -  0.500) size      261353.28 capacity       524288 load 70%
+ 38.907 ( 0.328 -  0.494) size     2102745.30 capacity      4194304 load 70%
+ 46.169 ( 0.319 -  0.470) size    17234369.53 capacity     33554432 load 70%
+
+HOOD fifo
+ 11.820 (211800.913 -  0.000) size      63.79 capacity          128 load 70%
+ 11.585 (58582.484 -  0.000) size      506.86 capacity         1024 load 70%
+ 22.148 (5630.984 -  0.000) size      4105.55 capacity         8192 load 70%
+ 31.916 (441.629 -  0.000) size      32752.80 capacity        65536 load 70%
+ 39.396 (47.485 -  0.000) size      262014.48 capacity       524288 load 70%
+ 60.450 ( 4.064 -  0.000) size     2097930.47 capacity      4194304 load 70%
+ 68.679 ( 0.691 -  0.000) size    16828986.79 capacity     33554432 load 70%
 
 //Fifo is the time it takes to insert one and remove one entry from the hash.
 //The second number in brackest is the average number of removed entries per
 // alive entry. It mostly depends on crossing the rehash boundary and thus is
-// largely random.
+// merily a reflection of the APL.
 
-//HOOD is a good choice for anything but extra large sizes. QUADRATIC is a close second.
+//LINEAR Seems to be doing best followed by quadrtayic. Hood is very bad for lage sizes
 
 LINEAR fifo + 32 lookups
-185.225 ( 0.478 -  1.116) size          64.30 capacity          128 load 70%
-227.133 ( 1.715 -  0.527) size         511.31 capacity         1024 load 70%
-304.278 ( 1.785 -  0.512) size        4092.74 capacity         8192 load 70%
-251.859 ( 0.511 -  1.000) size       32640.91 capacity        65536 load 70%
-268.192 ( 0.489 -  0.993) size      261278.56 capacity       524288 load 70%
-319.675 ( 0.558 -  0.916) size     2181574.34 capacity      4194304 load 70%
-273.585 ( 0.276 -  0.160) size    17273936.72 capacity     33554432 load 70%
+178.679 ( 0.421 -  0.375) size          62.74 capacity          128 load 70%
+185.429 ( 0.399 -  0.494) size         509.85 capacity         1024 load 70%
+236.342 ( 0.402 -  0.497) size        4098.13 capacity         8192 load 70%
+245.360 ( 0.351 -  0.499) size       32851.72 capacity        65536 load 70%
+249.992 ( 0.348 -  0.495) size      261596.16 capacity       524288 load 70%
+282.931 ( 0.338 -  0.450) size     2124215.70 capacity      4194304 load 70%
+277.871 ( 0.276 -  0.158) size    17311074.55 capacity     33554432 load 70%
 
 DOUBLE fifo + 32 lookups
-184.789 ( 0.813 -  1.121) size          63.74 capacity          128 load 70%
-230.630 ( 1.011 -  0.536) size         512.70 capacity         1024 load 70%
-296.308 ( 1.105 -  0.512) size        4100.90 capacity         8192 load 70%
-252.564 ( 0.419 -  0.998) size       32917.61 capacity        65536 load 70%
-283.660 ( 0.420 -  0.978) size      264318.15 capacity       524288 load 70%
-333.859 ( 0.440 -  0.945) size     2192489.32 capacity      4194304 load 70%
-312.974 ( 0.237 -  0.142) size    17536339.08 capacity     33554432 load 70%
+178.844 ( 0.530 -  0.375) size          62.88 capacity          128 load 70%
+201.801 ( 0.389 -  0.494) size         509.28 capacity         1024 load 70%
+238.990 ( 0.356 -  0.497) size        4075.07 capacity         8192 load 70%
+250.028 ( 0.300 -  0.499) size       32874.19 capacity        65536 load 70%
+255.699 ( 0.303 -  0.496) size      261992.01 capacity       524288 load 70%
+298.408 ( 0.295 -  0.453) size     2130284.17 capacity      4194304 load 70%
+282.357 ( 0.238 -  0.155) size    17318656.31 capacity     33554432 load 70%
 
 QUADRATIC fifo + 32 lookups
-184.067 ( 0.491 -  1.074) size          64.35 capacity          128 load 70%
-213.870 ( 1.358 -  0.530) size         511.67 capacity         1024 load 70%
-295.130 ( 1.292 -  0.513) size        4101.71 capacity         8192 load 70%
-250.177 ( 0.503 -  1.001) size       32707.10 capacity        65536 load 70%
-275.019 ( 0.458 -  0.987) size      261026.28 capacity       524288 load 70%
-331.907 ( 0.485 -  0.939) size     2199520.17 capacity      4194304 load 70%
-282.956 ( 0.258 -  0.148) size    16547563.38 capacity     33554432 load 70%
+179.929 ( 0.347 -  0.375) size          62.81 capacity          128 load 70%
+199.274 ( 0.403 -  0.494) size         508.73 capacity         1024 load 70%
+243.749 ( 0.384 -  0.497) size        4094.90 capacity         8192 load 70%
+252.651 ( 0.340 -  0.499) size       32668.97 capacity        65536 load 70%
+260.940 ( 0.332 -  0.498) size      263331.17 capacity       524288 load 70%
+292.955 ( 0.319 -  0.452) size     2122343.04 capacity      4194304 load 70%
+279.794 ( 0.258 -  0.157) size    17400198.37 capacity     33554432 load 70%
 
-HOOD fifo + 32 lookups (the average probe length is broken)
-172.036 (20032.834 -  0.000) size       64.30 capacity          128 load 70%
-174.592 (4439.254 -  0.000) size       512.23 capacity         1024 load 70%
-271.485 (432.170 -  0.000) size       4103.88 capacity         8192 load 70%
-295.074 (50.975 -  0.000) size       32603.78 capacity        65536 load 70%
-320.384 ( 6.059 -  0.000) size      261706.46 capacity       524288 load 70%
-363.390 ( 0.908 -  0.000) size     2101154.74 capacity      4194304 load 70%
-386.475 ( 0.344 -  0.000) size    16755865.97 capacity     33554432 load 70%
+HOOD fifo + 32 lookups
+173.865 (10365.830 -  0.000) size       62.85 capacity          128 load 70%
+173.484 (5370.840 -  0.000) size       508.32 capacity         1024 load 70%
+269.977 (404.430 -  0.000) size       4087.91 capacity         8192 load 70%
+299.441 (47.600 -  0.000) size       32761.97 capacity        65536 load 70%
+316.539 ( 6.227 -  0.000) size      263371.68 capacity       524288 load 70%
+361.464 ( 0.914 -  0.000) size     2095462.87 capacity      4194304 load 70%
+378.975 ( 0.345 -  0.000) size    16789383.71 capacity     33554432 load 70%
 
-//We see the same behaviour as before only now the lookup speeds are consired again.
-//Quadratic sems to be doing the best.
+//Largely the same as before. Linear and quadratic are winning.
+
+
+
+
 
 
 */

@@ -12,11 +12,11 @@
 #define DO_HASH_TABLE_CONSISTENCY_CHECKS
 #endif
 
-// Implements a String -> Value_Type hash table using Hash_Index64 as a base.
+// Implements a String -> Value_Type hash table using Hash_Index as a base.
 // Any other tables can be implemented more or less the same.
 #define DEFINE_HASH_TABLE_TYPE(Value_Type, Hash_Table_Type_Name) \
     typedef struct {            \
-        Hash_Index64 index;       \
+        Hash_Index index;       \
         String_Builder* keys;   \
         Value_Type* values;     \
         i32 size;               \
@@ -133,7 +133,7 @@ INTERNAL bool _hash_table_is_invarinat(const void* _table)
             //ASSERT(found.hash_index == found.finished_at);
             ASSERT(found.hash == hash_string(key, table->seed));
 
-            Hash_Index64_Entry entry = table->index.entries[found.hash_index];
+            Hash_Index_Entry entry = table->index.entries[found.hash_index];
             ASSERT(found.hash == entry.hash);
             ASSERT((isize) entry.value == i && "The hash index must point back to the original entry");
         }
@@ -158,7 +158,7 @@ EXPORT void hash_table_init(void* _table, Allocator* alllocator, isize value_typ
 {
     u8_Hash_Table* table = (u8_Hash_Table*) _table;
     memset(table, 0, sizeof table);
-    hash_index64_init(&table->index, alllocator);
+    hash_index_init(&table->index, alllocator);
     table->seed = seed;
     table->value_type_size = (i32) value_type_size;
     ASSERT_SLOW(_hash_table_is_invarinat(table));
@@ -179,14 +179,14 @@ EXPORT void hash_table_deinit(void* _table)
         allocator_deallocate(table->index.allocator, table->values, table->capacity * table->value_type_size, DEF_ALIGN, SOURCE_INFO());
     }
     
-    hash_index64_deinit(&table->index);
+    hash_index_deinit(&table->index);
     memset(table, 0, sizeof table);
 }
 
 EXPORT void hash_table_clear(void* _table)
 {
     u8_Hash_Table* table = (u8_Hash_Table*) _table;
-    hash_index64_clear(&table->index);
+    hash_index_clear(&table->index);
     table->size = 0;
 }
 
@@ -195,7 +195,7 @@ EXPORT Hash_Found hash_table_find(const void* _table, String key)
     u8_Hash_Table* table = (u8_Hash_Table*) _table;
     Hash_Found found = {0};
     found.hash = hash_string(key, table->seed);
-    found.hash_index = hash_index64_find_first(table->index, found.hash, &found.finished_at);
+    found.hash_index = hash_index_find_first(table->index, found.hash, &found.finished_at);
     found.entry = -1;
 
     while(found.hash_index != -1)
@@ -209,7 +209,7 @@ EXPORT Hash_Found hash_table_find(const void* _table, String key)
         }
         else
         {
-            found.hash_index = hash_index64_find_next(table->index, found.hash, found.hash_index, &found.finished_at);
+            found.hash_index = hash_index_find_next(table->index, found.hash, found.hash_index, &found.finished_at);
         }
     }
 
@@ -224,7 +224,7 @@ EXPORT Hash_Found hash_table_find_next(const void* _table, String key, Hash_Foun
     Hash_Found found = prev_found;
     while(found.hash_index != -1)
     {
-        found.hash_index = hash_index64_find_next(table->index, found.hash, found.hash_index, &found.finished_at);
+        found.hash_index = hash_index_find_next(table->index, found.hash, found.hash_index, &found.finished_at);
         if(found.hash_index == -1)
             break;
 
@@ -245,8 +245,8 @@ EXPORT void hash_table_reserve(void* _table, isize to_fit_entries)
     u8_Hash_Table* table = (u8_Hash_Table*) _table;
     ASSERT_SLOW(_hash_table_is_invarinat(table));
     
-    if(hash_index64_needs_rehash(table->index, to_fit_entries))
-        table->hash_collisions = (i32) hash_index64_rehash(&table->index, to_fit_entries);
+    if(hash_index_needs_rehash(table->index, to_fit_entries))
+        table->hash_collisions = (i32) hash_index_rehash(&table->index, to_fit_entries);
 
     if(to_fit_entries >= table->capacity)
     {
@@ -277,7 +277,7 @@ EXPORT Hash_Found hash_table_insert(void* _table, String key, const void* value)
 
     Hash_Found found = {0};
     found.hash = hash_string(key, table->seed);
-    found.hash_index = hash_index64_insert(&table->index, found.hash, table->size);
+    found.hash_index = hash_index_insert(&table->index, found.hash, table->size);
     found.finished_at = found.hash_index;
     
     table->size += 1;
@@ -371,7 +371,7 @@ EXPORT Hash_Found hash_table_remove_found(void* _table, Hash_Found found, void* 
         found_last.entry = found.entry;
     }
     
-    hash_index64_remove(&table->index, found.hash_index);
+    hash_index_remove(&table->index, found.hash_index);
     table->size --;
     ASSERT_SLOW(_hash_table_is_invarinat(table));
 
