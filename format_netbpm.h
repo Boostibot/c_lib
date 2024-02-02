@@ -175,18 +175,14 @@ INTERNAL Error _netbpm_format_write_append_pgm_ppm(String_Builder* append_into, 
 INTERNAL Error _netbpm_format_read_pgm_ppm(Image* image, String ppm, const char* magic, i32 channels)
 {
     Error out_error = {0};
-    String_Builder escaped_start = {0};
-    array_init_with_capacity(&escaped_start, allocator_get_scratch(), 128);
-    String just_start = string_safe_head(ppm, escaped_start.capacity - 1);
-    builder_assign(&escaped_start, just_start);
+    String just_start = string_safe_head(ppm, 128);
     
     char read_magic[3] = {0}; 
     int w = 0;
     int h = 0;
     int max_val = 0;
     int read_so_far = 0;
-    assert(escaped_start.data != NULL);
-    int parsed = sscanf(escaped_start.data, "%2s\n%d %d\n%d\n%n", read_magic, &w, &h, &max_val, &read_so_far);
+    int parsed = sscanf(escape_string_ephemeral(just_start), "%2s\n%d %d\n%d\n%n", read_magic, &w, &h, &max_val, &read_so_far);
 
     if(parsed != 4)
         out_error = error_make(netbmp_format_error_module(), NETBPM_FORMAT_ERROR_INVALID_HEADER);
@@ -207,7 +203,6 @@ INTERNAL Error _netbpm_format_read_pgm_ppm(Image* image, String ppm, const char*
         }
     }
 
-    array_deinit(&escaped_start);
     return out_error;
 }
 
@@ -248,18 +243,14 @@ INTERNAL Error _netbpm_format_write_append_pfm_pfmg(String_Builder* append_into,
 INTERNAL Error _netbpm_format_read_pfm_pfmg(Image* image, String ppm, const char* magic, i32 channels)
 {
     Error out_error = {0};
-    String_Builder escaped_start = {0};
-    array_init_with_capacity(&escaped_start, allocator_get_scratch(), 128);
-    String just_start = string_safe_head(ppm, escaped_start.capacity - 1);
-    builder_assign(&escaped_start, just_start);
+    String just_start = string_safe_head(ppm, 128);
 
     char read_magic[3] = {0}; 
     int w = 0;
     int h = 0;
     f32 range = 0;
     int read_so_far = 0;
-    assert(escaped_start.data != NULL);
-    int parsed = sscanf(escaped_start.data, "%2s\n%d %d\n%f\n%n", read_magic, &w, &h, &range, &read_so_far);
+    int parsed = sscanf(escape_string_ephemeral(just_start), "%2s\n%d %d\n%f\n%n", read_magic, &w, &h, &range, &read_so_far);
 
     if(parsed != 4)
         out_error = error_make(netbmp_format_error_module(), NETBPM_FORMAT_ERROR_INVALID_HEADER);
@@ -280,7 +271,6 @@ INTERNAL Error _netbpm_format_read_pfm_pfmg(Image* image, String ppm, const char
         }
     }
 
-    array_deinit(&escaped_start);
     return out_error;
 }
 

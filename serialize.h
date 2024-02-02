@@ -343,13 +343,14 @@ EXPORT bool serialize_read_name(Lpf_Dyn_Entry* entry, String_Builder* val, Strin
 
 EXPORT bool serialize_write_base16(Lpf_Dyn_Entry* entry, String val, String type)
 {
-    //@TODO: this can be done directly int entry string since the size is exact!
-    //       implement entry_set_texts_capacity or something similar
-    String_Builder encoded = {allocator_get_scratch()};
-    base16_encode_append_into(&encoded, val.data, val.size);
+    Allocator* arena = allocator_acquire_arena();
+    {
+        String_Builder encoded = {arena};
+        base16_encode_append_into(&encoded, val.data, val.size);
 
-    serialize_entry_set_identity(entry, type, string_from_builder(encoded), LPF_KIND_ENTRY, LPF_FLAG_WHITESPACE_AGNOSTIC);
-    array_deinit(&encoded);
+        serialize_entry_set_identity(entry, type, string_from_builder(encoded), LPF_KIND_ENTRY, LPF_FLAG_WHITESPACE_AGNOSTIC);
+    }
+    allocator_release_arena(arena);
 
     return true;
 }
@@ -503,18 +504,21 @@ EXPORT bool serialize_int_count_typed(Lpf_Dyn_Entry* entry, void* value, isize v
         }
         else
         {
-            String_Builder formatted = {0};
-            array_init_with_capacity(&formatted, allocator_get_scratch(), 256);
-
-            for(isize i = 0; i < count; i ++)
+            Allocator* arena = allocator_acquire_arena();
             {
-                if(i != 0)
-                    array_push(&formatted, ' ');
-                    
-                i64 concrete_value = get_variable_sized_int((u8*) value + i*value_type_size, value_type_size);
-                format_append_into(&formatted, "%lli", concrete_value);
+                String_Builder formatted = {0};
+                array_init_with_capacity(&formatted, arena, 256);
+
+                for(isize i = 0; i < count; i ++)
+                {
+                    if(i != 0)
+                        array_push(&formatted, ' ');
+                        
+                    i64 concrete_value = get_variable_sized_int((u8*) value + i*value_type_size, value_type_size);
+                    format_append_into(&formatted, "%lli", concrete_value);
+                }
             }
-            array_deinit(&formatted);
+            allocator_release_arena(arena);
         }
 
         return true;

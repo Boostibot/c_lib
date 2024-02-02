@@ -235,11 +235,7 @@ EXPORT Error file_read_entire_append_into(String file_path, String_Builder* appe
     isize size_before = append_into->size;
     isize read_bytes = 0;
 
-    String_Builder escaped_path = {0};
-    array_init_with_capacity(&escaped_path, allocator_get_scratch(), 512);
-    builder_append(&escaped_path, file_path);
-
-    const char* full_path = cstring_from_builder(escaped_path);
+    const char* full_path = escape_string_ephemeral(file_path);
     FILE* file = fopen(full_path, "rb");
     bool had_eof = false;
     if(file != NULL)
@@ -263,8 +259,6 @@ EXPORT Error file_read_entire_append_into(String file_path, String_Builder* appe
         array_resize(append_into, size_before + read_bytes);
     }
 
-    array_deinit(&escaped_path);
-
     if (file == NULL || had_eof == false) 
     {
         return error_from_stdlib(errno);
@@ -281,11 +275,7 @@ EXPORT Error _file_write_entire_append_into(String file_path, String written, co
     enum {MAX_READ = 2097152};
     isize wrote_bytes = 0;
     
-    String_Builder escaped_path = {0};
-    array_init_with_capacity(&escaped_path, allocator_get_scratch(), 512);
-    builder_append(&escaped_path, file_path);
-    
-    const char* full_path = cstring_from_builder(escaped_path);
+    const char* full_path = escape_string_ephemeral(file_path);
     FILE* file = fopen(full_path, open_mode);
     if(file != NULL)
     {
@@ -305,7 +295,6 @@ EXPORT Error _file_write_entire_append_into(String file_path, String written, co
         fclose(file);
     }
     
-    array_deinit(&escaped_path);
     if (file == NULL || ferror(file) || wrote_bytes != written.size) 
         return error_from_stdlib(errno);
     else    
