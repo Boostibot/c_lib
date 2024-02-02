@@ -174,7 +174,8 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 	INTERNAL void _perf_counter_end(Global_Perf_Counter_Running* running, bool is_detailed)
 	{
 		Global_Perf_Counter* counter = running->my_counter;
-		i64 runs = perf_end_atomic_custom(&counter->counter, running->running, is_detailed);
+		int64_t delta = platform_perf_counter() - running->running;
+		i64 runs = perf_end_atomic_delta(&counter->counter, delta, is_detailed);
 		ASSERT_MSG(running->stopped == false, "Global_Perf_Counter_Running running counter stopped more than once!");
 
 		//only save the stats that dont need to be updated on the first run
@@ -229,10 +230,10 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 			return num/den;
 	}
 
-	INTERNAL i64 _profile_get_counter_freq(Global_Perf_Counter counter)
-	{
-		return counter.counter.frquency ? counter.counter.frquency : platform_perf_counter_frequency();
-	}
+	//INTERNAL i64 _profile_get_counter_freq(Global_Perf_Counter counter)
+	//{
+	//	return counter.counter.frquency ? counter.counter.frquency : platform_perf_counter_frequency();
+	//}
 
 	EXPORT f64 profile_get_counter_total_running_time_s(Global_Perf_Counter counter)
 	{

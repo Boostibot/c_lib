@@ -57,9 +57,8 @@ EXPORT void log_perf_counters(const char* log_module, Log_Type log_type, Log_Per
 	
 	EXPORT void log_perf_stats(const char* log_module, Log_Type log_type, const char* prefix, Perf_Stats stats)
 	{
-		LOG(log_module, log_type, "%s total: %15.8lf avg: %12.8lf runs: %-8lli σ/μ %13.6lf [%13.6lf %13.6lf] (ms)", 
+		LOG(log_module, log_type, "%s avg: %12.8lf runs: %-10lli σ/μ %5.2lf [%12.8lf %12.6lf] (ms)", 
 			prefix,
-			stats.total_s*1000,
 			stats.average_s*1000,
 			(lli) stats.runs,
 			stats.normalized_standard_deviation_s,

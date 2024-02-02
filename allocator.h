@@ -172,8 +172,12 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
         //If is arena
         if((u64) from_allocator & 1)
         {
-            i32 tag = (i32) ((u64) from_allocator >> 2);
-            out = arena_push(&_scratch_arena, tag, new_size, align);
+            if(new_size > old_size)
+            {
+                i32 tag = (i32) ((u64) from_allocator >> 2);
+                out = arena_push(&_scratch_arena, tag, new_size, align);
+                memcpy(out, old_ptr, old_size);
+            }
         }
         else 
         {
@@ -253,8 +257,11 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
     
     EXPORT void allocator_release_arena(Allocator* arena_alloc)
     {
-        i32 tag = (i32) ((u64) arena_alloc >> 2);
-        arena_pop(&_scratch_arena, tag);
+        if(arena_alloc)
+        {
+            i32 tag = (i32) ((u64) arena_alloc >> 2);
+            arena_pop(&_scratch_arena, tag);
+        }
     }
 
     EXPORT Allocator* allocator_get_default()

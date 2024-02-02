@@ -48,7 +48,7 @@ EXPORT Perf_Stats	perf_get_stats(Perf_Counter counter, int64_t batch_size);
 //Prevents the compiler from optimizing the variable at the ptr and/or the ptr's value.
 EXPORT void perf_do_not_optimize(const void* ptr);
 
-typedef bool (*Benchamrk_Func)(void* context);
+typedef bool (*Benchamrk_Func)(isize iteration, void* context);
 
 //bechmarks func and returns the resulting stats. Executes for total 'time' seconds but discards any results priot to 'warmup'.
 //Calls the func 'batch_size' times per single measurement but corrects for it in returned stats.
@@ -71,10 +71,6 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PERF_IMPL)) && !defined(JOT_PERF_HAS_IMPL)
 #define JOT_PERF_HAS_IMPL
 
-	EXPORT int64_t perf_start()
-	{
-		return platform_perf_counter();
-	}
 	
 	EXPORT double perf_get_ellapsed(int64_t measure)
 	{
@@ -85,10 +81,9 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 
 		return (double) delta / freq;
 	}
-
-	EXPORT void perf_end(Perf_Counter* counter, int64_t measure)
+	
+	EXPORT void perf_end_delta(Perf_Counter* counter, int64_t delta)
 	{
-		int64_t delta = platform_perf_counter() - measure;
 		ASSERT(counter != NULL && delta >= 0 && "invalid Global_Perf_Counter_Running submitted");
 
 		int64_t runs = counter->runs;
@@ -108,10 +103,8 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 		counter->max_counter = MAX(counter->max_counter, delta);
 	}
 	
-	EXPORT int64_t perf_end_atomic_custom(Perf_Counter* counter, int64_t measure, bool detailed)
+	EXPORT int64_t perf_end_atomic_delta(Perf_Counter* counter, int64_t delta, bool detailed)
 	{
-		int64_t delta = platform_perf_counter() - measure;
-
 		ASSERT(counter != NULL && delta >= 0 && "invalid Global_Perf_Counter_Running submitted");
 		int64_t runs = platform_atomic_add64(&counter->runs, 1); 
 		
@@ -145,9 +138,21 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 		return runs;
 	}
 	
+	EXPORT int64_t perf_start()
+	{
+		return platform_perf_counter();
+	}
+
+	EXPORT void perf_end(Perf_Counter* counter, int64_t measure)
+	{
+		int64_t delta = platform_perf_counter() - measure;
+		perf_end_delta(counter, delta);
+	}
+
 	EXPORT void perf_end_atomic(Perf_Counter* counter, int64_t measure)
 	{
-		perf_end_atomic_custom(counter, measure, true);
+		int64_t delta = platform_perf_counter() - measure;
+		perf_end_atomic_delta(counter, delta, true);
 	}
 	EXPORT Perf_Stats perf_get_stats(Perf_Counter counter, int64_t batch_size)
 	{
@@ -270,17 +275,33 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 	Perf_Stats perf_benchmark(f64 warmup, f64 time, isize batch_size, Benchamrk_Func func, void* context)
 	{
 		Perf_Counter counter = {0};
-		for(int64_t start = perf_start(); ;)
+		int64_t total_clocks = (int64_t) ((f64) platform_perf_counter_frequency() * time);
+		int64_t warmup_clocks = (int64_t) ((f64) platform_perf_counter_frequency() * warmup);
+
+		int64_t start = platform_perf_counter();
+		int64_t discard_time = 0;
+
+		for(isize i = 0; ; i++)
 		{
-			f64 ellapsed = perf_get_ellapsed(start);
-			if(ellapsed >= time)
+			int64_t before = platform_perf_counter();
+			int64_t passed_clocks = before - start;
+			if(passed_clocks >= total_clocks + discard_time)
 				break;
 
-			int64_t measure = perf_start();
-			bool keep = func(context);
+			bool keep = func(i, context);
+			int64_t after = platform_perf_counter();
+			int64_t delta = after - before;
+			
+			//If we discarded the result prolongue the test time by the time we have wasted.
+			//This is fairly imporant for benchmarks that require discarting for more complex setups.
+			//For example to benchmark hash map removal we need to every once in a while repopulate the
+			// hash map. We of course discard this setup time but if we didnt prolongue the time we 
+			// would often just exit without making a single measurement.
+			if(keep == false)
+				discard_time += delta;
 
-			if(keep && ellapsed >= warmup)
-				perf_end(&counter, measure);
+			if(keep && passed_clocks >= warmup_clocks + discard_time)
+				perf_end_delta(&counter, delta);
 		}
 
 		return perf_get_stats(counter, batch_size);

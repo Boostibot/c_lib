@@ -406,7 +406,7 @@ Platform_Calendar_Time platform_calendar_time_from_epoch_time(int64_t epoch_time
     assert(okay);
 
     Platform_Calendar_Time time = {0};
-    time.day = (int8_t) systime.wDay;
+    time.day = (int8_t) systime.wDay - 1;
     time.day_of_week = (int8_t) systime.wDayOfWeek;
     time.hour = (int8_t) systime.wHour;
     time.millisecond = (int16_t) systime.wMilliseconds;
@@ -450,7 +450,7 @@ Platform_Calendar_Time platform_calendar_time_from_epoch_time(int64_t epoch_time
 int64_t platform_epoch_time_from_calendar_time(Platform_Calendar_Time calendar_time)
 {
     SYSTEMTIME systime = {0};
-    systime.wDay = calendar_time.day;
+    systime.wDay = calendar_time.day + 1;
     systime.wDayOfWeek = calendar_time.day_of_week;
     systime.wHour = calendar_time.hour;
     systime.wMilliseconds = calendar_time.millisecond;
