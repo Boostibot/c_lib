@@ -198,15 +198,12 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 #define _IF_NOT_DO_LOG_DEBUG(ignore)        LOG_NEVER
 #define _IF_NOT_DO_LOG_TRACE(ignore)        LOG_NEVER
 
-
 #define TIME_FMT "%02i:%02i:%02i %03i"
 #define TIME_PRINT(c) (int)(c).hour, (int)(c).minute, (int)(c).second, (int)(c).millisecond
 
 #define STRING_FMT "%.*s"
 #define STRING_PRINT(string) (int) (string).size, (string).data
 
-#define SOURCE_INFO_FMT "( %s : %i )"
-#define SOURCE_INFO_PRINT(source_info) (source_info).file, (int) (source_info).line
 
 //Pre-Processor (PP) utils
 #define PP_STRINGIFY_(x)        #x
@@ -227,16 +224,6 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 #ifdef __cplusplus
     #define SOURCE_INFO() Source_Info{__LINE__, __FILE__, __FUNCTION__}
 #else
-    
-    //because msvc is stupid and treats brace initialization as variables?
-    //Therefore when in siutation where it detects it doesnt need to use he declared Source_Info it emits
-    // warning C4189: '$S263': local variable is initialized but not referenced
-    static Source_Info _source_info(int line, const char* file, const char* function)
-    {
-        return (Source_Info){line, file, function};
-    }
-
-    //#define SOURCE_INFO() _source_info(__LINE__, __FILE__, __FUNCTION__)
     #define SOURCE_INFO() (Source_Info){__LINE__, __FILE__, __FUNCTION__}
 #endif 
 
@@ -382,7 +369,7 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
     else if(type == LOG_TRACE || type == LOG_DEBUG)
         color_mode = ANSI_COLOR_GRAY;
 
-    printf("%s%02i:%02i:%02i %03i %5s %6s: ", color_mode, now.hour, now.minute, now.second, now.millisecond, log_type_to_string(type), module);
+    printf("%s%02i:%02i:%02i %5s %6s: ", color_mode, now.hour, now.minute, now.second, log_type_to_string(type), module);
 
     //We only do fancy stuff when there is something to print.
     //We also only print extra newline if there is none already.
@@ -402,9 +389,7 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
         printf(ANSI_COLOR_NORMAL"\n");
     else
         printf(ANSI_COLOR_NORMAL);
-        
 }
-
 
 EXPORT MODIFIER_FORMAT_FUNC(format, 4) void log_callstack(const char* log_module, Log_Type log_type, isize skip, MODIFIER_FORMAT_ARG const char* format, ...)
 {

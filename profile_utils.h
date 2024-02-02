@@ -11,7 +11,6 @@ typedef enum Log_Perf_Sort_By{
 	PERF_SORT_BY_RUNS,
 } Log_Perf_Sort_By;
 
-EXPORT void log_perf_stats(const char* log_module, Log_Type log_type, const char* prefix, Perf_Stats stats);
 EXPORT void log_perf_counters(const char* log_module, Log_Type log_type, Log_Perf_Sort_By sort_by);
 
 #endif
@@ -52,19 +51,6 @@ EXPORT void log_perf_counters(const char* log_module, Log_Type log_type, Log_Per
 			res = strcmp(a->name, b->name);
 
 		return res;
-	}
-
-	
-	EXPORT void log_perf_stats(const char* log_module, Log_Type log_type, const char* prefix, Perf_Stats stats)
-	{
-		LOG(log_module, log_type, "%s avg: %12.8lf runs: %-10lli σ/μ %5.2lf [%12.8lf %12.6lf] (ms)", 
-			prefix,
-			stats.average_s*1000,
-			(lli) stats.runs,
-			stats.normalized_standard_deviation_s,
-			stats.min_s*1000,
-			stats.max_s*1000
-		);
 	}
 
 	EXPORT void log_perf_counters(const char* log_module, Log_Type log_type, Log_Perf_Sort_By sort_by)

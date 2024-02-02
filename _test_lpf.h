@@ -56,25 +56,27 @@ void lpf_test_lowlevel_read(const char* ctext, Lpf_Test_Entry test_entry)
 
 void lpf_test_write(Lpf_Format_Options options, Lpf_Test_Entry test_entry, const char* ctext, u16 flags)
 {
-    String_Builder into = {0};
-    array_init_with_capacity(&into, allocator_get_scratch(), 256);
+    Allocator* arena = allocator_acquire_arena();
+    {
+        String_Builder into = {arena};
 
-    Lpf_Entry entry = {0};
-    entry.label = string_make(test_entry.label);
-    entry.type = string_make(test_entry.type);
-    entry.value = string_make(test_entry.value);
-    entry.comment = string_make(test_entry.comment);
-    entry.kind = test_entry.kind;
-    entry.format_flags = flags;
+        Lpf_Entry entry = {0};
+        entry.label = string_make(test_entry.label);
+        entry.type = string_make(test_entry.type);
+        entry.value = string_make(test_entry.value);
+        entry.comment = string_make(test_entry.comment);
+        entry.kind = test_entry.kind;
+        entry.format_flags = flags;
 
-    Lpf_Writer writer = {0};
+        Lpf_Writer writer = {0};
 
-    lpf_write_entry(&writer, &into, entry, &options);
+        lpf_write_entry(&writer, &into, entry, &options);
 
-    String expected = string_make(ctext);
-    String obtained = string_from_builder(into);
-    lpf_test_string_eq(expected, obtained);
-    array_deinit(&into);
+        String expected = string_make(ctext);
+        String obtained = string_from_builder(into);
+        lpf_test_string_eq(expected, obtained);
+    }
+    allocator_release_arena(arena);
 }
 
 

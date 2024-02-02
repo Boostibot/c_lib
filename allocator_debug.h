@@ -402,6 +402,9 @@ EXPORT const char* debug_allocator_panic_reason_to_string(Debug_Allocator_Panic_
     }
 }
 
+#define DEBUG_ALLOC_SOURCE_INFO_FMT "( %s : %i )"
+#define DEBUG_ALLOC_SOURCE_INFO_PRINT(source_info) (source_info).file, (int) (source_info).line
+
 INTERNAL void* _debug_allocator_panic(Debug_Allocator* self, Debug_Allocator_Panic_Reason reason, void* ptr, isize interpenetration, Source_Info called_from)
 {
     Debug_Allocation allocation = {0};
@@ -413,7 +416,7 @@ INTERNAL void* _debug_allocator_panic(Debug_Allocator* self, Debug_Allocator_Pan
     {
         const char* reason_str = debug_allocator_panic_reason_to_string(reason);
 
-        LOG_FATAL("MEMORY", "PANIC because of %s at pointer 0x%08llx (penetration: %lli)" SOURCE_INFO_FMT, reason_str, (lli) allocation.ptr, interpenetration, SOURCE_INFO_PRINT(called_from));
+        LOG_FATAL("MEMORY", "PANIC because of %s at pointer 0x%08llx (penetration: %lli)" DEBUG_ALLOC_SOURCE_INFO_FMT, reason_str, (lli) allocation.ptr, interpenetration, DEBUG_ALLOC_SOURCE_INFO_PRINT(called_from));
         debug_allocator_print_alive_allocations("MEMORY", LOG_TRACE, *self, 0);
     
         log_flush();
@@ -485,6 +488,7 @@ EXPORT Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debug_
 }
 
 
+
 EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_Type log_type, const Debug_Allocator allocator, isize print_max)
 {
     _debug_allocator_is_invariant(&allocator);
@@ -499,8 +503,8 @@ EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_
     for(isize i = 0; i < alive.size; i++)
     {
         Debug_Allocation curr = alive.data[i];
-        LOG(log_module, log_type, "%-3lli - size %-8lli ptr: 0x%08llx align: %-2lli" SOURCE_INFO_FMT,
-            (lli) i, (lli) curr.size, (lli) curr.ptr, (lli) curr.align, SOURCE_INFO_PRINT(curr.allocation_source));
+        LOG(log_module, log_type, "%-3lli - size %-8lli ptr: 0x%08llx align: %-2lli" DEBUG_ALLOC_SOURCE_INFO_FMT,
+            (lli) i, (lli) curr.size, (lli) curr.ptr, (lli) curr.align, DEBUG_ALLOC_SOURCE_INFO_PRINT(curr.allocation_source));
      
         if(allocator.captured_callstack_size > 0)
         {
@@ -516,9 +520,14 @@ EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_
 
 EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr_, isize old_size, isize align, Source_Info called_from)
 {
-    PERF_COUNTER_START(c);
-
     Debug_Allocator* self = (Debug_Allocator*) (void*) self_;
+    //If is arena just use it and return
+    if((u64) self->parent & 1)
+    {
+        return allocator_reallocate(self->parent, new_size, old_ptr_, old_size, align, called_from);
+    }
+    
+    PERF_COUNTER_START(c);
     _debug_allocator_is_invariant(self);
 
     Debug_Alloc_Sizes new_sizes = _debug_allocator_allocation_sizes(self, new_size, align);
@@ -599,8 +608,8 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
     if(self->do_printing && self->is_within_allocation == false)
     {
         self->is_within_allocation = true;
-        LOG_DEBUG("MEMORY", "size %6lli -> %-6lli ptr: 0x%08llx -> 0x%08llx align: %lli " SOURCE_INFO_FMT,
-            (lli) old_size, (lli) new_size, (lli) old_ptr, (lli) new_ptr, (lli) align, SOURCE_INFO_PRINT(called_from));
+        LOG_DEBUG("MEMORY", "size %6lli -> %-6lli ptr: 0x%08llx -> 0x%08llx align: %lli " DEBUG_ALLOC_SOURCE_INFO_FMT,
+            (lli) old_size, (lli) new_size, (lli) old_ptr, (lli) new_ptr, (lli) align, DEBUG_ALLOC_SOURCE_INFO_PRINT(called_from));
         self->is_within_allocation = false;
     }
 

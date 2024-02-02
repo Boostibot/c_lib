@@ -424,7 +424,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
     EXPORT Hash_Index_Entry hash_index_remove(Hash_Index* table, isize found)
     {
         Hash_Index_Entry removed = {0};
-        if(found > 0)
+        if(found >= 0)
         {
             ASSERT(table->size > 0);
             CHECK_BOUNDS(found, table->entries_count);

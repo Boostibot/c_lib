@@ -40,9 +40,9 @@ typedef struct Perf_Stats {
 
 EXPORT int64_t		perf_start();
 EXPORT void			perf_end(Perf_Counter* counter, int64_t measure);
+EXPORT void			perf_end_delta(Perf_Counter* counter, int64_t measure);
 EXPORT void			perf_end_atomic(Perf_Counter* counter, int64_t measure);
-EXPORT int64_t		perf_end_atomic_custom(Perf_Counter* counter, int64_t measure, bool detailed);
-EXPORT double		perf_get_ellapsed(int64_t measure);
+EXPORT int64_t		perf_end_atomic_delta(Perf_Counter* counter, int64_t measure, bool detailed);
 EXPORT Perf_Stats	perf_get_stats(Perf_Counter counter, int64_t batch_size);
 
 //Prevents the compiler from optimizing the variable at the ptr and/or the ptr's value.
@@ -71,16 +71,6 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PERF_IMPL)) && !defined(JOT_PERF_HAS_IMPL)
 #define JOT_PERF_HAS_IMPL
 
-	
-	EXPORT double perf_get_ellapsed(int64_t measure)
-	{
-		int64_t delta = platform_perf_counter() - measure;
-		static double freq = 0;
-		if(freq == 0)
-			freq = (double) platform_perf_counter_frequency();
-
-		return (double) delta / freq;
-	}
 	
 	EXPORT void perf_end_delta(Perf_Counter* counter, int64_t delta)
 	{

@@ -72,11 +72,6 @@ EXPORT typedef struct File_Logger {
     u64 file_type_filter;                       //defaults to all 1s in binary ie 0xFFFFFFFFFFFFFFFF    
     u64 console_type_filter;                    //defaults to all 1s in binary ie 0xFFFFFFFFFFFFFFFF
     
-    //A list of modules to output. If this list is empty does not print anything.
-    //Only has effect if the xxxx_use_filter is set to true
-    String_Builder_Array console_module_filter;    //defaults to {0} 
-    String_Builder_Array file_module_filter;        //defaults to {0} 
-    
     //Specify wheter any module filtering should be used.
     // (this is setting primarily important because often we want to print all
     //  log modules without apriory knowing their names)
@@ -113,10 +108,8 @@ EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, Allo
 EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* append_to, String module, Log_Type type, isize indentation, i64 epoch_time, const char* format, va_list args);
 EXPORT void file_logger_log_into(Allocator* scratch, String_Builder* append_to, String module, Log_Type type, isize indentation, i64 epoch_time, const char* format, va_list args);
 
-EXPORT void file_logger_console_add_module_filter(File_Logger* logger, String module, bool use_filter);
 EXPORT void file_logger_console_add_type_filter(File_Logger* logger, isize type);
 EXPORT void file_logger_console_set_none_type_filter(File_Logger* logger);
-EXPORT void file_logger_console_clear_filters(File_Logger* logger);
 
 extern File_Logger global_logger;
 #endif
@@ -130,7 +123,7 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
 {       
     PERF_COUNTER_START(counter);
 
-    const isize module_field_size = 6;
+    const isize module_field_size = 5;
 
     isize size_before = append_to->size;
     String group_separator = STRING("    ");
@@ -186,13 +179,13 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
     const char* type_str = log_type_to_string(type);
     if(strlen(type_str) > 0)
     {
-        format_into(append_to, "%02d-%02d-%02d %03d %-5s  ", 
-            (int) c.hour, (int) c.minute, (int) c.second, (int) c.millisecond, type_str);
+        format_into(append_to, "%02i-%02i-%02i %-5s ", 
+            (int) c.hour, (int) c.minute, (int) c.second, type_str);
     }
     else
     {
-        format_into(append_to, "%02d-%02d-%02d %03d %-5d  ", 
-            (int) c.hour, (int) c.minute, (int) c.second, (int) c.millisecond, (int) type);
+        format_into(append_to, "%02i-%02i-%02i %-5i ", 
+            (int) c.hour, (int) c.minute, (int) c.second, (int) type);
     }
     
     isize header_size = append_to->size - size_before;
@@ -236,7 +229,7 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
         for(isize i = 0; i < indentation; i++)
             builder_append(append_to, group_separator);
         
-        builder_append(append_to, STRING(" :"));
+        builder_append(append_to, STRING(": "));
         builder_append(append_to, curr_line);
         array_push(append_to, '\n');
 
@@ -255,7 +248,6 @@ EXPORT void file_logger_log_into(Allocator* scratch, String_Builder* append_to, 
     file_logger_log_append_into(scratch, append_to, module, type, indentation, epoch_time, format, args);
 }
 
-
 EXPORT void file_logger_deinit(File_Logger* logger)
 {
     array_deinit(&logger->buffer);
@@ -263,9 +255,6 @@ EXPORT void file_logger_deinit(File_Logger* logger)
     array_deinit(&logger->file_prefix);
     array_deinit(&logger->file_postfix);
 
-    builder_array_deinit(&logger->console_module_filter);
-    builder_array_deinit(&logger->file_module_filter);
-    
     if(logger->has_prev_logger)
         log_system_set_logger(logger->prev_logger);
 
@@ -285,8 +274,6 @@ EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, A
     array_init(&logger->file_directory_path, def_alloc);
     array_init(&logger->file_prefix, def_alloc);
     array_init(&logger->file_postfix, def_alloc);
-    array_init(&logger->console_module_filter, def_alloc);
-    array_init(&logger->file_module_filter, def_alloc);
 
     logger->logger.log = file_logger_log;
     logger->flush_every_bytes = flush_every_bytes;
@@ -329,27 +316,19 @@ EXPORT bool file_logger_flush(File_Logger* logger)
         {
             if(self->file == NULL)
             {
-                String_Builder file_name = {0};
-                array_init_with_capacity(&file_name, self->scratch_allocator, 256);
-
-                builder_append(&file_name, string_from_builder(self->file_directory_path));
-                builder_append(&file_name, STRING("/"));
-                builder_append(&file_name, string_from_builder(self->file_prefix));
                 Platform_Calendar_Time calendar = platform_local_calendar_time_from_epoch_time(logger->init_epoch_time);
-                //Platform_Calendar_Time calendar = platform_epoch_time_to_calendar_time(platform_local_epoch_time());
-                format_append_into(&file_name, "%04d-%02d-%02d__%02d-%02d-%02d", 
-                    (int) calendar.year, (int) calendar.month, (int) calendar.day, 
-                    (int) calendar.hour, (int) calendar.minute, (int) calendar.second);
-                    
-                builder_append(&file_name, string_from_builder(self->file_postfix));
 
-                platform_directory_create(string_from_builder(self->file_directory_path), NULL);
-                self->file = fopen(cstring_from_builder(file_name), "ab");
-                
+                const char* filename = format_ephemeral("%s/%s%04d-%02d-%02d__%02d-%02d-%02d%s", 
+                    cstring_from_builder(self->file_directory_path),
+                    cstring_from_builder(self->file_prefix),
+                    (int) calendar.year, (int) calendar.month, (int) calendar.day, 
+                    (int) calendar.hour, (int) calendar.minute, (int) calendar.second,
+                    cstring_from_builder(self->file_postfix)
+                ).data;
+
+                self->file = fopen(filename, "ab");
                 state = state && self->file != NULL;
                 state = state && setvbuf(self->file , NULL, _IONBF, 0) == 0;
-
-                array_deinit(&file_name);
             }
 
             if(self->file)
@@ -374,85 +353,42 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
     }
 
     (void) source;
-
-    String module_string = string_make(module);
-
-    String_Builder formatted_log = {0};
-    array_init_with_capacity(&formatted_log, self->scratch_allocator, 1024);
-    file_logger_log_append_into(self->scratch_allocator, &formatted_log, module_string, type, indentation, platform_epoch_time(), format, args);
-
-    bool print_to_console = false;
-    bool print_to_file = false;
-
-    //Determines wheter or not to print the message to conosle and file
-    if((type > LOG_ENUM_MAX) || (((i64) 1 << type) & self->console_type_filter))
+    Allocator* arena = allocator_acquire_arena();
     {
-        if(self->console_use_filter == false)
-            print_to_console = true;
-        else
+        String_Builder formatted_log = {0};
+        array_init_with_capacity(&formatted_log, arena, 1024);
+        file_logger_log_append_into(arena, &formatted_log, string_make(module), type, indentation, platform_epoch_time(), format, args);
+
+        bool print_to_console = (type > LOG_ENUM_MAX) || (((i64) 1 << type) & self->console_type_filter);
+        bool print_to_file = (type > LOG_ENUM_MAX) || (((i64) 1 << type) & self->file_type_filter);
+
+        if(print_to_console)
         {
-            for(isize i = 0; i < self->console_module_filter.size; i++)
-            {
-                if(string_is_equal(module_string, string_from_builder(self->console_module_filter.data[i])))
-                {
-                    print_to_console = true;
-                    break;
-                }
-            }
+            const char* color_mode = ANSI_COLOR_NORMAL;
+            if(type == LOG_ERROR || type == LOG_FATAL)
+                color_mode = ANSI_COLOR_BRIGHT_RED;
+            else if(type == LOG_WARN)
+                color_mode = ANSI_COLOR_YELLOW;
+            else if(type == LOG_SUCCESS)
+                color_mode = ANSI_COLOR_GREEN;
+            else if(type == LOG_TRACE || type == LOG_DEBUG)
+                color_mode = ANSI_COLOR_GRAY;
+
+            if(self->console_print_func)
+                self->console_print_func(formatted_log.data, formatted_log.size, self->console_print_context);
+            else
+                printf("%s%s" ANSI_COLOR_NORMAL, color_mode, formatted_log.data);
         }
-    }
 
-    if((type > LOG_ENUM_MAX) || (((i64) 1 << type) & self->file_type_filter))
-    {
-        if(self->file_use_filter == false)
-            print_to_file = true;
-        else
-        {
-            for(isize i = 0; i < self->file_module_filter.size; i++)
-            {
-                if(string_is_equal(module_string, string_from_builder(self->file_module_filter.data[i])))
-                {
-                    print_to_file = true;
-                    break;
-                }
-            }
-        }
-    }
-
-    if(print_to_console)
-    {
-        const char* color_mode = ANSI_COLOR_NORMAL;
-        if(type == LOG_ERROR || type == LOG_FATAL)
-            color_mode = ANSI_COLOR_BRIGHT_RED;
-        else if(type == LOG_WARN)
-            color_mode = ANSI_COLOR_YELLOW;
-        else if(type == LOG_SUCCESS)
-            color_mode = ANSI_COLOR_GREEN;
-        else if(type == LOG_TRACE || type == LOG_DEBUG)
-            color_mode = ANSI_COLOR_GRAY;
-
-        if(self->console_print_func)
-            self->console_print_func(formatted_log.data, formatted_log.size, self->console_print_context);
-        else
-            printf("%s%s" ANSI_COLOR_NORMAL, color_mode, formatted_log.data);
-            //fwrite(formatted_log.data, 1, formatted_log.size, stdout);
-    }
-
-    if(print_to_file)
-        builder_append(&self->buffer, string_from_builder(formatted_log));
+        if(print_to_file)
+            builder_append(&self->buffer, string_from_builder(formatted_log));
     
-    f64 time_since_last_flush = clock_s() - self->last_flush_time;
-    if(self->buffer.size > self->flush_every_bytes || time_since_last_flush > self->flush_every_seconds)
-        file_logger_flush(self);
-
-    array_deinit(&formatted_log);
+        f64 time_since_last_flush = clock_s() - self->last_flush_time;
+        if(self->buffer.size > self->flush_every_bytes || time_since_last_flush > self->flush_every_seconds)
+            file_logger_flush(self);
+    }
+    allocator_release_arena(arena);
     PERF_COUNTER_END(counter);
-}
-
-EXPORT void file_logger_console_add_module_filter(File_Logger* logger, String module, bool use_filter)
-{
-    array_push(&logger->console_module_filter, builder_from_string(module, logger->default_allocator));
-    logger->console_use_filter = use_filter;
 }
 
 EXPORT void file_logger_console_add_type_filter(File_Logger* logger, isize type)
@@ -460,25 +396,10 @@ EXPORT void file_logger_console_add_type_filter(File_Logger* logger, isize type)
     if(type <= LOG_ENUM_MAX)
         logger->console_type_filter |= (i64) 1 << type;
 }
+
 EXPORT void file_logger_console_set_none_type_filter(File_Logger* logger)
 {
     logger->console_type_filter = 0;
 }
-
-EXPORT void file_logger_console_clear_filters(File_Logger* logger)
-{
-    for(isize i = 0; i < logger->console_module_filter.size; i++)
-        array_deinit(&logger->console_module_filter.data[i]);
-
-    logger->console_type_filter = 0xFFFFFFFFFFFFFFFF;
-    array_clear(&logger->console_module_filter);
-}
-
-
-EXPORT void file_logger_console_add_module_filter(File_Logger* logger, String module, bool use_filter);
-EXPORT void file_logger_console_add_type_filter(File_Logger* logger, isize type);
-EXPORT void file_logger_console_set_none_type_filter(File_Logger* logger);
-EXPORT void file_logger_console_clear_filters(File_Logger* logger);
-
 
 #endif
