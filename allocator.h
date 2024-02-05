@@ -162,7 +162,7 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
     INTERNAL MODIFIER_THREAD_LOCAL Allocator* _default_allocator = NULL;
     INTERNAL MODIFIER_THREAD_LOCAL Allocator* _scratch_allocator = NULL;
     INTERNAL MODIFIER_THREAD_LOCAL Allocator* _static_allocator = NULL;
-    INTERNAL MODIFIER_THREAD_LOCAL Arena _scratch_arena = {0};
+    INTERNAL MODIFIER_THREAD_LOCAL Arena_Stack _scratch_arena_stack = {0};
 
     EXPORT void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from)
     {
@@ -175,7 +175,8 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
             if(new_size > old_size)
             {
                 i32 tag = (i32) ((u64) from_allocator >> 2);
-                out = arena_push(&_scratch_arena, tag, new_size, align);
+                Arena arena = {&_scratch_arena_stack, tag};
+                out = arena_push_nonzero(&arena, new_size, align);
                 memcpy(out, old_ptr, old_size);
             }
         }
@@ -234,7 +235,7 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
             stats.name = "Thread_Scratch_Arena";
             stats.type_name = "Arena";
             stats.is_top_level = true;
-            stats.bytes_allocated = _scratch_arena.size;
+            stats.bytes_allocated = _scratch_arena_stack.size;
             stats.max_bytes_allocated = stats.bytes_allocated;
         }
         else
@@ -243,25 +244,35 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
         return stats;
     }
 
-    EXPORT Arena* allocator_get_arena()
+    EXPORT Arena scratch_arena_acquire()
     {
-        return &_scratch_arena;
+        return arena_acquire(&_scratch_arena_stack);
     }
 
-    EXPORT Allocator* allocator_acquire_arena()
+    EXPORT Arena arena_from_allocator_arena(Allocator* arena_alloc)
     {
-        i32 tag = arena_get_level(&_scratch_arena);
-        Allocator* out = (Allocator*) ((u64) tag << 2 | 1);
+        i32 level = (i32) ((u64) arena_alloc >> 2);
+        Arena arena = {&_scratch_arena_stack, level};
+        return arena;
+    }
+
+    EXPORT Allocator* allocator_arena_acquire()
+    {
+        Arena arena = arena_acquire(&_scratch_arena_stack);
+        Allocator* out = (Allocator*) ((u64) arena.level << 2 | 1);
         return out;
     }
     
-    EXPORT void allocator_release_arena(Allocator* arena_alloc)
+    EXPORT void allocator_arena_release(Allocator** arena_alloc)
     {
-        if(arena_alloc)
+        if(*arena_alloc)
         {
-            i32 tag = (i32) ((u64) arena_alloc >> 2);
-            arena_pop(&_scratch_arena, tag);
+            i32 level = (i32) ((u64) *arena_alloc >> 2);
+            Arena arena = {&_scratch_arena_stack, level};
+            arena_release(&arena);
+            int k = 0; (void) k;
         }
+        *arena_alloc = NULL;
     }
 
     EXPORT Allocator* allocator_get_default()

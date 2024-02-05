@@ -3,13 +3,13 @@
 #include "assert.h"
 #include "platform.h"
 
-typedef isize (*Arena_Commit_Func)(void* addr, isize size, isize reserved_size, bool commit);
+typedef isize (*Arena_Stack_Commit_Func)(void* addr, isize size, isize reserved_size, bool commit);
 
-#define ARENA_DEF_STACK_SIZE   64
+#define ARENA_DEF_STACK_SIZE   128
 #define ARENA_DEF_RESERVE_SIZE (isize) 64 * 1024*1024*1024 //GB
 #define ARENA_DEF_COMMIT_SIZE  (isize) 8 * 1024*1024 //MB
 
-typedef struct Arena {
+typedef struct Arena_Stack {
     i32 stack_depht;
     i32 stack_max_depth;
     isize used_to;
@@ -18,7 +18,12 @@ typedef struct Arena {
     isize size;
 
     isize reserved_size;
-    Arena_Commit_Func commit;
+    Arena_Stack_Commit_Func commit;
+} Arena_Stack;
+
+typedef struct Arena {
+    Arena_Stack* stack;
+    i32 level;
 } Arena;
 
 #ifdef NDEBUG
@@ -30,13 +35,13 @@ typedef struct Arena {
 #define ARENA_DEBUG_DATA_SIZE 64
 #define ARENA_DEBUG_STACK_PATTERN 0x66
 
-void _arena_debug_check_invarinats(Arena* arena);
-void _arena_debug_fill_stack(Arena* arena);
-void _arena_debug_fill_data(Arena* arena, isize size);
+void _arena_debug_check_invarinats(Arena_Stack* arena);
+void _arena_debug_fill_stack(Arena_Stack* arena);
+void _arena_debug_fill_data(Arena_Stack* arena, isize size);
 void* _align_backward(const void* data, isize align);
 void* _align_forward(const void* data, isize align);
 
-void arena_deinit(Arena* arena)
+void arena_deinit(Arena_Stack* arena)
 {
     _arena_debug_check_invarinats(arena);
     if(arena->commit && arena->data)
@@ -44,7 +49,7 @@ void arena_deinit(Arena* arena)
        
     memset(arena, 0, sizeof *arena);
 }
-void arena_init_custom(Arena* arena, void* data, isize size, isize reserved_size, Arena_Commit_Func commit_or_null, isize stack_max_depth_or_zero)
+void arena_init_custom(Arena_Stack* arena, void* data, isize size, isize reserved_size, Arena_Stack_Commit_Func commit_or_null, isize stack_max_depth_or_zero)
 {
     arena_deinit(arena);
     isize stack_max_depth = stack_max_depth_or_zero;
@@ -89,7 +94,7 @@ isize arena_def_commit_func(void* addr, isize size, isize reserved_size, bool co
     return commit_to;
 }
 
-void arena_init(Arena* arena, isize reserve_size_or_zero, isize stack_max_depth_or_zero)
+void arena_init(Arena_Stack* arena, isize reserve_size_or_zero, isize stack_max_depth_or_zero)
 {
     if(reserve_size_or_zero <= 0)
         reserve_size_or_zero = ARENA_DEF_RESERVE_SIZE;
@@ -99,7 +104,7 @@ void arena_init(Arena* arena, isize reserve_size_or_zero, isize stack_max_depth_
     arena_init_custom(arena, data, size, reserve_size_or_zero, arena_def_commit_func, stack_max_depth_or_zero);
 }
 
-MODIFIER_NO_INLINE void* arena_unusual_push(Arena* arena, i32 depth, isize size, isize align)
+MODIFIER_NO_INLINE void* arena_unusual_push(Arena_Stack* arena, i32 depth, isize size, isize align)
 {
     if(arena->stack_depht != depth)
     {
@@ -139,52 +144,64 @@ MODIFIER_NO_INLINE void* arena_unusual_push(Arena* arena, i32 depth, isize size,
     return data;
 }
 
-void* arena_push(Arena* arena, i32 depth, isize size, isize align)
+void* arena_push_nonzero(Arena* arena, isize size, isize align)
 {
-    _arena_debug_check_invarinats(arena);
-    ASSERT(depth > 0);
-    if(arena->stack_depht != depth || arena->used_to + size + align > arena->size)
-        return arena_unusual_push(arena, depth, size, align);
+    ASSERT(arena->stack && arena->level > 0);
+    Arena_Stack* stack = arena->stack;
+    _arena_debug_check_invarinats(stack);
+    if(stack->stack_depht != arena->level || stack->used_to + size + align > stack->size)
+        return arena_unusual_push(stack, arena->level, size, align);
     
-    u8* data = (u8*) _align_forward(arena->data + arena->used_to, align);
-    arena->used_to = (isize) (data + size) - (isize) arena->data;
-    ASSERT(arena->used_to <= arena->size);
+    u8* data = (u8*) _align_forward(stack->data + stack->used_to, align);
+    stack->used_to = (isize) (data + size) - (isize) stack->data;
+    ASSERT(stack->used_to <= stack->size);
     
     return data;
 }
 
-void arena_pop(Arena* arena, i32 depth)
+void* arena_push(Arena* arena, isize size, isize align)
 {
-    ASSERT(depth > 0);
-    _arena_debug_check_invarinats(arena);
-    if(arena->stack_depht < depth)
-        return;
-
-    isize* stack = (isize*) (void*) arena->data;
-    isize new_used_to = stack[depth - 1];
-    isize old_used_to = arena->used_to;
-
-    ASSERT(arena->stack_max_depth * (isize) sizeof *stack <= new_used_to && new_used_to <= arena->used_to);
-
-    arena->used_to = new_used_to;
-    arena->stack_depht = depth - 1;
-
-    _arena_debug_fill_data(arena, old_used_to - new_used_to);
-    _arena_debug_check_invarinats(arena);
+    void* ptr = arena_push_nonzero(arena, size, align);
+    memset(ptr, 0, size);
+    return ptr;
 }
 
-i32 arena_get_level(Arena* arena)
+void arena_release(Arena* arena)
 {
-    _arena_debug_check_invarinats(arena);
-    i32 new_depth = arena->stack_depht + 1;
-    isize* stack = (isize*) (void*) arena->data;
-    if(new_depth <= arena->stack_max_depth)
+    Arena_Stack* stack = arena->stack;
+    ASSERT(arena->stack && arena->level > 0);
+    _arena_debug_check_invarinats(stack);
+    if(stack->stack_depht < arena->level)
+        return;
+
+    isize* levels = (isize*) (void*) stack->data;
+    isize new_used_to = levels[arena->level - 1];
+    isize old_used_to = stack->used_to;
+
+    isize stack_bytes = stack->stack_max_depth * (isize) sizeof *levels;
+    ASSERT(stack_bytes <= new_used_to && new_used_to <= stack->used_to);
+
+    stack->used_to = new_used_to;
+    stack->stack_depht = arena->level - 1;
+
+    _arena_debug_fill_data(stack, old_used_to - new_used_to);
+    _arena_debug_check_invarinats(stack);
+    memset(arena, 0, sizeof* arena);
+}
+
+Arena arena_acquire(Arena_Stack* stack)
+{
+    _arena_debug_check_invarinats(stack);
+    i32 new_depth = stack->stack_depht + 1;
+    isize* levels = (isize*) (void*) stack->data;
+    if(new_depth <= stack->stack_max_depth)
     {
-        stack[new_depth - 1] = arena->used_to;
-        arena->stack_depht = new_depth;
+        levels[new_depth - 1] = stack->used_to;
+        stack->stack_depht = new_depth;
     }
 
-    return new_depth;
+    Arena out = {stack, new_depth};
+    return out;
 }
 
 int memcmp_byte(const void* ptr, int byte, isize size)
@@ -210,7 +227,7 @@ int memcmp_byte(const void* ptr, int byte, isize size)
     return 0;
 }
 
-void _arena_debug_check_invarinats(Arena* arena)
+void _arena_debug_check_invarinats(Arena_Stack* arena)
 {
     if(ARENA_DEBUG)
     {
@@ -227,14 +244,14 @@ void _arena_debug_check_invarinats(Arena* arena)
     }
 }
 
-void _arena_debug_fill_stack(Arena* arena)
+void _arena_debug_fill_stack(Arena_Stack* arena)
 {
     isize* stack = (isize*) (void*) arena->data;
     if(ARENA_DEBUG)
         memset(stack + arena->stack_depht, ARENA_DEBUG_STACK_PATTERN, (arena->stack_max_depth - arena->stack_depht) * sizeof *stack);
 }
 
-void _arena_debug_fill_data(Arena* arena, isize size)
+void _arena_debug_fill_data(Arena_Stack* arena, isize size)
 {
     if(ARENA_DEBUG)
     {

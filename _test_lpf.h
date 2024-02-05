@@ -56,7 +56,7 @@ void lpf_test_lowlevel_read(const char* ctext, Lpf_Test_Entry test_entry)
 
 void lpf_test_write(Lpf_Format_Options options, Lpf_Test_Entry test_entry, const char* ctext, u16 flags)
 {
-    Allocator* arena = allocator_acquire_arena();
+    Allocator* arena = allocator_arena_acquire();
     {
         String_Builder into = {arena};
 
@@ -76,7 +76,7 @@ void lpf_test_write(Lpf_Format_Options options, Lpf_Test_Entry test_entry, const
         String obtained = string_from_builder(into);
         lpf_test_string_eq(expected, obtained);
     }
-    allocator_release_arena(arena);
+    allocator_arena_release(&arena);
 }
 
 

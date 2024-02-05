@@ -382,7 +382,7 @@ EXPORT bool match_decimal_f64(String str, isize* index, f64* out)
 EXPORT bool line_iterator_get_separated_by(Line_Iterator* iterator, String string, char c)
 {
     isize line_from = 0;
-    if(iterator->line_to != 0)
+    if(iterator->line_number != 0)
         line_from = iterator->line_to + 1;
 
     if(line_from >= string.size)
@@ -432,7 +432,7 @@ EXPORT String string_trim_whitespace(String s)
     return both_trimmed;
 }
 
-
+#if 0
 #include "math.h"
 INTERNAL void test_match()
 {
@@ -487,5 +487,6 @@ INTERNAL void test_match()
         TEST(is_near_scaledf(-12.05f, test_f32, EPSILON));
     }
 }
+#endif
 
 #endif

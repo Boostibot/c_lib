@@ -343,14 +343,14 @@ EXPORT bool serialize_read_name(Lpf_Dyn_Entry* entry, String_Builder* val, Strin
 
 EXPORT bool serialize_write_base16(Lpf_Dyn_Entry* entry, String val, String type)
 {
-    Allocator* arena = allocator_acquire_arena();
+    Allocator* arena = allocator_arena_acquire();
     {
         String_Builder encoded = {arena};
         base16_encode_append_into(&encoded, val.data, val.size);
 
         serialize_entry_set_identity(entry, type, string_from_builder(encoded), LPF_KIND_ENTRY, LPF_FLAG_WHITESPACE_AGNOSTIC);
     }
-    allocator_release_arena(arena);
+    allocator_arena_release(&arena);
 
     return true;
 }
@@ -504,7 +504,7 @@ EXPORT bool serialize_int_count_typed(Lpf_Dyn_Entry* entry, void* value, isize v
         }
         else
         {
-            Allocator* arena = allocator_acquire_arena();
+            Allocator* arena = allocator_arena_acquire();
             {
                 String_Builder formatted = {0};
                 array_init_with_capacity(&formatted, arena, 256);
@@ -518,7 +518,7 @@ EXPORT bool serialize_int_count_typed(Lpf_Dyn_Entry* entry, void* value, isize v
                     format_append_into(&formatted, "%lli", concrete_value);
                 }
             }
-            allocator_release_arena(arena);
+            allocator_arena_release(&arena);
         }
 
         return true;

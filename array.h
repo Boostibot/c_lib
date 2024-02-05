@@ -221,9 +221,11 @@ EXPORT void _array_resize(void* array, isize item_size, isize to_size, bool zero
     _array_reserve(base, item_size, to_size, from);
     if(zero_new && to_size > base->size)
         memset(base->data + base->size*item_size, 0, (size_t) ((to_size - base->size)*item_size));
+    if(to_size < base->size)
+        memset(base->data + to_size*item_size, 0, (size_t) ((base->size - to_size)*item_size));
         
     base->size = to_size;
-    memset(base->data + base->size*item_size, 0, (size_t)  item_size);
+    //memset(base->data + base->size*item_size, 0, (size_t)  item_size);
     ASSERT(_array_is_invariant(array, item_size));
 }
 

@@ -353,7 +353,7 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
     }
 
     (void) source;
-    Allocator* arena = allocator_acquire_arena();
+    Allocator* arena = allocator_arena_acquire();
     {
         String_Builder formatted_log = {0};
         array_init_with_capacity(&formatted_log, arena, 1024);
@@ -387,7 +387,7 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
         if(self->buffer.size > self->flush_every_bytes || time_since_last_flush > self->flush_every_seconds)
             file_logger_flush(self);
     }
-    allocator_release_arena(arena);
+    allocator_arena_release(&arena);
     PERF_COUNTER_END(counter);
 }
 
