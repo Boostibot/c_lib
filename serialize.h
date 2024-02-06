@@ -53,44 +53,43 @@ EXPORT isize base16_decode_into(String_Builder* into, const void* data, isize le
 
 //Attempts to locate an entry within children of into and return pointer to it. 
 //If it cannot find it: returns NULL if action is read or creates it if action is write.
-EXPORT Lpf_Entry* serialize_locate_any(Lpf_Entry* into, Lpf_Kind create_kind, Lpf_Kind kind, String label, String type, Read_Or_Write action);
+EXPORT Lpf_Entry* serialize_locate_any(Lpf_Entry* into, Lpf_Kind create_kind, Lpf_Kind kind, String label, Read_Or_Write action);
 EXPORT Lpf_Entry* serialize_locate(Lpf_Entry* into, const char* label, Read_Or_Write action);
-EXPORT void       serialize_entry_set_value(Lpf_Entry* entry, String type, String value);
-EXPORT void       serialize_entry_set_identity(Lpf_Entry* entry, String type, String value, Lpf_Kind kind);
+EXPORT void       serialize_entry_set_identity(Lpf_Entry* entry, String value, Lpf_Kind kind);
 
 //Explicit read/write interface. 
 //This is mostly important for things requiring string or string builder 
 //(often we have data in format compatible with string but not within string builder.
 // This is the case for images, vertices etc.)
-EXPORT bool serialize_write_raw(Lpf_Entry* entry, String val, String type);
+EXPORT bool serialize_write_raw(Lpf_Entry* entry, String val);
 EXPORT bool serialize_read_raw(Lpf_Entry* entry, String_Builder* val, String def);
 
-EXPORT bool serialize_write_base16(Lpf_Entry* entry, String val, String type);
+EXPORT bool serialize_write_base16(Lpf_Entry* entry, String val);
 EXPORT bool serialize_read_base16(Lpf_Entry* entry, String_Builder* val, String def);
 
-EXPORT bool serialize_write_string(Lpf_Entry* entry, String val, String type);
+EXPORT bool serialize_write_string(Lpf_Entry* entry, String val);
 EXPORT bool serialize_read_string(Lpf_Entry* entry, String_Builder* val, String def);
 
-EXPORT bool serialize_write_name(Lpf_Entry* entry, String val, String type);
+EXPORT bool serialize_write_name(Lpf_Entry* entry, String val);
 EXPORT bool serialize_read_name(Lpf_Entry* entry, String_Builder* val, String def);
 
 //Serialize interface
-EXPORT bool serialize_scope(Lpf_Entry* entry, String type, Read_Or_Write action);
+EXPORT bool serialize_scope(Lpf_Entry* entry, Read_Or_Write action);
 EXPORT bool serialize_comment(Lpf_Entry* entry, String comment, Read_Or_Write action);
 
-EXPORT bool serialize_raw_typed(Lpf_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action);
-EXPORT bool serialize_string_typed(Lpf_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action);
-EXPORT bool serialize_base16_typed(Lpf_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action);
-EXPORT bool serialize_int_typed(Lpf_Entry* entry, void* int_value, isize int_type_size, i64 def, String type, Read_Or_Write action);
-EXPORT bool serialize_uint_typed(Lpf_Entry* entry, void* int_value, isize int_type_size, u64 def, String type, Read_Or_Write action);
-EXPORT bool serialize_float_typed(Lpf_Entry* entry, void* float_value, isize float_type_size, void* def, String type, Read_Or_Write action);
-EXPORT bool serialize_int_count_typed(Lpf_Entry* entry, void* value, isize value_type_size, const void* defs, isize count, String type, Read_Or_Write action);
-EXPORT bool serialize_enum_typed(Lpf_Entry* entry, void* enum_value, isize enum_type_size, i64 def, String type, const Serialize_Enum* enums, isize enums_size, Read_Or_Write action);
+EXPORT bool serialize_raw_typed(Lpf_Entry* entry, String_Builder* val, String def, Read_Or_Write action);
+EXPORT bool serialize_string_typed(Lpf_Entry* entry, String_Builder* val, String def, Read_Or_Write action);
+EXPORT bool serialize_base16_typed(Lpf_Entry* entry, String_Builder* val, String def, Read_Or_Write action);
+EXPORT bool serialize_int_typed(Lpf_Entry* entry, void* int_value, isize int_type_size, i64 def, Read_Or_Write action);
+EXPORT bool serialize_uint_typed(Lpf_Entry* entry, void* int_value, isize int_type_size, u64 def, Read_Or_Write action);
+EXPORT bool serialize_float_typed(Lpf_Entry* entry, void* float_value, isize float_type_size, void* def, Read_Or_Write action);
+EXPORT bool serialize_int_count_typed(Lpf_Entry* entry, void* value, isize value_type_size, const void* defs, isize count, Read_Or_Write action);
+EXPORT bool serialize_enum_typed(Lpf_Entry* entry, void* enum_value, isize enum_type_size, i64 def, const Serialize_Enum* enums, isize enums_size, Read_Or_Write action);
 
 EXPORT bool serialize_int(Lpf_Entry* entry, void* int_value, isize int_type_size, i64 def, Read_Or_Write action);
 EXPORT bool serialize_uint(Lpf_Entry* entry, void* int_value, isize int_type_size, u64 def, Read_Or_Write action);
 EXPORT bool serialize_float(Lpf_Entry* entry, void* float_value, isize float_type_size, void* def, Read_Or_Write action);
-EXPORT bool serialize_enum(Lpf_Entry* entry, void* enum_value, isize enum_type_size, i64 def, const char* type, const Serialize_Enum* enums, isize enums_size, Read_Or_Write action);
+EXPORT bool serialize_enum(Lpf_Entry* entry, void* enum_value, isize enum_type_size, i64 def, const Serialize_Enum* enums, isize enums_size, Read_Or_Write action);
 
 EXPORT bool serialize_bool(Lpf_Entry* entry, bool* val, bool def, Read_Or_Write action);
 EXPORT bool serialize_id(Lpf_Entry* entry, Id* val, Id def, Read_Or_Write action);
@@ -203,9 +202,8 @@ EXPORT isize base16_decode_into(String_Builder* into, const void* data, isize le
     return base16_decode_append_into(into, data, len);
 }
 
-EXPORT Lpf_Entry* serialize_locate_any(Lpf_Entry* into, Lpf_Kind create_kind, Lpf_Kind kind, String label, String type, Read_Or_Write action)
+EXPORT Lpf_Entry* serialize_locate_any(Lpf_Entry* into, Lpf_Kind create_kind, Lpf_Kind kind, String label, Read_Or_Write action)
 {
-    (void) type;
     if(into == NULL)
         return NULL;
 
@@ -238,7 +236,7 @@ EXPORT Lpf_Entry* serialize_locate_any(Lpf_Entry* into, Lpf_Kind create_kind, Lp
 
 EXPORT Lpf_Entry* serialize_locate(Lpf_Entry* into, const char* label, Read_Or_Write action)
 {
-    return serialize_locate_any(into, LPF_ENTRY, (Lpf_Kind) (-1), string_make(label), STRING(""), action);
+    return serialize_locate_any(into, LPF_ENTRY, (Lpf_Kind) (-1), string_make(label), action);
 }
 
 EXPORT Lpf_Entry* lpf_dyn_entry_add(Lpf_Entry* into, Lpf_Kind kind, const char* label)
@@ -254,18 +252,17 @@ EXPORT Lpf_Entry* lpf_dyn_value_add(Lpf_Entry* into, const char* label)
     return lpf_dyn_entry_add(into, LPF_ENTRY, label);
 }
 
-EXPORT void serialize_entry_set_identity(Lpf_Entry* entry, String type, String value, Lpf_Kind kind)
+EXPORT void serialize_entry_set_identity(Lpf_Entry* entry, String value, Lpf_Kind kind)
 {
-    (void) type;
     entry->value = lpf_string_duplicate(NULL, value);
     entry->kind = kind;
 }
-EXPORT bool serialize_write_raw(Lpf_Entry* entry, String val, String type)
+EXPORT bool serialize_write_raw(Lpf_Entry* entry, String val)
 {
     if(entry == NULL)
         return false;
         
-    serialize_entry_set_identity(entry, type, val, LPF_ENTRY);
+    serialize_entry_set_identity(entry, val, LPF_ENTRY);
     return true;
 }
 EXPORT bool serialize_read_raw(Lpf_Entry* entry, String_Builder* val, String def)
@@ -281,12 +278,12 @@ EXPORT bool serialize_read_raw(Lpf_Entry* entry, String_Builder* val, String def
     return true;
 }
 
-EXPORT bool serialize_write_string(Lpf_Entry* entry, String val, String type)
+EXPORT bool serialize_write_string(Lpf_Entry* entry, String val)
 {
     if(entry == NULL)
         return false;
         
-    serialize_entry_set_identity(entry, type, val, LPF_ENTRY);
+    serialize_entry_set_identity(entry, val, LPF_ENTRY);
     return true;
 }
 
@@ -305,12 +302,12 @@ EXPORT bool serialize_read_string(Lpf_Entry* entry, String_Builder* val, String 
 }
 
 
-EXPORT bool serialize_write_name(Lpf_Entry* entry, String val, String type)
+EXPORT bool serialize_write_name(Lpf_Entry* entry, String val)
 {
     if(entry == NULL)
         return false;
         
-    serialize_entry_set_identity(entry, type, val, LPF_ENTRY);
+    serialize_entry_set_identity(entry, val, LPF_ENTRY);
     return true;
 
 }
@@ -335,14 +332,14 @@ EXPORT bool serialize_read_name(Lpf_Entry* entry, String_Builder* val, String de
     return state;
 }
 
-EXPORT bool serialize_write_base16(Lpf_Entry* entry, String val, String type)
+EXPORT bool serialize_write_base16(Lpf_Entry* entry, String val)
 {
     Allocator* arena = allocator_arena_acquire();
     {
         String_Builder encoded = {arena};
         base16_encode_append_into(&encoded, val.data, val.size);
 
-        serialize_entry_set_identity(entry, type, string_from_builder(encoded), LPF_ENTRY);
+        serialize_entry_set_identity(entry, string_from_builder(encoded), LPF_ENTRY);
     }
     allocator_arena_release(&arena);
 
@@ -366,14 +363,14 @@ EXPORT bool serialize_read_base16(Lpf_Entry* entry, String_Builder* val, String 
     return broke_at == 0;
 }
 
-EXPORT bool serialize_scope(Lpf_Entry* entry, String type, Read_Or_Write action)
+EXPORT bool serialize_scope(Lpf_Entry* entry, Read_Or_Write action)
 {
     if(entry == NULL)
         return false;
         
     if(action == SERIALIZE_WRITE)
     {
-        serialize_entry_set_identity(entry, type, STRING(""), LPF_COLLECTION);
+        serialize_entry_set_identity(entry, STRING(""), LPF_COLLECTION);
         return true;
     }
     else
@@ -397,28 +394,28 @@ EXPORT bool serialize_comment(Lpf_Entry* entry, String comment, Read_Or_Write ac
     return true;
 }
 
-EXPORT bool serialize_raw_typed(Lpf_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action)
+EXPORT bool serialize_raw_typed(Lpf_Entry* entry, String_Builder* val, String def, Read_Or_Write action)
 {
     if(action == SERIALIZE_READ)
         return serialize_read_raw(entry, val, def);
     else
-        return serialize_write_raw(entry, string_from_builder(*val), type);
+        return serialize_write_raw(entry, string_from_builder(*val));
 }
 
-EXPORT bool serialize_string_typed(Lpf_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action)
+EXPORT bool serialize_string_typed(Lpf_Entry* entry, String_Builder* val, String def, Read_Or_Write action)
 {
     if(action == SERIALIZE_READ)
         return serialize_read_string(entry, val, def);
     else
-        return serialize_write_string(entry, string_from_builder(*val), type);
+        return serialize_write_string(entry, string_from_builder(*val));
 }
 
-EXPORT bool serialize_base16_typed(Lpf_Entry* entry, String_Builder* val, String def, String type, Read_Or_Write action)
+EXPORT bool serialize_base16_typed(Lpf_Entry* entry, String_Builder* val, String def, Read_Or_Write action)
 {
     if(action == SERIALIZE_READ)
         return serialize_read_base16(entry, val, def);
     else
-        return serialize_write_base16(entry, string_from_builder(*val), type);
+        return serialize_write_base16(entry, string_from_builder(*val));
 }
 
 void set_variable_sized_int(void* integer, isize integer_type_size, i64 value)
@@ -445,7 +442,7 @@ i64 get_variable_sized_int(void* integer, isize integer_type_size)
     }
 }
 
-EXPORT bool serialize_int_count_typed(Lpf_Entry* entry, void* value, isize value_type_size, const void* defs, isize count, String type, Read_Or_Write action)
+EXPORT bool serialize_int_count_typed(Lpf_Entry* entry, void* value, isize value_type_size, const void* defs, isize count, Read_Or_Write action)
 {
     if(entry == NULL)
         return false;
@@ -478,7 +475,7 @@ EXPORT bool serialize_int_count_typed(Lpf_Entry* entry, void* value, isize value
         if(count == 1)
         {
             i64 concrete_value = get_variable_sized_int(value, value_type_size);
-            serialize_entry_set_identity(entry, type, format_ephemeral("%lli", concrete_value), LPF_ENTRY);
+            serialize_entry_set_identity(entry, format_ephemeral("%lli", concrete_value), LPF_ENTRY);
         }
         else
         {
@@ -503,7 +500,7 @@ EXPORT bool serialize_int_count_typed(Lpf_Entry* entry, void* value, isize value
     }
 }
 
-EXPORT bool serialize_int_typed(Lpf_Entry* entry, void* int_value, isize int_type_size, i64 def, String type, Read_Or_Write action)
+EXPORT bool serialize_int_typed(Lpf_Entry* entry, void* int_value, isize int_type_size, i64 def, Read_Or_Write action)
 {
     if(entry == NULL)
         return false;
@@ -523,12 +520,12 @@ EXPORT bool serialize_int_typed(Lpf_Entry* entry, void* int_value, isize int_typ
     else
     {
         value = get_variable_sized_int(int_value, int_type_size);
-        serialize_entry_set_identity(entry, type, format_ephemeral("%lli", value), LPF_ENTRY);
+        serialize_entry_set_identity(entry, format_ephemeral("%lli", value), LPF_ENTRY);
         return true;
     }
 }
 
-EXPORT bool serialize_uint_typed(Lpf_Entry* entry, void* int_value, isize int_type_size, u64 def, String type, Read_Or_Write action)
+EXPORT bool serialize_uint_typed(Lpf_Entry* entry, void* int_value, isize int_type_size, u64 def, Read_Or_Write action)
 {
     if(entry == NULL)
         return false;
@@ -548,12 +545,12 @@ EXPORT bool serialize_uint_typed(Lpf_Entry* entry, void* int_value, isize int_ty
     else
     {
         value = (u64) get_variable_sized_int(int_value, int_type_size);
-        serialize_entry_set_identity(entry, type, format_ephemeral("%llu", value), LPF_ENTRY);
+        serialize_entry_set_identity(entry, format_ephemeral("%llu", value), LPF_ENTRY);
         return true;
     }
 }
 
-EXPORT bool serialize_float_typed(Lpf_Entry* entry, void* float_value, isize float_type_size, void* def, String type, Read_Or_Write action)
+EXPORT bool serialize_float_typed(Lpf_Entry* entry, void* float_value, isize float_type_size, void* def, Read_Or_Write action)
 {
     if(entry == NULL)
         return false;
@@ -590,15 +587,15 @@ EXPORT bool serialize_float_typed(Lpf_Entry* entry, void* float_value, isize flo
     else
     {
         if(float_type_size == 8)
-            serialize_entry_set_identity(entry, type, format_ephemeral("%lf", *(f64*) float_value), LPF_ENTRY);
+            serialize_entry_set_identity(entry, format_ephemeral("%lf", *(f64*) float_value), LPF_ENTRY);
         else
-            serialize_entry_set_identity(entry, type, format_ephemeral("%f", *(f32*) float_value), LPF_ENTRY);
+            serialize_entry_set_identity(entry, format_ephemeral("%f", *(f32*) float_value), LPF_ENTRY);
             
         return true;
     }
 }
 
-EXPORT bool serialize_enum_typed(Lpf_Entry* entry, void* enum_value, isize enum_type_size, i64 def, String type, const Serialize_Enum* enums, isize enums_size, Read_Or_Write action)
+EXPORT bool serialize_enum_typed(Lpf_Entry* entry, void* enum_value, isize enum_type_size, i64 def, const Serialize_Enum* enums, isize enums_size, Read_Or_Write action)
 {
     if(entry == NULL)
         return false;
@@ -629,7 +626,7 @@ EXPORT bool serialize_enum_typed(Lpf_Entry* entry, void* enum_value, isize enum_
             Serialize_Enum enum_entry = enums[i];
             if(enum_value_int == enum_entry.value)
             {
-                serialize_entry_set_identity(entry, type, enum_entry.name, LPF_ENTRY);
+                serialize_entry_set_identity(entry, enum_entry.name, LPF_ENTRY);
                 return true;
             }
         }
@@ -638,9 +635,9 @@ EXPORT bool serialize_enum_typed(Lpf_Entry* entry, void* enum_value, isize enum_
     }
 }
 
-EXPORT bool serialize_enum(Lpf_Entry* entry, void* enum_value, isize enum_type_size, i64 def, const char* type, const Serialize_Enum* enums, isize enums_size, Read_Or_Write action)
+EXPORT bool serialize_enum(Lpf_Entry* entry, void* enum_value, isize enum_type_size, i64 def, const Serialize_Enum* enums, isize enums_size, Read_Or_Write action)
 {
-    return serialize_enum_typed(entry, enum_value, enum_type_size, def, string_make(type), enums, enums_size, action);
+    return serialize_enum_typed(entry, enum_value, enum_type_size, def, enums, enums_size, action);
 }
 
 EXPORT bool serialize_bool(Lpf_Entry* entry, bool* val, bool def, Read_Or_Write action)
@@ -652,27 +649,27 @@ EXPORT bool serialize_bool(Lpf_Entry* entry, bool* val, bool def, Read_Or_Write 
         SERIALIZE_ENUM_VALUE(1),
     };
 
-    return serialize_enum_typed(entry, val, sizeof *val, (isize) def, STRING("b"), enums, STATIC_ARRAY_SIZE(enums), action);
+    return serialize_enum_typed(entry, val, sizeof *val, (isize) def, enums, STATIC_ARRAY_SIZE(enums), action);
 }
 
 EXPORT bool serialize_int(Lpf_Entry* entry, void* int_value, isize int_type_size, i64 def, Read_Or_Write action)
 {
-    return serialize_int_typed(entry, int_value, int_type_size, def, STRING("i"), action);
+    return serialize_int_typed(entry, int_value, int_type_size, def, action);
 }
 
 EXPORT bool serialize_uint(Lpf_Entry* entry, void* int_value, isize int_type_size, u64 def, Read_Or_Write action)
 {
-    return serialize_uint_typed(entry, int_value, int_type_size, def, STRING("u"), action);
+    return serialize_uint_typed(entry, int_value, int_type_size, def, action);
 }
 
 EXPORT bool serialize_float(Lpf_Entry* entry, void* float_value, isize float_type_size, void* def, Read_Or_Write action)
 {
-    return serialize_float_typed(entry, float_value, float_type_size, def, STRING("f"), action);
+    return serialize_float_typed(entry, float_value, float_type_size, def, action);
 }
 
 EXPORT bool serialize_id(Lpf_Entry* entry, Id* val, Id def, Read_Or_Write action)
 {
-    return serialize_uint_typed(entry, val, sizeof *val, (u64) def, STRING("id"), action);
+    return serialize_uint_typed(entry, val, sizeof *val, (u64) def, action);
 }
 
 EXPORT bool serialize_i64(Lpf_Entry* entry, i64* val, i64 def, Read_Or_Write action) { return serialize_int(entry, val, sizeof *val, def, action); }
@@ -690,22 +687,22 @@ EXPORT bool serialize_f32(Lpf_Entry* entry, f32* val, f32 def, Read_Or_Write act
 
 EXPORT bool serialize_string(Lpf_Entry* entry, String_Builder* val, String def, Read_Or_Write action)
 {
-    return serialize_string_typed(entry, val, def, STRING("s"), action);
+    return serialize_string_typed(entry, val, def, action);
 }
 EXPORT bool serialize_name(Lpf_Entry* entry, String_Builder* val, String def, Read_Or_Write action)
 {
     if(action == SERIALIZE_READ)
         return serialize_read_name(entry, val, def);
     else
-        return serialize_write_name(entry, string_from_builder(*val), STRING("n"));
+        return serialize_write_name(entry, string_from_builder(*val));
 }
 EXPORT bool serialize_raw(Lpf_Entry* entry, String_Builder* val, String def, Read_Or_Write action)
 {
-    return serialize_raw_typed(entry, val, def, STRING("raw"), action);
+    return serialize_raw_typed(entry, val, def, action);
 }
 EXPORT bool serialize_base16(Lpf_Entry* entry, String_Builder* val, String def, Read_Or_Write action)
 {
-    return serialize_base16_typed(entry, val, def, STRING("base16"), action);
+    return serialize_base16_typed(entry, val, def, action);
 }
 
 
@@ -732,7 +729,7 @@ EXPORT bool serialize_vec2(Lpf_Entry* entry, Vec2* val, Vec2 def, Read_Or_Write 
     }
     else
     {
-        serialize_entry_set_identity(entry, STRING("2f"), format_ephemeral("%f %f", val->x, val->y), LPF_ENTRY);
+        serialize_entry_set_identity(entry, format_ephemeral("%f %f", val->x, val->y), LPF_ENTRY);
         return true;
     }
 }
@@ -761,12 +758,12 @@ EXPORT bool serialize_vec3(Lpf_Entry* entry, Vec3* val, Vec3 def, Read_Or_Write 
     }
     else
     {
-        serialize_entry_set_identity(entry, STRING("3f"), format_ephemeral("%f %f %f", val->x, val->y, val->z), LPF_ENTRY);
+        serialize_entry_set_identity(entry, format_ephemeral("%f %f %f", val->x, val->y, val->z), LPF_ENTRY);
         return true;
     }
 }
 
-EXPORT bool serialize_vec4_typed(Lpf_Entry* entry, Vec4* val, Vec4 def, String type, Read_Or_Write action)
+EXPORT bool serialize_vec4_typed(Lpf_Entry* entry, Vec4* val, Vec4 def, Read_Or_Write action)
 {
     if(entry == NULL)
         return false;
@@ -793,18 +790,18 @@ EXPORT bool serialize_vec4_typed(Lpf_Entry* entry, Vec4* val, Vec4 def, String t
     }
     else
     {
-        serialize_entry_set_identity(entry, type, format_ephemeral("%f %f %f %f", val->x, val->y, val->z, val->w), LPF_ENTRY);
+        serialize_entry_set_identity(entry, format_ephemeral("%f %f %f %f", val->x, val->y, val->z, val->w), LPF_ENTRY);
         return true;
     }
 }
 EXPORT bool serialize_vec4(Lpf_Entry* entry, Vec4* val, Vec4 def, Read_Or_Write action)
 {
-    return serialize_vec4_typed(entry, val, def, STRING("4f"), action);
+    return serialize_vec4_typed(entry, val, def, action);
 }
 
 EXPORT bool serialize_quat(Lpf_Entry* entry, Quat* val, Quat def, Read_Or_Write action)
 {
-    return serialize_vec4_typed(entry, (Vec4*) (void*) val, *(Vec4*) (void*) &def, STRING("4f"), action);
+    return serialize_vec4_typed(entry, (Vec4*) (void*) val, *(Vec4*) (void*) &def, action);
 }
 
 EXPORT bool serialize_mat2(Lpf_Entry* entry, Mat2* val, Mat2 def, Read_Or_Write action)
@@ -833,7 +830,7 @@ EXPORT bool serialize_mat2(Lpf_Entry* entry, Mat2* val, Mat2 def, Read_Or_Write 
     }
     else
     {
-        serialize_entry_set_identity(entry, STRING("4f"), format_ephemeral(
+        serialize_entry_set_identity(entry, format_ephemeral(
             "%f %f\n"
             "%f %f", 
             val->m11, val->m12,
@@ -870,7 +867,7 @@ EXPORT bool serialize_mat3(Lpf_Entry* entry, Mat3* val, Mat3 def, Read_Or_Write 
     }
     else
     {
-        serialize_entry_set_identity(entry, STRING("9f"), format_ephemeral(
+        serialize_entry_set_identity(entry, format_ephemeral(
             "%f %f %f\n"
             "%f %f %f\n"
             "%f %f %f",
@@ -909,7 +906,7 @@ EXPORT bool serialize_mat4(Lpf_Entry* entry, Mat4* val, Mat4 def, Read_Or_Write 
     }
     else
     {
-        serialize_entry_set_identity(entry, STRING("16f"), format_ephemeral(
+        serialize_entry_set_identity(entry, format_ephemeral(
             "%f %f %f %f\n"
             "%f %f %f %f\n"
             "%f %f %f %f\n"
