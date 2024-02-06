@@ -1,29 +1,115 @@
-#ifndef JOT_LPF2
-#define JOT_LPF2
+#ifndef JOT_LPF
+#define JOT_LPF
+
+// This is a custom YAML-like format spec and implementation.
+// 
+// The main idea is to have each line start with a 'prefix' containing some 
+// meta data used for parsing (labels, type, structure) hance the name
+// LPF - Line Prefix Format. 
+// 
+// The benefit is that values require minimal escaping since the only value 
+// we need to escape is newline. This in turn allows for tremendous variety 
+// for formats and thus types the user can fill in. 
+// 
+// The LPF structure also simplifies parsing because each line is lexically 
+// (and almost semantically) unqiue. This is also allows for trivial paralel 
+// implementation where we could simply start parsing the file from N different 
+// points in paralel and then simply join the results together to obtain a 
+// valid parsed file.
+// 
+// The LPF idea can be implemented in variety of ways, this being just one of them.
+// 
+// The final format looks like the following:
+// =========================================================
+// 
+// #The basic building block is a key value pair
+// a_first_entry: its value which is a string
+//              , which can span multiple lines
+//              , or be escaped with ; if the new
+//              ; line is just for readability
+// 
+// #A sample material declarion in the LPF format
+// material {
+//     name      : Wood   
+//     reosultion: 1024
+//     albedo    : 1 1 1
+//     
+//     #reduced roughness
+//     roughness : 0.59
+//     metallic  : 0
+//     ao        : 0
+//     emissive  : 0
+//     mra       : 0 0 0
+// 
+//     #this is a long comment
+//     #with multiple lines
+//     albedo_map {
+//         path  : images/wood_albedo.bmp
+//         tile  : false
+//         gamma : 2.2
+//         gain  : 1
+//         bias  : 0
+//         offset: 0 0 0 
+//         scale : 1 1 1 
+//     }
+//     
+//     roughness_map { 
+//         path: images/wood_roughness.bmp
+//     }
+// }
+// =========================================================
+//
+// formally there are 7 lexical constructs in the LPF format.
+// Each constructs is terminated in newline. The structure of each 
+// is indicated below:
+// 
+//      BLANK:                  ( )\n
+//      
+//      COMMENT:                ( )# (comment)\n
+//      
+//      ENTRY:                  ( )(label)( ): (value)\n
+//      CONTINUATION:           ( ), (value)\n    
+//      ESCAPED_CONTINUATION:   ( ); (value)\n     
+//      
+//      COLLECTION_START:       ( )(label)( ){( )\n     
+//      COLLECTION_END:         ( )}( )\n
+//      COLLECTION_EMPTY:       ( )(label)( ){}\n
+// 
+// where () means optional and [] means obligatory
+// specifically ( ), [ ] means whitespace.
+// (label) and may contain any character except '#', ':', ',', ';', '{', '}' and whitespace.
+// 
+// in particular notice that all these have the same structure 
+// (only have some fields mandatory and other prohibited). Thus 
+// we can lex only this and figure out the rest in later stages of
+// parsing.
+// 
+//     ( )[label]( )[marker] [value]
 
 #include "parse.h"
 #include "vformat.h"
 
 typedef enum {
-    LPF2_ENTRY,
-    LPF2_COMMENT,
-    LPF2_COLLECTION,
-} Lpf2_Kind;
+    LPF_ENTRY,
+    LPF_COMMENT,
+    LPF_COLLECTION,
+} Lpf_Kind;
 
-typedef struct Lpf2_Entry {
-    u16 indentation;
-    u16 blanks_before;
-    Lpf2_Kind kind;
+typedef struct Lpf_Entry {
+    Lpf_Kind kind;
+    i32 indentation;
+    i32 blanks_before;
 
     i32 line;
     i32 children_count;
-    struct Lpf2_Entry* children;
+    i32 children_capacity;
+    struct Lpf_Entry* children;
 
     String label;
     String value;
-} Lpf2_Entry;
+} Lpf_Entry;
 
-typedef struct Lpf2_Write_Options {
+typedef struct Lpf_Write_Options {
     bool discard_comments;
     bool discard_blanks;
     bool keep_original_indentation;
@@ -35,26 +121,45 @@ typedef struct Lpf2_Write_Options {
 
     i32 indentations_per_level;
     isize max_line_width;
-} Lpf2_Write_Options;
+} Lpf_Write_Options;
 
-typedef struct Lpf2_Read_Options {
+typedef struct Lpf_Read_Options {
     bool discard_comments;
-} Lpf2_Read_Options;
+} Lpf_Read_Options;
 
-DEFINE_ARRAY_TYPE(Lpf2_Entry, Lpf2_Entry_Array);
+DEFINE_ARRAY_TYPE(Lpf_Entry, Lpf_Entry_Array);
 
-EXPORT Lpf2_Write_Options lpf2_default_write_options();
-EXPORT Lpf2_Read_Options lpf2_default_read_options();
-EXPORT String lpf2_write(Arena* arena, const Lpf2_Entry* top_level, isize top_level_count, const Lpf2_Write_Options* options_or_null);
-EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Write_Options* options_or_null);
-EXPORT Lpf2_Entry lpf2_read(Arena* arena, String source, const Lpf2_Read_Options* read_options_or_null);
+EXPORT Lpf_Write_Options lpf_default_write_options();
+EXPORT Lpf_Read_Options lpf_default_read_options();
+EXPORT String lpf_write(Arena* arena, const Lpf_Entry* top_level, isize top_level_count, const Lpf_Write_Options* options_or_null);
+EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_Options* options_or_null);
+EXPORT Lpf_Entry lpf_read(Arena* arena, String source, const Lpf_Read_Options* read_options_or_null);
 
+//@TODO: rework strings
+EXPORT String lpf_string_duplicate(Arena* arena, String string);
+EXPORT Lpf_Entry* lpf_entry_push_child(Arena* arena, Lpf_Entry* parent, Lpf_Entry child);
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_LPF2_IMPL)) && !defined(JOT_LPF2_HAS_IMPL)
-#define JOT_LPF2_HAS_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_LPF_IMPL)) && !defined(JOT_LPF_HAS_IMPL)
+#define JOT_LPF_HAS_IMPL
 
-INTERNAL String _lpf_string_duplicate(Arena* arena, String string)
+EXPORT Lpf_Entry* lpf_entry_push_child(Arena* arena, Lpf_Entry* parent, Lpf_Entry child)
+{
+    if(parent->children_count >= parent->children_capacity)
+    {
+        i32 new_capacity = parent->children_capacity * 3/2 + 2;
+        Lpf_Entry* new_children = (Lpf_Entry*) arena_push(arena, new_capacity*sizeof(Lpf_Entry), 8);
+        memcpy(new_children, parent->children, parent->children_count * sizeof(Lpf_Entry));
+
+        parent->children_capacity = new_capacity;
+        parent->children = new_children;
+    }
+
+    parent->children[parent->children_count++] = child;
+    return parent->children + parent->children_count - 1;
+}
+
+EXPORT String lpf_string_duplicate(Arena* arena, String string)
 {
     char* str = (char*) arena_push_nonzero(arena, string.size + 1, 1);
     memcpy(str, string.data, string.size);
@@ -63,27 +168,28 @@ INTERNAL String _lpf_string_duplicate(Arena* arena, String string)
     return duped;
 }
 
-INTERNAL void _lpf2_commit_entry(Lpf2_Entry_Array* entries_stack, Lpf2_Entry* queued, String_Builder* queued_value, Arena* arena)
+INTERNAL void _lpf_commit_entry(Lpf_Entry_Array* entries_stack, Lpf_Entry* queued, String_Builder* queued_value, Arena* arena)
 {
-    Lpf2_Entry new_entry = *queued;
-    new_entry.value = _lpf_string_duplicate(arena, string_from_builder(*queued_value));
-    new_entry.label = _lpf_string_duplicate(arena, queued->label);
+    Lpf_Entry new_entry = *queued;
+    new_entry.value = lpf_string_duplicate(arena, string_from_builder(*queued_value));
+    new_entry.label = lpf_string_duplicate(arena, queued->label);
     
     array_push(entries_stack, new_entry);
     array_clear(queued_value);
     memset(queued, 0, sizeof *queued);
 }
 
-INTERNAL void _lpf2_commit_collection(Lpf2_Entry_Array* entries_stack, i32_Array* collections_from, Arena* arena)
+INTERNAL void _lpf_commit_collection(Lpf_Entry_Array* entries_stack, i32_Array* collections_from, Arena* arena)
 {
     
     isize collection_from = *array_last(*collections_from);
     ASSERT(collection_from > 0);
 
-    Lpf2_Entry* parent = &entries_stack->data[collection_from - 1];
+    Lpf_Entry* parent = &entries_stack->data[collection_from - 1];
     parent->children_count = (i32) (entries_stack->size - collection_from);
-    parent->children = (Lpf2_Entry*) arena_push_nonzero(arena, parent->children_count*sizeof(Lpf2_Entry), 8);
-    memcpy(parent->children, entries_stack->data + collection_from, parent->children_count*sizeof(Lpf2_Entry));
+    parent->children_capacity = parent->children_count;
+    parent->children = (Lpf_Entry*) arena_push_nonzero(arena, parent->children_count*sizeof(Lpf_Entry), 8);
+    memcpy(parent->children, entries_stack->data + collection_from, parent->children_count*sizeof(Lpf_Entry));
 
     array_resize(entries_stack, collection_from);
     array_pop(collections_from);
@@ -94,13 +200,13 @@ INTERNAL bool _lpf_is_label_invalid_char(char c)
     return c == ':' || c == ';' || c == ',' || c == '#' || c == '{' || c == '}' || c == ' ' || c == '\t';
 }
 
-EXPORT Lpf2_Read_Options lpf2_default_read_options()
+EXPORT Lpf_Read_Options lpf_default_read_options()
 {
-    Lpf2_Read_Options out = {false};
+    Lpf_Read_Options out = {false};
     return out;
 }
 
-EXPORT Lpf2_Entry lpf2_read(Arena* arena, String source, const Lpf2_Read_Options* read_options_or_null)
+EXPORT Lpf_Entry lpf_read(Arena* arena, String source, const Lpf_Read_Options* read_options_or_null)
 {
     typedef enum {
         BLANK,
@@ -114,7 +220,7 @@ EXPORT Lpf2_Entry lpf2_read(Arena* arena, String source, const Lpf2_Read_Options
         SYNTAX_ERROR
     } Type;
     
-    typedef struct Lpf2_Token {
+    typedef struct Lpf_Token {
         Type type;
         i32 indentation;
 
@@ -122,25 +228,25 @@ EXPORT Lpf2_Entry lpf2_read(Arena* arena, String source, const Lpf2_Read_Options
         isize label_to;
         isize value_from;
         isize value_to;
-    } Lpf2_Token;
+    } Lpf_Token;
     
-    Lpf2_Read_Options options = lpf2_default_read_options();
+    Lpf_Read_Options options = lpf_default_read_options();
     if(read_options_or_null)
         options = *read_options_or_null;
 
-    Lpf2_Entry root = {0};
-    root.kind = LPF2_COLLECTION;
+    Lpf_Entry root = {0};
+    root.kind = LPF_COLLECTION;
     Allocator* scratch = allocator_arena_acquire();
     {
-        DEFINE_ARRAY_TYPE(Lpf2_Token, Lpf2_Token_Array);
+        DEFINE_ARRAY_TYPE(Lpf_Token, Lpf_Token_Array);
 
-        Lpf2_Token_Array token_array = {0};
+        Lpf_Token_Array token_array = {0};
         array_init_with_capacity(&token_array, scratch, 1024);
 
         for(Line_Iterator it = {0}; line_iterator_get_line(&it, source); )
         {
             isize i = 0;
-            Lpf2_Token token = {BLANK};
+            Lpf_Token token = {BLANK};
             
             //Skip Whitespace before label and count indentation
             for(; i < it.line.size; i++)
@@ -218,10 +324,10 @@ EXPORT Lpf2_Entry lpf2_read(Arena* arena, String source, const Lpf2_Read_Options
             array_push(&token_array, token);
         }
 
-        Lpf2_Entry queued = {0};
+        Lpf_Entry queued = {0};
         String_Builder queued_value = {0};
         i32_Array collections_from = {0};
-        Lpf2_Entry_Array entries_stack = {0};
+        Lpf_Entry_Array entries_stack = {0};
 
         array_init_with_capacity(&collections_from, scratch, 32);
         array_init_with_capacity(&entries_stack, scratch, 1024);
@@ -234,7 +340,7 @@ EXPORT Lpf2_Entry lpf2_read(Arena* arena, String source, const Lpf2_Read_Options
         i32 blanks_before = 0;
         for(isize i = 0; i < token_array.size; i++)
         {
-            Lpf2_Token token = token_array.data[i];
+            Lpf_Token token = token_array.data[i];
             String label = string_range(source, token.label_from, token.label_to); 
             String value = string_range(source, token.value_from, token.value_to); 
             i32 line = (i32) (i + 1);
@@ -245,11 +351,11 @@ EXPORT Lpf2_Entry lpf2_read(Arena* arena, String source, const Lpf2_Read_Options
             {
                 case BLANK: {
                     if(queued.line)
-                        _lpf2_commit_entry(&entries_stack, &queued, &queued_value, arena);
+                        _lpf_commit_entry(&entries_stack, &queued, &queued_value, arena);
 
                     if(label.size > 0)
                     {
-                        LOG_ERROR("lpf2", "Parsing error at line %i: Missing format specifier (':', '[', '#', ...) after '%s'. Dicarding.", line, escape_string_ephemeral(label));
+                        LOG_ERROR("lpf", "Parsing error at line %i: Missing format specifier (':', '[', '#', ...) after '%s'. Dicarding.", line, escape_string_ephemeral(label));
                         had_error = true; break;
                     }
 
@@ -259,13 +365,13 @@ EXPORT Lpf2_Entry lpf2_read(Arena* arena, String source, const Lpf2_Read_Options
 
                 case ENTRY: {
                     if(queued.line)
-                        _lpf2_commit_entry(&entries_stack, &queued, &queued_value, arena);
+                        _lpf_commit_entry(&entries_stack, &queued, &queued_value, arena);
 
-                    queued.kind = LPF2_ENTRY;
+                    queued.kind = LPF_ENTRY;
                     queued.line = line;
                     queued.label = label;
-                    queued.indentation = (u16) token.indentation;
-                    queued.blanks_before = (u16) blanks_before; blanks_before = 0;
+                    queued.indentation = token.indentation;
+                    queued.blanks_before = blanks_before; blanks_before = 0;
                     builder_append(&queued_value, value);
                 } break;
 
@@ -273,12 +379,12 @@ EXPORT Lpf2_Entry lpf2_read(Arena* arena, String source, const Lpf2_Read_Options
                 case ENTRY_CONTINUATION: {
                     if(label.size > 0)
                     {
-                        LOG_ERROR("lpf2", "Parsing error at line %i: Continuations cannot have labels. Label found '%s'. Ignoring.", line, escape_string_ephemeral(label));
+                        LOG_ERROR("lpf", "Parsing error at line %i: Continuations cannot have labels. Label found '%s'. Ignoring.", line, escape_string_ephemeral(label));
                     }
 
                     if(queued.line == 0)
                     {
-                        LOG_ERROR("lpf2", "Parsing error at line %i: Stray continuation '%s'. All continautions need to be after entries (:). Discarding", line, escape_string_ephemeral(value));
+                        LOG_ERROR("lpf", "Parsing error at line %i: Stray continuation '%s'. All continautions need to be after entries (:). Discarding", line, escape_string_ephemeral(value));
                         had_error = true; break;
                     }
 
@@ -288,17 +394,17 @@ EXPORT Lpf2_Entry lpf2_read(Arena* arena, String source, const Lpf2_Read_Options
                 } break;
 
                 case COMMENT: {
-                    if(queued.line && queued.kind != LPF2_COMMENT)
-                        _lpf2_commit_entry(&entries_stack, &queued, &queued_value, arena);
+                    if(queued.line && queued.kind != LPF_COMMENT)
+                        _lpf_commit_entry(&entries_stack, &queued, &queued_value, arena);
 
                     if(options.discard_comments == false)
                     {
                         if(label.size > 0)
-                            LOG_ERROR("lpf2", "Parsing error at line %i: Comments cannot have labels. Label found '%s'. Ignoring.", line, escape_string_ephemeral(label));
+                            LOG_ERROR("lpf", "Parsing error at line %i: Comments cannot have labels. Label found '%s'. Ignoring.", line, escape_string_ephemeral(label));
                     
                         if(queued.line == 0)
                         {
-                            queued.kind = LPF2_COMMENT;
+                            queued.kind = LPF_COMMENT;
                             queued.line = line;
                             queued.label = label;
                             queued.indentation = (u16) token.indentation;
@@ -315,31 +421,31 @@ EXPORT Lpf2_Entry lpf2_read(Arena* arena, String source, const Lpf2_Read_Options
                 case COLLECTION_EMPTY:
                 case COLLECTION_END: {
                     if(queued.line)
-                        _lpf2_commit_entry(&entries_stack, &queued, &queued_value, arena);
+                        _lpf_commit_entry(&entries_stack, &queued, &queued_value, arena);
 
                     if(token.type == COLLECTION_END && label.size > 0)
-                        LOG_ERROR("lpf2", "Parsing error at line %i: Collection ends cannot have labels. Label found '%s'. Ignoring.", line, escape_string_ephemeral(label));
+                        LOG_ERROR("lpf", "Parsing error at line %i: Collection ends cannot have labels. Label found '%s'. Ignoring.", line, escape_string_ephemeral(label));
 
                     String trimmed_whitespace_value = string_trim_whitespace(value);
                     if(trimmed_whitespace_value.size > 0)
-                        LOG_ERROR("lpf2", "Parsing error at line %i: Collections cannot have values. Value found '%s'. Ignoring.", line, escape_string_ephemeral(trimmed_whitespace_value));
+                        LOG_ERROR("lpf", "Parsing error at line %i: Collections cannot have values. Value found '%s'. Ignoring.", line, escape_string_ephemeral(trimmed_whitespace_value));
                     
                     if(token.type == COLLECTION_END)
                     {
                         blanks_before = 0;
                         if(collections_from.size <= 1)
-                            LOG_ERROR("lpf2", "Parsing error at line %i: Extra collection end. Ignoring.", line);
+                            LOG_ERROR("lpf", "Parsing error at line %i: Extra collection end. Ignoring.", line);
                         else
-                            _lpf2_commit_collection(&entries_stack, &collections_from, arena);
+                            _lpf_commit_collection(&entries_stack, &collections_from, arena);
                     }
                     else
                     {
-                        queued.kind = LPF2_COLLECTION;
+                        queued.kind = LPF_COLLECTION;
                         queued.line = line;
                         queued.label = label;
                         queued.indentation = (u16) token.indentation;
                         queued.blanks_before = (u16) blanks_before; blanks_before = 0;
-                        _lpf2_commit_entry(&entries_stack, &queued, &queued_value, arena);
+                        _lpf_commit_entry(&entries_stack, &queued, &queued_value, arena);
 
                         if(token.type == COLLECTION_START)
                             array_push(&collections_from, (i32) entries_stack.size);
@@ -354,15 +460,15 @@ EXPORT Lpf2_Entry lpf2_read(Arena* arena, String source, const Lpf2_Read_Options
         
         //Commit remianing entry
         if(queued.line)
-            _lpf2_commit_entry(&entries_stack, &queued, &queued_value, arena);
+            _lpf_commit_entry(&entries_stack, &queued, &queued_value, arena);
 
         ASSERT(collections_from.size >= 1);
         if(collections_from.size != 1)
-            LOG_ERROR("lpf2", "Parsing error at line %i: Missing %i collection end(s). Ignoring.", (i32) token_array.size, (i32) collections_from.size - 1);
+            LOG_ERROR("lpf", "Parsing error at line %i: Missing %i collection end(s). Ignoring.", (i32) token_array.size, (i32) collections_from.size - 1);
 
         //Commit the remaining open collections (including root)
         while(collections_from.size > 0)
-            _lpf2_commit_collection(&entries_stack, &collections_from, arena);
+            _lpf_commit_collection(&entries_stack, &collections_from, arena);
 
         ASSERT(entries_stack.size == 1);
         root = entries_stack.data[0];
@@ -372,9 +478,9 @@ EXPORT Lpf2_Entry lpf2_read(Arena* arena, String source, const Lpf2_Read_Options
     return root;
 }
 
-EXPORT Lpf2_Write_Options lpf2_default_write_options()
+EXPORT Lpf_Write_Options lpf_default_write_options()
 {
-    Lpf2_Write_Options options = {0};
+    Lpf_Write_Options options = {0};
     options.indentations_per_level = 4;
     options.align_entry_labels = true;
     options.align_continuations = true;
@@ -386,7 +492,7 @@ EXPORT Lpf2_Write_Options lpf2_default_write_options()
     return options;
 }
 
-EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Write_Options* options_or_null)
+EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_Options* options_or_null)
 {
     //Writing is reverse process from reading so we first rpdouce an array of tokens and then serialize them all in a small forloop.
     typedef enum {
@@ -401,7 +507,7 @@ EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Wri
         SYNTAX_ERROR
     } Type;
     
-    typedef struct Lpf2_Token {
+    typedef struct Lpf_Token {
         Type type;
         i32 indentation;
         i32 pad_labels_to;
@@ -409,13 +515,13 @@ EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Wri
 
         String label;
         String value;
-    } Lpf2_Token;
+    } Lpf_Token;
 
-    DEFINE_ARRAY_TYPE(Lpf2_Token, Lpf2_Token_Array);
+    DEFINE_ARRAY_TYPE(Lpf_Token, Lpf_Token_Array);
 
     String return_string = {0};
 
-    Lpf2_Write_Options options = lpf2_default_write_options();
+    Lpf_Write_Options options = lpf_default_write_options();
     if(options_or_null)
         options = *options_or_null;
 
@@ -426,7 +532,7 @@ EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Wri
     Allocator* scratch = allocator_arena_acquire();
     {
         typedef struct Iterator {
-            Lpf2_Entry* parent;
+            Lpf_Entry* parent;
             isize i;
             i32 indentation;
             i32 pad_labels_to;
@@ -434,7 +540,7 @@ EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Wri
 
         DEFINE_ARRAY_TYPE(Iterator, Iterator_Array);
         
-        Lpf2_Token_Array tokens = {0};
+        Lpf_Token_Array tokens = {0};
         Iterator_Array iterators = {0};
         array_init_with_capacity(&iterators, scratch, 32);
         array_init_with_capacity(&tokens, scratch, 256);
@@ -456,8 +562,8 @@ EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Wri
                     isize max = 0;
                     for(isize i = it->i; i < iterate_to; i++)
                     {
-                        Lpf2_Entry entry = it->parent->children[i];
-                        if(max < entry.label.size && entry.kind == LPF2_ENTRY)
+                        Lpf_Entry entry = it->parent->children[i];
+                        if(max < entry.label.size && entry.kind == LPF_ENTRY)
                             max = entry.label.size;
                     }
 
@@ -465,7 +571,7 @@ EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Wri
                 }
 
                 it->i += 1;
-                Lpf2_Entry* entry = &it->parent->children[it->i - 1];
+                Lpf_Entry* entry = &it->parent->children[it->i - 1];
                 String label = entry->label;
                 String value = entry->value;
                 
@@ -475,24 +581,24 @@ EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Wri
                 {
                     for(i32 i = 0; i < entry->blanks_before; i++)
                     {
-                        Lpf2_Token token = {BLANK};
+                        Lpf_Token token = {BLANK};
                         token.indentation = indentation;
                         token.original_line = entry->line;
                         array_push(&tokens, token);
                     }
                 }
 
-                if(entry->kind == LPF2_COMMENT)
+                if(entry->kind == LPF_COMMENT)
                 {
                     if(label.size > 0)
-                        LOG_ERROR("lpf2", "Writing error at line %i (entry from line %i): Collections may not have values. Found '%s'. Ignoring", (int) tokens.size, (i32) entry->line, escape_string_ephemeral(value));
+                        LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Collections may not have values. Found '%s'. Ignoring", (int) tokens.size, (i32) entry->line, escape_string_ephemeral(value));
 
                     label = STRING("");
                 }
 
                 //If entry or comment split the value into lines no longer than options.max_line_width
                 //Push tokens from each line separately
-                if(entry->kind == LPF2_ENTRY || (entry->kind == LPF2_COMMENT && options.discard_comments == false))
+                if(entry->kind == LPF_ENTRY || (entry->kind == LPF_COMMENT && options.discard_comments == false))
                 {
                     isize token_counter = 0;
                     for(Line_Iterator line_it = {0}; line_iterator_get_line(&line_it, value);)
@@ -501,12 +607,12 @@ EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Wri
                         {
                             String segment = string_safe_head(string_tail(line_it.line, segment_from), options.max_line_width);
                             
-                            Lpf2_Token token = {BLANK};
+                            Lpf_Token token = {BLANK};
                             token.indentation = indentation;
                             token.value = segment;
                             token.pad_labels_to = it->pad_labels_to;
                             token.original_line = entry->line;
-                            if(entry->kind == LPF2_COMMENT)
+                            if(entry->kind == LPF_COMMENT)
                                 token.type = COMMENT;
                             else
                             {
@@ -530,14 +636,14 @@ EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Wri
                 
                 //If collection either push empty collection or push start collection and
                 // setup the iterator to iterate through it
-                if(entry->kind == LPF2_COLLECTION)
+                if(entry->kind == LPF_COLLECTION)
                 {
                     if(value.size > 0)
-                        LOG_ERROR("lpf2", "Writing error at line %i (entry from line %i): Comments may not have values. Found '%s'. Ignoring", (int) tokens.size, (i32) entry->line, escape_string_ephemeral(value));
+                        LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Comments may not have values. Found '%s'. Ignoring", (int) tokens.size, (i32) entry->line, escape_string_ephemeral(value));
 
                     value = STRING("");
                     
-                    Lpf2_Token token = {BLANK};
+                    Lpf_Token token = {BLANK};
                     token.indentation = indentation;
                     token.label = label;
                     token.pad_labels_to = it->pad_labels_to;
@@ -568,7 +674,7 @@ EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Wri
                 if(iterators.size > 0)
                 {
                     Iterator* deeper_it = array_last(iterators);
-                    Lpf2_Token token = {COLLECTION_END};
+                    Lpf_Token token = {COLLECTION_END};
                     token.indentation = deeper_it->indentation;
                     array_push(&tokens, token);
                 }
@@ -589,7 +695,7 @@ EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Wri
 
         for(isize token_i = 0; token_i < tokens.size; token_i ++)
         {
-            Lpf2_Token token = tokens.data[token_i];
+            Lpf_Token token = tokens.data[token_i];
             if(token.type == BLANK)
             {
                 array_push(&out, '\n');
@@ -636,7 +742,7 @@ EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Wri
 
                 String escaped_label = string_range(label, label_from, label_to);
                 if(label_from != 0 || label_to != label.size)
-                    LOG_ERROR("lpf2", "Writing error at line %i (entry from line %i): Label contains invalid characters. Trimming '%s' to '%s'", (int) token_i + 1, token.original_line, escape_string_ephemeral(label), escape_string_ephemeral(escaped_label));
+                    LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Label contains invalid characters. Trimming '%s' to '%s'", (int) token_i + 1, token.original_line, escape_string_ephemeral(label), escape_string_ephemeral(escaped_label));
             }
 
             isize label_padding_ammount = CLAMP(token.pad_labels_to - label.size, 0, label_padding_buffer.size);
@@ -695,20 +801,20 @@ EXPORT String lpf2_write_from_root(Arena* arena, Lpf2_Entry root, const Lpf2_Wri
             }
         }
 
-        return_string = _lpf_string_duplicate(arena, string_from_builder(out));
+        return_string = lpf_string_duplicate(arena, string_from_builder(out));
     }
     allocator_arena_release(&scratch);
     return return_string;
 }
 
-EXPORT String lpf2_write(Arena* arena, const Lpf2_Entry* top_level, isize top_level_count, const Lpf2_Write_Options* options_or_null)
+EXPORT String lpf_write(Arena* arena, const Lpf_Entry* top_level, isize top_level_count, const Lpf_Write_Options* options_or_null)
 {
-    Lpf2_Entry root = {0};
-    root.kind = LPF2_COLLECTION;
-    root.children = (Lpf2_Entry*) top_level;
+    Lpf_Entry root = {0};
+    root.kind = LPF_COLLECTION;
+    root.children = (Lpf_Entry*) top_level;
     root.children_count = (i32) top_level_count;
 
-    return lpf2_write_from_root(arena, root, options_or_null);
+    return lpf_write_from_root(arena, root, options_or_null);
 }
 
 #endif

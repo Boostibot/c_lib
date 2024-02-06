@@ -21,7 +21,7 @@ INTERNAL void test_all()
     #define INCR total_count += 1, passed_count += (int)
 
     INCR RUN_TEST(test_image);
-    INCR RUN_TEST(test_format_lpf);
+    INCR RUN_TEST(test_lpf);
     INCR RUN_TEST(test_stable_array);
     INCR RUN_TEST(test_stable_array);
     INCR RUN_TEST(test_log);
