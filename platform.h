@@ -791,7 +791,7 @@ const char* platform_exception_to_string(Platform_Exception error);
     #define platform_assume_unreachable()                                    __builtin_unreachable() /*move to platform! */
 
     #define MODIFIER_RESTRICT                                                __restrict__
-    #define MODIFIER_FORCE_INLINE                                            __attribute__((always_inline))
+    #define MODIFIER_FORCE_INLINE                                            __attribute__((always_inline)) inline
     #define MODIFIER_NO_INLINE                                               __attribute__((noinline))
     #define MODIFIER_THREAD_LOCAL                                            __thread
     #define MODIFIER_ALIGNED(bytes)                                          __attribute__((aligned(bytes)))

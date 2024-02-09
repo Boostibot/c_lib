@@ -126,7 +126,7 @@ INTERNAL bool _hash_table_is_invarinat(const void* _table)
         //all entries should be findable 
         for(isize i = 0; i < table->size; i++)
         {
-            String key = string_from_builder(table->keys[i]);
+            String key = table->keys[i].string;
             Hash_Found found = hash_table_find(table, key);
             CHECK_BOUNDS(found.entry, table->size);
             CHECK_BOUNDS(found.hash_index, table->index.entries_count);
@@ -201,7 +201,7 @@ EXPORT Hash_Found hash_table_find(const void* _table, String key)
     while(found.hash_index != -1)
     {
         isize entry = table->index.entries[found.hash_index].value;
-        String found_key = string_from_builder(table->keys[entry]);
+        String found_key = table->keys[entry].string;
         if(string_is_equal(found_key, key))
         {
             found.entry = entry;
@@ -229,7 +229,7 @@ EXPORT Hash_Found hash_table_find_next(const void* _table, String key, Hash_Foun
             break;
 
         isize entry = table->index.entries[found.hash_index].value;
-        String found_key = string_from_builder(table->keys[entry]);
+        String found_key = table->keys[entry].string;
         if(string_is_equal(found_key, key))
         {
             found.entry = entry;
@@ -360,7 +360,7 @@ EXPORT Hash_Found hash_table_remove_found(void* _table, Hash_Found found, void* 
     isize last = table->size - 1;
     if(found.entry != last)
     {
-        String last_key = string_from_builder(table->keys[last]);
+        String last_key = table->keys[last].string;
         found_last = hash_table_find(table, last_key);
         ASSERT(found_last.entry != -1);
 

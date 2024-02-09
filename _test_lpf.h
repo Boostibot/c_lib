@@ -34,8 +34,8 @@ static void test_lpf_print_compariosn(String left, String right)
     String_Builder builder_left = {0};
     String_Builder builder_right = {0};
 
-    array_resize(&builder_left, max_left);
-    array_resize(&builder_left, max_left);
+    builder_resize(&builder_left, max_left);
+    builder_resize(&builder_left, max_left);
 
     Line_Iterator it_left = {0};
     Line_Iterator it_right = {0};
@@ -50,19 +50,19 @@ static void test_lpf_print_compariosn(String left, String right)
         String line_left = has_left ? it_left.line : STRING("");
         String line_right = has_right ? it_right.line : STRING("");
 
-        array_clear(&builder_left);
-        //array_push(&builder_left, '"');
+        builder_clear(&builder_left);
+        //builder_push(&builder_left, '"');
         builder_append(&builder_left, line_left);
-        //array_push(&builder_left, '"');
+        //builder_push(&builder_left, '"');
         while(builder_left.size < max_left)
-            array_push(&builder_left, ' ');
+            builder_push(&builder_left, ' ');
             
-        array_clear(&builder_right);
-        //array_push(&builder_right, '"');
+        builder_clear(&builder_right);
+        //builder_push(&builder_right, '"');
         builder_append(&builder_right, line_right);
-        //array_push(&builder_right, '"');
+        //builder_push(&builder_right, '"');
         while(builder_right.size < max_right)
-            array_push(&builder_right, ' ');
+            builder_push(&builder_right, ' ');
 
         if(string_is_equal(line_left, line_right))
             printf("%s == %s\n", builder_left.data, builder_right.data);
@@ -91,8 +91,8 @@ static void test_lpf_print_compariosn(String left, String right)
         }
     }
 
-    array_deinit(&builder_left);
-    array_deinit(&builder_right);
+    builder_deinit(&builder_left);
+    builder_deinit(&builder_right);
 }
 
 static void test_lpf()

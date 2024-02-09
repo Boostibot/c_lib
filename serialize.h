@@ -23,8 +23,6 @@
 // 
 // if(serialize_(serialize_locate(entry, "my_val", action), &my_val, action) == false && action == READ)
 //    my_val = def;
-//
-// @TODO: make base16 write directly into entry!
 
 #include "lpf.h"
 #include "parse.h"
@@ -132,7 +130,7 @@ EXPORT bool serialize_quat(Lpf_Entry* entry, Quat* val, Quat def, Read_Or_Write 
 EXPORT void base16_encode_append_into(String_Builder* into, const void* data, isize len)
 {
     isize size_before = into->size;
-    array_resize(into, size_before + 2*len);
+    builder_resize(into, size_before + 2*len);
     
     for(isize i = 0; i < len; i++)
     {
@@ -161,7 +159,7 @@ EXPORT void base16_encode_append_into(String_Builder* into, const void* data, is
 EXPORT isize base16_decode_append_into(String_Builder* into, const void* data, isize len)
 {
     isize size_before = into->size;
-    array_resize(into, size_before + len/2);
+    builder_resize(into, size_before + len/2);
     
     for(isize i = 0; i < len; i += 2)
     {
@@ -192,13 +190,13 @@ EXPORT isize base16_decode_append_into(String_Builder* into, const void* data, i
 
 EXPORT void base16_encode_into(String_Builder* into, const void* data, isize len)
 {
-    array_clear(into);
+    builder_clear(into);
     base16_encode_append_into(into, data, len);
 }
 
 EXPORT isize base16_decode_into(String_Builder* into, const void* data, isize len)
 {
-    array_clear(into);
+    builder_clear(into);
     return base16_decode_append_into(into, data, len);
 }
 
@@ -339,7 +337,7 @@ EXPORT bool serialize_write_base16(Lpf_Entry* entry, String val)
         String_Builder encoded = {arena};
         base16_encode_append_into(&encoded, val.data, val.size);
 
-        serialize_entry_set_identity(entry, string_from_builder(encoded), LPF_ENTRY);
+        serialize_entry_set_identity(entry, encoded.string, LPF_ENTRY);
     }
     allocator_arena_release(&arena);
 
@@ -399,7 +397,7 @@ EXPORT bool serialize_raw_typed(Lpf_Entry* entry, String_Builder* val, String de
     if(action == SERIALIZE_READ)
         return serialize_read_raw(entry, val, def);
     else
-        return serialize_write_raw(entry, string_from_builder(*val));
+        return serialize_write_raw(entry, val->string);
 }
 
 EXPORT bool serialize_string_typed(Lpf_Entry* entry, String_Builder* val, String def, Read_Or_Write action)
@@ -407,7 +405,7 @@ EXPORT bool serialize_string_typed(Lpf_Entry* entry, String_Builder* val, String
     if(action == SERIALIZE_READ)
         return serialize_read_string(entry, val, def);
     else
-        return serialize_write_string(entry, string_from_builder(*val));
+        return serialize_write_string(entry, val->string);
 }
 
 EXPORT bool serialize_base16_typed(Lpf_Entry* entry, String_Builder* val, String def, Read_Or_Write action)
@@ -415,7 +413,7 @@ EXPORT bool serialize_base16_typed(Lpf_Entry* entry, String_Builder* val, String
     if(action == SERIALIZE_READ)
         return serialize_read_base16(entry, val, def);
     else
-        return serialize_write_base16(entry, string_from_builder(*val));
+        return serialize_write_base16(entry, val->string);
 }
 
 void set_variable_sized_int(void* integer, isize integer_type_size, i64 value)
@@ -481,13 +479,11 @@ EXPORT bool serialize_int_count_typed(Lpf_Entry* entry, void* value, isize value
         {
             Allocator* arena = allocator_arena_acquire();
             {
-                String_Builder formatted = {0};
-                array_init_with_capacity(&formatted, arena, 256);
-
+                String_Builder formatted = builder_make(arena, 256);
                 for(isize i = 0; i < count; i ++)
                 {
                     if(i != 0)
-                        array_push(&formatted, ' ');
+                        builder_push(&formatted, ' ');
                         
                     i64 concrete_value = get_variable_sized_int((u8*) value + i*value_type_size, value_type_size);
                     format_append_into(&formatted, "%lli", concrete_value);
@@ -694,7 +690,7 @@ EXPORT bool serialize_name(Lpf_Entry* entry, String_Builder* val, String def, Re
     if(action == SERIALIZE_READ)
         return serialize_read_name(entry, val, def);
     else
-        return serialize_write_name(entry, string_from_builder(*val));
+        return serialize_write_name(entry, val->string);
 }
 EXPORT bool serialize_raw(Lpf_Entry* entry, String_Builder* val, String def, Read_Or_Write action)
 {

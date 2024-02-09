@@ -129,15 +129,13 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
     String group_separator = STRING("    ");
     String message_string = {0};
     
-    String_Builder formatted_module = {0};
-    String_Builder formatted_message = {0};
-    array_init_with_capacity(&formatted_module, scratch, 64);
-    array_init_with_capacity(&formatted_message, scratch, 512);
+    String_Builder formatted_module = builder_make(scratch, 64);
+    String_Builder formatted_message = builder_make(scratch, 512);
 
     //formats module: "module name" -> "MODULE_NAME    "
     //                                 <--------------->
     //                                 module_field_size
-    array_resize(&formatted_module, MAX(module.size, module_field_size));
+    builder_resize(&formatted_module, MAX(module.size, module_field_size));
 
     isize writting_to = 0;
     for(isize i = 0; i < module.size; i++)
@@ -159,7 +157,7 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
     vformat_into(&formatted_message, format, args);
 
     //Skip all trailing newlines
-    message_string = string_from_builder(formatted_message);
+    message_string = formatted_message.string;
     for(isize message_size = message_string.size; message_size > 0; message_size --)
     {
         if(message_string.data[message_size - 1] != '\n')
@@ -174,7 +172,7 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
     Platform_Calendar_Time c = platform_local_calendar_time_from_epoch_time(epoch_time);
     
     //Try to guess size
-    array_reserve(append_to, size_before + message_string.size + 100 + module.size);
+    builder_reserve(append_to, size_before + message_string.size + 100 + module.size);
 
     const char* type_str = log_type_to_string(type);
     if(strlen(type_str) > 0)
@@ -219,11 +217,11 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
         if(curr_line_pos != 0)
         {
             isize before_padding = append_to->size;
-            array_resize(append_to, before_padding + header_size);
+            builder_resize(append_to, before_padding + header_size);
             memset(append_to->data + before_padding, ' ', (size_t) header_size);
         }
         
-        builder_append(append_to, string_from_builder(formatted_module));
+        builder_append(append_to, formatted_module.string);
 
         //insert n times group separator
         for(isize i = 0; i < indentation; i++)
@@ -231,29 +229,29 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
         
         builder_append(append_to, STRING(": "));
         builder_append(append_to, curr_line);
-        array_push(append_to, '\n');
+        builder_push(append_to, '\n');
 
         curr_line_pos = next_line_pos + 1;
     }
     
-    array_deinit(&formatted_module);
-    array_deinit(&formatted_message);
+    builder_deinit(&formatted_module);
+    builder_deinit(&formatted_message);
 
     PERF_COUNTER_END(counter);
 }
 
 EXPORT void file_logger_log_into(Allocator* scratch, String_Builder* append_to, String module, Log_Type type, isize indentation, i64 epoch_time, const char* format, va_list args)
 {
-    array_clear(append_to);
+    builder_clear(append_to);
     file_logger_log_append_into(scratch, append_to, module, type, indentation, epoch_time, format, args);
 }
 
 EXPORT void file_logger_deinit(File_Logger* logger)
 {
-    array_deinit(&logger->buffer);
-    array_deinit(&logger->file_directory_path);
-    array_deinit(&logger->file_prefix);
-    array_deinit(&logger->file_postfix);
+    builder_deinit(&logger->buffer);
+    builder_deinit(&logger->file_directory_path);
+    builder_deinit(&logger->file_prefix);
+    builder_deinit(&logger->file_postfix);
 
     if(logger->has_prev_logger)
         log_system_set_logger(logger->prev_logger);
@@ -270,10 +268,10 @@ EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, A
     
     logger->default_allocator = def_alloc;
     logger->scratch_allocator = scratch_alloc;
-    array_init(&logger->buffer, def_alloc);
-    array_init(&logger->file_directory_path, def_alloc);
-    array_init(&logger->file_prefix, def_alloc);
-    array_init(&logger->file_postfix, def_alloc);
+    builder_init_with_capacity(&logger->buffer, def_alloc, flush_every_bytes);
+    builder_init(&logger->file_directory_path, def_alloc);
+    builder_init(&logger->file_prefix, def_alloc);
+    builder_init(&logger->file_postfix, def_alloc);
 
     logger->logger.log = file_logger_log;
     logger->flush_every_bytes = flush_every_bytes;
@@ -287,8 +285,6 @@ EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, A
     builder_assign(&logger->file_directory_path, folder);
     builder_assign(&logger->file_prefix, prefix);
     builder_assign(&logger->file_postfix, postfix);
-
-    array_reserve(&logger->buffer, flush_every_bytes);
 }
 
 EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc, const char* folder)
@@ -319,11 +315,11 @@ EXPORT bool file_logger_flush(File_Logger* logger)
                 Platform_Calendar_Time calendar = platform_local_calendar_time_from_epoch_time(logger->init_epoch_time);
 
                 const char* filename = format_ephemeral("%s/%s%04d-%02d-%02d__%02d-%02d-%02d%s", 
-                    cstring_from_builder(self->file_directory_path),
-                    cstring_from_builder(self->file_prefix),
+                    self->file_directory_path.data,
+                    self->file_prefix.data,
                     (int) calendar.year, (int) calendar.month, (int) calendar.day, 
                     (int) calendar.hour, (int) calendar.minute, (int) calendar.second,
-                    cstring_from_builder(self->file_postfix)
+                    self->file_postfix.data
                 ).data;
 
                 self->file = fopen(filename, "ab");
@@ -336,7 +332,7 @@ EXPORT bool file_logger_flush(File_Logger* logger)
         }
 
         self->last_flush_time = clock_s();
-        array_clear(&self->buffer);
+        builder_clear(&self->buffer);
     }
 
     return state;
@@ -355,8 +351,7 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
     (void) source;
     Allocator* arena = allocator_arena_acquire();
     {
-        String_Builder formatted_log = {0};
-        array_init_with_capacity(&formatted_log, arena, 1024);
+        String_Builder formatted_log = builder_make(arena, 1024);
         file_logger_log_append_into(arena, &formatted_log, string_make(module), type, indentation, platform_epoch_time(), format, args);
 
         bool print_to_console = (type > LOG_ENUM_MAX) || (((i64) 1 << type) & self->console_type_filter);
@@ -381,7 +376,7 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
         }
 
         if(print_to_file)
-            builder_append(&self->buffer, string_from_builder(formatted_log));
+            builder_append(&self->buffer, formatted_log.string);
     
         f64 time_since_last_flush = clock_s() - self->last_flush_time;
         if(self->buffer.size > self->flush_every_bytes || time_since_last_flush > self->flush_every_seconds)

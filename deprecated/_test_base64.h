@@ -94,7 +94,7 @@ INTERNAL void test_base64_encode(Base64_Encode_State encode_state, Base64_Encodi
     array_init_with_capacity(&encoded_buffer, allocator_get_default(), 512);
 
     base64_encode_into(&encoded_buffer, input_.data, input_.size, encoding);
-    String ecnoded_result = string_from_builder(encoded_buffer);
+    String ecnoded_result = encoded_buffer.string;
 
     TEST(string_is_equal(ecnoded_result, expected_) == (encode_state == BASE64_ENCODE_EQ));
     
@@ -110,7 +110,7 @@ INTERNAL void test_base64_decode(Base64_Decode_State decode_state, Base64_Decodi
     array_init_with_capacity(&decoded_buffer, allocator_get_default(), 512);
 
     bool decode_ok = base64_decode_into(&decoded_buffer, input_.data, input_.size, decoding);
-    String decoded_result = string_from_builder(decoded_buffer);
+    String decoded_result = decoded_buffer.string;
 
     TEST(decode_ok == (decode_state != BASE64_DECODE_ERR));
     if(decode_ok)
@@ -171,7 +171,7 @@ INTERNAL void test_base64_stress(f64 max_seconds, Base64_Encoding encoding, Base
 
             //Decode the encoded and test
             base64_decode_into(&decoded_block, encoded.data + encoded_prev_size, encoded.size - encoded_prev_size, decoding);
-            String decoded_block_str = string_from_builder(decoded_block);
+            String decoded_block_str = decoded_block.string;
             String original_block_str = {random_data.data + random_data_prev_size, block_size};
             
             TEST_MSG(string_is_equal(original_block_str, decoded_block_str), "Every encoded block must match!");

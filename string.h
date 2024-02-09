@@ -6,18 +6,37 @@
 
 typedef Platform_String String;
 
-DEFINE_ARRAY_TYPE(char, String_Builder);
+//A dynamically resizeable string. Its data member is always null 
+// terminated even without any allocations. 
+// (as long as it was properly initialized - ie. not in = {0} state)
+typedef struct String_Builder {
+    Allocator* allocator;
+    //A slightly weird construction so that we can easily 
+    // obtain a string from the string builder.
+    //This prevents us from constantly ahvign to type
+    //  string_from_builder(builder)
+    // and instead just
+    //  builder.string
+    union {
+        struct {
+            char* data;
+            isize size;
+        };
+
+        String string;
+    };
+    isize capacity;
+} String_Builder;
+
 DEFINE_ARRAY_TYPE(String, String_Array);
 DEFINE_ARRAY_TYPE(String_Builder, String_Builder_Array);
 
-//Constructs a String out of a string literal. Cannot be used with dynamic strings!
-#define STRING(cstring) BRACE_INIT(String){cstring, sizeof(cstring) - 1}
+//Constructs a String out of a string literal
+#define STRING(cstring) BRACE_INIT(String){cstring "", sizeof(cstring) - 1}
 
 //if the string is valid -> returns it
 //if the string is NULL  -> returns ""
 EXPORT const char*      cstring_escape(const char* string);
-//Returns always null terminated string contained within a builder
-EXPORT const char*      cstring_from_builder(String_Builder builder); 
 //if string is NULL returns 0 else strlen(string)
 EXPORT isize safe_strlen(const char* string, isize max_size_or_minus_one);
 
@@ -29,21 +48,21 @@ EXPORT isize safe_strlen(const char* string, isize max_size_or_minus_one);
 EXPORT void memset_pattern(void *field, isize field_size, const void* pattern, isize pattern_size);
 
 //Returns a String contained within string builder. The data portion of the string MIGHT be null and in that case its size == 0
-EXPORT String string_from_builder(String_Builder builder); 
+//EXPORT String string_from_builder(String_Builder builder); 
 EXPORT String string_make(const char* cstring); //converts a null terminated cstring into a String
 EXPORT String string_head(String string, isize to); //keeps only charcters to to ( [0, to) interval )
 EXPORT String string_tail(String string, isize from); //keeps only charcters from from ( [from, string.size) interval )
+EXPORT String string_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
 EXPORT String string_safe_head(String string, isize to); //returns string_head using to. If to is outside the range [0, string.size] clamps it to the range. 
 EXPORT String string_safe_tail(String string, isize from); //returns string_tail using from. If from is outside the range [0, string.size] clamps it to the range. 
-EXPORT String string_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
-EXPORT String string_portion(String string, isize from, isize size); //returns a string containing size characters staring from ( [from, from + size) interval )
+EXPORT String string_safe_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
 EXPORT bool   string_is_equal(String a, String b); //Returns true if the contents and sizes of the strings match
 EXPORT bool   string_is_prefixed_with(String string, String prefix); 
 EXPORT bool   string_is_postfixed_with(String string, String postfix);
 EXPORT bool   string_has_substring_at(String larger_string, isize from_index, String smaller_string); //Retursn true if larger_string has smaller_string at index from_index
 EXPORT int    string_compare(String a, String b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
-EXPORT isize  string_find_first(String string, String search_for, isize from); 
 
+EXPORT isize  string_find_first(String string, String search_for, isize from); 
 EXPORT isize  string_find_last_from(String in_str, String search_for, isize from);
 EXPORT isize  string_find_last(String string, String search_for); 
 
@@ -54,22 +73,29 @@ EXPORT isize  string_find_first_char_sse(String string, char search_for, isize f
 EXPORT isize  string_find_last_char_from(String in_str, char search_for, isize from);
 EXPORT isize  string_find_last_char(String string, char search_for); 
 
-EXPORT void             builder_append(String_Builder* builder, String string); //Appends a string
-EXPORT void             builder_assign(String_Builder* builder, String string); //Sets the contents of the builder to be equal to string
-EXPORT String_Builder   builder_from_cstring(const char* cstring, Allocator* allocator); //Allocates a String_Builder from cstring. The String_Builder needs to be deinit just line any other ???_Array type!
-EXPORT String_Builder   builder_from_string(String string, Allocator* allocator);  //Allocates a String_Builder from String using an allocator. The String_Builder needs to be deinit just line any other ???_Array type!
-EXPORT void             builder_array_deinit(String_Builder_Array* array);
+EXPORT String_Builder builder_make(Allocator* alloc_or_null, isize capacity_or_zero);
+EXPORT String_Builder builder_from_cstring(const char* cstring, Allocator* allocator); //Allocates a String_Builder from cstring.
+EXPORT String_Builder builder_from_string(String string, Allocator* allocator);  //Allocates a String_Builder from String using an allocator.
 
-EXPORT bool             builder_is_equal(String_Builder a, String_Builder b); //Returns true if the contents and sizes of the strings match
-EXPORT int              builder_compare(String_Builder a, String_Builder b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
+EXPORT void builder_init(String_Builder* builder, Allocator* alloc);
+EXPORT void builder_init_with_capacity(String_Builder* builder, Allocator* alloc, isize capacity_or_zero);
+EXPORT void builder_deinit(String_Builder* builder);             
+EXPORT void builder_set_capacity(String_Builder* builder, isize capacity);             
+EXPORT void builder_resize(String_Builder* builder, isize capacity);             
+EXPORT void builder_clear(String_Builder* builder);             
+EXPORT void builder_push(String_Builder* builder, char c);             
+EXPORT char builder_pop(String_Builder* builder);             
+EXPORT void builder_append(String_Builder* builder, String string); //Appends a string
+EXPORT void builder_assign(String_Builder* builder, String string); //Sets the contents of the builder to be equal to string
+EXPORT bool builder_is_equal(String_Builder a, String_Builder b); //Returns true if the contents and sizes of the strings match
+EXPORT int  builder_compare(String_Builder a, String_Builder b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
 
-EXPORT void string_join_into(String_Builder* append_to, const String* strings, isize strings_count, String separator); //Appends all strings in the strings array to append_to
-EXPORT void string_split_into(String_Array* append_to, String to_split, String split_by); //Splits the to_split string using split_by as a separator and appends the individual split parts into append_to
+EXPORT void builder_array_deinit(String_Builder_Array* array);
 
-EXPORT String_Builder string_join(String a, String b); //Allocates a new String_Builder with the concatenated String's a and b
-EXPORT String_Builder cstring_join(const char* a, const char* b); //Allocates a new String_Builder with the concatenated cstring's a and b
-EXPORT String_Builder string_join_any(const String* strings, isize strings_count, String separator); 
-EXPORT String_Array string_split(String to_split, String split_by);
+//Replaces in source that are equal to some character from to_replace with the character at the same exact position of replace_with.
+//If there is '\0' at the matching position of replace_with, removes the character without substituting"
+//So string_replace(..., "Hello world", "lw", ".\0") -> "He..o or.d"
+EXPORT String_Builder string_replace(Allocator* allocator, String source, String to_replace, String replace_with);
 
 #endif
 
@@ -90,6 +116,11 @@ EXPORT String_Array string_split(String to_split, String split_by);
         String tail = {string.data + from, string.size - from};
         return tail;
     }
+    
+    EXPORT String string_range(String string, isize from, isize to)
+    {
+        return string_tail(string_head(string, to), from);
+    }
 
     EXPORT String string_safe_head(String string, isize to)
     {
@@ -101,14 +132,11 @@ EXPORT String_Array string_split(String to_split, String split_by);
         return string_tail(string, CLAMP(from, 0, string.size));
     }
 
-    EXPORT String string_range(String string, isize from, isize to)
+    EXPORT String string_safe_range(String string, isize from, isize to)
     {
-        return string_tail(string_head(string, to), from);
-    }
-
-    EXPORT String string_portion(String string, isize from, isize size)
-    {
-        return string_head(string_tail(string, from), size);
+        isize escaped_from = CLAMP(from, 0, string.size);
+        isize escaped_to = CLAMP(to, 0, string.size);
+        return string_range(string, escaped_from, escaped_to);
     }
 
     EXPORT String string_make(const char* cstring)
@@ -416,7 +444,7 @@ EXPORT String_Array string_split(String to_split, String split_by);
         if(larger_string.size - from_index < smaller_string.size)
             return false;
 
-        String portion = string_portion(larger_string, from_index, smaller_string.size);
+        String portion = string_range(larger_string, from_index, from_index + smaller_string.size);
         return string_is_equal(portion, smaller_string);
     }
 
@@ -444,26 +472,183 @@ EXPORT String_Array string_split(String to_split, String split_by);
         return cstring_escape(builder.data);
     }
 
-    EXPORT String string_from_builder(String_Builder builder)
+    char _builder_null_termination[4] = {0};
+    EXPORT bool _builder_is_invariant(const String_Builder* builder)
     {
-        String out = {builder.data, builder.size};
-        return out;
+        bool is_capacity_correct = 0 <= builder->capacity;
+        bool is_size_correct = (0 <= builder->size && builder->size <= builder->capacity);
+        //Data is default iff capacity is zero
+        bool is_data_correct = (builder->data == NULL || builder->data == _builder_null_termination) == (builder->capacity == 0);
+
+        //If has capacity then was allocated therefore must have an allocator set
+        if(builder->capacity > 0)
+            is_capacity_correct = is_capacity_correct && builder->allocator != NULL;
+
+        //If is not in 0 state must be null terminated (both right after and after the whole capacity for safety)
+        bool is_null_terminated = true;
+        if(builder->data != NULL)
+            is_null_terminated = builder->data[builder->size] == '\0' && builder->data[builder->capacity] == '\0';
+        
+        bool result = is_capacity_correct && is_size_correct && is_data_correct && is_null_terminated;
+        ASSERT(result);
+        return result;
+    }
+    EXPORT void builder_deinit(String_Builder* builder)
+    {
+        ASSERT(builder != NULL);
+        ASSERT(_builder_is_invariant(builder));
+
+        if(builder->data != NULL && builder->data != _builder_null_termination)
+            allocator_deallocate(builder->allocator, builder->data, builder->capacity + 1, 1, SOURCE_INFO());
+    
+        memset(builder, 0, sizeof *builder);
     }
     
+    EXPORT void builder_init(String_Builder* builder, Allocator* allocator)
+    {
+        builder_deinit(builder);
+        builder->allocator = allocator;
+        builder->data = _builder_null_termination;
+        if(builder->allocator == NULL)
+            builder->allocator = allocator_get_default();
+    }
+
+    EXPORT void builder_init_with_capacity(String_Builder* builder, Allocator* allocator, isize capacity_or_zero)
+    {
+        builder_init(builder, allocator);
+        if(capacity_or_zero > 0)
+            builder_set_capacity(builder, capacity_or_zero);
+    }
+
+    EXPORT String_Builder builder_make(Allocator* alloc_or_null, isize capacity_or_zero)
+    {
+        String_Builder builder = {0};
+        builder.allocator = alloc_or_null;
+        builder.data = _builder_null_termination;
+        if(capacity_or_zero > 0)
+            builder_set_capacity(&builder, capacity_or_zero);
+        return builder;
+    }
+
+    EXPORT void builder_set_capacity(String_Builder* builder, isize capacity)
+    {
+        ASSERT(_builder_is_invariant(builder));
+        ASSERT(capacity >= 0);
+
+        //@TEMP: just for transition
+        //ASSERT(builder->data != NULL);
+
+        //If allocator is not set grab one from the context
+        if(builder->allocator == NULL)
+            builder->allocator = allocator_get_default();
+
+        void* old_data = NULL;
+        isize old_alloced = 0;
+        isize new_alloced = capacity + 1;
+
+        //Make sure we are taking into account the null terminator properly when deallocating.
+        //This is rather tricky because: 
+        //  when capacity >  0 we have allocated capacity + 1 bytes
+        //  when capacity <= 0 we have allocated nothing
+        //Keep in mind our allocator_reallocate works as both alloc, realloc, and free all at once
+        // so we make sure to call it only once for all cases (so that arenas can be inlined better)
+        if(builder->data != NULL && builder->data != _builder_null_termination)
+        {
+            ASSERT(builder->capacity > 0);
+            old_data = builder->data;
+            old_alloced = builder->capacity + 1;
+        }
+        if(capacity == 0)
+            new_alloced = 0;
+
+        builder->data = (char*) allocator_reallocate(builder->allocator, new_alloced, old_data, old_alloced, 1, SOURCE_INFO());
+        
+        //Always memset the new capacity to zero so that that we dont have to set null termination
+        //while pushing
+        if(new_alloced > old_alloced)
+            memset(builder->data + old_alloced, 0, (size_t) (new_alloced - old_alloced));
+
+        //trim the size if too big
+        builder->capacity = capacity;
+        if(builder->size > builder->capacity)
+            builder->size = builder->capacity;
+        
+        //Restore null termination
+        if(capacity == 0)
+            builder->data = _builder_null_termination;
+        else
+        {
+            builder->data[builder->size] = '\0'; 
+            builder->data[builder->capacity] = '\0'; 
+        }
+        ASSERT(_builder_is_invariant(builder));
+    }
+    
+    EXPORT void builder_reserve(String_Builder* builder, isize to_fit)
+    {
+        ASSERT(to_fit >= 0);
+        if(builder->capacity > to_fit)
+            return;
+        
+        isize new_capacity = to_fit;
+        isize growth_step = builder->capacity * 3/2 + 8;
+        if(new_capacity < growth_step)
+            new_capacity = growth_step;
+
+        builder_set_capacity(builder, new_capacity);
+    }
+    EXPORT void builder_resize(String_Builder* builder, isize to_size)
+    {
+        builder_reserve(builder, to_size);
+        if(to_size >= builder->size)
+            memset(builder->data + builder->size, 0, (size_t) ((to_size - builder->size)));
+        else
+            //We clear the memory when shrinking so that we dont have to clear it when pushing!
+            memset(builder->data + to_size, 0, (size_t) ((builder->size - to_size)));
+        
+        builder->size = to_size;
+        ASSERT(_builder_is_invariant(builder));
+    }
+
+    EXPORT void builder_clear(String_Builder* builder)
+    {
+        builder_resize(builder, 0);
+    }
+
     EXPORT void builder_append(String_Builder* builder, String string)
     {
-        array_append(builder, string.data, string.size);
+        ASSERT(string.size >= 0);
+        builder_reserve(builder, builder->size+string.size);
+        memcpy(builder->data + builder->size, string.data, (size_t) string.size);
+        builder->size += string.size;
+        ASSERT(_builder_is_invariant(builder));
     }
 
     EXPORT void builder_assign(String_Builder* builder, String string)
     {
-        array_assign(builder, string.data, string.size);
+        builder_resize(builder, string.size);
+        memcpy(builder->data, string.data, (size_t) string.size);
+        ASSERT(_builder_is_invariant(builder));
+    }
+
+    EXPORT void builder_push(String_Builder* builder, char c)
+    {
+        builder_reserve(builder, builder->size+1);
+        builder->data[builder->size++] = c;
+    }
+
+    EXPORT char builder_pop(String_Builder* builder)
+    {
+        ASSERT(builder->size > 0);
+        char popped = builder->data[--builder->size];
+        builder->data[builder->size] = '\0';
+        return popped;
     }
     
     EXPORT void builder_array_deinit(String_Builder_Array* array)
     {
         for(isize i = 0; i < array->size; i++)
-            array_deinit(&array->data[i]);
+            builder_deinit(&array->data[i]);
 
         array_deinit(array);
     }
@@ -471,7 +656,7 @@ EXPORT String_Array string_split(String to_split, String split_by);
     EXPORT String_Builder builder_from_string(String string, Allocator* allocator)
     {
         String_Builder builder = {allocator};
-        array_append(&builder, string.data, string.size);
+        builder_assign(&builder, string);
         return builder;
     }
 
@@ -482,80 +667,11 @@ EXPORT String_Array string_split(String to_split, String split_by);
 
     EXPORT bool builder_is_equal(String_Builder a, String_Builder b)
     {
-        return string_is_equal(string_from_builder(a), string_from_builder(b));
+        return string_is_equal(a.string, b.string);
     }
     
     EXPORT int builder_compare(String_Builder a, String_Builder b)
     {
-        return string_compare(string_from_builder(a), string_from_builder(b));
-    }
-
-    EXPORT void string_join_into(String_Builder* append_to, const String* strings, isize strings_count, String separator)
-    {
-        if(strings_count == 0)
-            return;
-
-        isize size_sum = 0;
-        for(isize i = 0; i < strings_count; i++)
-            size_sum += strings[i].size;
-
-        size_sum += separator.size * (strings_count - 1);
-
-        array_reserve(append_to, append_to->size + size_sum);
-        builder_append(append_to, strings[0]);
-
-        for(isize i = 1; i < strings_count; i++)
-        {
-            builder_append(append_to, separator);
-            builder_append(append_to, strings[i]);
-        }
-    }
-
-    EXPORT void string_split_into(String_Array* parts, String to_split, String split_by)
-    {
-        isize from = 0;
-        for(isize i = 0; i < to_split.size; i++)
-        {
-            isize to = string_find_first(to_split, split_by, from);
-            if(to == -1)
-            {
-                String part = string_range(to_split, from, to_split.size);
-                array_push(parts, part);
-                break;
-            }
-
-            String part = string_range(to_split, from, to);
-            array_push(parts, part);
-            from = to + split_by.size;
-        }
-    }
-
-    EXPORT String_Builder string_join(String a, String b)
-    {
-        String_Builder joined = {0};
-        array_resize(&joined, a.size + b.size);
-        ASSERT(joined.data != NULL);
-        memcpy(joined.data, a.data, (size_t) a.size);
-        memcpy(joined.data + a.size, b.data, (size_t) b.size);
-
-        return joined;
-    }
-
-    EXPORT String_Builder cstring_join(const char* a, const char* b)
-    {
-        return string_join(string_make(a), string_make(b));
-    }
-
-    EXPORT String_Builder string_join_any(const String* strings, isize strings_count, String separator)
-    {
-        String_Builder builder = {0};
-        string_join_into(&builder, strings, strings_count, separator);
-        return builder;
-    }
-    EXPORT String_Array string_split(String to_split, String split_by)
-    {
-        String_Array parts = {0};
-        string_split_into(&parts, to_split, split_by);
-        return parts;
+        return string_compare(a.string, b.string);
     }
 #endif

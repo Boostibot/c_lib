@@ -144,10 +144,10 @@ INTERNAL void _file_init_global_state()
         file_global_state.alloc = allocator_get_static();
     
         for(isize i = 0; i < FILE_EPHEMERAL_SLOT_COUNT; i++)
-            array_init(&file_global_state.relative_paths[i], file_global_state.alloc);
+            builder_init(&file_global_state.relative_paths[i], file_global_state.alloc);
             
         for(isize i = 0; i < FILE_EPHEMERAL_SLOT_COUNT; i++)
-            array_init(&file_global_state.full_paths[i], file_global_state.alloc);
+            builder_init(&file_global_state.full_paths[i], file_global_state.alloc);
 
         file_global_state.full_path_used_count = 0;
         file_global_state.relative_path_used_count = 0;
@@ -158,12 +158,12 @@ INTERNAL void _file_init_global_state()
 EXPORT Error path_get_full_from(String_Builder* into, String path, String base)
 {
     //@TEMP: implement this in platform. Implement platform allocator support
-    array_clear(into);
+    builder_clear(into);
     if(base.size > 0)
     {
         builder_append(into, base);
         if(base.data[base.size - 1] != '/')
-            array_push(into, '/');
+            builder_push(into, '/');
     }
 
     builder_append(into, path);
@@ -187,7 +187,7 @@ EXPORT String path_get_relative_ephemeral_from(String path, String base)
 
     isize curr_index = file_global_state.relative_path_used_count % FILE_EPHEMERAL_SLOT_COUNT;
     path_get_relative_from(&file_global_state.relative_paths[curr_index], path, base);
-    String out_string = string_from_builder(file_global_state.relative_paths[curr_index]);
+    String out_string = file_global_state.relative_paths[curr_index].string;
     file_global_state.relative_path_used_count += 1;
 
     return out_string;
@@ -199,7 +199,7 @@ EXPORT String path_get_full_ephemeral_from(String path, String base)
 
     isize curr_index = file_global_state.full_path_used_count % FILE_EPHEMERAL_SLOT_COUNT;
     Error error = path_get_full_from(&file_global_state.full_paths[curr_index], path, base);
-    String out_string = string_from_builder(file_global_state.full_paths[curr_index]);
+    String out_string = file_global_state.full_paths[curr_index].string;
     file_global_state.full_path_used_count += 1;
 
     if(error_is_ok(error) == false)
@@ -242,7 +242,7 @@ EXPORT Error file_read_entire_append_into(String file_path, String_Builder* appe
     {
         while(true) 
         {
-            array_resize(append_into, size_before + read_bytes + CHUNK_SIZE);
+            builder_resize(append_into, size_before + read_bytes + CHUNK_SIZE);
             isize single_read = (isize) fread(append_into->data + size_before + read_bytes, 1, CHUNK_SIZE, file);
             if (single_read == 0)
             {
@@ -256,7 +256,7 @@ EXPORT Error file_read_entire_append_into(String file_path, String_Builder* appe
         }
 
         fclose(file);
-        array_resize(append_into, size_before + read_bytes);
+        builder_resize(append_into, size_before + read_bytes);
     }
 
     if (file == NULL || had_eof == false) 
@@ -303,7 +303,7 @@ EXPORT Error _file_write_entire_append_into(String file_path, String written, co
 
 EXPORT Error file_read_entire(String file_path, String_Builder* append_into)
 {
-    array_clear(append_into);
+    builder_clear(append_into);
     return file_read_entire_append_into(file_path, append_into);
 }
 

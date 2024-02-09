@@ -28,12 +28,12 @@ static void test_find_first(f64 time)
     test_find_first_single(STRING("hello world hello world hello world x"), 'x', 30);
 
     String_Builder data = {0};
-    array_resize(&data, 1024*1024);
+    builder_resize(&data, 1024*1024);
 
     for(isize i = 0; i < data.size; i++)
         data.data[i] = (char) (random_u64() % 256);
 
-    String str = string_from_builder(data);
+    String str = data.string;
     for(f64 start = clock_s(), now = 0; (now = clock_s()) < start + time;)
     {
         char search_for = (char) (random_u64() % 256);
@@ -41,18 +41,18 @@ static void test_find_first(f64 time)
         test_find_first_single(str, search_for, from);
     }
 
-    array_deinit(&data);
+    builder_deinit(&data);
 }
 
 static void bemchmark_find_first(isize max_size, int max_value, f64 discard, f64 time)
 {
     String_Builder data = {0};
-    array_resize(&data, max_size);
+    builder_resize(&data, max_size);
 
     for(isize i = 0; i < data.size; i++)
         data.data[i] = (char) (random_u64() % max_value);
 
-    String str = string_from_builder(data);
+    String str = data.string;
 
     typedef struct Test_Case {
         isize (*func)(String string, char c, isize from);
@@ -109,7 +109,7 @@ static void bemchmark_find_first(isize max_size, int max_value, f64 discard, f64
 		        );
         }
 
-    array_deinit(&data);
+    builder_deinit(&data);
 }
 
 static void test_memset_pattern()

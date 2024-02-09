@@ -55,12 +55,12 @@ EXPORT void memory_logger_init_use(Memory_Logger* logger, Allocator* alloc);
 
 EXPORT String memory_log_get_module(const Memory_Log* log)
 {
-    return string_head(string_from_builder(log->module_and_message), log->module_size);
+    return string_head(log->module_and_message.string, log->module_size);
 }
 
 EXPORT String memory_log_get_message(const Memory_Log* log)
 {
-    return string_tail(string_from_builder(log->module_and_message), log->module_size);
+    return string_tail(log->module_and_message.string, log->module_size);
 }
 
 EXPORT void memory_logger_log(Logger* logger, const char* module, Log_Type type, isize indentation, Source_Info source, const char* format, va_list args)
@@ -70,7 +70,7 @@ EXPORT void memory_logger_log(Logger* logger, const char* module, Log_Type type,
     {
         Allocator* alloc = self->logs.allocator;
         Memory_Log log = {alloc};
-        array_reserve(&log.module_and_message, 255);
+        builder_reserve(&log.module_and_message, 255);
         builder_append(&log.module_and_message, string_make(module));
         log.module_size = (i32) log.module_and_message.size;
         vformat_append_into(&log.module_and_message, format, args);
@@ -92,10 +92,9 @@ EXPORT void memory_logger_log(Logger* logger, const char* module, Log_Type type,
 EXPORT void memory_logger_deinit(Memory_Logger* logger)
 {
     for(isize i = 0; i < logger->logs.size; i++)
-        array_deinit(&logger->logs.data[i].module_and_message);
+        builder_deinit(&logger->logs.data[i].module_and_message);
 
     array_deinit(&logger->logs);
-
     if(logger->has_prev_logger)
         log_system_set_logger(logger->prev_logger);
 

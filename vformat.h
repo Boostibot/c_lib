@@ -33,7 +33,7 @@ EXPORT const char* escape_string_ephemeral(String string);
         isize base_size = append_to->size; 
         // array_resize(append_to, base_size + estimated_size);
         isize first_resize_size = MAX(base_size + estimated_size, append_to->capacity - 1);
-        array_resize(append_to, first_resize_size);
+        builder_resize(append_to, first_resize_size);
 
         //gcc modifies va_list on use! make sure to copy it!
         va_list args_copy;
@@ -43,7 +43,7 @@ EXPORT const char* escape_string_ephemeral(String string);
         if(count > estimated_size)
         {
             PERF_COUNTER_START(format_twice);
-            array_resize(append_to, base_size + count + 3);
+            builder_resize(append_to, base_size + count + 3);
             count = vsnprintf(append_to->data + base_size, (size_t) (append_to->size - base_size), format, args_copy);
             PERF_COUNTER_END(format_twice);
         }
@@ -51,7 +51,7 @@ EXPORT const char* escape_string_ephemeral(String string);
         //Sometimes apparently the msvc standard linrary screws up and returns negative...
         if(count < 0)
             count = 0;
-        array_resize(append_to, base_size + count);
+        builder_resize(append_to, base_size + count);
         ASSERT(append_to->data[base_size + count] == '\0');
         
         PERF_COUNTER_END(c);
@@ -68,7 +68,7 @@ EXPORT const char* escape_string_ephemeral(String string);
     
     EXPORT MODIFIER_FORMAT_FUNC(format, 2) void vformat_into(String_Builder* into, MODIFIER_FORMAT_ARG const char* format, va_list args)
     {
-        array_clear(into);
+        builder_clear(into);
         vformat_append_into(into, format, args);
     }
 
@@ -95,10 +95,7 @@ EXPORT const char* escape_string_ephemeral(String string);
         if(slot % RESET_EVERY < EPHEMERAL_SLOTS)
         {
             if(curr->capacity == 0 || curr->capacity > KEPT_SIZE)
-            {
-                array_init(curr, allocator_get_static());
-                array_set_capacity(curr, KEPT_SIZE);
-            }
+                builder_init_with_capacity(curr, allocator_get_static(), KEPT_SIZE);
         }
         
         va_list args;
@@ -108,8 +105,7 @@ EXPORT const char* escape_string_ephemeral(String string);
 
         slot += 1;
 
-        String out = string_from_builder(*curr);
-        return out;
+        return curr->string;
     }
 
     EXPORT const char* escape_string_ephemeral(String string)
@@ -138,9 +134,8 @@ EXPORT const char* escape_string_ephemeral(String string);
         {
             if(curr->capacity == 0 || curr->capacity > KEPT_SIZE)
             {
-                array_init(curr, allocator_get_static());
                 isize required_capacity = MAX(string.size, KEPT_SIZE);
-                array_reserve(curr, required_capacity);
+                builder_init_with_capacity(curr, allocator_get_static(), required_capacity);
             }
         }
 

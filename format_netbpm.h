@@ -152,12 +152,12 @@ INTERNAL Error _netbpm_format_write_append_pgm_ppm(String_Builder* append_into, 
     isize neeed_size = pixel_count * channels;
     
     const int max_value = 255;
-    array_reserve(append_into, append_into->size + neeed_size + 40);
+    builder_reserve(append_into, append_into->size + neeed_size + 40);
 
     format_append_into(append_into, "%s\n%d %d\n%d\n", magic, (int) image.width, (int) image.height, max_value);
 
     isize size_before = append_into->size;
-    array_resize(append_into, size_before + neeed_size);
+    builder_resize(append_into, size_before + neeed_size);
 
     u8* dest = (u8*) append_into->data + size_before;
     if(subimage_is_contiguous(image))
@@ -214,7 +214,7 @@ INTERNAL Error _netbpm_format_write_append_pfm_pfmg(String_Builder* append_into,
     isize pixel_count = image.width * image.height;
     isize neeed_size = pixel_count * image.pixel_size;
     
-    array_reserve(append_into, append_into->size + neeed_size + 40);
+    builder_reserve(append_into, append_into->size + neeed_size + 40);
 
     f32 corrected_range = 0;
     if(endian_get_local() == PLATFORM_ENDIAN_LITTLE)
@@ -225,7 +225,7 @@ INTERNAL Error _netbpm_format_write_append_pfm_pfmg(String_Builder* append_into,
     format_append_into(append_into, "%s\n%d %d\n%f\n", magic, (int) image.width, (int) image.height, corrected_range);
 
     isize size_before = append_into->size;
-    array_resize(append_into, size_before + neeed_size);
+    builder_resize(append_into, size_before + neeed_size);
 
     u8* dest = (u8*) append_into->data + size_before;
     if(subimage_is_contiguous(image))
@@ -276,13 +276,13 @@ INTERNAL Error _netbpm_format_read_pfm_pfmg(Image* image, String ppm, const char
 
 EXPORT Error netbpm_format_pgm_write_into(String_Builder* into, Subimage image)
 {
-    array_clear(into);
+    builder_clear(into);
     return _netbpm_format_write_append_pgm_ppm(into, image, "P5", 1);
 }
 
 EXPORT Error netbpm_format_ppm_write_into(String_Builder* into, Subimage image)
 {
-    array_clear(into);
+    builder_clear(into);
     return _netbpm_format_write_append_pgm_ppm(into, image, "P6", 3);
 }
 
@@ -298,13 +298,13 @@ EXPORT Error netbpm_format_ppm_read_into(Image* image, String ppm)
 
 EXPORT Error netbpm_format_pfmg_write_into(String_Builder* into, Subimage image, f32 range)
 {
-    array_clear(into);
+    builder_clear(into);
     return _netbpm_format_write_append_pfm_pfmg(into, image, "Pf", 1, range);
 }
 
 EXPORT Error netbpm_format_pfm_write_into(String_Builder* into, Subimage image, f32 range)
 {
-    array_clear(into);
+    builder_clear(into);
     return _netbpm_format_write_append_pfm_pfmg(into, image, "PF", 3, range);
 }
 
@@ -320,13 +320,13 @@ EXPORT Error netbpm_format_pfm_read_into(Image* image, String ppm)
 
 EXPORT Error netbpm_format_pam_write_into(String_Builder* into, Subimage image)
 {
-    array_clear(into);
+    builder_clear(into);
     String_Builder* append_into = into;
 
     isize channels = subimage_channel_count(image);
     isize neeed_size = image.width * image.height * image.pixel_size;
     
-    array_reserve(append_into, append_into->size + neeed_size + 200);
+    builder_reserve(append_into, append_into->size + neeed_size + 200);
     
     const char* tuple_type = NULL;
     int max_val = 0;
@@ -379,7 +379,7 @@ EXPORT Error netbpm_format_pam_write_into(String_Builder* into, Subimage image)
         "ENDHDR", (int) image.width, (int) image.height, depth, max_val, tuple_type);
 
     isize size_before = append_into->size;
-    array_resize(append_into, size_before + neeed_size);
+    builder_resize(append_into, size_before + neeed_size);
 
     u8* dest = (u8*) append_into->data + size_before;
     if(subimage_is_contiguous(image))

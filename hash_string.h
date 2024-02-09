@@ -1,45 +1,40 @@
 #pragma once
 
 #include "string.h"
-#include "hash.h"
 
 #define HASH_STRING_CHECK_HASHES
 
 typedef struct Hash_String {
-    const char* data;
-    isize size;
+    String string;
     u64 hash;
 } Hash_String;
 
-EXPORT Hash_String hash_string_make(const char* cstr);
-EXPORT Hash_String hash_string_from_string(String string);
-EXPORT Hash_String hash_string_from_builder(String_Builder builder);
-EXPORT String string_from_hashed(Hash_String hash);
+EXPORT Hash_String hash_string_from_cstring(const char* cstr);
+EXPORT Hash_String hash_string_make(String string);
 
-#define HSTRING(char_literal) hash_string_make(char_literal)
+MODIFIER_FORCE_INLINE static uint64_t _hash64_fnv_inline(const char* data, isize size);
 
-EXPORT Hash_String hash_string_make(const char* cstr)
+#define HSTRING(string_literal) BRACE_INIT(Hash_String){string_literal, sizeof(string_literal) - 1, hash64_fnv_inline(string_literal, sizeof(string_literal) - 1)}
+
+EXPORT Hash_String hash_string_from_cstring(const char* cstr)
 {
-    return hash_string_from_string(string_make(cstr));
+    return hash_string_make(string_make(cstr));
 }
 
-EXPORT Hash_String hash_string_from_string(String string)
+MODIFIER_FORCE_INLINE static uint64_t _hash64_fnv_inline(const char* data, isize size)
+{
+    uint64_t hash = 0;
+    for(int64_t i = 0; i < size; i++)
+        hash = (hash * 0x100000001b3ULL) ^ (uint64_t) data[i];
+
+    return hash;
+}
+
+EXPORT Hash_String hash_string_make(String string)
 {
     Hash_String out = {0};
-    out.data = string.data;
-    out.size = string.size;
-    out.hash = hash64_murmur(out.data, out.size, 0);
-    return out;
-}
-
-EXPORT Hash_String hash_string_from_builder(String_Builder builder)
-{
-    return hash_string_from_string(string_from_builder(builder));
-}
-
-EXPORT String string_from_hashed(Hash_String hash)
-{
-    String out = {hash.data, hash.size};
+    out.string = string;
+    out.hash = _hash64_fnv_inline(string.data, string.size);
     return out;
 }
 

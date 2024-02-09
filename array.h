@@ -30,12 +30,19 @@
 #include "defines.h"
 #include "allocator.h"
 
+//@Note: We can supply aligment to this 
+
 #define DEFINE_ARRAY_TYPE(Type, Struct_Name) \
     typedef struct Struct_Name {             \
-        Allocator* allocator; /* Lowest order bit indicates wheter is `backed` or not. Do not use directly! */ \
-        Type* data;                          \
+        Allocator* allocator;                \
+        union {                              \
+            Type* data;                      \
+            Type* _array_data; /* used inside macros so that we cannot accidentally use for example String or String_Builder as an array. */ \
+            uint8_t (*_alignment)[DEF_ALIGN]; /* can be used to querry alignement. Currently unused */ \
+        };                                   \
         int64_t size;                        \
         int64_t capacity;                    \
+        int64_t marker;                      \
     } Struct_Name                            \
 
 DEFINE_ARRAY_TYPE(uint8_t,  u8_Array);
@@ -62,16 +69,15 @@ EXPORT bool _array_is_invariant(const void* array, isize item_size);
 EXPORT void _array_resize(void* array, isize item_size, isize to_size, bool zero_new, Source_Info from);
 EXPORT void _array_reserve(void* array, isize item_size, isize to_capacity, Source_Info from);
 EXPORT void _array_append(void* array, isize item_size, const void* data, isize data_count, Source_Info from);
-EXPORT void _array_unappend(void* array, isize item_size, isize data_count);
 
 #define array_set_capacity(array_ptr, capacity) \
-    _array_set_capacity(array_ptr, sizeof *(array_ptr)->data, capacity, SOURCE_INFO())
+    _array_set_capacity(array_ptr, sizeof *(array_ptr)->_array_data, capacity, SOURCE_INFO())
     
 //Initializes the array. If the array is already initialized deinitializes it first.
 //Thus expects a properly formed array. Suppling a non-zeroed memory will cause errors!
 //All data structers in this library need to be zero init to be valid!
 #define array_init(array_ptr, allocator) \
-    _array_init(array_ptr, sizeof *(array_ptr)->data, allocator, SOURCE_INFO())
+    _array_init(array_ptr, sizeof *(array_ptr)->_array_data, allocator, SOURCE_INFO())
     
 //Initializes the array and preallocates it to the desired size
 #define array_init_with_capacity(array_ptr, allocator, capacity) \
@@ -80,23 +86,23 @@ EXPORT void _array_unappend(void* array, isize item_size, isize data_count);
 
 //Deallocates and resets the array
 #define array_deinit(array_ptr) \
-    _array_deinit(array_ptr, sizeof *(array_ptr)->data, SOURCE_INFO())
+    _array_deinit(array_ptr, sizeof *(array_ptr)->_array_data, SOURCE_INFO())
 
 //If the array capacity is lower than to_capacity sets the capacity to to_capacity. 
 //If setting of capacity is required and the new capcity is less then one geometric growth 
 // step away from current capacity grows instead.
 #define array_reserve(array_ptr, to_capacity) \
-    _array_reserve(array_ptr, sizeof *(array_ptr)->data, to_capacity, SOURCE_INFO()) 
+    _array_reserve(array_ptr, sizeof *(array_ptr)->_array_data, to_capacity, SOURCE_INFO()) 
 
 //Sets the array size to the specied to_size. 
 //If the to_size is smaller than current size simply dicards further items
 //If the to_size is greater than current size zero initializes the newly added items
 #define array_resize(array_ptr, to_size)              \
-    _array_resize(array_ptr, sizeof *(array_ptr)->data, to_size, true, SOURCE_INFO()) 
+    _array_resize(array_ptr, sizeof *(array_ptr)->_array_data, to_size, true, SOURCE_INFO()) 
    
 //Just like array_resize except doesnt zero initialized newly added region
 #define array_resize_for_overwrite(array_ptr, to_size)              \
-    _array_resize(array_ptr, sizeof *(array_ptr)->data, to_size, false, SOURCE_INFO()) 
+    _array_resize(array_ptr, sizeof *(array_ptr)->_array_data, to_size, false, SOURCE_INFO()) 
 
 //Sets the array size to 0. Does not deallocate the array
 #define array_clear(array_ptr) \
@@ -106,8 +112,8 @@ EXPORT void _array_unappend(void* array, isize item_size, isize data_count);
 #define array_append(array_ptr, items, item_count) \
     /* Here is a little hack to typecheck the items array.*/ \
     /* We try to assign the first item to the first data but never actaully run it */ \
-    (void) (0 ? *(array_ptr)->data = *(items), 0 : 0), \
-    _array_append(array_ptr, sizeof *(array_ptr)->data, items, item_count, SOURCE_INFO())
+    (void) (0 ? *(array_ptr)->_array_data = *(items), 0 : 0), \
+    _array_append(array_ptr, sizeof *(array_ptr)->_array_data, items, item_count, SOURCE_INFO())
     
 //Discards current items in the array and replaces them with the provided items
 #define array_assign(array_ptr, items, item_count) \
@@ -116,24 +122,25 @@ EXPORT void _array_unappend(void* array, isize item_size, isize data_count);
     
 //Copies from copy_from_array into copy_into_array_ptr overriding its elements. 
 #define array_copy(copy_into_array_ptr, copy_from_array) \
-    array_assign(copy_into_array_ptr, (copy_from_array).data, (copy_from_array).size)
+    array_assign(copy_into_array_ptr, (copy_from_array)._array_data, (copy_from_array).size)
 
 //Appends a single item to the end of the array
 #define array_push(array_ptr, item_value)            \
-    _array_reserve(array_ptr, sizeof *(array_ptr)->data, (array_ptr)->size + 1, SOURCE_INFO()), \
-    (array_ptr)->data[(array_ptr)->size++] = item_value \
+    _array_reserve(array_ptr, sizeof *(array_ptr)->_array_data, (array_ptr)->size + 1, SOURCE_INFO()), \
+    (array_ptr)->_array_data[(array_ptr)->size++] = item_value \
 
 //Removes a single item from the end of the array
 #define array_pop(array_ptr) \
-    _array_unappend(array_ptr, sizeof *(array_ptr)->data, 1) \
+    ASSERT((array_ptr)->size > 0 && "cannot pop from empty array!"), \
+    (array_ptr)->_array_data[--(array_ptr)->size] \
     
 //Returns the value of the last item. The array must not be empty!
 #define array_last(array) \
-    (CHECK_BOUNDS(0, (array).size), &(array).data[(array).size - 1])
+    (CHECK_BOUNDS(0, (array).size), &(array)._array_data[(array).size - 1])
 
 //Returns the total size of the array in bytes
 #define array_byte_size(array) \
-    ((array).size * (isize) sizeof *(array).data)
+    ((array).size * (isize) sizeof *(array)._array_data)
 
 #endif
 
@@ -145,10 +152,7 @@ EXPORT bool _array_is_invariant(const void* array, isize item_size)
 {
     u8_Array* base = (u8_Array*) array;
     bool is_capacity_correct = 0 <= base->capacity;
-    bool is_size_correct = (0 <= base->size && base->size < base->capacity);
-    if(base->size == 0)
-        is_size_correct = true;
-
+    bool is_size_correct = (0 <= base->size && base->size <= base->capacity);
     if(base->capacity > 0)
         is_capacity_correct = is_capacity_correct && base->allocator != NULL;
 
@@ -162,11 +166,13 @@ EXPORT bool _array_is_invariant(const void* array, isize item_size)
 EXPORT void _array_init(void* array, isize item_size, Allocator* allocator, Source_Info from)
 {
     (void) item_size;
-    u8_Array* base = (u8_Array*) array;
     _array_deinit(array, item_size, from);
-    base->allocator = allocator;
-}
 
+    u8_Array* base = (u8_Array*) array;
+    base->allocator = allocator;
+    if(base->allocator == NULL)
+        base->allocator = allocator_get_default();
+}
 
 EXPORT void _array_deinit(void* array, isize item_size, Source_Info from)
 {
@@ -184,16 +190,6 @@ EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, So
     ASSERT(_array_is_invariant(array, item_size));
     ASSERT(capacity >= 0);
 
-    if(capacity == 0)
-    {
-        allocator_deallocate(base->allocator, base->data, base->capacity * item_size, DEF_ALIGN, from);
-            
-        base->capacity = 0;
-        base->size = 0;
-        base->data = NULL;
-        return;
-    }
-
     isize old_byte_size = item_size * base->capacity;
     isize new_byte_size = item_size * capacity;
     if(base->allocator == NULL)
@@ -201,17 +197,11 @@ EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, So
 
     base->data = (uint8_t*) allocator_reallocate(base->allocator, new_byte_size, base->data, old_byte_size, DEF_ALIGN, from);
 
-    //Clear the allocated to 0
-    if(new_byte_size > old_byte_size)
-        memset(base->data + old_byte_size, 0, (size_t) (new_byte_size - old_byte_size));
-
     //trim the size if too big
     base->capacity = capacity;
-    if(base->size >= base->capacity && base->capacity != 0)
-        base->size = base->capacity - 1;
+    if(base->size > base->capacity)
+        base->size = base->capacity;
         
-    //escape the string/data
-    memset(base->data + base->size*item_size, 0, (size_t) item_size);
     ASSERT(_array_is_invariant(array, item_size));
 }
 
@@ -221,11 +211,8 @@ EXPORT void _array_resize(void* array, isize item_size, isize to_size, bool zero
     _array_reserve(base, item_size, to_size, from);
     if(zero_new && to_size > base->size)
         memset(base->data + base->size*item_size, 0, (size_t) ((to_size - base->size)*item_size));
-    if(to_size < base->size)
-        memset(base->data + to_size*item_size, 0, (size_t) ((base->size - to_size)*item_size));
         
     base->size = to_size;
-    //memset(base->data + base->size*item_size, 0, (size_t)  item_size);
     ASSERT(_array_is_invariant(array, item_size));
 }
 
@@ -252,18 +239,6 @@ EXPORT void _array_append(void* array, isize item_size, const void* data, isize 
     _array_reserve(base, item_size, base->size+data_count, from);
     memcpy(base->data + item_size * base->size, data, (size_t) (item_size * data_count));
     base->size += data_count;
-    memset(base->data + base->size*item_size, 0, (size_t) item_size);
     ASSERT(_array_is_invariant(array, item_size));
-}
-
-EXPORT void _array_unappend(void* array, isize item_size, isize data_count)
-{
-    ASSERT(_array_is_invariant(array, item_size));
-    u8_Array* base = (u8_Array*) array;
-    ASSERT(base->size >= data_count && data_count >= 0);
-    base->size -= data_count;
-
-    if(data_count > 0)
-        memset(base->data + base->size*item_size, 0, (size_t) item_size);
 }
 #endif

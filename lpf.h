@@ -171,11 +171,11 @@ EXPORT String lpf_string_duplicate(Arena* arena, String string)
 INTERNAL void _lpf_commit_entry(Lpf_Entry_Array* entries_stack, Lpf_Entry* queued, String_Builder* queued_value, Arena* arena)
 {
     Lpf_Entry new_entry = *queued;
-    new_entry.value = lpf_string_duplicate(arena, string_from_builder(*queued_value));
+    new_entry.value = lpf_string_duplicate(arena, queued_value->string);
     new_entry.label = lpf_string_duplicate(arena, queued->label);
     
     array_push(entries_stack, new_entry);
-    array_clear(queued_value);
+    builder_clear(queued_value);
     memset(queued, 0, sizeof *queued);
 }
 
@@ -331,7 +331,7 @@ EXPORT Lpf_Entry lpf_read(Arena* arena, String source, const Lpf_Read_Options* r
 
         array_init_with_capacity(&collections_from, scratch, 32);
         array_init_with_capacity(&entries_stack, scratch, 1024);
-        array_init_with_capacity(&queued_value, scratch, 512);
+        builder_init_with_capacity(&queued_value, scratch, 512);
         
         //add the root and its collection
         array_push(&entries_stack, root);
@@ -389,7 +389,7 @@ EXPORT Lpf_Entry lpf_read(Arena* arena, String source, const Lpf_Read_Options* r
                     }
 
                     if(token.type != ENTRY_CONTINUATION_ESCAPED)
-                        array_push(&queued_value, '\n');
+                        builder_push(&queued_value, '\n');
                     builder_append(&queued_value, value);
                 } break;
 
@@ -411,7 +411,7 @@ EXPORT Lpf_Entry lpf_read(Arena* arena, String source, const Lpf_Read_Options* r
                             queued.blanks_before = (u16) blanks_before; 
                         }
                         else
-                            array_push(&queued_value, '\n');
+                            builder_push(&queued_value, '\n');
                         builder_append(&queued_value, value);
                     }
                     blanks_before = 0;
@@ -681,16 +681,13 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
             }
         }
         
-        String_Builder out = {0};
-        array_init_with_capacity(&out, scratch, 255);
-        
-        String_Builder indentation = {0};
-        array_init_with_capacity(&indentation, scratch, 127);
+        String_Builder out = builder_make(scratch, 255);
+        String_Builder indentation = builder_make(scratch, 127);
         isize indentation_level = -1;
         
         //We only pad up to 127 chars. If thats not enough too bad.
-        String_Builder label_padding_buffer = {scratch};
-        array_resize(&label_padding_buffer, 127);
+        String_Builder label_padding_buffer = builder_make(scratch, 127);
+        builder_resize(&label_padding_buffer, 127);
         memset(label_padding_buffer.data, ' ', label_padding_buffer.size);
 
         for(isize token_i = 0; token_i < tokens.size; token_i ++)
@@ -698,7 +695,7 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
             Lpf_Token token = tokens.data[token_i];
             if(token.type == BLANK)
             {
-                array_push(&out, '\n');
+                builder_push(&out, '\n');
                 continue;
             }
             
@@ -708,18 +705,18 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
             //Recache ondentation and indent
             if(indentation_level != token.indentation)
             {
-                array_clear(&indentation);
+                builder_clear(&indentation);
                 i32 indented_so_far = 0;
                 if(options.indent_using_tabs)
                     for(; indented_so_far + 4 <= token.indentation; indented_so_far += 4)
-                        array_push(&indentation, '\t');
+                        builder_push(&indentation, '\t');
         
                 for(; indented_so_far < token.indentation; indented_so_far ++)
-                    array_push(&indentation, ' ');
+                    builder_push(&indentation, ' ');
 
                 indentation_level = token.indentation;
             }
-            builder_append(&out, string_from_builder(indentation));
+            builder_append(&out, indentation.string);
 
             //Escape label
             if(label.size > 0)
@@ -746,7 +743,7 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
             }
 
             isize label_padding_ammount = CLAMP(token.pad_labels_to - label.size, 0, label_padding_buffer.size);
-            String label_padding = string_head(string_from_builder(label_padding_buffer), label_padding_ammount);
+            String label_padding = string_head(label_padding_buffer.string, label_padding_ammount);
             
             //Append each token according to its own desired styling. 
             // This is the part of the code that can be tweaked a lot
@@ -754,11 +751,11 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
             {
                 builder_append(&out, STRING("# "));
                 builder_append(&out, value);
-                array_push(&out, '\n');
+                builder_push(&out, '\n');
             }
             else if(token.type == COLLECTION_END)
             {
-                array_append(&out, "}\n", 2);
+                builder_append(&out, STRING("}\n"));
                 continue;
             }
             else if(token.type == COLLECTION_START || token.type == COLLECTION_EMPTY)
@@ -768,7 +765,7 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
                     builder_append(&out, label_padding);
 
                 if(label.size > 0)
-                    array_push(&out, ' ');
+                    builder_push(&out, ' ');
 
                 if(token.type == COLLECTION_START)
                      builder_append(&out, STRING("{\n"));
@@ -792,7 +789,7 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
                     builder_append(&out, STRING("; "));
                     
                 builder_append(&out, value);
-                array_push(&out, '\n');
+                builder_push(&out, '\n');
                 continue;
             }
             else
@@ -801,7 +798,7 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
             }
         }
 
-        return_string = lpf_string_duplicate(arena, string_from_builder(out));
+        return_string = lpf_string_duplicate(arena, out.string);
     }
     allocator_arena_release(&scratch);
     return return_string;
