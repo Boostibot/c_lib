@@ -349,10 +349,10 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
     }
 
     (void) source;
-    Allocator* arena = allocator_arena_acquire();
+    Arena arena = scratch_arena_acquire();
     {
-        String_Builder formatted_log = builder_make(arena, 1024);
-        file_logger_log_append_into(arena, &formatted_log, string_make(module), type, indentation, platform_epoch_time(), format, args);
+        String_Builder formatted_log = builder_make(&arena.allocator, 1024);
+        file_logger_log_append_into(&arena.allocator, &formatted_log, string_make(module), type, indentation, platform_epoch_time(), format, args);
 
         bool print_to_console = (type > LOG_ENUM_MAX) || (((i64) 1 << type) & self->console_type_filter);
         bool print_to_file = (type > LOG_ENUM_MAX) || (((i64) 1 << type) & self->file_type_filter);
@@ -382,7 +382,7 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
         if(self->buffer.size > self->flush_every_bytes || time_since_last_flush > self->flush_every_seconds)
             file_logger_flush(self);
     }
-    allocator_arena_release(&arena);
+    arena_release(&arena);
     PERF_COUNTER_END(counter);
 }
 

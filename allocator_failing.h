@@ -24,8 +24,6 @@ EXPORT Allocator* allocator_get_failing();
 
 #endif
 
-#define JOT_ALL_IMPL
-
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_FAILING_IMPL)) && !defined(JOT_ALLOCATOR_FAILING_HAS_IMPL)
 #define JOT_ALLOCATOR_FAILING_HAS_IMPL
 

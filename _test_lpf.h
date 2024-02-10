@@ -98,10 +98,9 @@ static void test_lpf_print_compariosn(String left, String right)
 static void test_lpf()
 {
     {
-        Allocator* scratch = allocator_arena_acquire();
-        Arena scratch_arena = arena_from_allocator_arena(scratch);
+        Arena scratch = scratch_arena_acquire();
 
-        Lpf_Entry root = lpf_read(&scratch_arena, STRING(
+        Lpf_Entry root = lpf_read(&scratch, STRING(
             "\n first \t: value "
             "\n "
             "\n \tsecond: value\t"
@@ -123,14 +122,13 @@ static void test_lpf()
         test_lpf_entry_full(&root.children[2], LPF_ENTRY,     "third*", "value escaped",          6, 2, 8);
         test_lpf_entry_full(&root.children[3], LPF_COMMENT,   "", "comment\n with continuation",  1, 0, 10);
 
-        allocator_arena_release(&scratch);
+        arena_release(&scratch);
     }
 
     {
-        Allocator* scratch = allocator_arena_acquire();
-        Arena scratch_arena = arena_from_allocator_arena(scratch);
+        Arena scratch = scratch_arena_acquire();
 
-        Lpf_Entry root = lpf_read(&scratch_arena, STRING(
+        Lpf_Entry root = lpf_read(&scratch, STRING(
             "\n out: value "
             "\n col1 { "
             "\n    inside1: value1"
@@ -173,15 +171,14 @@ static void test_lpf()
         TEST(col3->children == NULL);
         test_lpf_entry(&col2->children[0], LPF_ENTRY, "key", "value");
         
-
-        allocator_arena_release(&scratch);
+        
+        arena_release(&scratch);
     }
 
     {
-        Allocator* scratch = allocator_arena_acquire();
-        Arena scratch_arena = arena_from_allocator_arena(scratch);
+        Arena scratch = scratch_arena_acquire();
 
-        Lpf_Entry root = lpf_read(&scratch_arena, STRING(
+        Lpf_Entry root = lpf_read(&scratch, STRING(
             "\n out :value"
             "\n col1 { "
             "\n    inside : value1"
@@ -223,16 +220,16 @@ static void test_lpf()
         options.max_line_width = 19;
         options.indentations_per_level = 3;
 
-        String formatted = lpf_write_from_root(&scratch_arena, root, &options);
+        String formatted = lpf_write_from_root(&scratch, root, &options);
         if(string_is_equal(formatted, expected) == false)
             test_lpf_print_compariosn(formatted, expected);
 
         TEST(string_is_equal(formatted, expected));
 
-        Lpf_Entry root_roundtrip = lpf_read(&scratch_arena, formatted, NULL);
-        String formatted_roundtrip = lpf_write_from_root(&scratch_arena, root_roundtrip, &options);
+        Lpf_Entry root_roundtrip = lpf_read(&scratch, formatted, NULL);
+        String formatted_roundtrip = lpf_write_from_root(&scratch, root_roundtrip, &options);
         TEST(string_is_equal(formatted, formatted_roundtrip));
-
-        allocator_arena_release(&scratch);
+        
+        arena_release(&scratch);
     }
 }

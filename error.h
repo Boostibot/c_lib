@@ -86,8 +86,6 @@ EXPORT const char* error_system_stdlib_translator(u32 error_code, void* context)
 
 #endif
 
-#define JOT_ALL_IMPL
-
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ERROR_IMPL)) && !defined(JOT_ERROR_HAS_IMPL)
 #define JOT_ERROR_HAS_IMPL
 

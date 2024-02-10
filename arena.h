@@ -1,7 +1,43 @@
-#pragma once
+#ifndef JOT_ARENA
+#define JOT_ARENA
+
 #include "defines.h"
 #include "assert.h"
 #include "platform.h"
+
+typedef struct Allocator        Allocator;
+typedef struct Allocator_Stats  Allocator_Stats;
+typedef struct Source_Info      Source_Info;
+
+typedef void* (*Allocator_Allocate_Func)(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from);
+typedef Allocator_Stats (*Allocator_Get_Stats_Func)(Allocator* self);
+
+typedef struct Allocator {
+    Allocator_Allocate_Func allocate;
+    Allocator_Get_Stats_Func get_stats;
+} Allocator;
+
+typedef struct Allocator_Stats {
+    //The allocator used to obtain memory reisributed by this allocator.
+    //If is_top_level is set this should probably be NULL
+    Allocator* parent;
+    //Human readable name of the type 
+    const char* type_name;
+    //Optional human readable name of this specific allocator
+    const char* name;
+    //if doesnt use any other allocator to obtain its memory. For example malloc allocator or VM memory allocator have this set.
+    bool is_top_level; 
+
+    //The number of bytes given out to the program by this allocator. (does NOT include book keeping bytes).
+    //Might not be totally accurate but is required to be localy stable - if we allocate 100B and then deallocate 100B this should not change.
+    //This can be used to accurately track memory leaks. (Note that if this field is simply not set and thus is 0 the above property is satisfied)
+    isize bytes_allocated;
+    isize max_bytes_allocated;  //maximum bytes_allocated during the enire lifetime of the allocator
+
+    isize allocation_count;     //The number of allocation requests (old_ptr == NULL). Does not include reallocs!
+    isize deallocation_count;   //The number of deallocation requests (new_size == 0). Does not include reallocs!
+    isize reallocation_count;   //The number of reallocation requests (*else*).
+} Allocator_Stats;
 
 typedef isize (*Arena_Stack_Commit_Func)(void* addr, isize size, isize reserved_size, bool commit);
 
@@ -10,6 +46,13 @@ typedef isize (*Arena_Stack_Commit_Func)(void* addr, isize size, isize reserved_
 #define ARENA_DEF_COMMIT_SIZE  (isize) 8 * 1024*1024 //MB
 
 typedef struct Arena_Stack {
+    //Info
+    const char* name;
+    isize max_release_from_size;
+    isize acquasition_count;
+    isize release_count;
+
+    //Actually useful data
     i32 stack_depht;
     i32 stack_max_depth;
     isize used_to;
@@ -22,9 +65,28 @@ typedef struct Arena_Stack {
 } Arena_Stack;
 
 typedef struct Arena {
+    Allocator allocator;
     Arena_Stack* stack;
     i32 level;
 } Arena;
+
+void arena_init(Arena_Stack* arena, isize reserve_size_or_zero, isize stack_max_depth_or_zero, const char* name_or_null);
+void arena_init_custom(Arena_Stack* arena, void* data, isize size, isize reserved_size, Arena_Stack_Commit_Func commit_or_null, isize stack_max_depth_or_zero);
+void arena_deinit(Arena_Stack* arena);
+void arena_release(Arena* arena);
+
+Arena arena_acquire(Arena_Stack* stack);
+void* arena_push(Arena* arena, isize size, isize align);
+void* arena_push_nonzero(Arena* arena, isize size, isize align);
+MODIFIER_FORCE_INLINE void* arena_push_nonzero_inline(Arena* arena, isize size, isize align);
+
+void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from);
+Allocator_Stats arena_get_allocatator_stats(Allocator* self);
+
+#endif
+
+#if (defined(JOT_ALL_IMPL) || defined(JOT_ARENA_IMPL)) && !defined(JOT_ARENA_HAS_IMPL)
+#define JOT_ARENA_HAS_IMPL
 
 #ifdef NDEBUG
 #define ARENA_DEBUG 0
@@ -94,7 +156,7 @@ isize arena_def_commit_func(void* addr, isize size, isize reserved_size, bool co
     return commit_to;
 }
 
-void arena_init(Arena_Stack* arena, isize reserve_size_or_zero, isize stack_max_depth_or_zero)
+void arena_init(Arena_Stack* arena, isize reserve_size_or_zero, isize stack_max_depth_or_zero, const char* name_or_null)
 {
     if(reserve_size_or_zero <= 0)
         reserve_size_or_zero = ARENA_DEF_RESERVE_SIZE;
@@ -102,6 +164,7 @@ void arena_init(Arena_Stack* arena, isize reserve_size_or_zero, isize stack_max_
     void* data = platform_virtual_reallocate(NULL, reserve_size_or_zero, PLATFORM_VIRTUAL_ALLOC_RESERVE, PLATFORM_MEMORY_PROT_READ_WRITE);
     isize size = arena_def_commit_func(data, 0, reserve_size_or_zero, true);
     arena_init_custom(arena, data, size, reserve_size_or_zero, arena_def_commit_func, stack_max_depth_or_zero);
+    arena->name = name_or_null;
 }
 
 MODIFIER_NO_INLINE void* arena_unusual_push(Arena_Stack* arena, i32 depth, isize size, isize align)
@@ -144,7 +207,7 @@ MODIFIER_NO_INLINE void* arena_unusual_push(Arena_Stack* arena, i32 depth, isize
     return data;
 }
 
-void* arena_push_nonzero(Arena* arena, isize size, isize align)
+MODIFIER_FORCE_INLINE void* arena_push_nonzero_inline(Arena* arena, isize size, isize align)
 {
     ASSERT(arena->stack && arena->level > 0);
     Arena_Stack* stack = arena->stack;
@@ -159,6 +222,11 @@ void* arena_push_nonzero(Arena* arena, isize size, isize align)
     return data;
 }
 
+void* arena_push_nonzero(Arena* arena, isize size, isize align)
+{
+    return arena_push_nonzero_inline(arena, size, align);
+}
+
 void* arena_push(Arena* arena, isize size, isize align)
 {
     void* ptr = arena_push_nonzero(arena, size, align);
@@ -171,7 +239,7 @@ void arena_release(Arena* arena)
     Arena_Stack* stack = arena->stack;
     ASSERT(arena->stack && arena->level > 0);
     _arena_debug_check_invarinats(stack);
-    if(stack->stack_depht < arena->level)
+    if(arena->level <= 0 || stack->stack_depht < arena->level)
         return;
 
     isize* levels = (isize*) (void*) stack->data;
@@ -181,12 +249,46 @@ void arena_release(Arena* arena)
     isize stack_bytes = stack->stack_max_depth * (isize) sizeof *levels;
     ASSERT(stack_bytes <= new_used_to && new_used_to <= stack->used_to);
 
+    if(stack->max_release_from_size < stack->used_to)
+        stack->max_release_from_size = stack->used_to;
+
     stack->used_to = new_used_to;
     stack->stack_depht = arena->level - 1;
+    stack->release_count += 1;
 
     _arena_debug_fill_data(stack, old_used_to - new_used_to);
     _arena_debug_check_invarinats(stack);
     memset(arena, 0, sizeof* arena);
+}
+
+//Compatibility function for the allocator interface
+void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from)
+{
+    (void) old_ptr;
+    (void) old_size;
+    (void) called_from;
+    Arena* arena = (Arena*) (void*) self;
+    return arena_push(arena, new_size, align);
+}
+
+Allocator_Stats arena_get_allocatator_stats(Allocator* self)
+{
+    Arena* arena = (Arena*) (void*) self;
+    Arena_Stack* stack = arena->stack;
+
+    isize max_used_to = MAX(stack->used_to, stack->max_release_from_size);
+    isize stack_to = stack->stack_max_depth * (isize) sizeof(isize);
+
+    Allocator_Stats stats = {0};
+    stats.type_name = "Arena";
+    stats.name = stack->name;
+    stats.is_top_level = true;
+    stats.bytes_allocated = stack->used_to - stack_to;
+    stats.max_bytes_allocated = max_used_to - stack_to;
+    stats.allocation_count = stack->acquasition_count;
+    stats.deallocation_count = stack->release_count;
+
+    return stats;
 }
 
 Arena arena_acquire(Arena_Stack* stack)
@@ -200,7 +302,13 @@ Arena arena_acquire(Arena_Stack* stack)
         stack->stack_depht = new_depth;
     }
 
-    Arena out = {stack, new_depth};
+    stack->acquasition_count += 1;
+
+    Arena out = {0};
+    out.allocator.allocate = arena_reallocate;
+    out.allocator.get_stats = arena_get_allocatator_stats;
+    out.level = new_depth;
+    out.stack = stack;
     return out;
 }
 
@@ -272,3 +380,4 @@ void* _align_forward(const void* data, isize align)
 {
     return _align_backward((u8*) data + align - 1, align);
 }
+#endif

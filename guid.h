@@ -30,8 +30,6 @@ EXPORT u64 guid_hash32(Guid guid);
 
 #endif
 
-#define JOT_ALL_IMPL
-
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_GUID_IMPL)) && !defined(JOT_GUID_HAS_IMPL)
 #define JOT_GUID_HAS_IMPL

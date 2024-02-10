@@ -306,13 +306,18 @@ EXPORT void vlog_message(const char* module, Log_Type type, Source_Info source, 
     #ifdef DO_LOG
         static_enabled = true;
     #endif
-    Logger* global_logger = _global_logger;
-    if(static_enabled && global_logger && log_is_enabled(type))
+    Logger** logger_ptr = &_global_logger;
+    Logger* loger = *logger_ptr; 
+    if(static_enabled && loger && log_is_enabled(type))
     {
         isize extra_indentation = 0;
         for(; module[extra_indentation] == '>'; extra_indentation++);
 
-        global_logger->log(global_logger, module + extra_indentation, type, _global_log_group_depth + extra_indentation, source, format, args);
+        //We temporarily dissable loggers while we are logging. This prevents log infinite recursion which occurs for example
+        // when the logger fails to acquire a resource (memory) and that failiure logs 
+        *logger_ptr = NULL;
+        loger->log(loger, module + extra_indentation, type, _global_log_group_depth + extra_indentation, source, format, args);
+        *logger_ptr = loger;
     }
 }
 

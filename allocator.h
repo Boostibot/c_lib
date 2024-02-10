@@ -21,7 +21,6 @@
 // This will work even if the lower allocators/systems leak, unlike malloc or other global alloctator systems where every 
 // level has to be perfect.
 // 
-// Secondly we pass Source_Info to every allocation procedure. This means we on-the-fly swap our current allocator with debug allocator
 // that for example logs all allocations and checks their correctness.
 //
 // We also keep two global allocator pointers. These are called 'default' and 'scratch' allocators. Each system requiring memory
@@ -35,39 +34,6 @@
 // instal the scratch allocator as the default allocator so that all internal functions will also comunicate to us using the fast scratch 
 // allocator.
 
-typedef struct Allocator        Allocator;
-typedef struct Allocator_Stats  Allocator_Stats;
-typedef struct Source_Info      Source_Info;
-
-typedef void* (*Allocator_Allocate_Func)(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from);
-typedef Allocator_Stats (*Allocator_Get_Stats_Func)(Allocator* self);
-
-typedef struct Allocator {
-    Allocator_Allocate_Func allocate;
-    Allocator_Get_Stats_Func get_stats;
-} Allocator;
-
-typedef struct Allocator_Stats {
-    //The allocator used to obtain memory reisributed by this allocator.
-    //If is_top_level is set this should probably be NULL
-    Allocator* parent;
-    //Human readable name of the type 
-    const char* type_name;
-    //Optional human readable name of this specific allocator
-    const char* name;
-    //if doesnt use any other allocator to obtain its memory. For example malloc allocator or VM memory allocator have this set.
-    bool is_top_level; 
-
-    //The number of bytes given out to the program by this allocator. (does NOT include book keeping bytes).
-    //Might not be totally accurate but is required to be localy stable - if we allocate 100B and then deallocate 100B this should not change.
-    //This can be used to accurately track memory leaks. (Note that if this field is simply not set and thus is 0 the above property is satisfied)
-    isize bytes_allocated;
-    isize max_bytes_allocated;  //maximum bytes_allocated during the enire lifetime of the allocator
-
-    isize allocation_count;     //The number of allocation requests (old_ptr == NULL). Does not include reallocs!
-    isize deallocation_count;   //The number of deallocation requests (new_size == 0). Does not include reallocs!
-    isize reallocation_count;   //The number of reallocation requests (*else*).
-} Allocator_Stats;
 
 typedef struct Allocator_Set {
     Allocator* allocator_default;
@@ -153,9 +119,8 @@ EXPORT Memory_Format get_memory_format(isize bytes);
 EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator);
 EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_type, Allocator_Stats stats);
 
-
 #endif
-#define JOT_ALL_IMPL
+
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_IMPL)) && !defined(JOT_ALLOCATOR_HAS_IMPL)
 #define JOT_ALLOCATOR_HAS_IMPL
 
@@ -169,14 +134,14 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
         PERF_COUNTER_START(c);
         void* out = NULL;
         ASSERT(new_size >= 0 && old_size >= 0 && is_power_of_two(align) && "provided arguments must be valid!");
-        //If is arena
-        if((u64) from_allocator & 1)
+        
+        //If is arena use the arena function directly (inlined)
+        if(from_allocator && from_allocator->allocate == arena_reallocate)
         {
             if(new_size > old_size)
             {
-                i32 tag = (i32) ((u64) from_allocator >> 2);
-                Arena arena = {&_scratch_arena_stack, tag};
-                out = arena_push_nonzero(&arena, new_size, align);
+                Arena* arena = (Arena*) (void*) from_allocator;
+                out = arena_push_nonzero_inline(arena, new_size, align);
                 memcpy(out, old_ptr, old_size);
             }
         }
@@ -228,51 +193,12 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
 
     EXPORT Allocator_Stats allocator_get_stats(Allocator* self)
     {
-        Allocator_Stats stats = {0};
-        //If is arena
-        if((u64) self & 1)
-        {
-            stats.name = "Thread_Scratch_Arena";
-            stats.type_name = "Arena";
-            stats.is_top_level = true;
-            stats.bytes_allocated = _scratch_arena_stack.size;
-            stats.max_bytes_allocated = stats.bytes_allocated;
-        }
-        else
-            stats = self->get_stats(self);
-
-        return stats;
+        return self->get_stats(self);
     }
 
     EXPORT Arena scratch_arena_acquire()
     {
         return arena_acquire(&_scratch_arena_stack);
-    }
-
-    EXPORT Arena arena_from_allocator_arena(Allocator* arena_alloc)
-    {
-        i32 level = (i32) ((u64) arena_alloc >> 2);
-        Arena arena = {&_scratch_arena_stack, level};
-        return arena;
-    }
-
-    EXPORT Allocator* allocator_arena_acquire()
-    {
-        Arena arena = arena_acquire(&_scratch_arena_stack);
-        Allocator* out = (Allocator*) ((u64) arena.level << 2 | 1);
-        return out;
-    }
-    
-    EXPORT void allocator_arena_release(Allocator** arena_alloc)
-    {
-        if(*arena_alloc)
-        {
-            i32 level = (i32) ((u64) *arena_alloc >> 2);
-            Arena arena = {&_scratch_arena_stack, level};
-            arena_release(&arena);
-            int k = 0; (void) k;
-        }
-        *arena_alloc = NULL;
     }
 
     EXPORT Allocator* allocator_get_default()
@@ -286,6 +212,10 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
     EXPORT Allocator* allocator_get_static()
     {
         return _static_allocator;
+    }
+    EXPORT Arena_Stack* allocator_get_scratch_arena()
+    {
+        return &_scratch_arena_stack;
     }
 
     EXPORT Allocator_Set allocator_set_default(Allocator* new_default)

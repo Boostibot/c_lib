@@ -332,14 +332,14 @@ EXPORT bool serialize_read_name(Lpf_Entry* entry, String_Builder* val, String de
 
 EXPORT bool serialize_write_base16(Lpf_Entry* entry, String val)
 {
-    Allocator* arena = allocator_arena_acquire();
+    Arena arena = scratch_arena_acquire();
     {
-        String_Builder encoded = {arena};
+        String_Builder encoded = {&arena.allocator};
         base16_encode_append_into(&encoded, val.data, val.size);
 
         serialize_entry_set_identity(entry, encoded.string, LPF_ENTRY);
     }
-    allocator_arena_release(&arena);
+    arena_release(&arena);
 
     return true;
 }
@@ -477,9 +477,9 @@ EXPORT bool serialize_int_count_typed(Lpf_Entry* entry, void* value, isize value
         }
         else
         {
-            Allocator* arena = allocator_arena_acquire();
+            Arena arena = scratch_arena_acquire();
             {
-                String_Builder formatted = builder_make(arena, 256);
+                String_Builder formatted = builder_make(&arena.allocator, 256);
                 for(isize i = 0; i < count; i ++)
                 {
                     if(i != 0)
@@ -489,7 +489,7 @@ EXPORT bool serialize_int_count_typed(Lpf_Entry* entry, void* value, isize value
                     format_append_into(&formatted, "%lli", concrete_value);
                 }
             }
-            allocator_arena_release(&arena);
+            arena_release(&arena);
         }
 
         return true;

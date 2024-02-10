@@ -179,7 +179,8 @@ EXPORT void _array_deinit(void* array, isize item_size, Source_Info from)
     u8_Array* base = (u8_Array*) array;
     ASSERT(base != NULL);
     ASSERT(_array_is_invariant(array, item_size));
-    allocator_deallocate(base->allocator, base->data, base->capacity * item_size, DEF_ALIGN, from);
+    if(base->capacity > 0)
+        allocator_deallocate(base->allocator, base->data, base->capacity * item_size, DEF_ALIGN, from);
     
     memset(base, 0, sizeof *base);
 }

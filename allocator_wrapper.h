@@ -50,7 +50,7 @@ EXPORT Allocator* wrapper_allocator_get_scratch();
 EXPORT Allocator* wrapper_allocator_get_static();
 
 #endif
-#define JOT_ALL_IMPL
+
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_WRAPPER_IMPL)) && !defined(JOT_ALLOCATOR_WRAPPER_HAS_IMPL)
 #define JOT_ALLOCATOR_WRAPPER_HAS_IMPL
 

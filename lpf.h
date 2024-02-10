@@ -236,12 +236,13 @@ EXPORT Lpf_Entry lpf_read(Arena* arena, String source, const Lpf_Read_Options* r
 
     Lpf_Entry root = {0};
     root.kind = LPF_COLLECTION;
-    Allocator* scratch = allocator_arena_acquire();
+    
+    Arena scratch = scratch_arena_acquire();
     {
         DEFINE_ARRAY_TYPE(Lpf_Token, Lpf_Token_Array);
 
         Lpf_Token_Array token_array = {0};
-        array_init_with_capacity(&token_array, scratch, 1024);
+        array_init_with_capacity(&token_array, &scratch.allocator, 1024);
 
         for(Line_Iterator it = {0}; line_iterator_get_line(&it, source); )
         {
@@ -329,9 +330,9 @@ EXPORT Lpf_Entry lpf_read(Arena* arena, String source, const Lpf_Read_Options* r
         i32_Array collections_from = {0};
         Lpf_Entry_Array entries_stack = {0};
 
-        array_init_with_capacity(&collections_from, scratch, 32);
-        array_init_with_capacity(&entries_stack, scratch, 1024);
-        builder_init_with_capacity(&queued_value, scratch, 512);
+        array_init_with_capacity(&collections_from, &scratch.allocator, 32);
+        array_init_with_capacity(&entries_stack, &scratch.allocator, 1024);
+        builder_init_with_capacity(&queued_value, &scratch.allocator, 512);
         
         //add the root and its collection
         array_push(&entries_stack, root);
@@ -473,7 +474,7 @@ EXPORT Lpf_Entry lpf_read(Arena* arena, String source, const Lpf_Read_Options* r
         ASSERT(entries_stack.size == 1);
         root = entries_stack.data[0];
 
-        allocator_arena_release(&scratch);
+        arena_release(&scratch);
     }
     return root;
 }
@@ -529,7 +530,7 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
         options.max_line_width = INT64_MAX;
 
     enum {ALIGN_INDENT_EVERY = 10};
-    Allocator* scratch = allocator_arena_acquire();
+    Arena scratch = scratch_arena_acquire();
     {
         typedef struct Iterator {
             Lpf_Entry* parent;
@@ -542,8 +543,8 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
         
         Lpf_Token_Array tokens = {0};
         Iterator_Array iterators = {0};
-        array_init_with_capacity(&iterators, scratch, 32);
-        array_init_with_capacity(&tokens, scratch, 256);
+        array_init_with_capacity(&iterators, &scratch.allocator, 32);
+        array_init_with_capacity(&tokens, &scratch.allocator, 256);
         
         Iterator first_it = {&root};
         //first_it.pad_labels_to = 
@@ -681,12 +682,12 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
             }
         }
         
-        String_Builder out = builder_make(scratch, 255);
-        String_Builder indentation = builder_make(scratch, 127);
+        String_Builder out = builder_make(&scratch.allocator, 255);
+        String_Builder indentation = builder_make(&scratch.allocator, 127);
         isize indentation_level = -1;
         
         //We only pad up to 127 chars. If thats not enough too bad.
-        String_Builder label_padding_buffer = builder_make(scratch, 127);
+        String_Builder label_padding_buffer = builder_make(&scratch.allocator, 127);
         builder_resize(&label_padding_buffer, 127);
         memset(label_padding_buffer.data, ' ', label_padding_buffer.size);
 
@@ -800,7 +801,7 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
 
         return_string = lpf_string_duplicate(arena, out.string);
     }
-    allocator_arena_release(&scratch);
+    arena_release(&scratch);
     return return_string;
 }
 
