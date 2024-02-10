@@ -167,7 +167,7 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 #define LOG_ALWAYS(module, log_type, format, ...)   log_message(module, log_type, format, ##__VA_ARGS__)
 #define VLOG_ALWAYS(module, log_type, format, args) vlog_message(module, log_type, format, args)
 //Does not do anything (failed condition) but type checks the arguments
-#define LOG_NEVER(module, log_type, format, ...)  ((module && false) ? log_message(module, log_type,format, ##__VA_ARGS__) : (void) 0)
+#define LOG_NEVER(module, log_type, format, ...)  ((module && false) ? log_message(module, log_type, SOURCE_INFO(), format, ##__VA_ARGS__) : (void) 0)
 
 //Some of the ansi colors that can be used within logs. 
 //However their usage is not recommended since these will be written to log files and thus make their parsing more difficult.

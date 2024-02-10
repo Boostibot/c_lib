@@ -2,6 +2,7 @@
 #define JOT_ALLOCATOR_STACK
 
 #include "allocator.h"
+#include "allocator_malloc.h"
 
 // Allocates lineary from fixed buffer placing 8 byte headers in front of each allocation.
 // On deallocation marks the header as free. If the most recently block is deallocated
@@ -18,12 +19,10 @@
 // allocate/deallocate many things (lets say 1000) and then reset the allocator. In those cases
 // Stack_Allocator is a lot better.
 
-//@TODO: wrap parent in tracking allocator.
-//@TODO: substacking
-
 typedef struct Stack_Allocator {
     Allocator allocator;
     Allocator* parent;
+    Allocation_List overflown;
 
     uint8_t* buffer_from;
     uint8_t* buffer_to;
@@ -48,15 +47,26 @@ EXPORT Allocator_Stats stack_allocator_get_stats(Allocator* self);
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_STACK_IMPL)) && !defined(JOT_ALLOCATOR_STACK_HAS_IMPL)
 #define JOT_ALLOCATOR_STACK_HAS_IMPL
 
+INTERNAL ATTRIBUTE_INLINE_NEVER void* _stack_allocator_allocate_from_parent(Stack_Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
+{
+    if(self->parent == NULL)
+    {
+        allocator_out_of_memory(&self->allocator, new_size, old_ptr, old_size, align, "");
+        return NULL;
+    }
+    else
+    {
+        return allocation_list_allocate(&self->overflown, self->parent, new_size, old_ptr, old_size, align);
+    }
+}
+
 EXPORT void stack_allocator_init(Stack_Allocator* allocator, void* buffer, isize buffer_size, Allocator* parent)
 {
     stack_allocator_deinit(allocator);
 
     allocator->parent = parent;
     if(buffer == NULL && buffer_size > 0 && parent != NULL)
-    {
-        buffer = allocator_allocate(parent, buffer_size, DEF_ALIGN);
-    }
+        buffer = _stack_allocator_allocate_from_parent(allocator, buffer_size, NULL, 0, DEF_ALIGN);
 
     allocator->buffer_from = (uint8_t*) buffer;
     allocator->buffer_to = allocator->buffer_from + buffer_size ;
@@ -70,8 +80,7 @@ EXPORT void stack_allocator_init(Stack_Allocator* allocator, void* buffer, isize
 
 EXPORT void stack_allocator_deinit(Stack_Allocator* allocator)
 {
-    (void) allocator;
-    //nothing...
+    allocation_list_free_all(&allocator->overflown, allocator->parent);
 }
 
 EXPORT Allocator_Set stack_allocator_init_use(Stack_Allocator* allocator, void* buffer, isize buffer_size, Allocator* parent)
@@ -105,17 +114,6 @@ typedef struct _Stack_Allocator_Slot {
 
 #include "profile.h"
 
-INTERNAL void* _stack_allocator_allocate_from_parent(Stack_Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
-{
-    if(self->parent == NULL)
-    {
-        allocator_out_of_memory(&self->allocator, new_size, old_ptr, old_size, align, "");
-        return NULL;
-    }
-    else
-        return allocator_try_reallocate(self->parent, new_size, old_ptr, old_size, align);
-        
-}
 INTERNAL bool _stack_allocator_dummy() {return false;}
 
 INTERNAL void _stack_allocator_check_invariants(Stack_Allocator* self)

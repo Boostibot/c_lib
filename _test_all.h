@@ -9,7 +9,7 @@
 #include "_test_lpf.h"
 #include "_test_image.h"
 
-INTERNAL void test_all()
+INTERNAL void test_all(f64 total_time)
 {
     LOG_INFO("TEST", "RUNNING ALL TESTS");
     int total_count = 0;
@@ -20,14 +20,13 @@ INTERNAL void test_all()
     INCR RUN_TEST(test_image);
     INCR RUN_TEST(test_lpf);
     INCR RUN_TEST(test_stable_array);
-    INCR RUN_TEST(test_stable_array);
     INCR RUN_TEST(test_log);
     //INCR RUN_TEST(test_random);
     
-    INCR RUN_TEST_TIMED(test_hash_index, 3.0);
-    INCR RUN_TEST_TIMED(test_string, 1);
-    INCR RUN_TEST_TIMED(test_array, 3.0);
-    INCR RUN_TEST_TIMED(test_math, 3.0);
+    INCR RUN_TEST_TIMED(test_hash_index, total_time/4);
+    INCR RUN_TEST_TIMED(test_string, total_time/4);
+    INCR RUN_TEST_TIMED(test_array, total_time/4);
+    INCR RUN_TEST_TIMED(test_math, total_time/4);
     
     #undef INCR
 

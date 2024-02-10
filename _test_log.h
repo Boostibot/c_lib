@@ -30,7 +30,7 @@ INTERNAL void test_log()
 
         {
             File_Logger logger = {0};
-            file_logger_init_use(&logger, &debug_allocator.allocator, &debug_allocator.allocator, "logs");
+            file_logger_init_use(&logger, &debug_allocator.allocator, "logs");
             LOG_INFO("TEST_LOG", "iterating all entitites");
 
             for(int i = 0; i < 5; i++)

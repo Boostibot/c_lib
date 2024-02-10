@@ -54,21 +54,18 @@ EXPORT Allocator* wrapper_allocator_get_static();
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_WRAPPER_IMPL)) && !defined(JOT_ALLOCATOR_WRAPPER_HAS_IMPL)
 #define JOT_ALLOCATOR_WRAPPER_HAS_IMPL
 
-typedef struct Wrapper_Allocator_Block
-{
+typedef struct Wrapper_Allocator_Block {
     Allocator* allocated_from;
     u32 size;
     u32 align;
 } Wrapper_Allocator_Block; 
 
-typedef enum _Wrapper_Alloc_Arguments
-{
+typedef enum _Wrapper_Alloc_Arguments {
     WRAPPER_ALLOC_USE_PROVIDED_ARGUMENTS,
     WRAPPER_ALLOC_USE_FOUND_ARGUMENTS,
 } _Wrapper_Alloc_Arguments;
 
 #define WRAPPER_ALLOCAROR_DEF_ALIGN MAX(DEF_ALIGN, sizeof(Wrapper_Allocator_Block))
-
 
 INTERNAL void* wrapper_allocator_allocate_custom(Allocator* using_allocator, isize new_size, void* old_ptr, isize old_size, isize align, _Wrapper_Alloc_Arguments use_provided_arguments)
 {

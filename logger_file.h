@@ -57,7 +57,6 @@ typedef bool(*File_Logger_Print)(const void* data, isize size, void* context);
 EXPORT typedef struct File_Logger {
     Logger logger;
     Allocator* default_allocator;
-    Allocator* scratch_allocator;
     String_Builder buffer;
 
     // Flushes the file once some number of bytes were written (buffer size) 
@@ -101,9 +100,9 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
 EXPORT bool file_logger_flush(File_Logger* logger);
 
 EXPORT void file_logger_deinit(File_Logger* logger);
-EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc, isize flush_every_bytes, f64 flush_every_seconds, String folder, String prefix, String postfix);
-EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc, const char* folder);
-EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc, const char* folder);
+EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, isize flush_every_bytes, f64 flush_every_seconds, String folder, String prefix, String postfix);
+EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, const char* folder);
+EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, const char* folder);
 
 EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* append_to, String module, Log_Type type, isize indentation, i64 epoch_time, const char* format, va_list args);
 EXPORT void file_logger_log_into(Allocator* scratch, String_Builder* append_to, String module, Log_Type type, isize indentation, i64 epoch_time, const char* format, va_list args);
@@ -262,12 +261,11 @@ EXPORT void file_logger_deinit(File_Logger* logger)
     memset(logger, 0, sizeof *logger);
 }
 
-EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc, isize flush_every_bytes, f64 flush_every_seconds, String folder, String prefix, String postfix)
+EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, isize flush_every_bytes, f64 flush_every_seconds, String folder, String prefix, String postfix)
 {
     file_logger_deinit(logger);
     
     logger->default_allocator = def_alloc;
-    logger->scratch_allocator = scratch_alloc;
     builder_init_with_capacity(&logger->buffer, def_alloc, flush_every_bytes);
     builder_init(&logger->file_directory_path, def_alloc);
     builder_init(&logger->file_prefix, def_alloc);
@@ -287,14 +285,14 @@ EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, A
     builder_assign(&logger->file_postfix, postfix);
 }
 
-EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc, const char* folder)
+EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, const char* folder)
 {
-    file_logger_init_custom(logger, def_alloc, scratch_alloc, PAGE_BYTES, 2.0 / 1000, string_make(folder), STRING(""), STRING(".txt"));
+    file_logger_init_custom(logger, def_alloc, PAGE_BYTES, 2.0 / 1000, string_make(folder), STRING(""), STRING(".txt"));
 }
 
-EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, Allocator* scratch_alloc, const char* folder)
+EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, const char* folder)
 {
-    file_logger_init(logger, def_alloc, scratch_alloc, folder);
+    file_logger_init(logger, def_alloc, folder);
     logger->prev_logger = log_system_set_logger(&logger->logger);
     logger->has_prev_logger = true;
 }
