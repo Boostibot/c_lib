@@ -40,7 +40,7 @@ EXPORT void stack_allocator_deinit(Stack_Allocator* allocator);
 EXPORT Allocator_Set stack_allocator_init_use(Stack_Allocator* allocator, void* buffer, isize buffer_size, Allocator* parent);
 EXPORT Allocator_Set stack_allocator_deinit_unuse(Stack_Allocator* allocator, Allocator_Set allocator_set);
        
-EXPORT void* stack_allocator_allocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from);
+EXPORT void* stack_allocator_allocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
 EXPORT Allocator_Stats stack_allocator_get_stats(Allocator* self);
 
 #endif
@@ -55,7 +55,7 @@ EXPORT void stack_allocator_init(Stack_Allocator* allocator, void* buffer, isize
     allocator->parent = parent;
     if(buffer == NULL && buffer_size > 0 && parent != NULL)
     {
-        buffer = allocator_allocate(parent, buffer_size, DEF_ALIGN, SOURCE_INFO());
+        buffer = allocator_allocate(parent, buffer_size, DEF_ALIGN);
     }
 
     allocator->buffer_from = (uint8_t*) buffer;
@@ -105,15 +105,15 @@ typedef struct _Stack_Allocator_Slot {
 
 #include "profile.h"
 
-INTERNAL void* _stack_allocator_allocate_from_parent(Stack_Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from)
+INTERNAL void* _stack_allocator_allocate_from_parent(Stack_Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
 {
     if(self->parent == NULL)
     {
-        allocator_out_of_memory(&self->allocator, new_size, old_ptr, old_size, align, called_from, "");
+        allocator_out_of_memory(&self->allocator, new_size, old_ptr, old_size, align, "");
         return NULL;
     }
     else
-        return allocator_try_reallocate(self->parent, new_size, old_ptr, old_size, align, called_from);
+        return allocator_try_reallocate(self->parent, new_size, old_ptr, old_size, align);
         
 }
 INTERNAL bool _stack_allocator_dummy() {return false;}
@@ -133,7 +133,7 @@ INTERNAL void _stack_allocator_check_slot(_Stack_Allocator_Slot* slot)
     #endif // STACK_ALLOC_DEBUG
     STACK_ALLOC_ASSERT((slot->prev_offset & ~STACK_ALLOCATOR_FREE_BIT) > 0);
 }
-INTERNAL void* _stack_allocator_allocate(Stack_Allocator* self, isize new_size, isize align, Source_Info callee)
+INTERNAL void* _stack_allocator_allocate(Stack_Allocator* self, isize new_size, isize align)
 {
     STACK_ALLOC_ASSERT(new_size >= 0 && is_power_of_two(align));
 
@@ -149,7 +149,7 @@ INTERNAL void* _stack_allocator_allocate(Stack_Allocator* self, isize new_size, 
     uint8_t* aligned_to = aligned_from + new_size;
 
     if(aligned_to > self->buffer_to) 
-        return _stack_allocator_allocate_from_parent(self, new_size, NULL, 0, align, callee);
+        return _stack_allocator_allocate_from_parent(self, new_size, NULL, 0, align);
 
     _Stack_Allocator_Slot* slot = ((_Stack_Allocator_Slot*) aligned_from) - 1;
     isize diff = (isize) aligned_from - (isize) self->last_block_from;
@@ -175,12 +175,12 @@ INTERNAL void* _stack_allocator_allocate(Stack_Allocator* self, isize new_size, 
     return aligned_from;
 }
 
-INTERNAL bool _stack_allocator_deallocate(Stack_Allocator* self, void* old_ptr, isize old_size, isize align, Source_Info callee)
+INTERNAL bool _stack_allocator_deallocate(Stack_Allocator* self, void* old_ptr, isize old_size, isize align)
 {
     STACK_ALLOC_ASSERT(old_size >= 0 && is_power_of_two(align));
     uint8_t* ptr = (uint8_t*) old_ptr;
     if(ptr < self->buffer_from || self->buffer_to <= ptr) 
-        return _stack_allocator_allocate_from_parent(self, 0, old_ptr, old_size, align, callee);
+        return _stack_allocator_allocate_from_parent(self, 0, old_ptr, old_size, align);
 
     _Stack_Allocator_Slot *slot = ((_Stack_Allocator_Slot*) old_ptr) - 1;
     _stack_allocator_check_slot(slot);
@@ -216,19 +216,19 @@ INTERNAL bool _stack_allocator_deallocate(Stack_Allocator* self, void* old_ptr, 
     return true;
 } 
         
-EXPORT void* stack_allocator_allocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from)
+EXPORT void* stack_allocator_allocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
 {
     PERF_COUNTER_START(c);
     Stack_Allocator* self_ = (Stack_Allocator*) (void*) self;
 
     void* new_ptr = NULL;
     if(new_size > 0)
-        new_ptr = _stack_allocator_allocate(self_, new_size, align, called_from);
+        new_ptr = _stack_allocator_allocate(self_, new_size, align);
 
     if(old_ptr != NULL)
     {
         memcpy(new_ptr, old_ptr, MIN(new_size, old_size));
-        _stack_allocator_deallocate(self_, old_ptr, old_size, align, called_from);
+        _stack_allocator_deallocate(self_, old_ptr, old_size, align);
     }
     
     PERF_COUNTER_END(c);

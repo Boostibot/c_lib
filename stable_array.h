@@ -204,13 +204,13 @@ EXPORT void stable_array_deinit(Stable_Array* stable)
         u8* end_block_ptr = (u8*) stable->blocks[k - 1].ptr;
 
         isize alloced_bytes = (end_block_ptr - start_block_ptr) + stable->item_size * STABLE_ARRAY_BLOCK_SIZE;
-        allocator_deallocate(stable->allocator, start_block_ptr, alloced_bytes, stable->item_align, SOURCE_INFO());
+        allocator_deallocate(stable->allocator, start_block_ptr, alloced_bytes, stable->item_align);
         i = k;
     }
 
     isize prev_extra = _stable_array_alloced_mask_size(stable->blocks_capacity) * sizeof(u64);
     isize prev_size = stable->blocks_capacity * sizeof(Stable_Array_Block);
-    allocator_deallocate(stable->allocator, stable->blocks, prev_size + prev_extra, _STABLE_ARRAY_BLOCKS_ARR_ALIGN, SOURCE_INFO());
+    allocator_deallocate(stable->allocator, stable->blocks, prev_size + prev_extra, _STABLE_ARRAY_BLOCKS_ARR_ALIGN);
 
     memset(stable, 0, sizeof *stable);
 }
@@ -378,7 +378,7 @@ EXPORT void stable_array_reserve(Stable_Array* stable, isize to_size)
             isize new_extra = _stable_array_alloced_mask_size(new_capacity) * sizeof(u64);
             isize new_alloced = new_capacity * sizeof(Stable_Array_Block);
             
-            u8* alloced = (u8*) allocator_reallocate(stable->allocator, new_alloced + new_extra, stable->blocks, old_alloced + old_extra, _STABLE_ARRAY_BLOCKS_ARR_ALIGN, SOURCE_INFO());
+            u8* alloced = (u8*) allocator_reallocate(stable->allocator, new_alloced + new_extra, stable->blocks, old_alloced + old_extra, _STABLE_ARRAY_BLOCKS_ARR_ALIGN);
           
             ASSERT(old_extra <= new_extra);
 
@@ -407,7 +407,7 @@ EXPORT void stable_array_reserve(Stable_Array* stable, isize to_size)
             alloced_blocks_bytes += block_size;
         }
 
-        u8* alloced_blocks = (u8*) allocator_allocate(stable->allocator, alloced_blocks_bytes, stable->item_align, SOURCE_INFO());
+        u8* alloced_blocks = (u8*) allocator_allocate(stable->allocator, alloced_blocks_bytes, stable->item_align);
         //Optional!
         memset(alloced_blocks, 0, alloced_blocks_bytes);
 

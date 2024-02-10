@@ -498,8 +498,9 @@ EXPORT String_Builder string_replace(Allocator* allocator, String source, String
         ASSERT(builder != NULL);
         ASSERT(_builder_is_invariant(builder));
 
+        //@TODO: change alignment back to 1 but fix debug allocator
         if(builder->data != NULL && builder->data != _builder_null_termination)
-            allocator_deallocate(builder->allocator, builder->data, builder->capacity + 1, 1, SOURCE_INFO());
+            allocator_deallocate(builder->allocator, builder->data, builder->capacity + 1, 8);
     
         memset(builder, 0, sizeof *builder);
     }
@@ -561,7 +562,7 @@ EXPORT String_Builder string_replace(Allocator* allocator, String source, String
         if(capacity == 0)
             new_alloced = 0;
 
-        builder->data = (char*) allocator_reallocate(builder->allocator, new_alloced, old_data, old_alloced, 1, SOURCE_INFO());
+        builder->data = (char*) allocator_reallocate(builder->allocator, new_alloced, old_data, old_alloced, 8);
         
         //Always memset the new capacity to zero so that that we dont have to set null termination
         //while pushing

@@ -284,7 +284,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
             int32_t elem_size = sizeof(Hash_Index_Entry);
             if(to_table->allocator == NULL)
                 to_table->allocator = allocator_get_default();
-            to_table->entries = (Hash_Index_Entry*) allocator_reallocate(to_table->allocator, rehash_to * elem_size, to_table->entries, to_table->entries_count * elem_size, DEF_ALIGN, SOURCE_INFO());
+            to_table->entries = (Hash_Index_Entry*) allocator_reallocate(to_table->allocator, rehash_to * elem_size, to_table->entries, to_table->entries_count * elem_size, DEF_ALIGN);
             to_table->entries_count = rehash_to;
         }
         
@@ -377,7 +377,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
     EXPORT void hash_index_deinit(Hash_Index* table)
     {
         ASSERT(hash_index_is_invariant(*table));
-        allocator_deallocate(table->allocator, table->entries, table->entries_count * sizeof *table->entries, DEF_ALIGN, SOURCE_INFO());
+        allocator_deallocate(table->allocator, table->entries, table->entries_count * sizeof *table->entries, DEF_ALIGN);
         
         Hash_Index null = {0};
         *table = null;

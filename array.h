@@ -62,22 +62,22 @@ DEFINE_ARRAY_TYPE(void*,    ptr_Array);
 typedef i64_Array isize_Array;
 typedef u64_Array usize_Array;
 
-EXPORT void _array_init(void* array, isize item_size, Allocator* allocator, Source_Info from);
-EXPORT void _array_deinit(void* array, isize item_size, Source_Info from);
-EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, Source_Info from); 
+EXPORT void _array_init(void* array, isize item_size, Allocator* allocator);
+EXPORT void _array_deinit(void* array, isize item_size);
+EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity); 
 EXPORT bool _array_is_invariant(const void* array, isize item_size);
-EXPORT void _array_resize(void* array, isize item_size, isize to_size, bool zero_new, Source_Info from);
-EXPORT void _array_reserve(void* array, isize item_size, isize to_capacity, Source_Info from);
-EXPORT void _array_append(void* array, isize item_size, const void* data, isize data_count, Source_Info from);
+EXPORT void _array_resize(void* array, isize item_size, isize to_size, bool zero_new);
+EXPORT void _array_reserve(void* array, isize item_size, isize to_capacity);
+EXPORT void _array_append(void* array, isize item_size, const void* data, isize data_count);
 
 #define array_set_capacity(array_ptr, capacity) \
-    _array_set_capacity(array_ptr, sizeof *(array_ptr)->_array_data, capacity, SOURCE_INFO())
+    _array_set_capacity(array_ptr, sizeof *(array_ptr)->_array_data, capacity)
     
 //Initializes the array. If the array is already initialized deinitializes it first.
 //Thus expects a properly formed array. Suppling a non-zeroed memory will cause errors!
 //All data structers in this library need to be zero init to be valid!
 #define array_init(array_ptr, allocator) \
-    _array_init(array_ptr, sizeof *(array_ptr)->_array_data, allocator, SOURCE_INFO())
+    _array_init(array_ptr, sizeof *(array_ptr)->_array_data, allocator)
     
 //Initializes the array and preallocates it to the desired size
 #define array_init_with_capacity(array_ptr, allocator, capacity) \
@@ -86,23 +86,23 @@ EXPORT void _array_append(void* array, isize item_size, const void* data, isize 
 
 //Deallocates and resets the array
 #define array_deinit(array_ptr) \
-    _array_deinit(array_ptr, sizeof *(array_ptr)->_array_data, SOURCE_INFO())
+    _array_deinit(array_ptr, sizeof *(array_ptr)->_array_data)
 
 //If the array capacity is lower than to_capacity sets the capacity to to_capacity. 
 //If setting of capacity is required and the new capcity is less then one geometric growth 
 // step away from current capacity grows instead.
 #define array_reserve(array_ptr, to_capacity) \
-    _array_reserve(array_ptr, sizeof *(array_ptr)->_array_data, to_capacity, SOURCE_INFO()) 
+    _array_reserve(array_ptr, sizeof *(array_ptr)->_array_data, to_capacity) 
 
 //Sets the array size to the specied to_size. 
 //If the to_size is smaller than current size simply dicards further items
 //If the to_size is greater than current size zero initializes the newly added items
 #define array_resize(array_ptr, to_size)              \
-    _array_resize(array_ptr, sizeof *(array_ptr)->_array_data, to_size, true, SOURCE_INFO()) 
+    _array_resize(array_ptr, sizeof *(array_ptr)->_array_data, to_size, true) 
    
 //Just like array_resize except doesnt zero initialized newly added region
 #define array_resize_for_overwrite(array_ptr, to_size)              \
-    _array_resize(array_ptr, sizeof *(array_ptr)->_array_data, to_size, false, SOURCE_INFO()) 
+    _array_resize(array_ptr, sizeof *(array_ptr)->_array_data, to_size, false) 
 
 //Sets the array size to 0. Does not deallocate the array
 #define array_clear(array_ptr) \
@@ -113,7 +113,7 @@ EXPORT void _array_append(void* array, isize item_size, const void* data, isize 
     /* Here is a little hack to typecheck the items array.*/ \
     /* We try to assign the first item to the first data but never actaully run it */ \
     (void) (0 ? *(array_ptr)->_array_data = *(items), 0 : 0), \
-    _array_append(array_ptr, sizeof *(array_ptr)->_array_data, items, item_count, SOURCE_INFO())
+    _array_append(array_ptr, sizeof *(array_ptr)->_array_data, items, item_count)
     
 //Discards current items in the array and replaces them with the provided items
 #define array_assign(array_ptr, items, item_count) \
@@ -126,7 +126,7 @@ EXPORT void _array_append(void* array, isize item_size, const void* data, isize 
 
 //Appends a single item to the end of the array
 #define array_push(array_ptr, item_value)            \
-    _array_reserve(array_ptr, sizeof *(array_ptr)->_array_data, (array_ptr)->size + 1, SOURCE_INFO()), \
+    _array_reserve(array_ptr, sizeof *(array_ptr)->_array_data, (array_ptr)->size + 1), \
     (array_ptr)->_array_data[(array_ptr)->size++] = item_value \
 
 //Removes a single item from the end of the array
@@ -163,10 +163,10 @@ EXPORT bool _array_is_invariant(const void* array, isize item_size)
     return result;
 }
 
-EXPORT void _array_init(void* array, isize item_size, Allocator* allocator, Source_Info from)
+EXPORT void _array_init(void* array, isize item_size, Allocator* allocator)
 {
     (void) item_size;
-    _array_deinit(array, item_size, from);
+    _array_deinit(array, item_size);
 
     u8_Array* base = (u8_Array*) array;
     base->allocator = allocator;
@@ -174,18 +174,18 @@ EXPORT void _array_init(void* array, isize item_size, Allocator* allocator, Sour
         base->allocator = allocator_get_default();
 }
 
-EXPORT void _array_deinit(void* array, isize item_size, Source_Info from)
+EXPORT void _array_deinit(void* array, isize item_size)
 {
     u8_Array* base = (u8_Array*) array;
     ASSERT(base != NULL);
     ASSERT(_array_is_invariant(array, item_size));
     if(base->capacity > 0)
-        allocator_deallocate(base->allocator, base->data, base->capacity * item_size, DEF_ALIGN, from);
+        allocator_deallocate(base->allocator, base->data, base->capacity * item_size, DEF_ALIGN);
     
     memset(base, 0, sizeof *base);
 }
 
-EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, Source_Info from)
+EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity)
 {
     u8_Array* base = (u8_Array*) array;
     ASSERT(_array_is_invariant(array, item_size));
@@ -196,7 +196,7 @@ EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, So
     if(base->allocator == NULL)
         base->allocator = allocator_get_default();
 
-    base->data = (uint8_t*) allocator_reallocate(base->allocator, new_byte_size, base->data, old_byte_size, DEF_ALIGN, from);
+    base->data = (uint8_t*) allocator_reallocate(base->allocator, new_byte_size, base->data, old_byte_size, DEF_ALIGN);
 
     //trim the size if too big
     base->capacity = capacity;
@@ -206,10 +206,10 @@ EXPORT void _array_set_capacity(void* array, isize item_size, isize capacity, So
     ASSERT(_array_is_invariant(array, item_size));
 }
 
-EXPORT void _array_resize(void* array, isize item_size, isize to_size, bool zero_new, Source_Info from)
+EXPORT void _array_resize(void* array, isize item_size, isize to_size, bool zero_new)
 {
     u8_Array* base = (u8_Array*) array;
-    _array_reserve(base, item_size, to_size, from);
+    _array_reserve(base, item_size, to_size);
     if(zero_new && to_size > base->size)
         memset(base->data + base->size*item_size, 0, (size_t) ((to_size - base->size)*item_size));
         
@@ -217,7 +217,7 @@ EXPORT void _array_resize(void* array, isize item_size, isize to_size, bool zero
     ASSERT(_array_is_invariant(array, item_size));
 }
 
-EXPORT void _array_reserve(void* array, isize item_size, isize to_fit, Source_Info from)
+EXPORT void _array_reserve(void* array, isize item_size, isize to_fit)
 {
     ASSERT(_array_is_invariant(array, item_size));
     ASSERT(to_fit >= 0);
@@ -230,14 +230,14 @@ EXPORT void _array_reserve(void* array, isize item_size, isize to_fit, Source_In
     if(new_capacity < growth_step)
         new_capacity = growth_step;
 
-    _array_set_capacity(array, item_size, new_capacity + 1, from);
+    _array_set_capacity(array, item_size, new_capacity + 1);
 }
 
-EXPORT void _array_append(void* array, isize item_size, const void* data, isize data_count, Source_Info from)
+EXPORT void _array_append(void* array, isize item_size, const void* data, isize data_count)
 {
     ASSERT(data_count >= 0 && item_size > 0);
     u8_Array* base = (u8_Array*) array;
-    _array_reserve(base, item_size, base->size+data_count, from);
+    _array_reserve(base, item_size, base->size+data_count);
     memcpy(base->data + item_size * base->size, data, (size_t) (item_size * data_count));
     base->size += data_count;
     ASSERT(_array_is_invariant(array, item_size));

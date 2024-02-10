@@ -200,7 +200,7 @@ INTERNAL void _error_system_unregister_module(u32 module)
         return;
 
     isize len = registered->module_name ? (isize) strlen(registered->module_name) : 0;
-    allocator_deallocate(global_error_system.allocator, registered->module_name, len + 1, DEF_ALIGN, SOURCE_INFO());
+    allocator_deallocate(global_error_system.allocator, registered->module_name, len + 1, DEF_ALIGN);
     memset(registered, 0, sizeof *registered);
     registered->translate_func = error_system_gravestone_translator; 
 }
@@ -241,7 +241,7 @@ EXPORT u32 error_system_register_module(Error_Translate_Func translate_func, con
     size_t len = strlen(module_name);
     Error_Module created = {0};
     created.translate_func = translate_func;
-    created.module_name = (char*) allocator_allocate(global_error_system.allocator, (isize) len, DEF_ALIGN, SOURCE_INFO());
+    created.module_name = (char*) allocator_allocate(global_error_system.allocator, (isize) len, DEF_ALIGN);
     memcpy(created.module_name, module_name, len);
     created.module_name[len] = '\0';
     created.context = context;

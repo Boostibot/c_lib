@@ -175,8 +175,8 @@ EXPORT void hash_table_deinit(void* _table)
     if(table->capacity > 0)
     {
         ASSERT(table->index.allocator != NULL);
-        allocator_deallocate(table->index.allocator, table->keys, table->capacity * sizeof(String_Builder), DEF_ALIGN, SOURCE_INFO());
-        allocator_deallocate(table->index.allocator, table->values, table->capacity * table->value_type_size, DEF_ALIGN, SOURCE_INFO());
+        allocator_deallocate(table->index.allocator, table->keys, table->capacity * sizeof(String_Builder), DEF_ALIGN);
+        allocator_deallocate(table->index.allocator, table->values, table->capacity * table->value_type_size, DEF_ALIGN);
     }
     
     hash_index_deinit(&table->index);
@@ -258,8 +258,8 @@ EXPORT void hash_table_reserve(void* _table, isize to_fit_entries)
         isize key_size = sizeof(String_Builder);
         isize val_size = table->value_type_size;
 
-        table->keys = (String_Builder*) allocator_reallocate(table->index.allocator, new_cap * key_size, table->keys, old_cap * key_size, DEF_ALIGN, SOURCE_INFO());
-        table->values = (u8*) allocator_reallocate(table->index.allocator, new_cap * val_size, table->values, old_cap * val_size, DEF_ALIGN, SOURCE_INFO());
+        table->keys = (String_Builder*) allocator_reallocate(table->index.allocator, new_cap * key_size, table->keys, old_cap * key_size, DEF_ALIGN);
+        table->values = (u8*) allocator_reallocate(table->index.allocator, new_cap * val_size, table->values, old_cap * val_size, DEF_ALIGN);
 
         table->capacity = new_cap;
     }

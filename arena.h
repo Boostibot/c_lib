@@ -7,9 +7,8 @@
 
 typedef struct Allocator        Allocator;
 typedef struct Allocator_Stats  Allocator_Stats;
-typedef struct Source_Info      Source_Info;
 
-typedef void* (*Allocator_Allocate_Func)(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from);
+typedef void* (*Allocator_Allocate_Func)(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
 typedef Allocator_Stats (*Allocator_Get_Stats_Func)(Allocator* self);
 
 typedef struct Allocator {
@@ -80,7 +79,7 @@ void* arena_push(Arena* arena, isize size, isize align);
 void* arena_push_nonzero(Arena* arena, isize size, isize align);
 MODIFIER_FORCE_INLINE void* arena_push_nonzero_inline(Arena* arena, isize size, isize align);
 
-void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from);
+void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
 Allocator_Stats arena_get_allocatator_stats(Allocator* self);
 
 #endif
@@ -262,11 +261,10 @@ void arena_release(Arena* arena)
 }
 
 //Compatibility function for the allocator interface
-void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from)
+void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
 {
     (void) old_ptr;
     (void) old_size;
-    (void) called_from;
     Arena* arena = (Arena*) (void*) self;
     return arena_push(arena, new_size, align);
 }

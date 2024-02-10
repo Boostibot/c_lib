@@ -45,18 +45,18 @@ typedef struct Allocator_Set {
 #define SIMD_ALIGN PLATFORM_MAX_ALIGN
 
 //Attempts to call the realloc funtion of the from_allocator. Can return nullptr indicating failiure
-EXPORT void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from);
+EXPORT void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
 //Calls the realloc function of from_allocator. If fails calls the currently installed Allocator_Out_Of_Memory_Func (panics). This should be used most of the time
-EXPORT void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from);
+EXPORT void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
 //Calls the realloc function of from_allocator to allocate, if fails panics
-EXPORT void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align, Source_Info called_from);
+EXPORT void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align);
 //Calls the realloc function of from_allocator to deallocate
-EXPORT void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize old_size, isize align, Source_Info called_from);
+EXPORT void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize old_size, isize align);
 
 //Calls the realloc function of from_allocator, then if reallocating up fills the added memory with zeros
-EXPORT void* allocator_reallocate_cleared(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from);
+EXPORT void* allocator_reallocate_cleared(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
 //Calls the realloc function of from_allocator to allocate, then fills the memory with zeros if fails panics
-EXPORT void* allocator_allocate_cleared(Allocator* from_allocator, isize new_size, isize align, Source_Info called_from);
+EXPORT void* allocator_allocate_cleared(Allocator* from_allocator, isize new_size, isize align);
 
 //Retrieves stats from the allocator. The stats can be only partially filled.
 EXPORT Allocator_Stats allocator_get_stats(Allocator* self);
@@ -64,8 +64,7 @@ EXPORT Allocator_Stats allocator_get_stats(Allocator* self);
 //Gets called when function requiring to always succeed fails an allocation - most often from allocator_reallocate
 //If ALLOCATOR_CUSTOM_OUT_OF_MEMORY is defines is left unimplemented
 EXPORT void allocator_out_of_memory(
-    Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align, 
-    Source_Info called_from, const char* format_string, ...);
+    Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align, const char* format_string, ...);
 
 EXPORT Allocator* allocator_get_default(); //returns the default allocator used for returning values from a function
 EXPORT Allocator* allocator_get_scratch(); //returns the scracth allocator used for temp often stack order allocations inside a function
@@ -129,7 +128,7 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
     INTERNAL MODIFIER_THREAD_LOCAL Allocator* _static_allocator = NULL;
     INTERNAL MODIFIER_THREAD_LOCAL Arena_Stack _scratch_arena_stack = {0};
 
-    EXPORT void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from)
+    EXPORT void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         PERF_COUNTER_START(c);
         void* out = NULL;
@@ -150,43 +149,43 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
             //if is dealloc and old_ptr is NULL do nothing. 
             //This is equivalent to free(NULL)
             if(new_size != 0 || old_ptr != NULL)
-                out = from_allocator->allocate(from_allocator, new_size, old_ptr, old_size, align, called_from);
+                out = from_allocator->allocate(from_allocator, new_size, old_ptr, old_size, align);
         }
             
         PERF_COUNTER_END(c);
         return out;
     }
 
-    EXPORT void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from)
+    EXPORT void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
-        void* obtained = allocator_try_reallocate(from_allocator, new_size, old_ptr, old_size, align, called_from);
+        void* obtained = allocator_try_reallocate(from_allocator, new_size, old_ptr, old_size, align);
         if(obtained == NULL && new_size != 0)
-            allocator_out_of_memory(from_allocator, new_size, old_ptr, old_size, align, called_from, "");
+            allocator_out_of_memory(from_allocator, new_size, old_ptr, old_size, align, "");
 
         return obtained;
     }
 
-    EXPORT void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align, Source_Info called_from)
+    EXPORT void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align)
     {
-        return allocator_reallocate(from_allocator, new_size, NULL, 0, align, called_from);
+        return allocator_reallocate(from_allocator, new_size, NULL, 0, align);
     }
 
-    EXPORT void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize old_size, isize align, Source_Info called_from)
+    EXPORT void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize old_size, isize align)
     {
-        allocator_reallocate(from_allocator, 0, old_ptr, old_size, align, called_from);
+        allocator_reallocate(from_allocator, 0, old_ptr, old_size, align);
     }
     
-    EXPORT void* allocator_reallocate_cleared(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from)
+    EXPORT void* allocator_reallocate_cleared(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
-        void* ptr = allocator_reallocate(from_allocator, new_size, old_ptr, old_size, align, called_from);
+        void* ptr = allocator_reallocate(from_allocator, new_size, old_ptr, old_size, align);
         if(new_size > old_size)
             memset((u8*) ptr + old_size, 0, (size_t) (new_size - old_size));
         return ptr;
     }
 
-    EXPORT void* allocator_allocate_cleared(Allocator* from_allocator, isize new_size, isize align, Source_Info called_from)
+    EXPORT void* allocator_allocate_cleared(Allocator* from_allocator, isize new_size, isize align)
     {
-        void* ptr = allocator_allocate(from_allocator, new_size, align, called_from);
+        void* ptr = allocator_allocate(from_allocator, new_size, align);
         memset(ptr, 0, (size_t) new_size);
         return ptr;
     }
@@ -378,8 +377,7 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
 
     #ifndef ALLOCATOR_CUSTOM_OUT_OF_MEMORY
     EXPORT void allocator_out_of_memory(
-        Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align, 
-        Source_Info called_from, const char* format_string, ...)
+        Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align, const char* format_string, ...)
     {
         Allocator_Stats stats = {0};
         if(allocator != NULL && allocator->get_stats != NULL)
@@ -391,7 +389,7 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
         if(stats.name == NULL)
             stats.name = "<no name>";
 
-        LOG_FATAL("memory", "Allocator %s %s reported out of memory! (%s : %lli)", stats.type_name, stats.name, called_from.file, called_from.line);
+        LOG_FATAL("memory", "Allocator %s %s reported out of memory! (%s : %lli)", stats.type_name, stats.name);
 
             LOG_INFO(">memory", "new_size:    %lli B", new_size);
             if(old_ptr != NULL)

@@ -51,7 +51,7 @@ EXPORT void malloc_allocator_deinit(Malloc_Allocator* self);
 //convenience function that inits the allocator then imidietely makes it the default and scratch. On deinit restores to previous defaults
 EXPORT void malloc_allocator_init_use(Malloc_Allocator* self, u64 flags); 
 
-EXPORT void* malloc_allocator_allocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from);
+EXPORT void* malloc_allocator_allocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
 EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
 
 EXPORT isize malloc_allocator_get_block_size(Malloc_Allocator* self, void* old_ptr);
@@ -81,18 +81,18 @@ EXPORT void  malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
         #define MALLOC_ALLOCATOR_FREE(pointer) platform_heap_reallocate(0, pointer, DEF_ALIGN)
     #endif
     
-    INTERNAL void* _malloc_allocator_parent_allocate(Malloc_Allocator* self, isize size, Source_Info source)
+    INTERNAL void* _malloc_allocator_parent_allocate(Malloc_Allocator* self, isize size)
     {
         if(self->parent != NULL)
-            return self->parent->allocate(self->parent, size, NULL, 0, DEF_ALIGN, source);
+            return self->parent->allocate(self->parent, size, NULL, 0, DEF_ALIGN);
         else
             return MALLOC_ALLOCATOR_MALLOC(size);
     }
     
-    INTERNAL void _malloc_allocator_parent_free(Malloc_Allocator* self, void* pointer, isize size, Source_Info source)
+    INTERNAL void _malloc_allocator_parent_free(Malloc_Allocator* self, void* pointer, isize size)
     {
         if(self->parent != NULL)
-            self->parent->allocate(self->parent, 0, pointer, size, DEF_ALIGN, source);
+            self->parent->allocate(self->parent, 0, pointer, size, DEF_ALIGN);
         else
             MALLOC_ALLOCATOR_FREE(pointer);
     }
@@ -140,7 +140,7 @@ EXPORT void  malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
         {
             Malloc_Allocator_Block_Header* next_block = block->next_block;
             _malloc_allocator_assert_block_coherency(self, block);
-            malloc_allocator_allocate(&self->allocator, 0, block + 1, block->size, block->align, SOURCE_INFO());
+            malloc_allocator_allocate(&self->allocator, 0, block + 1, block->size, block->align);
             block = next_block;
         }
         
@@ -154,16 +154,15 @@ EXPORT void  malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
         *self = null;
     }
 
-    EXPORT void* malloc_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr, isize old_size, isize align, Source_Info called_from)
+    EXPORT void* malloc_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         PERF_COUNTER_START(c);
-        (void) called_from;
         Malloc_Allocator* self = (Malloc_Allocator*) (void*) self_;
         void* out_ptr = NULL;
 
         if(new_size != 0)
         {
-            void* actual_new_ptr = _malloc_allocator_parent_allocate(self, new_size + align + (isize) sizeof(Malloc_Allocator_Block_Header), called_from);
+            void* actual_new_ptr = _malloc_allocator_parent_allocate(self, new_size + align + (isize) sizeof(Malloc_Allocator_Block_Header));
             //if error return error
             if(actual_new_ptr == NULL)
             {
@@ -223,7 +222,7 @@ EXPORT void  malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
             isize smaller_size = new_size < old_size ? new_size : old_size;
             memcpy(out_ptr, old_ptr, (size_t) smaller_size);
 
-            _malloc_allocator_parent_free(self, (u8*) old_ptr - old_block_ptr->heap_block_offset, old_size + align + (isize) sizeof(Malloc_Allocator_Block_Header), called_from);
+            _malloc_allocator_parent_free(self, (u8*) old_ptr - old_block_ptr->heap_block_offset, old_size + align + (isize) sizeof(Malloc_Allocator_Block_Header));
         }
         
         if(old_ptr == NULL)
@@ -273,20 +272,20 @@ EXPORT void  malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
     
     EXPORT void* malloc_allocator_malloc(Malloc_Allocator* self, isize size)
     {
-        return malloc_allocator_allocate(&self->allocator, size, NULL, 0, DEF_ALIGN, SOURCE_INFO());
+        return malloc_allocator_allocate(&self->allocator, size, NULL, 0, DEF_ALIGN);
     }
 
     EXPORT void* malloc_allocator_realloc(Malloc_Allocator* self, void* old_ptr, isize new_size)
     {
         isize old_size = malloc_allocator_get_block_size(self, old_ptr);
-        void* out = malloc_allocator_allocate(&self->allocator, new_size, old_ptr, old_size, DEF_ALIGN, SOURCE_INFO());
+        void* out = malloc_allocator_allocate(&self->allocator, new_size, old_ptr, old_size, DEF_ALIGN);
         return out;
     }
 
     EXPORT void  malloc_allocator_free(Malloc_Allocator* self, void* old_ptr)
     {
         isize old_size = malloc_allocator_get_block_size(self, old_ptr);
-        malloc_allocator_allocate(&self->allocator, 0, old_ptr, old_size, DEF_ALIGN, SOURCE_INFO());
+        malloc_allocator_allocate(&self->allocator, 0, old_ptr, old_size, DEF_ALIGN);
     }
 
 #endif

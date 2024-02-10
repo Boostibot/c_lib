@@ -157,8 +157,8 @@ EXPORT Logger def_logger_make();
 EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, isize indentation, Source_Info source, const char* format, va_list args);
 
 //Default logging facility. Logs a message into the provided module cstring with log_type type (info, warn, error...)
-#define LOG(module, log_type, format, ...)      PP_IF(DO_LOG, LOG_ALWAYS)(module, log_type, format, ##__VA_ARGS__)
-#define VLOG(module, log_type, format, args)    PP_IF(DO_LOG, LOG_ALWAYS)(module, log_type, format, args)
+#define LOG(module, log_type, format, ...)      PP_IF(DO_LOG, LOG_ALWAYS)(module, log_type, SOURCE_INFO(), format, ##__VA_ARGS__)
+#define VLOG(module, log_type, format, args)    PP_IF(DO_LOG, LOG_ALWAYS)(module, log_type, SOURCE_INFO(), format, args)
 
 //Logs a message type into the provided module cstring.
 #define LOG_INFO(module, format, ...)           PP_IF(DO_LOG_INFO, LOG)(module, LOG_INFO, format, ##__VA_ARGS__)
@@ -170,10 +170,10 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 #define LOG_TRACE(module, format, ...)          PP_IF(DO_LOG_TRACE, LOG)(module, LOG_TRACE, format, ##__VA_ARGS__)
 
 //Logs a message. Does not get dissabled.
-#define LOG_ALWAYS(module, log_type, format, ...)   log_message(module, log_type, SOURCE_INFO(), format, ##__VA_ARGS__)
-#define VLOG_ALWAYS(module, log_type, format, args) vlog_message(module, log_type, SOURCE_INFO(), format, args)
+#define LOG_ALWAYS(module, log_type, format, ...)   log_message(module, log_type, format, ##__VA_ARGS__)
+#define VLOG_ALWAYS(module, log_type, format, args) vlog_message(module, log_type, format, args)
 //Does not do anything (failed condition) but type checks the arguments
-#define LOG_NEVER(module, log_type, format, ...)  ((module && false) ? log_message(module, log_type, SOURCE_INFO(),format, ##__VA_ARGS__) : (void) 0)
+#define LOG_NEVER(module, log_type, format, ...)  ((module && false) ? log_message(module, log_type,format, ##__VA_ARGS__) : (void) 0)
 
 //Some of the ansi colors that can be used within logs. 
 //However their usage is not recommended since these will be written to log files and thus make their parsing more difficult.

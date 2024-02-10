@@ -224,7 +224,7 @@ EXPORT isize image_byte_size(Image image)
 
 EXPORT void image_deinit(Image* image)
 {
-    allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN, SOURCE_INFO());
+    allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN);
     memset(image, 0, sizeof *image);
 }
 
@@ -445,10 +445,10 @@ EXPORT void image_reserve(Image* image, isize capacity)
             image->allocator = allocator_get_default();
 
         isize old_byte_size = image_byte_size(*image);
-        u8* new_pixels = (u8*) allocator_allocate(image->allocator, capacity, DEF_ALIGN, SOURCE_INFO());
+        u8* new_pixels = (u8*) allocator_allocate(image->allocator, capacity, DEF_ALIGN);
         
         memcpy(new_pixels, image->pixels, old_byte_size);
-        allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN, SOURCE_INFO());
+        allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN);
 
         image->pixels = new_pixels;
         image->capacity = capacity;
@@ -467,8 +467,8 @@ EXPORT void image_reshape_pixel_size(Image* image, isize width, isize height, is
         if(image->allocator == NULL)
             image->allocator = allocator_get_default();
 
-        u8* new_pixels = (u8*) allocator_allocate(image->allocator, needed_size, DEF_ALIGN, SOURCE_INFO());
-        allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN, SOURCE_INFO());
+        u8* new_pixels = (u8*) allocator_allocate(image->allocator, needed_size, DEF_ALIGN);
+        allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN);
 
         image->pixels = new_pixels;
         image->capacity = needed_size;
@@ -514,7 +514,7 @@ EXPORT void image_resize(Image* image, isize width, isize height)
     new_image.height = (i32) height;
     if(new_byte_size > image->capacity)
     {
-        new_image.pixels = (u8*) allocator_allocate(image->allocator, new_byte_size, DEF_ALIGN, SOURCE_INFO());
+        new_image.pixels = (u8*) allocator_allocate(image->allocator, new_byte_size, DEF_ALIGN);
         new_image.capacity = new_byte_size;
         memset(new_image.pixels, 0, (size_t) new_byte_size);
     }
@@ -527,7 +527,7 @@ EXPORT void image_resize(Image* image, isize width, isize height)
     subimage_copy(to_view, from_view, 0, 0);
 
     if(new_byte_size > image->capacity)
-        allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN, SOURCE_INFO());
+        allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN);
 
     *image = new_image;
 }

@@ -21,7 +21,7 @@ static void break_debug_allocator()
         {
             sizes[i] = alloc_gran*i;
             aligns[i] = (isize) 1 << (i % 13); 
-            allocs[i] = (u8*) debug_allocator_allocate(allocator, sizes[i], NULL, 0, aligns[i], SOURCE_INFO());
+            allocs[i] = (u8*) debug_allocator_allocate(allocator, sizes[i], NULL, 0, aligns[i]);
 
             memset(allocs[i], TEST_VAL, sizes[i]);
             for(isize k = 0; k < sizes[i]; k++)
@@ -34,7 +34,7 @@ static void break_debug_allocator()
             isize size = sizes[i];
             isize align = aligns[i];
 
-            allocs[i] = (u8*) debug_allocator_allocate(allocator, size + alloc_gran, alloc, size, align, SOURCE_INFO());
+            allocs[i] = (u8*) debug_allocator_allocate(allocator, size + alloc_gran, alloc, size, align);
             sizes[i] = size + alloc_gran;
             for(isize k = 0; k < size - alloc_gran; k++)
                 TEST(alloc[k] == TEST_VAL);
@@ -47,7 +47,7 @@ static void break_debug_allocator()
             for(isize k = 0; k < size - alloc_gran; k++)
                 TEST(alloc[k] == TEST_VAL);
 
-            allocator_deallocate(allocator, alloc, size, align, SOURCE_INFO());
+            allocator_deallocate(allocator, alloc, size, align);
         }
     }
     debug_allocator_deinit(&debug_alloc);
