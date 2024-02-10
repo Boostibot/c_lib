@@ -35,6 +35,12 @@ typedef double      f64;
 typedef long long int lli;
 typedef unsigned long long llu;
 
+typedef struct Source_Info {
+    int64_t line;
+    const char* file;
+    const char* function;
+} Source_Info;
+
 #define MIN(a, b)   ((a) < (b) ? (a) : (b))
 #define MAX(a, b)   ((a) > (b) ? (a) : (b))
 #define CLAMP(value, low, high) MAX(low, MIN(value, high))
@@ -52,6 +58,8 @@ typedef unsigned long long llu;
 #else
     #define BRACE_INIT(Struct_Type) (Struct_Type)
 #endif 
+
+#define SOURCE_INFO() BRACE_INIT(Source_Info){__LINE__, __FILE__, __FUNCTION__}
 
 #define STATIC_ARRAY_SIZE(array) (sizeof(array) / sizeof((array)[0]))
 

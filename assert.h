@@ -41,7 +41,7 @@
 //Gets called when assertion fails. 
 //Does not have to terminate process since that is done at call site by the assert macro itself.
 //if ASSERT_CUSTOM_REPORT is defined is left unimplemented
-EXPORT MODIFIER_FORMAT_FUNC(format, 5) void assertion_report(const char* expression, int line, const char* file, const char* function, MODIFIER_FORMAT_ARG const char* format, ...);
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 5) void assertion_report(const char* expression, int line, const char* file, const char* function, ATTRIBUTE_FORMAT_ARG const char* format, ...);
 
 //==================== IMPLEMENTATION =======================
 
@@ -62,7 +62,7 @@ EXPORT MODIFIER_FORMAT_FUNC(format, 5) void assertion_report(const char* express
 
     #ifndef ASSERT_CUSTOM_REPORT
 
-        EXPORT MODIFIER_FORMAT_FUNC(format, 5) void assertion_report(const char* expression, int line, const char* file, const char* function, MODIFIER_FORMAT_ARG const char* format, ...)
+        EXPORT ATTRIBUTE_FORMAT_FUNC(format, 5) void assertion_report(const char* expression, int line, const char* file, const char* function, ATTRIBUTE_FORMAT_ARG const char* format, ...)
         {
             Source_Info source = {line, file, function};
             log_message("assert", LOG_FATAL, source, "TEST(%s) TEST/ASSERT failed! (%s : %lli) ", expression, source.file, source.line);

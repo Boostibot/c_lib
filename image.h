@@ -11,22 +11,24 @@
 //Other custom formats can specified by using some positive number for Pixel_Type.
 //That number is then the byte size of the data type. 
 typedef enum Pixel_Type {
-    PIXEL_TYPE_U8  =  0,
-    PIXEL_TYPE_U16 = -1,
-    PIXEL_TYPE_U24 = -2,
-    PIXEL_TYPE_U32 = -3,
-    PIXEL_TYPE_U64 = -7,
+    PIXEL_TYPE_NONE = 0,
 
-    PIXEL_TYPE_I8  = -10,
-    PIXEL_TYPE_I16 = -11,
-    PIXEL_TYPE_I24 = -12,
-    PIXEL_TYPE_I32 = -13,
-    PIXEL_TYPE_I64 = -17,
+    PIXEL_TYPE_U8  = -1,
+    PIXEL_TYPE_U16 = -2,
+    PIXEL_TYPE_U24 = -3,
+    PIXEL_TYPE_U32 = -4,
+    PIXEL_TYPE_U64 = -8,
+
+    PIXEL_TYPE_I8  = -11,
+    PIXEL_TYPE_I16 = -12,
+    PIXEL_TYPE_I24 = -13,
+    PIXEL_TYPE_I32 = -14,
+    PIXEL_TYPE_I64 = -18,
     
-    PIXEL_TYPE_F8  = -20,
-    PIXEL_TYPE_F16 = -21,
-    PIXEL_TYPE_F32 = -23,
-    PIXEL_TYPE_F64 = -27,
+    PIXEL_TYPE_F8  = -21,
+    PIXEL_TYPE_F16 = -22,
+    PIXEL_TYPE_F32 = -24,
+    PIXEL_TYPE_F64 = -28,
 
     //Any negative number not occupied by previous declarations
     // is considered invalid. This one is just a predefined constant 
@@ -78,6 +80,7 @@ STATIC_ASSERT(sizeof(Subimage) <= 8*5);
 EXPORT const char* pixel_type_name(Pixel_Type pixel_type);
 //Returns the size of the pixel type. The return value is always bigger than 0.
 EXPORT i32 pixel_type_size(Pixel_Type pixel_type);
+EXPORT i32 pixel_type_size_or_zero(Pixel_Type pixel_type);
 EXPORT i32 pixel_channel_count(Pixel_Type pixel_type, isize pixel_size);
 
 EXPORT void image_init(Image* image, Allocator* alloc, isize channel_count, Pixel_Type type);
@@ -133,6 +136,7 @@ EXPORT const char* pixel_type_name(Pixel_Type pixel_type)
 {
     switch(pixel_type)
     {
+        case PIXEL_TYPE_NONE: return "none";
         case PIXEL_TYPE_U8: return "u8";
         case PIXEL_TYPE_U16: return "u16";
         case PIXEL_TYPE_U24: return "u24";
@@ -161,10 +165,11 @@ EXPORT const char* pixel_type_name(Pixel_Type pixel_type)
     }
 }
 
-EXPORT i32 pixel_type_size(Pixel_Type pixel_type)
+EXPORT i32 pixel_type_size_or_zero(Pixel_Type pixel_type)
 {
     switch(pixel_type)
     {
+        case PIXEL_TYPE_NONE:  return 0;
         case PIXEL_TYPE_U8:  return 1;
         case PIXEL_TYPE_U16: return 2;
         case PIXEL_TYPE_U24: return 3;
@@ -187,10 +192,16 @@ EXPORT i32 pixel_type_size(Pixel_Type pixel_type)
             if(pixel_type > 0)
                 return (i32) pixel_type;
             else
-                return 1;
+                return 0;
         }
     }
 }
+
+EXPORT i32 pixel_type_size(Pixel_Type pixel_type)
+{
+    return MAX(pixel_type_size_or_zero(pixel_type), 1);
+}
+
 EXPORT i32 pixel_channel_count(Pixel_Type pixel_type, isize pixel_size)
 {
     i32 format_size = pixel_type_size(pixel_type);

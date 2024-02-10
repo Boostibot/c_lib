@@ -578,7 +578,7 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
         new_pre.header->size = new_size;
         new_pre.header->block_start_offset = (i32) ((u8*) new_pre.header - new_block_ptr);
         new_pre.header->allocation_epoch_time = platform_epoch_time();
-        ASSERT(new_pre.header->block_start_offset <= align && "must be less then align");
+        ASSERT(new_pre.header->block_start_offset <= fixed_align && "must be less then align");
 
         if(self->captured_callstack_size > 0)
             platform_capture_call_stack(new_pre.call_stack, new_pre.call_stack_size, 1);

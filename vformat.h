@@ -5,13 +5,13 @@
 #include "profile.h"
 #include <stdarg.h>
 
-EXPORT MODIFIER_FORMAT_FUNC(format, 2) void vformat_append_into(String_Builder* append_to, MODIFIER_FORMAT_ARG const char* format, va_list args);
-EXPORT MODIFIER_FORMAT_FUNC(format, 2) void vformat_into(String_Builder* into, MODIFIER_FORMAT_ARG const char* format, va_list args);
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void vformat_append_into(String_Builder* append_to, ATTRIBUTE_FORMAT_ARG const char* format, va_list args);
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void vformat_into(String_Builder* into, ATTRIBUTE_FORMAT_ARG const char* format, va_list args);
 
-EXPORT MODIFIER_FORMAT_FUNC(format, 2) void format_append_into(String_Builder* append_to, MODIFIER_FORMAT_ARG const char* format, ...);
-EXPORT MODIFIER_FORMAT_FUNC(format, 2) void format_into(String_Builder* into, MODIFIER_FORMAT_ARG const char* format, ...);
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void format_append_into(String_Builder* append_to, ATTRIBUTE_FORMAT_ARG const char* format, ...);
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void format_into(String_Builder* into, ATTRIBUTE_FORMAT_ARG const char* format, ...);
 
-EXPORT MODIFIER_FORMAT_FUNC(format, 1) String format_ephemeral(MODIFIER_FORMAT_ARG const char* format, ...);
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 1) String format_ephemeral(ATTRIBUTE_FORMAT_ARG const char* format, ...);
 EXPORT const char* escape_string_ephemeral(String string);
 
 #endif // !JOT_VFORMAT
@@ -20,7 +20,7 @@ EXPORT const char* escape_string_ephemeral(String string);
 #define JOT_VFORMAT_HAS_IMPL
     #include <stdio.h>
 
-    EXPORT MODIFIER_FORMAT_FUNC(format, 2) void vformat_append_into(String_Builder* append_to, MODIFIER_FORMAT_ARG const char* format, va_list args)
+    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void vformat_append_into(String_Builder* append_to, ATTRIBUTE_FORMAT_ARG const char* format, va_list args)
     {
         PERF_COUNTER_START(c);
         //An attempt to estimate the needed size so we dont need to call vsnprintf twice.
@@ -58,7 +58,7 @@ EXPORT const char* escape_string_ephemeral(String string);
         return;
     }
     
-    EXPORT MODIFIER_FORMAT_FUNC(format, 2) void format_append_into(String_Builder* append_to, MODIFIER_FORMAT_ARG const char* format, ...)
+    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void format_append_into(String_Builder* append_to, ATTRIBUTE_FORMAT_ARG const char* format, ...)
     {
         va_list args;
         va_start(args, format);
@@ -66,13 +66,13 @@ EXPORT const char* escape_string_ephemeral(String string);
         va_end(args);
     }
     
-    EXPORT MODIFIER_FORMAT_FUNC(format, 2) void vformat_into(String_Builder* into, MODIFIER_FORMAT_ARG const char* format, va_list args)
+    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void vformat_into(String_Builder* into, ATTRIBUTE_FORMAT_ARG const char* format, va_list args)
     {
         builder_clear(into);
         vformat_append_into(into, format, args);
     }
 
-    EXPORT MODIFIER_FORMAT_FUNC(format, 2) void format_into(String_Builder* into, MODIFIER_FORMAT_ARG const char* format, ...)
+    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void format_into(String_Builder* into, ATTRIBUTE_FORMAT_ARG const char* format, ...)
     {
         va_list args;
         va_start(args, format);
@@ -80,7 +80,7 @@ EXPORT const char* escape_string_ephemeral(String string);
         va_end(args);
     }
     
-    EXPORT MODIFIER_FORMAT_FUNC(format, 1) String format_ephemeral(MODIFIER_FORMAT_ARG const char* format, ...)
+    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 1) String format_ephemeral(ATTRIBUTE_FORMAT_ARG const char* format, ...)
     {
         enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256};
 

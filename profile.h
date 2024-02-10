@@ -130,7 +130,7 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 // ========= MACRO IMPLMENTATION ==========
 	#define _IF_NOT_PERF_START_DO_PERF_COUNTERS(name) Global_Perf_Counter_Running name = {0}
 	#define _IF_NOT_PERF_START_(name) \
-		MODIFIER_ALIGNED(64) static Global_Perf_Counter _##name = {0}; \
+		ATTRIBUTE_ALIGNED(64) static Global_Perf_Counter _##name = {0}; \
 		Global_Perf_Counter_Running name = global_perf_counter_start(&_##name, __LINE__, __FILE__, __FUNCTION__, #name); 
 
 	#define _IF_NOT_PERF_END_DO_PERF_COUNTERS(name) (void) (name)
@@ -229,11 +229,6 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 		else
 			return num/den;
 	}
-
-	//INTERNAL i64 _profile_get_counter_freq(Global_Perf_Counter counter)
-	//{
-	//	return counter.counter.frquency ? counter.counter.frquency : platform_perf_counter_frequency();
-	//}
 
 	EXPORT f64 profile_get_counter_total_running_time_s(Global_Perf_Counter counter)
 	{

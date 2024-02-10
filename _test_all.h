@@ -5,12 +5,9 @@
 #include "_test_hash_index.h"
 #include "_test_log.h"
 #include "_test_math.h"
-// #include "_test_hash_index.h"
 #include "_test_stable_array.h"
 #include "_test_lpf.h"
 #include "_test_image.h"
-
-INTERNAL void test_gcd();
 
 INTERNAL void test_all()
 {

@@ -34,7 +34,6 @@
 // instal the scratch allocator as the default allocator so that all internal functions will also comunicate to us using the fast scratch 
 // allocator.
 
-
 typedef struct Allocator_Set {
     Allocator* allocator_default;
     Allocator* allocator_scratch;
@@ -42,21 +41,31 @@ typedef struct Allocator_Set {
 } Allocator_Set;
 
 #define DEF_ALIGN PLATFORM_MAX_ALIGN
-#define SIMD_ALIGN PLATFORM_MAX_ALIGN
+#define SIMD_ALIGN PLATFORM_SIMD_ALIGN
 
 //Attempts to call the realloc funtion of the from_allocator. Can return nullptr indicating failiure
-EXPORT void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
+EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(4) 
+void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
+
 //Calls the realloc function of from_allocator. If fails calls the currently installed Allocator_Out_Of_Memory_Func (panics). This should be used most of the time
-EXPORT void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
+EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(4) 
+void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
+
 //Calls the realloc function of from_allocator to allocate, if fails panics
-EXPORT void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align);
+EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(2) 
+void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align);
+
 //Calls the realloc function of from_allocator to deallocate
-EXPORT void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize old_size, isize align);
+EXPORT 
+void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize old_size, isize align);
 
 //Calls the realloc function of from_allocator, then if reallocating up fills the added memory with zeros
-EXPORT void* allocator_reallocate_cleared(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
+EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(4) 
+void* allocator_reallocate_cleared(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
+
 //Calls the realloc function of from_allocator to allocate, then fills the memory with zeros if fails panics
-EXPORT void* allocator_allocate_cleared(Allocator* from_allocator, isize new_size, isize align);
+EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(2) 
+void* allocator_allocate_cleared(Allocator* from_allocator, isize new_size, isize align);
 
 //Retrieves stats from the allocator. The stats can be only partially filled.
 EXPORT Allocator_Stats allocator_get_stats(Allocator* self);
@@ -69,7 +78,7 @@ EXPORT void allocator_out_of_memory(
 EXPORT Allocator* allocator_get_default(); //returns the default allocator used for returning values from a function
 EXPORT Allocator* allocator_get_scratch(); //returns the scracth allocator used for temp often stack order allocations inside a function
 EXPORT Allocator* allocator_get_static(); //returns the static allocator used for allocations with potentially unbound lifetime. This includes things that will never be deallocated.
-//@NOTE: static is useful for example for static local dyanmic lookup tables 
+//@NOTE: static is useful for example for static dyanmic lookup tables, caches inside functions, quick hacks that will not be deallocated for whatever reason.
 
 //All of these return the previously used Allocator_Set. This enables simple set/restore pair. 
 EXPORT Allocator_Set allocator_set_default(Allocator* new_default);
@@ -123,12 +132,12 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_IMPL)) && !defined(JOT_ALLOCATOR_HAS_IMPL)
 #define JOT_ALLOCATOR_HAS_IMPL
 
-    INTERNAL MODIFIER_THREAD_LOCAL Allocator* _default_allocator = NULL;
-    INTERNAL MODIFIER_THREAD_LOCAL Allocator* _scratch_allocator = NULL;
-    INTERNAL MODIFIER_THREAD_LOCAL Allocator* _static_allocator = NULL;
-    INTERNAL MODIFIER_THREAD_LOCAL Arena_Stack _scratch_arena_stack = {0};
+    INTERNAL ATTRIBUTE_THREAD_LOCAL Allocator* _default_allocator = NULL;
+    INTERNAL ATTRIBUTE_THREAD_LOCAL Allocator* _scratch_allocator = NULL;
+    INTERNAL ATTRIBUTE_THREAD_LOCAL Allocator* _static_allocator = NULL;
+    INTERNAL ATTRIBUTE_THREAD_LOCAL Arena_Stack _scratch_arena_stack = {0};
 
-    EXPORT void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
+    EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(4) void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         PERF_COUNTER_START(c);
         void* out = NULL;
@@ -156,7 +165,7 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
         return out;
     }
 
-    EXPORT void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
+    EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(4) void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         void* obtained = allocator_try_reallocate(from_allocator, new_size, old_ptr, old_size, align);
         if(obtained == NULL && new_size != 0)
@@ -165,7 +174,7 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
         return obtained;
     }
 
-    EXPORT void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align)
+    EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(2) void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align)
     {
         return allocator_reallocate(from_allocator, new_size, NULL, 0, align);
     }
@@ -175,7 +184,7 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
         allocator_reallocate(from_allocator, 0, old_ptr, old_size, align);
     }
     
-    EXPORT void* allocator_reallocate_cleared(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
+    EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(4) void* allocator_reallocate_cleared(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         void* ptr = allocator_reallocate(from_allocator, new_size, old_ptr, old_size, align);
         if(new_size > old_size)
@@ -183,7 +192,7 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
         return ptr;
     }
 
-    EXPORT void* allocator_allocate_cleared(Allocator* from_allocator, isize new_size, isize align)
+    EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(2) void* allocator_allocate_cleared(Allocator* from_allocator, isize new_size, isize align)
     {
         void* ptr = allocator_allocate(from_allocator, new_size, align);
         memset(ptr, 0, (size_t) new_size);

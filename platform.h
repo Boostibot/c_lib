@@ -74,10 +74,10 @@
     #define PLATFORM_COMPILER          PLATFORM_COMPILER_UNKNOWN                 
 #endif
 
-#ifndef PLATFORM_SYSTME_BITS
+#ifndef PLATFORM_SYSTEM_BITS
     //The adress space size of the system. Ie either 64 or 32 bit.
     //Can be user overriden by defining it before including platform.h
-    #define PLATFORM_SYSTME_BITS ((UINTPTR_MAX == 0xffffffff) ? 32 : 64)
+    #define PLATFORM_SYSTEM_BITS ((UINTPTR_MAX == 0xffffffff) ? 32 : 64)
 #endif
 
 #ifndef PLATFORM_ENDIAN
@@ -89,9 +89,12 @@
 #ifndef PLATFORM_MAX_ALIGN
     //Maximum alignment of bultin data type.
     //If this is incorrect (either too much or too little) please correct it by defining it!
-    #define PLATFORM_MAX_ALIGN 16
+    #define PLATFORM_MAX_ALIGN 8
 #endif
 
+#ifndef PLATFORM_SIMD_ALIGN
+    #define PLATFORM_SIMD_ALIGN 8
+#endif
 //Can be used in files without including platform.h but still becomes
 // valid if platform.h is included
 #if PLATFORM_ENDIAN == PLATFORM_ENDIAN_LITTLE
@@ -99,6 +102,24 @@
 #elif PLATFORM_ENDIAN == PLATFORM_ENDIAN_BIG
     #define PLATFORM_HAS_ENDIAN_BIG    PLATFORM_ENDIAN_BIG
 #endif
+
+//=========================================
+// Attributes
+//=========================================
+
+//See below for implementation on each compiler.
+
+#define ATTRIBUTE_RESTRICT                                  /* C's restrict keyword. see: https://en.cppreference.com/w/c/language/restrict */
+#define ATTRIBUTE_INLINE_ALWAYS                             /* Ensures function will get inlined. Applied before function declartion. */
+#define ATTRIBUTE_INLINE_NEVER                              /* Ensures function will not get inlined. Applied before function declartion. */
+#define ATTRIBUTE_THREAD_LOCAL                              /* Declares a variable thread local. Applied before variable declarition. */
+#define ATTRIBUTE_ALIGNED(align)                            /* Places a variable on the stack aligned to 'align' */
+#define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index) /* Marks a function as formatting function. Applied before function declartion. See log.h for example */
+#define ATTRIBUTE_FORMAT_ARG                                /* Marks a format argument. Applied before const char* format argument. See log.h for example */  
+#define ATTRIBUTE_NORETURN                                  /* Specifices that this function will not return (for example abort, exit ...) . Applied before function declartion. */
+#define ATTRIBUTE_RETURN_RESTRICT                           /* Specifies that the retuned pointer from this function does not align any other obejct. Most often used on allocators. */
+#define ATTRIBUTE_RETURN_ALIGNED(align)                     /* Specifies that the retuned pointer is aligned to align. */
+#define ATTRIBUTE_RETURN_ALIGNED_ARG(align_arg_index)       /* Specifies that the retuned pointer is aligned to the integer value of argument at align_arg_index position. */
 
 //=========================================
 // Platform layer setup
@@ -263,21 +284,6 @@ inline static int64_t platform_atomic_add64(volatile int64_t* target, int64_t va
 //Performs atomically: { int64_t copy = *target; *target -= value; return copy; }
 inline static int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value);
 inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value);
-
-//=========================================
-// Modifiers
-//=========================================
-
-//See below for implementation on each compiler.
-
-#define MODIFIER_RESTRICT                                   /* C's restrict keyword. see: https://en.cppreference.com/w/c/language/restrict */
-#define MODIFIER_FORCE_INLINE                               /* Ensures function will get inlined. Applied before function declartion. */
-#define MODIFIER_NO_INLINE                                  /* Ensures function will not get inlined. Applied before function declartion. */
-#define MODIFIER_THREAD_LOCAL                               /* Declares a variable thread local. Applied before variable declarition. */
-#define MODIFIER_ALIGNED(bytes)                             /* Places a variable on the stack aligned to 'bytes' */
-#define MODIFIER_FORMAT_FUNC(format_arg, format_arg_index)  /* Marks a function as formatting function. Applied before function declartion. See log.h for example */
-#define MODIFIER_FORMAT_ARG                                 /* Marks a format argument. Applied before const char* format argument. See log.h for example */  
-#define MODIFIER_NORETURN                                   /* Specifices that this function will not return (for example abort, exit ...) . Applied before function declartion. */
 
 //=========================================
 // Timings
@@ -635,14 +641,55 @@ const char* platform_exception_to_string(Platform_Exception error);
 
 #endif
 
-#undef MODIFIER_RESTRICT                                   
-#undef MODIFIER_FORCE_INLINE                               
-#undef MODIFIER_NO_INLINE                                  
-#undef MODIFIER_THREAD_LOCAL                               
-#undef MODIFIER_ALIGNED                            
-#undef MODIFIER_FORMAT_FUNC 
-#undef MODIFIER_FORMAT_ARG                          
-#undef MODIFIER_NORETURN                                   
+#undef ATTRIBUTE_RESTRICT                                   
+#undef ATTRIBUTE_ALIGNED                            
+#undef ATTRIBUTE_INLINE_ALWAYS                               
+#undef ATTRIBUTE_INLINE_NEVER                                  
+#undef ATTRIBUTE_THREAD_LOCAL                               
+#undef ATTRIBUTE_FORMAT_FUNC 
+#undef ATTRIBUTE_FORMAT_ARG                          
+#undef ATTRIBUTE_NORETURN  
+
+#undef ATTRIBUTE_RETURN_RESTRICT
+#undef ATTRIBUTE_RETURN_ALIGNED
+#undef ATTRIBUTE_RETURN_ALIGNED_ARG
+
+#if defined(_MSC_VER)
+    #define ATTRIBUTE_RESTRICT                                      __restrict
+    #define ATTRIBUTE_INLINE_ALWAYS                                  __forceinline
+    #define ATTRIBUTE_INLINE_NEVER                                     __declspec(noinline)
+    #define ATTRIBUTE_THREAD_LOCAL                                  __declspec(thread)
+    #define ATTRIBUTE_ALIGNED(bytes)                                __declspec(align(bytes))
+    #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index)     /* empty */
+    #define ATTRIBUTE_FORMAT_ARG                                    _Printf_format_string_  
+    #define ATTRIBUTE_RETURN_RESTRICT                               __declspec(restrict)
+    #define ATTRIBUTE_RETURN_ALIGNED(align)                         /* empty */
+    #define ATTRIBUTE_RETURN_ALIGNED_ARG(align_arg_index)           /* empty */
+#elif defined(__GNUC__) || defined(__clang__)
+    #define ATTRIBUTE_RESTRICT                                      __restrict__
+    #define ATTRIBUTE_INLINE_ALWAYS                                  __attribute__((always_inline)) inline
+    #define ATTRIBUTE_INLINE_NEVER                                     __attribute__((noinline))
+    #define ATTRIBUTE_THREAD_LOCAL                                  __thread
+    #define ATTRIBUTE_ALIGNED(bytes)                                __attribute__((aligned(bytes)))
+    #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index)     __attribute__((format_arg (printf, format_arg_index, 0)))
+    #define ATTRIBUTE_FORMAT_ARG                                    /* empty */    
+    #define ATTRIBUTE_NORETURN                                      __attribute__((noreturn))
+    #define ATTRIBUTE_RETURN_RESTRICT                               __attribute__((malloc))
+    #define ATTRIBUTE_RETURN_ALIGNED(align)                         __attribute__((assume_aligned(align))
+    #define ATTRIBUTE_RETURN_ALIGNED_ARG(align_arg_index)           __attribute__((alloc_align (align_arg_index)));
+#else
+    #define ATTRIBUTE_RESTRICT                                      /* empty */                              
+    #define ATTRIBUTE_INLINE_ALWAYS                                  /* empty */                            
+    #define ATTRIBUTE_INLINE_NEVER                                     /* empty */                              
+    #define ATTRIBUTE_THREAD_LOCAL                                  /* empty */                           
+    #define ATTRIBUTE_ALIGNED                                       /* empty */                   
+    #define ATTRIBUTE_FORMAT_FUNC                                   /* empty */  
+    #define ATTRIBUTE_FORMAT_ARG                                    /* empty */                   
+    #define ATTRIBUTE_NORETURN                                      /* empty */  
+    #define ATTRIBUTE_RETURN_RESTRICT                               /* empty */
+    #define ATTRIBUTE_RETURN_ALIGNED(align)                         /* empty */
+    #define ATTRIBUTE_RETURN_ALIGNED_ARG(align_arg_index)           /* empty */
+#endif
 
 // =================== INLINE IMPLEMENTATION ============================
 #if defined(_MSC_VER)
@@ -657,13 +704,13 @@ const char* platform_exception_to_string(Platform_Exception error);
     #undef platform_assume_unreachable
     #define platform_assume_unreachable() __assume(0)
 
-    #define MODIFIER_RESTRICT                                                 __restrict
-    #define MODIFIER_FORCE_INLINE                                             __forceinline
-    #define MODIFIER_NO_INLINE                                                __declspec(noinline)
-    #define MODIFIER_THREAD_LOCAL                                             __declspec(thread)
-    #define MODIFIER_ALIGNED(bytes)                                           __declspec(align(bytes))
-    #define MODIFIER_FORMAT_FUNC(format_arg, format_arg_index)                /* empty */
-    #define MODIFIER_FORMAT_ARG                                               _Printf_format_string_  
+    #define ATTRIBUTE_RESTRICT                                                 __restrict
+    #define ATTRIBUTE_INLINE_ALWAYS                                             __forceinline
+    #define ATTRIBUTE_INLINE_NEVER                                                __declspec(noinline)
+    #define ATTRIBUTE_THREAD_LOCAL                                             __declspec(thread)
+    #define ATTRIBUTE_ALIGNED(bytes)                                           __declspec(align(bytes))
+    #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index)                /* empty */
+    #define ATTRIBUTE_FORMAT_ARG                                               _Printf_format_string_  
 
     inline static void platform_compiler_memory_fence() 
     {
@@ -790,14 +837,14 @@ const char* platform_exception_to_string(Platform_Exception error);
     #undef platform_assume_unreachable
     #define platform_assume_unreachable()                                    __builtin_unreachable() /*move to platform! */
 
-    #define MODIFIER_RESTRICT                                                __restrict__
-    #define MODIFIER_FORCE_INLINE                                            __attribute__((always_inline)) inline
-    #define MODIFIER_NO_INLINE                                               __attribute__((noinline))
-    #define MODIFIER_THREAD_LOCAL                                            __thread
-    #define MODIFIER_ALIGNED(bytes)                                          __attribute__((aligned(bytes)))
-    #define MODIFIER_FORMAT_FUNC(format_arg, format_arg_index)               __attribute__((format_arg (printf, format_arg_index, 0)))
-    #define MODIFIER_FORMAT_ARG                                      /* empty */    
-    #define MODIFIER_NORETURN                                               __attribute__((noreturn))
+    #define ATTRIBUTE_RESTRICT                                                __restrict__
+    #define ATTRIBUTE_INLINE_ALWAYS                                            __attribute__((always_inline)) inline
+    #define ATTRIBUTE_INLINE_NEVER                                               __attribute__((noinline))
+    #define ATTRIBUTE_THREAD_LOCAL                                            __thread
+    #define ATTRIBUTE_ALIGNED(bytes)                                          __attribute__((aligned(bytes)))
+    #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index)               __attribute__((format_arg (printf, format_arg_index, 0)))
+    #define ATTRIBUTE_FORMAT_ARG                                      /* empty */    
+    #define ATTRIBUTE_NORETURN                                               __attribute__((noreturn))
 
     typedef char __MAX_ALIGN_TESTER__[
         __alignof__(long long int) == PLATFORM_MAX_ALIGN || 

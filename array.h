@@ -18,19 +18,9 @@
 // 3) we need to hold info about allocators used for the array.
 //    It also must be fully explicit ie there should never be the case where we return an array from a function and we dont know
 //    how to deallocate it. This is another reason why the typed approach from 2) is bad - we dont even know we need to allocate it!
-//
-// Additionally these arrays implemnt the following:
-// 1) EXPERIMENTAL: All arrays are null terminated with null termination of the size of the element. 
-//    This is done so that we dont need a separate structure for strings but might incur too much overhead - we will see about this. 
-// 
-// 2) Because the functions are implemented as macros we make them all Source_Info transparent. We track locations of all allocations
-//    for debugging purposes. Normally we use Source_Info fromn the allocation site - here however we use Source_Info from the use site of the
-//    array function.
 
 #include "defines.h"
 #include "allocator.h"
-
-//@Note: We can supply aligment to this 
 
 #define DEFINE_ARRAY_TYPE(Type, Struct_Name) \
     typedef struct Struct_Name {             \

@@ -115,12 +115,6 @@ enum {
     LOG_TRACE = 6,      //Used to log for step debug purposes (prinf("HERE") and such). Is only logged in step debug builds
 };
 
-typedef struct Source_Info {
-    int64_t line;
-    const char* file;
-    const char* function;
-} Source_Info;
-
 typedef struct Logger Logger;
 typedef void (*Vlog_Func)(Logger* logger, const char* module, Log_Type type, isize indentation, Source_Info source, const char* format, va_list args);
 
@@ -143,11 +137,11 @@ EXPORT void  log_group_push();   //Increases indentation of subsequent log messa
 EXPORT void  log_group_pop();    //Decreases indentation of subsequent log messages
 EXPORT isize log_group_depth(); //Returns the current indentation of messages
 
-EXPORT MODIFIER_FORMAT_FUNC(format, 4) void log_message(const char* module, Log_Type type, Source_Info source, MODIFIER_FORMAT_ARG const char* format, ...);
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_message(const char* module, Log_Type type, Source_Info source, ATTRIBUTE_FORMAT_ARG const char* format, ...);
 EXPORT void vlog_message(const char* module, Log_Type type, Source_Info source, const char* format, va_list args);
 EXPORT void log_flush();
 
-EXPORT MODIFIER_FORMAT_FUNC(format, 4) void log_callstack(const char* log_module, Log_Type log_type, isize skip, MODIFIER_FORMAT_ARG const char* format, ...);
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_callstack(const char* log_module, Log_Type log_type, isize skip, ATTRIBUTE_FORMAT_ARG const char* format, ...);
 EXPORT void log_just_callstack(const char* log_module, Log_Type log_type, isize depth, isize skip);
 EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void* const* callstack, isize callstack_size);
 EXPORT void log_translated_callstack(const char* log_module, Log_Type log_type, const Platform_Stack_Trace_Entry* translated, isize callstack_size);
@@ -221,24 +215,19 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
 #define PP_IF(CONDITION_DEFINE, x)         PP_CONCAT(_IF_NOT_, CONDITION_DEFINE)(x)
 #define _IF_NOT_(x) x
 
-#ifdef __cplusplus
-    #define SOURCE_INFO() Source_Info{__LINE__, __FILE__, __FUNCTION__}
-#else
-    #define SOURCE_INFO() (Source_Info){__LINE__, __FILE__, __FUNCTION__}
-#endif 
 
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_LOG_IMPL)) && !defined(JOT_LOG_HAS_IMPL)
 #define JOT_LOG_HAS_IMPL
 
-//Is stateless so it can not be MODIFIER_THREAD_LOCAL
+//Is stateless so it can not be ATTRIBUTE_THREAD_LOCAL
 static Logger _global_def_logger = {def_logger_func};
 
 
-static MODIFIER_THREAD_LOCAL Logger* _global_logger = &_global_def_logger;
-static MODIFIER_THREAD_LOCAL isize _global_log_group_depth = 0;
-static MODIFIER_THREAD_LOCAL u64 _global_log_mask = ~(u64) 0; //All channels on!
+static ATTRIBUTE_THREAD_LOCAL Logger* _global_logger = &_global_def_logger;
+static ATTRIBUTE_THREAD_LOCAL isize _global_log_group_depth = 0;
+static ATTRIBUTE_THREAD_LOCAL u64 _global_log_mask = ~(u64) 0; //All channels on!
 
 EXPORT Logger* log_system_get_logger()
 {
@@ -321,7 +310,7 @@ EXPORT void vlog_message(const char* module, Log_Type type, Source_Info source, 
     }
 }
 
-EXPORT MODIFIER_FORMAT_FUNC(format, 4) void log_message(const char* module, Log_Type type, Source_Info source, MODIFIER_FORMAT_ARG const char* format, ...)
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_message(const char* module, Log_Type type, Source_Info source, ATTRIBUTE_FORMAT_ARG const char* format, ...)
 {
     va_list args;               
     va_start(args, format);     
@@ -396,7 +385,7 @@ EXPORT void def_logger_func(Logger* logger, const char* module, Log_Type type, i
         printf(ANSI_COLOR_NORMAL);
 }
 
-EXPORT MODIFIER_FORMAT_FUNC(format, 4) void log_callstack(const char* log_module, Log_Type log_type, isize skip, MODIFIER_FORMAT_ARG const char* format, ...)
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_callstack(const char* log_module, Log_Type log_type, isize skip, ATTRIBUTE_FORMAT_ARG const char* format, ...)
 {
     va_list args;               
     va_start(args, format);     

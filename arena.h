@@ -77,7 +77,7 @@ void arena_release(Arena* arena);
 Arena arena_acquire(Arena_Stack* stack);
 void* arena_push(Arena* arena, isize size, isize align);
 void* arena_push_nonzero(Arena* arena, isize size, isize align);
-MODIFIER_FORCE_INLINE void* arena_push_nonzero_inline(Arena* arena, isize size, isize align);
+ATTRIBUTE_INLINE_ALWAYS void* arena_push_nonzero_inline(Arena* arena, isize size, isize align);
 
 void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
 Allocator_Stats arena_get_allocatator_stats(Allocator* self);
@@ -166,7 +166,7 @@ void arena_init(Arena_Stack* arena, isize reserve_size_or_zero, isize stack_max_
     arena->name = name_or_null;
 }
 
-MODIFIER_NO_INLINE void* arena_unusual_push(Arena_Stack* arena, i32 depth, isize size, isize align)
+ATTRIBUTE_INLINE_NEVER void* arena_unusual_push(Arena_Stack* arena, i32 depth, isize size, isize align)
 {
     if(arena->stack_depht != depth)
     {
@@ -206,7 +206,7 @@ MODIFIER_NO_INLINE void* arena_unusual_push(Arena_Stack* arena, i32 depth, isize
     return data;
 }
 
-MODIFIER_FORCE_INLINE void* arena_push_nonzero_inline(Arena* arena, isize size, isize align)
+ATTRIBUTE_INLINE_ALWAYS void* arena_push_nonzero_inline(Arena* arena, isize size, isize align)
 {
     ASSERT(arena->stack && arena->level > 0);
     Arena_Stack* stack = arena->stack;
