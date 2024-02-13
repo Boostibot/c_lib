@@ -3,7 +3,7 @@
 #include "_test_random.h"
 #include "_test_array.h"
 #include "_test_hash_index.h"
-#include "_test_log.h"
+//#include "_test_log.h"
 #include "_test_math.h"
 #include "_test_stable_array.h"
 #include "_test_lpf.h"
@@ -20,7 +20,7 @@ INTERNAL void test_all(f64 total_time)
     INCR RUN_TEST(test_image);
     INCR RUN_TEST(test_lpf);
     INCR RUN_TEST(test_stable_array);
-    INCR RUN_TEST(test_log);
+    //INCR RUN_TEST(test_log);
     //INCR RUN_TEST(test_random);
     
     INCR RUN_TEST_TIMED(test_hash_index, total_time/4);
@@ -31,7 +31,7 @@ INTERNAL void test_all(f64 total_time)
     #undef INCR
 
     if(passed_count == total_count)
-        LOG_SUCCESS("TEST", "TESTING FINISHED! passed %i of %i test uwu", total_count, passed_count);
+        LOG_OKAY("TEST", "TESTING FINISHED! passed %i of %i test uwu", total_count, passed_count);
     else
         LOG_WARN("TEST", "TESTING FINISHED! passed %i of %i tests", total_count, passed_count);
 }

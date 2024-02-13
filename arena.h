@@ -4,6 +4,7 @@
 #include "defines.h"
 #include "assert.h"
 #include "platform.h"
+#include <string.h>
 
 typedef struct Allocator        Allocator;
 typedef struct Allocator_Stats  Allocator_Stats;

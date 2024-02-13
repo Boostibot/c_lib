@@ -1,11 +1,10 @@
-#ifndef JOT_LOG2
-#define JOT_LOG2
+#ifndef JOT_LOG_LIST
+#define JOT_LOG_LIST
 
 #include "defines.h"
 #include "platform.h"
 #include "allocator.h"
 #include "log.h"
-
 
 typedef struct Log_List_Group {
     Log* first;
@@ -16,7 +15,10 @@ typedef struct Log_List {
     Logger logger;
     Allocator* alloc;
 
-    //We store an array of currently actovi groups
+    //Only log types that natch filter 
+    Log_Filter filter;
+
+    //We store an array of currently active groups
     // to supprot properly the hierarchical context
     // interface. We store the active_group inline
     // to not require any extra allocations most of the time
@@ -29,7 +31,6 @@ typedef struct Log_List {
     //For init_and_use type of tasks
     Logger* prev_logger;
     bool had_prev_logger;
-
 } Log_List;
 
 void _log_dealloc_recursive(Log* log_list, Allocator* alloc, isize depth)
@@ -86,8 +87,7 @@ void log_list_deinit(Log_List* log_list)
     }
         
     if(log_list->had_prev_logger)
-        log_system_set_logger(log_list->prev_logger);
-
+        log_set_logger(log_list->prev_logger);
 
     memset(log_list, 0, sizeof *log_list);
 }
@@ -95,6 +95,8 @@ void log_list_deinit(Log_List* log_list)
 void log_list_log_func(Logger* logger_, const Log* log_list, Log_Action action)
 {
     Log_List* logger = (Log_List*) (void*) logger_;
+    
+
     switch(action)
     {
         case LOG_ACTION_LOG: {
@@ -120,9 +122,13 @@ void log_list_log_func(Logger* logger_, const Log* log_list, Log_Action action)
                 logger->group_capacity = new_capacity;
             }
 
+            Log_List_Group* active_group = logger->groups + logger->group_depth;
+            if(logger->group_depth == 0)
+                active_group = &logger->top_level_group;
+
             //Push a new group and zero it
-            Log_List_Group* active_group = &logger->groups[logger->group_depth++];
-            memset(active_group, 0, sizeof *active_group);
+            Log_List_Group* new_active_group = &logger->groups[logger->group_depth++];
+            memset(new_active_group, 0, sizeof *new_active_group);
         } break;
     
         case LOG_ACTION_UNGROUP: {
@@ -140,10 +146,7 @@ void log_list_log_func(Logger* logger_, const Log* log_list, Log_Action action)
 
         default: ASSERT_MSG(false, "Invalid action!");
     }
-
 }
-
-
 
 Log_List log_list_make(Allocator* alloc)
 {
@@ -162,7 +165,7 @@ void log_list_init(Log_List* log_list, Allocator* alloc)
 void log_capture(Log_List* log_list, Allocator* alloc)
 {
     log_list_init(log_list, alloc);
-    log_list->prev_logger = log_system_set_logger(&log_list->logger);
+    log_list->prev_logger = log_set_logger(&log_list->logger);
     log_list->had_prev_logger = true;
 }
 
@@ -171,38 +174,9 @@ void log_capture_end(Log_List* log_list)
     if(log_list->had_prev_logger)
     {
         log_list->had_prev_logger = false;
-        log_system_set_logger(log_list->prev_logger);
+        log_set_logger(log_list->prev_logger);
     }
 }
-
-
-int main()
-{
-    Arena arena_scratch = scratch_arena_acquire();
-    Log_List outer = {0};
-
-    Log_List log_list = {0};
-    log_capture(&log_list, &arena_scratch.allocator);
-
-        //log
-        //log
-        //log
-
-    log_capture_end(&log_list);
-
-    //if had error
-    if(true)
-    {
-        Log to_log = {"app", "warning", STRING("message")};
-        to_log.child = log_list.first;
-        log_list_log_func(&outer.logger, &to_log);
-    }
-
-    //would be nice if we didnt have to do this
-    log_list_deinit(&log_list);
-}
-
-#endif
 
 #endif
 

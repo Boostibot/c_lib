@@ -41,7 +41,7 @@ typedef struct Memory_Logger {
 
 EXPORT String memory_log_get_module(const Memory_Log* log);
 EXPORT String memory_log_get_message(const Memory_Log* log);
-EXPORT void memory_logger_log(Logger* logger, const char* module, Log_Type type, isize indentation, Source_Info source, const char* format, va_list args);
+EXPORT void memory_logger_log(Logger* logger, const char* module, Log_Filter type, isize indentation, Source_Info source, const char* format, va_list args);
 
 EXPORT void memory_logger_deinit(Memory_Logger* logger);
 EXPORT void memory_logger_init_custom(Memory_Logger* logger, Allocator* alloc, isize max_logs, isize log_every_nth);
@@ -63,7 +63,7 @@ EXPORT String memory_log_get_message(const Memory_Log* log)
     return string_tail(log->module_and_message.string, log->module_size);
 }
 
-EXPORT void memory_logger_log(Logger* logger, const char* module, Log_Type type, isize indentation, Source_Info source, const char* format, va_list args)
+EXPORT void memory_logger_log(Logger* logger, const char* module, Log_Filter type, isize indentation, Source_Info source, const char* format, va_list args)
 {
     Memory_Logger* self = (Memory_Logger*) (void*) logger;
     if(self->total_log_count % self->log_every_nth == 0 && self->total_log_count < self->max_logs)

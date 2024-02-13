@@ -10,11 +10,11 @@
 
 // The syntax is: 
 // LOG_INFO("ANIM", "iterating all entitites");
-// log_group_push();
+// log_group();
 // for(int i = 0; i < 10; i++)
 //     LOG_INFO("anim", "entity id:%d found", i);
 // 
-// log_group_pop();
+// log_ungroup();
 // LOG_FATAL("ANIM", 
 //    "Fatal error encountered!\n"
 //    "Some more info\n" 
@@ -95,8 +95,7 @@ EXPORT typedef struct File_Logger {
     Logger* prev_logger;
 } File_Logger;
 
-
-EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, isize indentation, Source_Info source, const char* format, va_list args);
+EXPORT void file_logger_log(Logger* logger_, const Log* log_list, Log_Action action);
 EXPORT bool file_logger_flush(File_Logger* logger);
 
 EXPORT void file_logger_deinit(File_Logger* logger);
@@ -104,11 +103,8 @@ EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, i
 EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, const char* folder);
 EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, const char* folder);
 
-EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* append_to, String module, Log_Type type, isize indentation, i64 epoch_time, const char* format, va_list args);
-EXPORT void file_logger_log_into(Allocator* scratch, String_Builder* append_to, String module, Log_Type type, isize indentation, i64 epoch_time, const char* format, va_list args);
-
-EXPORT void file_logger_console_add_type_filter(File_Logger* logger, isize type);
-EXPORT void file_logger_console_set_none_type_filter(File_Logger* logger);
+EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* append_to, String module, Log_Filter type, isize indentation, i64 epoch_time, const char* format, va_list args);
+EXPORT void file_logger_log_into(Allocator* scratch, String_Builder* append_to, String module, Log_Filter type, isize indentation, i64 epoch_time, const char* format, va_list args);
 
 extern File_Logger global_logger;
 #endif
@@ -118,7 +114,7 @@ extern File_Logger global_logger;
 
 File_Logger global_logger = {0};
 
-EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* append_to, String module, Log_Type type, isize indentation, i64 epoch_time, const char* format, va_list args)
+EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* append_to, String module, Log_Filter type, isize indentation, i64 epoch_time, const char* format, va_list args)
 {       
     PERF_COUNTER_START(counter);
 
@@ -239,7 +235,7 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
     PERF_COUNTER_END(counter);
 }
 
-EXPORT void file_logger_log_into(Allocator* scratch, String_Builder* append_to, String module, Log_Type type, isize indentation, i64 epoch_time, const char* format, va_list args)
+EXPORT void file_logger_log_into(Allocator* scratch, String_Builder* append_to, String module, Log_Filter type, isize indentation, i64 epoch_time, const char* format, va_list args)
 {
     builder_clear(append_to);
     file_logger_log_append_into(scratch, append_to, module, type, indentation, epoch_time, format, args);
@@ -253,7 +249,7 @@ EXPORT void file_logger_deinit(File_Logger* logger)
     builder_deinit(&logger->file_postfix);
 
     if(logger->has_prev_logger)
-        log_system_set_logger(logger->prev_logger);
+        log_set_logger(logger->prev_logger);
 
     if(logger->file)
         fclose(logger->file);
@@ -293,7 +289,7 @@ EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, const ch
 EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, const char* folder)
 {
     file_logger_init(logger, def_alloc, folder);
-    logger->prev_logger = log_system_set_logger(&logger->logger);
+    logger->prev_logger = log_set_logger(&logger->logger);
     logger->has_prev_logger = true;
 }
 
@@ -336,21 +332,27 @@ EXPORT bool file_logger_flush(File_Logger* logger)
     return state;
 }
 
-EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, isize indentation, Source_Info source, const char* format, va_list args)
+void file_logger_log(Logger* logger_, const Log* log_list, Log_Action action)
 {
-    PERF_COUNTER_START(counter);
-    File_Logger* self = (File_Logger*) (void*) logger;
-    if(type == LOG_FLUSH)
+    File_Logger* self = (File_Logger*) (void*) logger_;
+    if(action == LOG_ACTION_FLUSH)
     {
         file_logger_flush(self);
         return;
     }
+    //@TODO
+    if(action != LOG_ACTION_LOG)
+        return;
 
-    (void) source;
+    PERF_COUNTER_START(counter);
+
+    Log_Filter type = log_list->type;
     Arena arena = scratch_arena_acquire();
     {
         String_Builder formatted_log = builder_make(&arena.allocator, 1024);
-        file_logger_log_append_into(&arena.allocator, &formatted_log, string_make(module), type, indentation, platform_epoch_time(), format, args);
+        //file_logger_log_append_into(&arena.allocator, &formatted_log, string_make(module), type, indentation, platform_epoch_time(), format, args);
+
+        enum {LOG_ENUM_MAX = 999};
 
         bool print_to_console = (type > LOG_ENUM_MAX) || (((i64) 1 << type) & self->console_type_filter);
         bool print_to_file = (type > LOG_ENUM_MAX) || (((i64) 1 << type) & self->file_type_filter);
@@ -362,7 +364,7 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
                 color_mode = ANSI_COLOR_BRIGHT_RED;
             else if(type == LOG_WARN)
                 color_mode = ANSI_COLOR_YELLOW;
-            else if(type == LOG_SUCCESS)
+            else if(type == LOG_OKAY)
                 color_mode = ANSI_COLOR_GREEN;
             else if(type == LOG_TRACE || type == LOG_DEBUG)
                 color_mode = ANSI_COLOR_GRAY;
@@ -384,15 +386,5 @@ EXPORT void file_logger_log(Logger* logger, const char* module, Log_Type type, i
     PERF_COUNTER_END(counter);
 }
 
-EXPORT void file_logger_console_add_type_filter(File_Logger* logger, isize type)
-{
-    if(type <= LOG_ENUM_MAX)
-        logger->console_type_filter |= (i64) 1 << type;
-}
-
-EXPORT void file_logger_console_set_none_type_filter(File_Logger* logger)
-{
-    logger->console_type_filter = 0;
-}
 
 #endif

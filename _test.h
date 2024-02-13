@@ -95,11 +95,11 @@ EXPORT bool run_test(void* func, const char* name, Test_Func_Type type, f64 max_
         default: UNREACHABLE();
     }
 
-    log_group_push();
+    log_group();
     bool success = platform_exception_sandbox(_run_test_try, &context, _run_test_recover, &context) == 0;
-    log_group_pop();
+    log_ungroup();
     if(success)
-        LOG_SUCCESS("TEST", "%s OK", name);
+        LOG_OKAY("TEST", "%s OK", name);
     else
         LOG_ERROR("TEST", "%s FAILED", name);
 

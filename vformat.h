@@ -85,8 +85,8 @@ EXPORT const char* escape_string_ephemeral(String string);
     {
         enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256};
 
-        static String_Builder ephemeral_strings[EPHEMERAL_SLOTS] = {0};
-        static isize slot = 0;
+        static ATTRIBUTE_THREAD_LOCAL String_Builder ephemeral_strings[EPHEMERAL_SLOTS] = {0};
+        static ATTRIBUTE_THREAD_LOCAL isize slot = 0;
 
         String_Builder* curr = &ephemeral_strings[slot % EPHEMERAL_SLOTS];
         
@@ -113,7 +113,7 @@ EXPORT const char* escape_string_ephemeral(String string);
         String out = vformat_ephemeral(format, args);
         va_end(args);
 
-        return string;
+        return out;
     }
 
     EXPORT const char* escape_string_ephemeral(String string)
@@ -130,8 +130,8 @@ EXPORT const char* escape_string_ephemeral(String string);
                 return string.data;
         }
 
-        static String_Builder ephemeral_strings[EPHEMERAL_SLOTS] = {0};
-        static isize slot = 0;
+        static ATTRIBUTE_THREAD_LOCAL String_Builder ephemeral_strings[EPHEMERAL_SLOTS] = {0};
+        static ATTRIBUTE_THREAD_LOCAL isize slot = 0;
 
         String_Builder* curr = &ephemeral_strings[slot % EPHEMERAL_SLOTS];
         

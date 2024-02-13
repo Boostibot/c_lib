@@ -1,7 +1,7 @@
 #ifndef JOT_ASSERT
 #define JOT_ASSERT
 
-#include "log.h"
+#include "platform.h"
 #include <stdlib.h>
 
 #undef TEST
@@ -54,32 +54,20 @@ EXPORT ATTRIBUTE_FORMAT_FUNC(format, 5) void assertion_report(const char* expres
     #define _IF_NOT_DO_ASSERTS(ignore)         DISSABLED_TEST_MSG
     #define _IF_NOT_DO_ASSERTS_SLOW(ignore)    DISSABLED_TEST_MSG
     #define _IF_NOT_DO_BOUNDS_CHECKS(ignore)   DISSABLED_TEST_MSG
+    
+    //Pre-Processor (PP) utils
+    #define PP_STRINGIFY_(x)        #x
+    #define PP_CONCAT2(a, b)        a ## b
+    #define PP_CONCAT3(a, b, c)     PP_CONCAT2(PP_CONCAT2(a, b), c)
+    #define PP_CONCAT4(a, b, c, d)  PP_CONCAT2(PP_CONCAT3(a, b, c), d)
+    #define PP_CONCAT(a, b)         PP_CONCAT2(a, b)
+    #define PP_STRINGIFY(x)         PP_STRINGIFY_(x)
+    #define PP_ID(x)                x
 
-
-#endif
-
-#if (defined(JOT_ALL_IMPL) || defined(JOT_ASSERT_IMPL)) && !defined(JOT_ASSERT_HAS_IMPL)
-#define JOT_ASSERT_HAS_IMPL
-
-    #ifndef ASSERT_CUSTOM_REPORT
-
-        EXPORT ATTRIBUTE_FORMAT_FUNC(format, 5) void assertion_report(const char* expression, int line, const char* file, const char* function, ATTRIBUTE_FORMAT_ARG const char* format, ...)
-        {
-            Source_Info source = {line, file, function};
-            log_message("assert", LOG_FATAL, source, "TEST(%s) TEST/ASSERT failed! (%s : %lli) ", expression, source.file, source.line);
-            if(format != NULL && strlen(format) != 0)
-            {
-                log_message(">assert", LOG_FATAL, source, "message:");
-
-                va_list args;               
-                va_start(args, format);     
-                vlog_message(">>assert", LOG_FATAL, source, format, args);
-                va_end(args);  
-            }
-
-            log_callstack(">assert", LOG_TRACE, -1, "callstack:");
-        }
-    #endif
-
-
+    //if CONDITION_DEFINE is defined: expands to x, 
+    //else: expands to _IF_NOT_##CONDITION_DEFINE(x). See above how to use this.
+    //The reason for its use is that simply all other things I have tried either didnt
+    // work or failed to compose for obscure reasons
+    #define PP_IF(CONDITION_DEFINE, x)         PP_CONCAT(_IF_NOT_, CONDITION_DEFINE)(x)
+    #define _IF_NOT_(x) x
 #endif
