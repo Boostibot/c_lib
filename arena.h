@@ -8,6 +8,13 @@
 typedef struct Allocator        Allocator;
 typedef struct Allocator_Stats  Allocator_Stats;
 
+//@TODO: use this new Allocator func as it allows us to reduce the memory footprint of allocators (arenas down)
+// and also allows us to declare this callback in every file separately without having to include allocator. For that we would need to also declare
+//the actual relloc func. Idk.
+void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
+typedef void* (*_Allocator2)(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Stats* stats);
+
+
 typedef void* (*Allocator_Allocate_Func)(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
 typedef Allocator_Stats (*Allocator_Get_Stats_Func)(Allocator* self);
 
@@ -44,6 +51,32 @@ typedef isize (*Arena_Stack_Commit_Func)(void* addr, isize size, isize reserved_
 #define ARENA_DEF_RESERVE_SIZE (isize) 64 * 1024*1024*1024 //GB
 #define ARENA_DEF_COMMIT_SIZE  (isize) 8 * 1024*1024 //MB
 
+
+//@TODO: Think about generation counter in conjunction with arenas. Thsi counter would go up on every acquire() and release()
+//       This would allow us to distinguish two disjoint same level allocation set frome oen another and free automatically
+//       This could be used to make interfaces that doent need to worry about freeing *at all*
+//       
+//            2A#### 2B####           2B#####
+//       1####      #         -> 1####
+//                  ^
+//                  we dropped level and immedietely went back up again!
+// 
+//       Note that this would require always acquiring levels through Arena not Arena_Stack! So that we could actually dinstinguish such cases
+//       as now this situation would result in
+//
+//                  2B####
+//            2A####
+//       1####
+//
+//       ---> No this is a vey bad idea:
+//
+//       Arena arena1 = arena_acquire(parent);
+//       Arena arena2 = arena_acquire(parent);
+//
+//       ...allocate from arena1...
+//       ...allocate from arena2... => arena1 freed!!!
+
+
 typedef struct Arena_Stack {
     //Info
     const char* name;
@@ -78,6 +111,8 @@ Arena arena_acquire(Arena_Stack* stack);
 void* arena_push(Arena* arena, isize size, isize align);
 void* arena_push_nonzero(Arena* arena, isize size, isize align);
 ATTRIBUTE_INLINE_ALWAYS void* arena_push_nonzero_inline(Arena* arena, isize size, isize align);
+
+#define ARENA_PUSH(arena_ptr, count, Type) ((Type*) arena_push((arena_ptr), (count) * sizeof(Type), __alignof(Type)))
 
 void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
 Allocator_Stats arena_get_allocatator_stats(Allocator* self);

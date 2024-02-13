@@ -78,6 +78,10 @@ EXPORT void allocator_out_of_memory(
 EXPORT Allocator* allocator_get_default(); //returns the default allocator used for returning values from a function
 EXPORT Allocator* allocator_get_scratch(); //returns the scracth allocator used for temp often stack order allocations inside a function
 EXPORT Allocator* allocator_get_static(); //returns the static allocator used for allocations with potentially unbound lifetime. This includes things that will never be deallocated.
+EXPORT Arena_Stack* allocator_get_scratch_arena_stack();
+EXPORT Arena scratch_arena_acquire();
+EXPORT bool allocator_is_arena(Allocator* allocator);
+
 //@NOTE: static is useful for example for static dyanmic lookup tables, caches inside functions, quick hacks that will not be deallocated for whatever reason.
 
 //All of these return the previously used Allocator_Set. This enables simple set/restore pair. 
@@ -144,7 +148,7 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
         ASSERT(new_size >= 0 && old_size >= 0 && is_power_of_two(align) && "provided arguments must be valid!");
         
         //If is arena use the arena function directly (inlined)
-        if(from_allocator && from_allocator->allocate == arena_reallocate)
+        if(allocator_is_arena(from_allocator))
         {
             if(new_size > old_size)
             {
@@ -204,6 +208,12 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
         return self->get_stats(self);
     }
 
+    
+    EXPORT bool allocator_is_arena(Allocator* allocator)
+    {
+        return allocator != NULL && allocator->allocate == arena_reallocate;
+    }
+
     EXPORT Arena scratch_arena_acquire()
     {
         return arena_acquire(&_scratch_arena_stack);
@@ -221,7 +231,7 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
     {
         return _static_allocator;
     }
-    EXPORT Arena_Stack* allocator_get_scratch_arena()
+    EXPORT Arena_Stack* allocator_get_scratch_arena_stack()
     {
         return &_scratch_arena_stack;
     }

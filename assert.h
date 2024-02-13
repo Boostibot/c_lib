@@ -22,13 +22,14 @@
 //Is useful for validating if compile time settings are correct
 #define STATIC_ASSERT(x) typedef char PP_CONCAT(__static_assertion__, __LINE__)[(x) ? 1 : -1]
 
+//@TODO: remove _MSG variants!
 
 //If x evaluates to false executes assertion_report() without any message. 
-#define TEST(x)                 TEST_MSG(x, "")              /* executes always (even in release) */
-#define ASSERT(x)               ASSERT_MSG(x, "")            /* is enabled by DO_ASSERTS */
-#define ASSERT_SLOW(x)          ASSERT_SLOW_MSG(x, "")       /* is enabled by DO_ASSERTS_SLOW */
-#define CHECK_BOUNDS(i, to)     CHECK_RANGE_BOUNDS(i, 0, to) /* if i is not within [0, to) panics. is enabled by DO_BOUNDS_CHECKS*/
-#define UNREACHABLE()           platform_assume_unreachable(), ASSERT_MSG(false, "unreachable code reached!")
+#define TEST(x, ...)                TEST_MSG(x, "" __VA_ARGS__)              /* executes always (even in release) */
+#define ASSERT(x, ...)              ASSERT_MSG(x, "" __VA_ARGS__)            /* is enabled by DO_ASSERTS */
+#define ASSERT_SLOW(x, ...)         ASSERT_SLOW_MSG(x, "" __VA_ARGS__)       /* is enabled by DO_ASSERTS_SLOW */
+#define CHECK_BOUNDS(i, to)         CHECK_RANGE_BOUNDS(i, 0, to) /* if i is not within [0, to) panics. is enabled by DO_BOUNDS_CHECKS*/
+#define UNREACHABLE(...)            (ASSERT_MSG(false, "Unreachable code reached! " __VA_ARGS__), platform_assume_unreachable())
 
 //If x evaluates to false executes assertion_report() with the specified message. 
 #define TEST_MSG(x, msg, ...)               (!(x) ? (assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, (msg), ##__VA_ARGS__), abort()) : (void) 0)

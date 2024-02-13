@@ -12,6 +12,7 @@ EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void format_append_into(String_Builder* 
 EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void format_into(String_Builder* into, ATTRIBUTE_FORMAT_ARG const char* format, ...);
 
 EXPORT ATTRIBUTE_FORMAT_FUNC(format, 1) String format_ephemeral(ATTRIBUTE_FORMAT_ARG const char* format, ...);
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 1) String vformat_ephemeral(ATTRIBUTE_FORMAT_ARG const char* format, va_list args);
 EXPORT const char* escape_string_ephemeral(String string);
 
 #endif // !JOT_VFORMAT
@@ -80,7 +81,7 @@ EXPORT const char* escape_string_ephemeral(String string);
         va_end(args);
     }
     
-    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 1) String format_ephemeral(ATTRIBUTE_FORMAT_ARG const char* format, ...)
+    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 1) String vformat_ephemeral(ATTRIBUTE_FORMAT_ARG const char* format, va_list args)
     {
         enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256};
 
@@ -98,14 +99,21 @@ EXPORT const char* escape_string_ephemeral(String string);
                 builder_init_with_capacity(curr, allocator_get_static(), KEPT_SIZE);
         }
         
-        va_list args;
-        va_start(args, format);
         vformat_into(curr, format, args);
-        va_end(args);
 
         slot += 1;
 
         return curr->string;
+    }
+
+    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 1) String format_ephemeral(ATTRIBUTE_FORMAT_ARG const char* format, ...)
+    {
+        va_list args;
+        va_start(args, format);
+        String out = vformat_ephemeral(format, args);
+        va_end(args);
+
+        return string;
     }
 
     EXPORT const char* escape_string_ephemeral(String string)

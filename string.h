@@ -73,6 +73,8 @@ EXPORT isize  string_find_first_char_sse(String string, char search_for, isize f
 EXPORT isize  string_find_last_char_from(String in_str, char search_for, isize from);
 EXPORT isize  string_find_last_char(String string, char search_for); 
 
+EXPORT String string_duplicate(Arena* arena, String string);
+
 EXPORT String_Builder builder_make(Allocator* alloc_or_null, isize capacity_or_zero);
 EXPORT String_Builder builder_from_cstring(const char* cstring, Allocator* allocator); //Allocates a String_Builder from cstring.
 EXPORT String_Builder builder_from_string(String string, Allocator* allocator);  //Allocates a String_Builder from String using an allocator.
@@ -447,6 +449,16 @@ EXPORT String_Builder string_replace(Allocator* allocator, String source, String
         String portion = string_range(larger_string, from_index, from_index + smaller_string.size);
         return string_is_equal(portion, smaller_string);
     }
+    
+    EXPORT String string_duplicate(Arena* arena, String string)
+    {
+        char* data = (char*) arena_push_nonzero(arena, string.size + 1, 1);
+        memcpy(data, string.data, string.size);
+        data[string.size] = '\0';
+        String out = {data, string.size};
+
+        return out;
+    }
 
     EXPORT const char* cstring_escape(const char* string)
     {
@@ -466,7 +478,7 @@ EXPORT String_Builder string_replace(Allocator* allocator, String source, String
         String max_string = {string, max_size_or_minus_one};
         return string_find_first_char(max_string, '\0', 0);
     }
-
+    
     EXPORT const char* cstring_from_builder(String_Builder builder)
     {
         return cstring_escape(builder.data);
