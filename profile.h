@@ -107,6 +107,9 @@ typedef struct Global_Perf_Counter_Running
 	bool stopped;
 } Global_Perf_Counter_Running;
 
+//@TODO: perf counter tick - add a macro that does not do any time tracking but only atomically increments a counter. 
+//       This can be used to track how many times an event occured within an individual function. 
+
 EXPORT Global_Perf_Counter_Running global_perf_counter_start(Global_Perf_Counter* my_counter, i32 line, const char* file, const char* function, const char* name);
 EXPORT void global_perf_counter_end(Global_Perf_Counter_Running* running);
 EXPORT void global_perf_counter_end_detailed(Global_Perf_Counter_Running* running);
@@ -117,10 +120,11 @@ EXPORT i64 profile_get_total_running_counters_count();
 EXPORT f64 profile_get_counter_total_running_time_s(Global_Perf_Counter counter);
 EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counter);
 
-#define PERF_COUNTER_START(name)		PP_ID(PP_CONCAT(_IF_NOT_PERF_START_,		DO_PERF_COUNTERS)(name))
-#define PERF_COUNTER_END(name)			PP_ID(PP_CONCAT(_IF_NOT_PERF_END_,			DO_PERF_COUNTERS)(name))
-#define PERF_COUNTER_END_DETAILED(name)	PP_ID(PP_CONCAT(_IF_NOT_PERF_END_DETAILED_, DO_PERF_COUNTERS)(name))
-#define PERF_COUNTER_END_DISCARD(name)	PP_ID(PP_CONCAT(_IF_NOT_PERF_END_DISCARD_,	DO_PERF_COUNTERS)(name))
+//Optional arguments
+#define PERF_COUNTER_START(...)			PP_ID(PP_CONCAT(_IF_NOT_PERF_START_,		DO_PERF_COUNTERS)(__VA_ARGS__, _))
+#define PERF_COUNTER_END(...)			PP_ID(PP_CONCAT(_IF_NOT_PERF_END_,			DO_PERF_COUNTERS)(__VA_ARGS__, _))
+#define PERF_COUNTER_END_DETAILED(...)	PP_ID(PP_CONCAT(_IF_NOT_PERF_END_DETAILED_, DO_PERF_COUNTERS)(__VA_ARGS__, _))
+#define PERF_COUNTER_END_DISCARD(...)	PP_ID(PP_CONCAT(_IF_NOT_PERF_END_DISCARD_,	DO_PERF_COUNTERS)(__VA_ARGS__, _))
 
 #ifdef PROFILE_DO_ONLY_DETAILED_COUNTERS
 	#undef PERF_COUNTER_END
@@ -128,19 +132,19 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 #endif
 
 // ========= MACRO IMPLMENTATION ==========
-	#define _IF_NOT_PERF_START_DO_PERF_COUNTERS(name) Global_Perf_Counter_Running name = {0}
-	#define _IF_NOT_PERF_START_(name) \
+	#define _IF_NOT_PERF_START_DO_PERF_COUNTERS(name, ...) Global_Perf_Counter_Running name = {0}
+	#define _IF_NOT_PERF_START_(name, ...) \
 		ATTRIBUTE_ALIGNED(64) static Global_Perf_Counter _##name = {0}; \
-		Global_Perf_Counter_Running name = global_perf_counter_start(&_##name, __LINE__, __FILE__, __FUNCTION__, #name); 
+		Global_Perf_Counter_Running _run##name = global_perf_counter_start(&_##name, __LINE__, __FILE__, __FUNCTION__, #name); 
 
-	#define _IF_NOT_PERF_END_DO_PERF_COUNTERS(name) (void) (name)
-	#define _IF_NOT_PERF_END_(name) global_perf_counter_end(&(name))
+	#define _IF_NOT_PERF_END_DO_PERF_COUNTERS(name, ...) (void) (_run##name)
+	#define _IF_NOT_PERF_END_(name, ...) global_perf_counter_end(&(_run##name))
 	
-	#define _IF_NOT_PERF_END_DETAILED_DO_PERF_COUNTERS(name) (void) (name)
-	#define _IF_NOT_PERF_END_DETAILED_(name) global_perf_counter_end_detailed(&(name))
+	#define _IF_NOT_PERF_END_DETAILED_DO_PERF_COUNTERS(name, ...) (void) (_run##name)
+	#define _IF_NOT_PERF_END_DETAILED_(name, ...) global_perf_counter_end_detailed(&(_run##name))
 
-	#define _IF_NOT_PERF_END_DISCARD_DO_PERF_COUNTERS(name) (void) (name)
-	#define _IF_NOT_PERF_END_DISCARD_(name) global_perf_counter_end_discard(&(name))
+	#define _IF_NOT_PERF_END_DISCARD_DO_PERF_COUNTERS(name, ...) (void) (_run##name)
+	#define _IF_NOT_PERF_END_DISCARD_(name, ...) global_perf_counter_end_discard(&(_run##name))
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PROFILE_IMPL)) && !defined(JOT_PROFILE_HAS_IMPL)

@@ -13,7 +13,7 @@ EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void format_into(String_Builder* into, A
 
 EXPORT ATTRIBUTE_FORMAT_FUNC(format, 1) String format_ephemeral(ATTRIBUTE_FORMAT_ARG const char* format, ...);
 EXPORT ATTRIBUTE_FORMAT_FUNC(format, 1) String vformat_ephemeral(ATTRIBUTE_FORMAT_ARG const char* format, va_list args);
-EXPORT const char* escape_string_ephemeral(String string);
+EXPORT const char* string_escape_ephemeral(String string);
 
 #endif // !JOT_VFORMAT
 
@@ -23,7 +23,11 @@ EXPORT const char* escape_string_ephemeral(String string);
 
     EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void vformat_append_into(String_Builder* append_to, ATTRIBUTE_FORMAT_ARG const char* format, va_list args)
     {
-        PERF_COUNTER_START(c);
+        PERF_COUNTER_START();
+
+        if(format == NULL)
+            format = "";
+
         //An attempt to estimate the needed size so we dont need to call vsnprintf twice.
         //We use some heuristic or the maximum capacity whichever is bigger. This saves us
         // 99% of double calls to vsnprintf which makes this function almost twice as fast
@@ -55,7 +59,7 @@ EXPORT const char* escape_string_ephemeral(String string);
         builder_resize(append_to, base_size + count);
         ASSERT(append_to->data[base_size + count] == '\0');
         
-        PERF_COUNTER_END(c);
+        PERF_COUNTER_END();
         return;
     }
     
@@ -116,40 +120,48 @@ EXPORT const char* escape_string_ephemeral(String string);
         return out;
     }
 
-    EXPORT const char* escape_string_ephemeral(String string)
+    EXPORT const char* string_escape_ephemeral(String string)
     {
-        enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256, PAGE_MIN_SIZE = 1024};
+        PERF_COUNTER_START();
 
+        enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256, PAGE_MIN_SIZE = 1024};
         const char* string_end = string.data + string.size;
+        const char* out = NULL;
 
         //If string end is not on different memory page we cannot cause segfault and thus we can 
         // freely check if the string is escaped. If it is already escaped we simply return it.
-        if((size_t) string_end % PAGE_MIN_SIZE != 0)
+        if((size_t) string_end % PAGE_MIN_SIZE != 0 && *string_end == '\0')
+            out = string.data;
+        else
         {
-            if(*string_end == '\0')
-                return string.data;
-        }
+            PERF_COUNTER_START(required_escaping);
 
-        static ATTRIBUTE_THREAD_LOCAL String_Builder ephemeral_strings[EPHEMERAL_SLOTS] = {0};
-        static ATTRIBUTE_THREAD_LOCAL isize slot = 0;
+            static ATTRIBUTE_THREAD_LOCAL String_Builder ephemeral_strings[EPHEMERAL_SLOTS] = {0};
+            static ATTRIBUTE_THREAD_LOCAL isize slot = 0;
 
-        String_Builder* curr = &ephemeral_strings[slot % EPHEMERAL_SLOTS];
+            String_Builder* curr = &ephemeral_strings[slot % EPHEMERAL_SLOTS];
         
-        //We periodacally shrink the strinks so that we can use this
-        //function regulary for small and big strings without fearing that we will
-        //use too much memory
-        if(slot % RESET_EVERY < EPHEMERAL_SLOTS)
-        {
-            if(curr->capacity == 0 || curr->capacity > KEPT_SIZE)
+            //We periodacally shrink the strinks so that we can use this
+            //function regulary for small and big strings without fearing that we will
+            //use too much memory
+            if(slot % RESET_EVERY < EPHEMERAL_SLOTS)
             {
-                isize required_capacity = MAX(string.size, KEPT_SIZE);
-                builder_init_with_capacity(curr, allocator_get_static(), required_capacity);
+                if(curr->capacity == 0 || curr->capacity > KEPT_SIZE)
+                {
+                    isize required_capacity = MAX(string.size, KEPT_SIZE);
+                    builder_init_with_capacity(curr, allocator_get_static(), required_capacity);
+                }
             }
+
+            slot += 1;
+            builder_assign(curr, string);
+            out = curr->data;
+            
+            PERF_COUNTER_END(required_escaping);
         }
 
-        slot += 1;
-        builder_assign(curr, string);
-        return curr->data;
+        PERF_COUNTER_END();
+        return out;
     }
 
 #endif

@@ -216,7 +216,7 @@ INTERNAL bool _stack_allocator_deallocate(Stack_Allocator* self, void* old_ptr, 
         
 EXPORT void* stack_allocator_allocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
 {
-    PERF_COUNTER_START(c);
+    PERF_COUNTER_START();
     Stack_Allocator* self_ = (Stack_Allocator*) (void*) self;
 
     void* new_ptr = NULL;
@@ -229,7 +229,7 @@ EXPORT void* stack_allocator_allocate(Allocator* self, isize new_size, void* old
         _stack_allocator_deallocate(self_, old_ptr, old_size, align);
     }
     
-    PERF_COUNTER_END(c);
+    PERF_COUNTER_END();
     return new_ptr;
 }
 

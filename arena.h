@@ -4,6 +4,7 @@
 #include "defines.h"
 #include "assert.h"
 #include "platform.h"
+#include "profile.h"
 #include <string.h>
 
 typedef struct Allocator        Allocator;
@@ -204,6 +205,7 @@ void arena_init(Arena_Stack* arena, isize reserve_size_or_zero, isize stack_max_
 
 ATTRIBUTE_INLINE_NEVER void* arena_unusual_push(Arena_Stack* arena, i32 depth, isize size, isize align)
 {
+    PERF_COUNTER_START();
     if(arena->stack_depht != depth)
     {
         ASSERT(arena->stack_depht < arena->stack_max_depth);
@@ -222,38 +224,48 @@ ATTRIBUTE_INLINE_NEVER void* arena_unusual_push(Arena_Stack* arena, i32 depth, i
     u8* data_end = data + size;
     if(data_end > arena->data + arena->size)
     {
+        data = NULL;
         if(arena->commit)
         {
+            PERF_COUNTER_START(commit);
             isize new_size = arena->commit(arena->data, arena->size, arena->reserved_size, true);
+            PERF_COUNTER_END(commit);
             if(new_size > arena->size)
             {
                 _arena_debug_fill_data(arena, new_size - arena->size);
                 arena->size = new_size;
                 ASSERT(new_size < arena->reserved_size);
-                return arena_unusual_push(arena, depth, size, align);
+                data = arena_unusual_push(arena, depth, size, align);
             }
         }
-
-        return NULL;
+    }
+    else
+    {
+        arena->used_to = (isize) data_end - (isize) arena->data;
+        _arena_debug_check_invarinats(arena);
     }
     
-    arena->used_to = (isize) data_end - (isize) arena->data;
-    _arena_debug_check_invarinats(arena);
+    PERF_COUNTER_END();
     return data;
 }
 
 ATTRIBUTE_INLINE_ALWAYS void* arena_push_nonzero_inline(Arena* arena, isize size, isize align)
 {
+    PERF_COUNTER_START();
     ASSERT(arena->stack && arena->level > 0);
     Arena_Stack* stack = arena->stack;
     _arena_debug_check_invarinats(stack);
+
+    u8* data = NULL;
     if(stack->stack_depht != arena->level || stack->used_to + size + align > stack->size)
-        return arena_unusual_push(stack, arena->level, size, align);
-    
-    u8* data = (u8*) _align_forward(stack->data + stack->used_to, align);
-    stack->used_to = (isize) (data + size) - (isize) stack->data;
-    ASSERT(stack->used_to <= stack->size);
-    
+        data = arena_unusual_push(stack, arena->level, size, align);
+    else
+    {
+        data = (u8*) _align_forward(stack->data + stack->used_to, align);
+        stack->used_to = (isize) (data + size) - (isize) stack->data;
+        ASSERT(stack->used_to <= stack->size);
+    }
+    PERF_COUNTER_END();
     return data;
 }
 
@@ -271,32 +283,36 @@ void* arena_push(Arena* arena, isize size, isize align)
 
 void arena_release(Arena* arena)
 {
+    PERF_COUNTER_START();
+
     Arena_Stack* stack = arena->stack;
     ASSERT(arena->stack && arena->level > 0);
     _arena_debug_check_invarinats(stack);
-    if(arena->level <= 0 || stack->stack_depht < arena->level)
-        return;
+    if(arena->level > 0 && stack->stack_depht >= arena->level)
+    {
+        isize* levels = (isize*) (void*) stack->data;
+        isize new_used_to = levels[arena->level - 1];
+        isize old_used_to = stack->used_to;
 
-    isize* levels = (isize*) (void*) stack->data;
-    isize new_used_to = levels[arena->level - 1];
-    isize old_used_to = stack->used_to;
+        isize stack_bytes = stack->stack_max_depth * (isize) sizeof *levels;
+        ASSERT(stack_bytes <= new_used_to && new_used_to <= stack->used_to);
 
-    isize stack_bytes = stack->stack_max_depth * (isize) sizeof *levels;
-    ASSERT(stack_bytes <= new_used_to && new_used_to <= stack->used_to);
+        if(stack->max_release_from_size < stack->used_to)
+            stack->max_release_from_size = stack->used_to;
 
-    if(stack->max_release_from_size < stack->used_to)
-        stack->max_release_from_size = stack->used_to;
+        stack->used_to = new_used_to;
+        stack->stack_depht = arena->level - 1;
+        stack->release_count += 1;
 
-    stack->used_to = new_used_to;
-    stack->stack_depht = arena->level - 1;
-    stack->release_count += 1;
+        //@TODO: we have memory corruption in file logger somewhere as this check
+        //keeps firing but only for it. FIX THIS!
+        //_arena_debug_fill_data(stack, old_used_to - new_used_to);
+        _arena_debug_fill_data(stack, old_used_to - new_used_to + ARENA_DEBUG_DATA_SIZE);
+        _arena_debug_check_invarinats(stack);
+        memset(arena, 0, sizeof* arena);
+    }
 
-    //@TODO: we have memory corruption in file logger somewhere as this check
-    //keeps firing but only for it. FIX THIS!
-    //_arena_debug_fill_data(stack, old_used_to - new_used_to);
-    _arena_debug_fill_data(stack, old_used_to - new_used_to + ARENA_DEBUG_DATA_SIZE);
-    _arena_debug_check_invarinats(stack);
-    memset(arena, 0, sizeof* arena);
+    PERF_COUNTER_END();
 }
 
 //Compatibility function for the allocator interface
@@ -330,6 +346,8 @@ Allocator_Stats arena_get_allocatator_stats(Allocator* self)
 
 Arena arena_acquire(Arena_Stack* stack)
 {
+    PERF_COUNTER_START();
+
     _arena_debug_check_invarinats(stack);
     i32 new_depth = stack->stack_depht + 1;
     isize* levels = (isize*) (void*) stack->data;
@@ -346,6 +364,8 @@ Arena arena_acquire(Arena_Stack* stack)
     out.allocator.get_stats = arena_get_allocatator_stats;
     out.level = new_depth;
     out.stack = stack;
+
+    PERF_COUNTER_END();
     return out;
 }
 

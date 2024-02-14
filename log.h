@@ -262,15 +262,19 @@ EXPORT Logger* log_set_logger(Logger* logger)
     return before;
 }
 
-EXPORT void logger_action(const Log* log_list, Log_Action action)
+enum 
 {
-    bool static_enabled = false;
     #ifdef DO_LOG
-        static_enabled = true;
+    _STATIC_LOG_ENABLED = 1
+    #else
+    _STATIC_LOG_ENABLED = 0
     #endif
-    
+};
+
+EXPORT void logger_action(const Log* log_list, Log_Action action)
+{   
     Global_Log_State* state = &_global_log_state;
-    if(static_enabled && state->logger && (state->filter & ((Log_Filter) 1 << log_list->type)))
+    if(_STATIC_LOG_ENABLED && state->logger && (state->filter & ((Log_Filter) 1 << log_list->type)))
     {
         Logger* logger = state->logger;
         state->logger = NULL;
@@ -284,8 +288,10 @@ EXPORT void log_chain(const Log* log_list)
     logger_action(log_list, LOG_ACTION_LOG);
 }
 EXPORT void log_flush()
-{
-    logger_action(NULL, LOG_ACTION_FLUSH);
+{   
+    Global_Log_State* state = &_global_log_state;
+    if(_STATIC_LOG_ENABLED && state->logger)
+        state->logger->log(state->logger, NULL, 0, LOG_ACTION_FLUSH);
 }
 EXPORT void log_group()
 {
@@ -321,14 +327,9 @@ EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_message(const char* module, con
     va_end(args);            
 }
 EXPORT void vlog_message(const char* module, const char* subject, Log_Type type, Source_Info source, const Log* first_child, const char* format, va_list args)
-{
-    bool static_enabled = false;
-    #ifdef DO_LOG
-        static_enabled = true;
-    #endif
-    
+{   
     Global_Log_State* state = &_global_log_state;
-    if(static_enabled && state->logger && (state->filter & ((Log_Filter) 1 << type)))
+    if(_STATIC_LOG_ENABLED && state->logger && (state->filter & ((Log_Filter) 1 << type)))
     {
         enum {RESET_EVERY = 32, KEPT_SIZE = 512};
         typedef struct {
@@ -463,7 +464,7 @@ EXPORT void log_translated_callstack(const char* log_module, Log_Type log_type, 
             va_end(args);  
         }
 
-        log_callstack(">assert", LOG_TRACE, -1, NULL, "callstack:");
+        log_callstack(">assert", LOG_TRACE, -1, "callstack:");
     }
 #endif
 

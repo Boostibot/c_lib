@@ -298,7 +298,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
 
     EXPORT void* malloc_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr, isize old_size, isize align)
     {
-        PERF_COUNTER_START(c);
+        PERF_COUNTER_START();
         Malloc_Allocator* self = (Malloc_Allocator*) (void*) self_;
         void* out = allocation_list_allocate(&self->list, self->parent, new_size, old_ptr, old_size, align);
 
@@ -312,7 +312,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         self->bytes_allocated += new_size - old_size;
         if(self->max_bytes_allocated < self->bytes_allocated)
             self->max_bytes_allocated = self->bytes_allocated;
-        PERF_COUNTER_END(c);
+        PERF_COUNTER_END();
 
         return out;
     }

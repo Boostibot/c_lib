@@ -69,7 +69,7 @@ typedef enum _Wrapper_Alloc_Arguments {
 
 INTERNAL void* wrapper_allocator_allocate_custom(Allocator* using_allocator, isize new_size, void* old_ptr, isize old_size, isize align, _Wrapper_Alloc_Arguments use_provided_arguments)
 {
-    PERF_COUNTER_START(c);
+    PERF_COUNTER_START();
     isize actual_new_size = 0;
     isize actual_old_size = 0;
     isize actual_align = align;
@@ -125,7 +125,7 @@ INTERNAL void* wrapper_allocator_allocate_custom(Allocator* using_allocator, isi
         ASSERT(using_allocator != NULL);
     }
 
-    PERF_COUNTER_END(c);
+    PERF_COUNTER_END();
     return out_ptr;
 }
 
