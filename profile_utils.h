@@ -12,7 +12,7 @@ typedef enum Log_Perf_Sort_By{
 	PERF_SORT_BY_RUNS,
 } Log_Perf_Sort_By;
 
-EXPORT void log_perf_counters(const char* log_module, Log_Filter log_type, Log_Perf_Sort_By sort_by);
+EXPORT void log_perf_counters(const char* log_module, Log_Type log_type, Log_Perf_Sort_By sort_by);
 
 #endif
 
@@ -54,7 +54,7 @@ EXPORT void log_perf_counters(const char* log_module, Log_Filter log_type, Log_P
 		return res;
 	}
 
-	EXPORT void log_perf_counters(const char* log_module, Log_Filter log_type, Log_Perf_Sort_By sort_by)
+	EXPORT void log_perf_counters(const char* log_module, Log_Type log_type, Log_Perf_Sort_By sort_by)
 	{
 		DEFINE_ARRAY_TYPE(Global_Perf_Counter, _Global_Perf_Counter_Array);
 
@@ -91,7 +91,7 @@ EXPORT void log_perf_counters(const char* log_module, Log_Filter log_type, Log_P
 			case PERF_SORT_BY_RUNS: qsort(counters.data, counters.size, sizeof(Global_Perf_Counter), perf_counter_compare_runs); break;
 		}
 
-		LOG(log_module, "", log_type, "Logging perf counters (still running %lli):", (lli) profile_get_total_running_counters_count());
+		LOG(log_module, log_type, "Logging perf counters (still running %lli):", (lli) profile_get_total_running_counters_count());
 		log_group();
 		for(isize i = 0; i < counters.size; i++)
 		{
@@ -100,7 +100,7 @@ EXPORT void log_perf_counters(const char* log_module, Log_Filter log_type, Log_P
 
 			if(counter.is_detailed)
 			{
-				LOG(log_module, "", log_type, "total: %15.7lf avg: %13.6lf runs: %-8lli σ/μ %13.6lf [%13.6lf %13.6lf] (ms) from %20s %-4lli %s \"%s\"", 
+				LOG(log_module, log_type, "total: %15.7lf avg: %13.6lf runs: %-8lli σ/μ %13.6lf [%13.6lf %13.6lf] (ms) from %20s %-4lli %s \"%s\"", 
 					stats.total_s*1000,
 					stats.average_s*1000,
 					(lli) stats.runs,
@@ -115,7 +115,7 @@ EXPORT void log_perf_counters(const char* log_module, Log_Filter log_type, Log_P
 			}
 			else
 			{
-				LOG(log_module, "", log_type, "total: %15.8lf avg: %13.6lf runs: %-8lli (ms) from %20s %-4lli %s \"%s\"", 
+				LOG(log_module, log_type, "total: %15.8lf avg: %13.6lf runs: %-8lli (ms) from %20s %-4lli %s \"%s\"", 
 					stats.total_s*1000,
 					stats.average_s*1000,
 					(lli) stats.runs,
@@ -128,7 +128,7 @@ EXPORT void log_perf_counters(const char* log_module, Log_Filter log_type, Log_P
 			if(counter.concurrent_running_counters > 0)
 			{
 				log_group();
-				LOG(log_module, "", log_type, "COUNTER LEAKS! Still running %lli", (lli) counter.concurrent_running_counters);
+				LOG(log_module, log_type, "COUNTER LEAKS! Still running %lli", (lli) counter.concurrent_running_counters);
 				log_ungroup();
 			}
 		}

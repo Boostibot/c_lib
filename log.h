@@ -11,7 +11,7 @@
 // 
 //  2) Log type - a number indicating what kind of log this is (info, warn, error, etc.).
 //                These numbers can range from 0-63 (some slots are already taken). This
-//                enables us to store the mask of allowed types as single 64 bit number
+//                enables us to store the filter of allowed types as single 64 bit number
 //                which can in turn be used to silence certain logs really easily.
 // 
 //  3) Indentation - a visual indicator to the hierarchy of messages. 
@@ -52,12 +52,12 @@ void log_example()
     //This can be used for example to distinguish nested functions such as now
     log_group(); 
     //Also dissable debug prints
-    u64 mask = log_disable(LOG_DEBUG);
+    Log_Filter filter = log_disable(LOG_DEBUG);
 
         log_example_nested();
 
     //Restore previous state
-    log_set_filter(mask);
+    log_set_filter(filter);
     log_ungroup();
     LOG_INFO("EXAMPLES", "example finished");
 }
@@ -99,69 +99,78 @@ void log_example_nested()
 #endif
 
 typedef u64 Log_Filter;
-enum {
-    LOG_INFO  = 1 << 0, //Used to log general info.
-    LOG_OKAY  = 1 << 1, //Used to log the opposites of errors
-    LOG_WARN  = 1 << 2, //Used to log near error conditions
-    LOG_ERROR = 1 << 3, //Used to log errors
-    LOG_FATAL = 1 << 4, //Used to log errors just before giving up some important action
-    LOG_DEBUG = 1 << 5, //Used to log for debug purposes. Is only logged in debug builds
-    LOG_TRACE = 1 << 6, //Used to log for step debug purposes (prinf("HERE") and such). Is only logged in step debug builds
+typedef enum Log_Type{
+    LOG_INFO  = 0, //Used to log general info.
+    LOG_OKAY  = 1, //Used to log the opposites of errors
+    LOG_WARN  = 2, //Used to log near error conditions
+    LOG_ERROR = 3, //Used to log errors
+    LOG_FATAL = 4, //Used to log errors just before giving up some important action
+    LOG_DEBUG = 5, //Used to log for debug purposes. Is only logged in debug builds
+    LOG_TRACE = 6, //Used to log for step debug purposes (prinf("HERE") and such). Is only logged in step debug builds
 
     //Custom can be defined...
-};
+    LOG_TYPE_MAX = 63,
+} Log_Type;
 
 //Communicates desired action to logger
 typedef enum Log_Action {
     LOG_ACTION_LOG      = 0, //Logs the provided log_list
     LOG_ACTION_FLUSH    = 1, //Only Flushes the log
-    LOG_ACTION_GROUP    = 2, //Only pushes a new group (taking previous entry as parent) for seubsequent logs
-    LOG_ACTION_UNGROUP  = 3, //Only pops previously pushed group
-    
     //Custom can be defined...
 } Log_Action;
 
 typedef struct Logger Logger;
 typedef struct Log Log;
-typedef void (*Log_Func)(Logger* logger, const Log* log_list, Log_Action action);
+typedef void (*Log_Func)(Logger* logger, const Log* log_list, i32 group_depth, Log_Action action);
 
 typedef struct Logger {
     Log_Func log;
 } Logger;
 
 typedef struct Log {
+    //@NOTE: this struct is rather big 104B at the moment.
+    //       This might seem scary but its not that much.
+    //       In 10MB we are able to store 100,824 logs.
+
+    //@NOTE: Notice that module and subject are const char*
+    //       and thus as static strings. This is to make 
+    //       our lives easier because it almost always end
+    //       yp being static stirngs
     const char* module;
     const char* subject;
     String message;
     
-    u64 type;
+    Log_Type type;
     i64 time;
     Source_Info source;
 
     struct Log* prev;
-    struct Log* child;
+    struct Log* next;
+    struct Log* first_child;
+    struct Log* last_child;
 } Log;
 
 EXPORT Logger* log_get_logger(); //Returns the default used logger
 EXPORT Logger* log_set_logger(Logger* logger); //Sets the default used logger. Returns a pointer to the previous logger so it can be restored later.
 
-EXPORT Log_Filter log_get_filter();
-EXPORT Log_Filter log_set_filter(Log_Filter mask);
+EXPORT Log_Filter log_get_filter(); //Returns the current global filter - For Log_Type type to be printed it must satissfy (filter & ((Log_Filter) 1 << type)) > 0
+EXPORT Log_Filter log_set_filter(Log_Filter filter); //Sets the global filter. Returns previous value so it can be restored later.
 
 EXPORT void log_flush();    //Flushes the logger
-EXPORT void log_group();    //Increases indentation of subsequent log messages
-EXPORT void log_ungroup();  //Decreases indentation of subsequent log messages
-EXPORT void log_list(const Log* log_list);
+EXPORT void log_group();    //Increases group depth (indentation) of subsequent log messages
+EXPORT void log_ungroup();  //Decreases group depth (indentation) of subsequent log messages
+EXPORT i32  log_group_depth(); //Returns the current group depth
+EXPORT void log_chain(const Log* log_list);
 
-EXPORT const char* log_type_to_string(Log_Filter type);
+EXPORT const char* log_defualt_type_to_string(Log_Filter type);
 
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_message(const char* module, const char* subject, Log_Filter type, Source_Info source, const Log* child, ATTRIBUTE_FORMAT_ARG const char* format, ...);
-EXPORT void vlog_message(const char* module, const char* subject, Log_Filter type, Source_Info source, const Log* child, const char* format, va_list args);
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 5) void log_message(const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, ATTRIBUTE_FORMAT_ARG const char* format, ...);
+EXPORT void vlog_message(const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args);
 
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_callstack(const char* log_module, Log_Filter log_type, isize skip, ATTRIBUTE_FORMAT_ARG const char* format, ...);
-EXPORT void log_just_callstack(const char* log_module, Log_Filter log_type, isize depth, isize skip);
-EXPORT void log_captured_callstack(const char* log_module, Log_Filter log_type, const void* const* callstack, isize callstack_size);
-EXPORT void log_translated_callstack(const char* log_module, Log_Filter log_type, const Platform_Stack_Trace_Entry* translated, isize callstack_size);
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_callstack(const char* log_module, Log_Type log_type, isize skip, ATTRIBUTE_FORMAT_ARG const char* format, ...);
+EXPORT void log_just_callstack(const char* log_module, Log_Type log_type, isize depth, isize skip);
+EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void* const* callstack, isize callstack_size);
+EXPORT void log_translated_callstack(const char* log_module, Log_Type log_type, const Platform_Stack_Trace_Entry* translated, isize callstack_size);
 
 typedef struct Memory_Format {
     const char* unit;
@@ -173,21 +182,24 @@ typedef struct Memory_Format {
 } Memory_Format;
 
 EXPORT Memory_Format get_memory_format(isize bytes);
-EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Filter log_type, Allocator* allocator);
-EXPORT void log_allocator_stats_provided(const char* log_module, Log_Filter log_type, Allocator_Stats stats);
-
-//Logs a message type into the provided module cstring.
-#define LOG_INFO(module, format, ...)           PP_IF(DO_LOG_INFO,      LOG)(module, "", LOG_INFO,  format, ##__VA_ARGS__)
-#define LOG_OKAY(module, format, ...)           PP_IF(DO_LOG_OKAY,      LOG)(module, "", LOG_OKAY, format, ##__VA_ARGS__)
-#define LOG_WARN(module, format, ...)           PP_IF(DO_LOG_WARN,      LOG)(module, "", LOG_WARN,  format, ##__VA_ARGS__)
-#define LOG_ERROR(module, format, ...)          PP_IF(DO_LOG_ERROR,     LOG)(module, "", LOG_ERROR, format, ##__VA_ARGS__)
-#define LOG_FATAL(module, format, ...)          PP_IF(DO_LOG_FATAL,     LOG)(module, "", LOG_FATAL, format, ##__VA_ARGS__)
-#define LOG_DEBUG(module, format, ...)          PP_IF(DO_LOG_DEBUG,     LOG)(module, "", LOG_DEBUG, format, ##__VA_ARGS__)
-#define LOG_TRACE(module, format, ...)          PP_IF(DO_LOG_TRACE,     LOG)(module, "", LOG_TRACE, format, ##__VA_ARGS__)
+EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator);
+EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_type, Allocator_Stats stats);
 
 //Logs a message. Does not get dissabled.
-#define LOG(module, subject, log_type, format, ...)   log_message(module, subject, log_type, SOURCE_INFO(), NULL, format, ##__VA_ARGS__)
-#define VLOG(module, subject, log_type, format, args) vlog_message(module, subject, log_type, SOURCE_INFO(), NULL, format, args)
+#define LOG(module, log_type, format, ...)                         log_message(module, "", log_type, SOURCE_INFO(), NULL, format, ##__VA_ARGS__)
+#define LOG_CHILD(module, subject, log_type, child, format, ...)   log_message(module, subject, log_type, SOURCE_INFO(), child, format, ##__VA_ARGS__)
+
+//Logs a message type into the provided module cstring.
+#define LOG_INFO(module, format, ...)  PP_IF(DO_LOG_INFO,  LOG)(module, LOG_INFO,  format, ##__VA_ARGS__)
+#define LOG_OKAY(module, format, ...)  PP_IF(DO_LOG_OKAY,  LOG)(module, LOG_OKAY,  format, ##__VA_ARGS__)
+#define LOG_WARN(module, format, ...)  PP_IF(DO_LOG_WARN,  LOG)(module, LOG_WARN,  format, ##__VA_ARGS__)
+#define LOG_ERROR(module, format, ...) PP_IF(DO_LOG_ERROR, LOG)(module, LOG_ERROR, format, ##__VA_ARGS__)
+#define LOG_FATAL(module, format, ...) PP_IF(DO_LOG_FATAL, LOG)(module, LOG_FATAL, format, ##__VA_ARGS__)
+#define LOG_DEBUG(module, format, ...) PP_IF(DO_LOG_DEBUG, LOG)(module, LOG_DEBUG, format, ##__VA_ARGS__)
+#define LOG_TRACE(module, format, ...) PP_IF(DO_LOG_TRACE, LOG)(module, LOG_TRACE, format, ##__VA_ARGS__)
+
+#define LOG_ERROR_CHILD(module, subject, child, format, ...) PP_IF(DO_LOG_ERROR, LOG_CHILD)(module, subject, LOG_ERROR, child, format, ##__VA_ARGS__)
+#define LOG_FATAL_CHILD(module, subject, child, format, ...) PP_IF(DO_LOG_FATAL, LOG_CHILD)(module, subject, LOG_FATAL, child, format, ##__VA_ARGS__)
 
 //Does not do anything (failed condition) but type checks the arguments
 #define LOG_NEVER(module, subject, log_type, format, ...)  ((module && false) ? log_message(module, subject, log_type, SOURCE_INFO(), format, ##__VA_ARGS__) : (void) 0)
@@ -230,102 +242,135 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Filter log_
 #if (defined(JOT_ALL_IMPL) || defined(JOT_LOG_IMPL)) && !defined(JOT_LOG_HAS_IMPL)
 #define JOT_LOG_HAS_IMPL
 
-static ATTRIBUTE_THREAD_LOCAL Logger* _global_logger = NULL;
-static ATTRIBUTE_THREAD_LOCAL Log_Filter _global_log_mask = ~(Log_Filter) 0; //All channels on!
+typedef struct Global_Log_State {
+    Log_Filter filter;
+    Logger* logger;
+    i32 group_depth;
+} Global_Log_State;
+
+static ATTRIBUTE_THREAD_LOCAL Global_Log_State _global_log_state = {~(Log_Filter) 0}; //All channels on!
 
 EXPORT Logger* log_get_logger()
 {
-    return _global_logger;
+    return _global_log_state.logger;
 }
 
 EXPORT Logger* log_set_logger(Logger* logger)
 {
-    Logger* before = _global_logger;
-    _global_logger = logger;
+    Logger* before = _global_log_state.logger;
+    _global_log_state.logger = logger;
     return before;
 }
 
-EXPORT void log_list(const Log* log_list)
-{
-    _global_logger->log(_global_logger, log_list, LOG_ACTION_LOG);
-}
-EXPORT void log_flush()
-{
-    _global_logger->log(_global_logger, NULL, LOG_ACTION_FLUSH);
-}
-EXPORT void log_group()
-{
-    _global_logger->log(_global_logger, NULL, LOG_ACTION_GROUP);
-}
-EXPORT void log_ungroup()
-{
-    _global_logger->log(_global_logger, NULL, LOG_ACTION_UNGROUP);
-}
-
-EXPORT Log_Filter log_get_filter()
-{
-    return _global_log_mask;
-}
-EXPORT Log_Filter log_set_filter(Log_Filter mask)
-{
-    Log_Filter* gloabl_mask = &_global_log_mask;
-    Log_Filter prev = *gloabl_mask; 
-    *gloabl_mask = mask;
-    return prev;
-}
-
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_message(const char* module, const char* subject, Log_Filter type, Source_Info source, const Log* child, ATTRIBUTE_FORMAT_ARG const char* format, ...)
-{
-    va_list args;               
-    va_start(args, format);     
-    vlog_message(module, subject, type, source, child, format, args);                    
-    va_end(args);            
-}
-EXPORT void vlog_message(const char* module, const char* subject, Log_Filter type, Source_Info source, const Log* child, const char* format, va_list args)
+EXPORT void logger_action(const Log* log_list, Log_Action action)
 {
     bool static_enabled = false;
     #ifdef DO_LOG
         static_enabled = true;
     #endif
     
-    Logger** logger_ptr = &_global_logger;
-    Logger* loger = *logger_ptr; 
-    if(static_enabled && loger && (type & _global_log_mask))
+    Global_Log_State* state = &_global_log_state;
+    if(static_enabled && state->logger && (state->filter & ((Log_Filter) 1 << log_list->type)))
     {
-        enum {RESET_EVERY = 32, KEPT_SIZE = 512};
-        static ATTRIBUTE_THREAD_LOCAL String_Builder formatted = {0};
-        static ATTRIBUTE_THREAD_LOCAL isize index = 0;
-
-        if(index % RESET_EVERY == 0)
-        {
-            if(formatted.capacity == 0 || formatted.capacity > KEPT_SIZE)
-                builder_init_with_capacity(&formatted, allocator_get_static(), KEPT_SIZE);
-        }
-        
-        index += 1;
-        vformat_into(&formatted, format, args);
-
-        isize extra_indentation = 0;
-        for(; module[extra_indentation] == '>'; extra_indentation++);
-
-        //We temporarily dissable loggers while we are logging. This prevents log infinite recursion which occurs for example
-        // when the logger fails to acquire a resource (memory) and that failiure logs 
-        *logger_ptr = NULL;
-        Log logged = {0};
-        logged.module = module;
-        logged.subject = subject;
-        logged.message = formatted.string;
-        logged.type = type;
-        logged.source = source;
-        logged.time = platform_epoch_time();
-        logged.child = (Log*) child;
-
-        loger->log(loger, &logged, LOG_ACTION_LOG);
-        *logger_ptr = loger;
+        Logger* logger = state->logger;
+        state->logger = NULL;
+        logger->log(logger, log_list, state->group_depth, action);
+        state->logger = logger;
     }
 }
 
-EXPORT const char* log_type_to_string(Log_Filter type)
+EXPORT void log_chain(const Log* log_list)
+{
+    logger_action(log_list, LOG_ACTION_LOG);
+}
+EXPORT void log_flush()
+{
+    logger_action(NULL, LOG_ACTION_FLUSH);
+}
+EXPORT void log_group()
+{
+    _global_log_state.group_depth += 1;
+}
+EXPORT void log_ungroup()
+{
+    ASSERT(_global_log_state.group_depth > 0);
+    _global_log_state.group_depth = MAX(_global_log_state.group_depth - 1, 0);
+}
+EXPORT i32 log_group_depth()
+{
+    return _global_log_state.group_depth;
+}
+
+EXPORT Log_Filter log_get_filter()
+{
+    return _global_log_state.filter;
+}
+EXPORT Log_Filter log_set_filter(Log_Filter filter)
+{
+    Log_Filter* gloabl_filter = &_global_log_state.filter;
+    Log_Filter prev = *gloabl_filter; 
+    *gloabl_filter = filter;
+    return prev;
+}
+
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_message(const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, ATTRIBUTE_FORMAT_ARG const char* format, ...)
+{
+    va_list args;               
+    va_start(args, format);     
+    vlog_message(module, subject, type, source, child, format, args);                    
+    va_end(args);            
+}
+EXPORT void vlog_message(const char* module, const char* subject, Log_Type type, Source_Info source, const Log* first_child, const char* format, va_list args)
+{
+    bool static_enabled = false;
+    #ifdef DO_LOG
+        static_enabled = true;
+    #endif
+    
+    Global_Log_State* state = &_global_log_state;
+    if(static_enabled && state->logger && (state->filter & ((Log_Filter) 1 << type)))
+    {
+        enum {RESET_EVERY = 32, KEPT_SIZE = 512};
+        typedef struct {
+            String_Builder formatted;
+            isize index;
+            isize indentation;
+        } Local_Cache;
+
+        static ATTRIBUTE_THREAD_LOCAL Local_Cache _cache = {0};
+        Local_Cache* cache = &_cache;
+
+        //Reset cahce every once in a while if too big.
+        if(cache->index % RESET_EVERY == 0)
+        {
+            if(cache->formatted.capacity == 0 || cache->formatted.capacity > KEPT_SIZE)
+                builder_init_with_capacity(&cache->formatted, allocator_get_static(), KEPT_SIZE);
+        }
+        cache->index += 1;
+        vformat_into(&cache->formatted, format, args);
+
+        i32 extra_indentation = 0;
+        for(; module[extra_indentation] == '>'; extra_indentation++);
+
+        Log logged = {0};
+        logged.module = module + extra_indentation;
+        logged.subject = subject;
+        logged.message = cache->formatted.string;
+        logged.type = type;
+        logged.source = source;
+        logged.time = platform_epoch_time();
+        logged.first_child = (Log*) first_child;
+        
+        //We temporarily dissable loggers while we are logging. This prevents log infinite recursion which occurs for example
+        // when the logger fails to acquire a resource (memory) and that failiure logs 
+        Logger* logger = state->logger;
+        state->logger = NULL;
+        logger->log(logger, &logged, state->group_depth + extra_indentation, LOG_ACTION_LOG);
+        state->logger = logger;
+    }
+}
+
+EXPORT const char* log_type_to_string(Log_Type type)
 {
     switch(type)
     {
@@ -340,11 +385,11 @@ EXPORT const char* log_type_to_string(Log_Filter type)
     }
 }
 
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_callstack(const char* log_module, Log_Filter log_type, isize skip, ATTRIBUTE_FORMAT_ARG const char* format, ...)
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_callstack(const char* log_module, Log_Type log_type, isize skip, ATTRIBUTE_FORMAT_ARG const char* format, ...)
 {
     va_list args;               
     va_start(args, format);     
-    VLOG(log_module, "", log_type, format, args);                    
+    vlog_message(log_module, "", log_type, SOURCE_INFO(), NULL, format, args);                    
     va_end(args);   
     
     log_group();
@@ -352,7 +397,7 @@ EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_callstack(const char* log_modul
     log_ungroup();
 }
 
-EXPORT void log_just_callstack(const char* log_module, Log_Filter log_type, isize depth, isize skip)
+EXPORT void log_just_callstack(const char* log_module, Log_Type log_type, isize depth, isize skip)
 {
     void* stack[256] = {0};
     if(depth < 0 || depth > 256)
@@ -361,7 +406,7 @@ EXPORT void log_just_callstack(const char* log_module, Log_Filter log_type, isiz
     log_captured_callstack(log_module, log_type, (const void**) stack, size);
 }
 
-INTERNAL bool _log_translated_callstack_and_check_main(const char* log_module, Log_Filter log_type, const Platform_Stack_Trace_Entry* translated, isize callstack_size)
+INTERNAL bool _log_translated_callstack_and_check_main(const char* log_module, Log_Type log_type, const Platform_Stack_Trace_Entry* translated, isize callstack_size)
 {
     for(isize j = 0; j < callstack_size; j++)
     {
@@ -375,7 +420,7 @@ INTERNAL bool _log_translated_callstack_and_check_main(const char* log_module, L
 }
 
 
-EXPORT void log_captured_callstack(const char* log_module, Log_Filter log_type, const void* const* callstack, isize callstack_size)
+EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void* const* callstack, isize callstack_size)
 {
     if(callstack_size < 0 || callstack == NULL)
         callstack_size = 0;
@@ -398,7 +443,7 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Filter log_type, 
     }
 }
 
-EXPORT void log_translated_callstack(const char* log_module, Log_Filter log_type, const Platform_Stack_Trace_Entry* translated, isize callstack_size)
+EXPORT void log_translated_callstack(const char* log_module, Log_Type log_type, const Platform_Stack_Trace_Entry* translated, isize callstack_size)
 {
     _log_translated_callstack_and_check_main(log_module, log_type, translated, callstack_size);
 }
@@ -422,7 +467,7 @@ EXPORT void log_translated_callstack(const char* log_module, Log_Filter log_type
     }
 #endif
 
-EXPORT void log_allocator_stats_provided(const char* log_module, Log_Filter log_type, Allocator_Stats stats)
+EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_type, Allocator_Stats stats)
 {
     if(stats.type_name == NULL)
         stats.type_name = "<no type name>";
@@ -430,18 +475,18 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Filter log_
     if(stats.name == NULL)
         stats.name = "<no name>";
 
-    LOG(log_module, "", log_type, "type_name:           %s", stats.type_name);
-    LOG(log_module, "", log_type, "name:                %s", stats.name);
+    LOG(log_module, log_type, "type_name:           %s", stats.type_name);
+    LOG(log_module, log_type, "name:                %s", stats.name);
 
-    LOG(log_module, "", log_type, "bytes_allocated:     " MEMORY_FMT, MEMORY_PRINT(stats.bytes_allocated));
-    LOG(log_module, "", log_type, "max_bytes_allocated: " MEMORY_FMT, MEMORY_PRINT(stats.max_bytes_allocated));
+    LOG(log_module, log_type, "bytes_allocated:     " MEMORY_FMT, MEMORY_PRINT(stats.bytes_allocated));
+    LOG(log_module, log_type, "max_bytes_allocated: " MEMORY_FMT, MEMORY_PRINT(stats.max_bytes_allocated));
 
-    LOG(log_module, "", log_type, "allocation_count:    %lli", stats.allocation_count);
-    LOG(log_module, "", log_type, "deallocation_count:  %lli", stats.deallocation_count);
-    LOG(log_module, "", log_type, "reallocation_count:  %lli", stats.reallocation_count);
+    LOG(log_module, log_type, "allocation_count:    %lli", stats.allocation_count);
+    LOG(log_module, log_type, "deallocation_count:  %lli", stats.deallocation_count);
+    LOG(log_module, log_type, "reallocation_count:  %lli", stats.reallocation_count);
 }
     
-EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Filter log_type, Allocator* allocator)
+EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator)
 {
     Allocator_Stats stats = {0};
     if(allocator != NULL && allocator->get_stats != NULL)
@@ -450,7 +495,7 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Filter lo
         log_allocator_stats_provided(log_module, log_type, stats);
     }
     else
-        LOG(log_module, "", log_type, "Allocator NULL or missing get_stats callback.");
+        LOG(log_module, log_type, "Allocator NULL or missing get_stats callback.");
 
     return stats;
 }
@@ -483,7 +528,7 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Filter lo
             {
                 va_list args;               
                 va_start(args, format_string);     
-                VLOG(">>memory", "", LOG_FATAL, format_string, args);
+                vlog_message(">>memory", "", LOG_FATAL, SOURCE_INFO(), NULL, format_string, args);
                 va_end(args);  
             }
 

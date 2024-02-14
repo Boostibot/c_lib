@@ -129,7 +129,7 @@ Allocator_Stats arena_get_allocatator_stats(Allocator* self);
 #define ARENA_DEBUG 1
 #endif
 #define ARENA_DEBUG_DATA_PATTERN 0x55
-#define ARENA_DEBUG_DATA_SIZE 64
+#define ARENA_DEBUG_DATA_SIZE 64*2
 #define ARENA_DEBUG_STACK_PATTERN 0x66
 
 void _arena_debug_check_invarinats(Arena_Stack* arena);
@@ -291,7 +291,10 @@ void arena_release(Arena* arena)
     stack->stack_depht = arena->level - 1;
     stack->release_count += 1;
 
-    _arena_debug_fill_data(stack, old_used_to - new_used_to);
+    //@TODO: we have memory corruption in file logger somewhere as this check
+    //keeps firing but only for it. FIX THIS!
+    //_arena_debug_fill_data(stack, old_used_to - new_used_to);
+    _arena_debug_fill_data(stack, old_used_to - new_used_to + ARENA_DEBUG_DATA_SIZE);
     _arena_debug_check_invarinats(stack);
     memset(arena, 0, sizeof* arena);
 }

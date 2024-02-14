@@ -6,85 +6,83 @@
 #include "allocator.h"
 #include "log.h"
 
-typedef struct Log_List_Group {
-    Log* first;
-    Log* last;
-} Log_Group;
-
 typedef struct Log_List {
     Logger logger;
-    Allocator* alloc;
-
-    //Only log types that natch filter 
+    Allocator* allocator;
     Log_Filter filter;
 
-    //We store an array of currently active groups
-    // to supprot properly the hierarchical context
-    // interface. We store the active_group inline
-    // to not require any extra allocations most of the time
-    // and allow zero init.
-    Log_List_Group top_level_group;
-    Log_List_Group* groups;
-    i32 group_depth;
-    i32 group_capacity;
+    Log* first;
+    Log* last;
 
     //For init_and_use type of tasks
     Logger* prev_logger;
     bool had_prev_logger;
 } Log_List;
 
-void _log_dealloc_recursive(Log* log_list, Allocator* alloc, isize depth)
+void _log_dealloc_recursive(Log* log_list, Allocator* allocator, isize depth)
 {
     //For all practical means it should not reach such a depth.
     //Is removed in release builds
     ASSERT(depth < 100);
 
-    for(Log* curr = log_list; curr != NULL; )
+    for(Log* curr = log_list; curr != NULL && curr != log_list->next; )
     {
-        if(curr->child != NULL)
-            _log_dealloc_recursive(curr->child, alloc, depth + 1);
+        if(curr->first_child != NULL)
+            _log_dealloc_recursive(curr->first_child, allocator, depth + 1);
 
-        Log* prev = curr->prev;
-        allocator_deallocate(alloc, curr, sizeof(Log) + curr->message.size + 1, DEF_ALIGN);
-        curr = prev;
+        Log* next = curr->next;
+        allocator_deallocate(allocator, curr, sizeof(Log) + curr->message.size + 1, DEF_ALIGN);
+        curr = next;
     }
 }
 
-void _log_alloc_recursive(Log** parents_child, const Log* log_list, Allocator* alloc, isize depth)
+void _log_alloc_recursive(Log** first_child_ptr, Log** last_child_ptr, const Log* log_list, Allocator* allocator, Log_Filter filter, isize depth)
 {
     ASSERT(depth < 100);
-    for(const Log* curr = log_list; curr != NULL; curr = curr->prev)
+    for(const Log* curr = log_list; curr != NULL; curr = curr->next)
     {
-        void* allocated = allocator_allocate(alloc, sizeof(Log) + curr->message.size + 1, DEF_ALIGN);
-        Log* pushed = (Log*) allocated; 
-        char* copied_string = (char*) (void*) (pushed + 1);
-        memcpy(copied_string, curr->message.data, curr->message.size);
-        copied_string[curr->message.size] = '\0';
-    
-        *pushed = *curr;
-
-        //@TODO: string make!
-        pushed->message.data = copied_string;
-        pushed->message.size = curr->message.size;
-
-        pushed->prev = *parents_child;
-        *parents_child = pushed;
-
-        if(curr->child)
+        if(filter & (Log_Filter) 1 << curr->type)
         {
-            pushed->child = NULL;
-            _log_alloc_recursive(&pushed->child, curr->child, alloc, depth + 1);
+            //Coalesce allocation of the Log and the message into one.
+            void* allocated = allocator_allocate(allocator, sizeof(Log) + curr->message.size + 1, DEF_ALIGN);
+
+            //Copy everything except pointers
+            Log* pushed = (Log*) allocated; 
+            *pushed = *curr;
+            pushed->first_child = NULL;
+            pushed->last_child = NULL;
+            pushed->prev = NULL;
+            pushed->next = NULL;
+        
+            //copy string
+            char* copied_string = (char*) (void*) (pushed + 1);
+            memcpy(copied_string, curr->message.data, curr->message.size);
+            copied_string[curr->message.size] = '\0';
+            pushed->message.data = copied_string;
+            pushed->message.size = curr->message.size;
+
+            if(*first_child_ptr == NULL || *last_child_ptr == NULL)
+            {
+                *first_child_ptr = pushed;
+                *last_child_ptr = pushed;
+            }
+            else
+            {
+                pushed->prev = *last_child_ptr;
+                pushed->prev->next = pushed;
+                *last_child_ptr = pushed;
+            }
+
+            if(curr->first_child)
+                _log_alloc_recursive(&pushed->first_child, &pushed->last_child, curr->first_child, allocator, filter, depth + 1);
         }
     }
 }
 
 void log_list_deinit(Log_List* log_list)
 {
-    if(allocator_is_arena(log_list->alloc) == false && log_list->alloc != NULL)
-    {
-        _log_dealloc_recursive(log_list->top_level_group.last, log_list->alloc, 0);
-        allocator_deallocate(log_list->alloc, log_list->groups, log_list->group_capacity * sizeof(Log_List_Group), DEF_ALIGN);
-    }
+    if(allocator_is_arena(log_list->allocator) == false && log_list->allocator != NULL)
+        _log_dealloc_recursive(log_list->first, log_list->allocator, 0);
         
     if(log_list->had_prev_logger)
         log_set_logger(log_list->prev_logger);
@@ -92,79 +90,65 @@ void log_list_deinit(Log_List* log_list)
     memset(log_list, 0, sizeof *log_list);
 }
 
-void log_list_log_func(Logger* logger_, const Log* log_list, Log_Action action)
+void log_list_log_func(Logger* logger_, const Log* log_list, i32 group_depth, Log_Action action)
 {
     Log_List* logger = (Log_List*) (void*) logger_;
-    
 
-    switch(action)
+    if(action == LOG_ACTION_LOG && (logger->filter & (Log_Filter) 1 << log_list->type))
     {
-        case LOG_ACTION_LOG: {
-            Log* pushed = NULL;
-            _log_alloc_recursive(&pushed, log_list, logger->alloc, 0);
+        ASSERT(group_depth >= 0);
+        group_depth = MAX(group_depth, 0);
 
-            Log_List_Group* active_group = logger->groups + logger->group_depth;
-            if(logger->group_depth == 0)
-                active_group = &logger->top_level_group;
+        //@NOTE: Slow but reliable approach. Can be made faster by using lookup table but I am tired.
+        i32 reached_depth = 0;
+        Log** first = &logger->first;
+        Log** last = &logger->last;
 
-            pushed->prev = active_group->last;
-            active_group->last = pushed;
-            if(active_group->first == NULL)
-                active_group->first = pushed;
-        } break;
+        //Try to reach the desired depth and allocate there
+        for(; reached_depth < group_depth && *last != NULL; reached_depth += 1)
+        {
+            reached_depth += 1;
+            Log* last_log = *last;
+            first = &last_log->first_child;
+            last = &last_log->last_child;
+        }
 
-        case LOG_ACTION_GROUP: {
-            //If needed reallocate the group array with pretty agressive growth
-            if(logger->group_depth >= logger->group_capacity)
-            {
-                i32 new_capacity = logger->group_capacity * 2 + 8;
-                logger->groups = (Log_List_Group*) allocator_reallocate(logger->alloc, new_capacity * sizeof(Log_List_Group), logger->groups, logger->group_capacity * sizeof(Log_List_Group), DEF_ALIGN);
-                logger->group_capacity = new_capacity;
-            }
-
-            Log_List_Group* active_group = logger->groups + logger->group_depth;
-            if(logger->group_depth == 0)
-                active_group = &logger->top_level_group;
-
-            //Push a new group and zero it
-            Log_List_Group* new_active_group = &logger->groups[logger->group_depth++];
-            memset(new_active_group, 0, sizeof *new_active_group);
-        } break;
-    
-        case LOG_ACTION_UNGROUP: {
-            logger->group_depth -= 1;
-            if(logger->group_depth < 0)
-            {
-                ASSERT_MSG(false, "Too many ungroups!");
-                logger->group_depth = 0;
-            }
-        } break;
-
-        case LOG_ACTION_FLUSH: {
-            //nothing
-        } break;
-
-        default: ASSERT_MSG(false, "Invalid action!");
+        //If there it still needs extra depth just allocate empty entries
+        for(; reached_depth < group_depth; reached_depth += 1)
+        {
+            Log empty = {"", ""};
+            _log_alloc_recursive(first, last, &empty, logger->allocator, logger->filter, 0);
+                
+            Log* last_log = *last;
+            first = &last_log->first_child;
+            last = &last_log->last_child;
+        }
+            
+        ASSERT(first != NULL);
+        ASSERT(last != NULL);
+            
+        _log_alloc_recursive(first, last, log_list, logger->allocator, logger->filter, 0);
     }
 }
 
-Log_List log_list_make(Allocator* alloc)
+Log_List log_list_make(Allocator* allocator)
 {
     Log_List out = {0};
-    out.alloc = alloc;
+    out.allocator = allocator;
+    out.filter = ~(Log_Filter) 0;
     out.logger.log = log_list_log_func;
     return out;
 }
 
-void log_list_init(Log_List* log_list, Allocator* alloc)
+void log_list_init(Log_List* log_list, Allocator* allocator)
 {
     log_list_deinit(log_list);
-    *log_list = log_list_make(alloc);
+    *log_list = log_list_make(allocator);
 }
 
-void log_capture(Log_List* log_list, Allocator* alloc)
+void log_capture(Log_List* log_list, Allocator* allocator)
 {
-    log_list_init(log_list, alloc);
+    log_list_init(log_list, allocator);
     log_list->prev_logger = log_set_logger(&log_list->logger);
     log_list->had_prev_logger = true;
 }
@@ -179,6 +163,3 @@ void log_capture_end(Log_List* log_list)
 }
 
 #endif
-
-
-
