@@ -3,6 +3,7 @@
 
 #include "profile.h"
 #include "array.h"
+#include "log.h"
 #include <stdlib.h>
 
 typedef enum Log_Perf_Sort_By{
@@ -91,15 +92,19 @@ EXPORT void log_perf_counters(const char* log_module, Log_Type log_type, Log_Per
 		}
 
 		LOG(log_module, log_type, "Logging perf counters (still running %lli):", (lli) profile_get_total_running_counters_count());
-		log_group_push();
-		for(isize i = 0; i < counters.size; i++)
-		{
-			Global_Perf_Counter counter = counters.data[i];
-			Perf_Stats stats = perf_get_stats(counter.counter, 1);
-
-			if(counter.is_detailed)
+		log_group();
+			LOG(log_module, log_type, "    total ms | average ms |  runs  |  σ/μ  | [min max] ms        | source");
+			for(isize i = 0; i < counters.size; i++)
 			{
-				LOG(log_module, log_type, "total: %15.7lf avg: %13.6lf runs: %-8lli σ/μ %13.6lf [%13.6lf %13.6lf] (ms) from %20s %-4lli %s \"%s\"", 
+				Global_Perf_Counter counter = counters.data[i];
+				Perf_Stats stats = perf_get_stats(counter.counter, 1);
+
+				//If name is none dont even print it
+				const char* name = "";
+				if(safe_strlen(counter.name, -1) > 1)
+					name = format_ephemeral("'%s'", counter.name).data;
+
+				LOG(log_module, log_type, "%13.4lf %11.4lf %8lli %7.2lf [%9.4lf %9.2lf] %25s %-4lli %s %s", 
 					stats.total_s*1000,
 					stats.average_s*1000,
 					(lli) stats.runs,
@@ -109,29 +114,16 @@ EXPORT void log_perf_counters(const char* log_module, Log_Type log_type, Log_Per
 					counter.file + common_prefix.size,
 					(lli) counter.line,
 					counter.function,
-					counter.name
+					name
 				);
+				if(counter.concurrent_running_counters > 0)
+				{
+					log_group();
+					LOG(log_module, log_type, "COUNTER LEAKS! Still running %lli", (lli) counter.concurrent_running_counters);
+					log_ungroup();
+				}
 			}
-			else
-			{
-				LOG(log_module, log_type, "total: %15.8lf avg: %13.6lf runs: %-8lli (ms) from %20s %-4lli %s \"%s\"", 
-					stats.total_s*1000,
-					stats.average_s*1000,
-					(lli) stats.runs,
-					counter.file + common_prefix.size,
-					(lli) counter.line,
-					counter.function,
-					counter.name
-				);
-			}
-			if(counter.concurrent_running_counters > 0)
-			{
-				log_group_push();
-				LOG(log_module, log_type, "COUNTER LEAKS! Still running %lli", (lli) counter.concurrent_running_counters);
-				log_group_pop();
-			}
-		}
-		log_group_pop();
+		log_ungroup();
 
 		array_deinit(&counters);
 	}

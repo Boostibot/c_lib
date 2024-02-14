@@ -4,20 +4,20 @@
 #include "platform.h"
 #include "allocator.h"
 #include "string.h"
-#include "error.h"
+//#include "error.h"
 #include "profile.h"
 
-EXPORT Error file_read_entire_append_into(String file_path, String_Builder* append_into);
-EXPORT Error file_read_entire(String file_path, String_Builder* data);
-EXPORT Error file_append_entire(String file_path, String data);
-EXPORT Error file_write_entire(String file_path, String data);
+EXPORT bool file_read_entire_append_into(String file_path, String_Builder* append_into);
+EXPORT bool file_read_entire(String file_path, String_Builder* data);
+EXPORT bool file_append_entire(String file_path, String data);
+EXPORT bool file_write_entire(String file_path, String data);
 
-EXPORT Error  path_get_full_from(String_Builder* into, String path, String base);
+EXPORT bool   path_get_full_from(String_Builder* into, String path, String base);
 EXPORT String path_get_full_ephemeral_from(String path, String base);
 EXPORT void   path_get_relative_from(String_Builder* into, String path, String base);
 EXPORT String path_get_relative_ephemeral_from(String path, String base);
 
-EXPORT Error  path_get_full(String_Builder* into, String path);
+EXPORT bool   path_get_full(String_Builder* into, String path);
 EXPORT String path_get_full_ephemeral(String path);
 EXPORT void   path_get_relative(String_Builder* into, String path);
 EXPORT String path_get_relative_ephemeral(String path);
@@ -155,7 +155,7 @@ INTERNAL void _file_init_global_state()
     }
 }
 
-EXPORT Error path_get_full_from(String_Builder* into, String path, String base)
+EXPORT bool path_get_full_from(String_Builder* into, String path, String base)
 {
     //@TEMP: implement this in platform. Implement platform allocator support
     builder_clear(into);
@@ -167,7 +167,7 @@ EXPORT Error path_get_full_from(String_Builder* into, String path, String base)
     }
 
     builder_append(into, path);
-    return ERROR_OK;
+    return true;
 }
 
 EXPORT void path_get_relative_from(String_Builder* into, String path, String base)
@@ -198,18 +198,18 @@ EXPORT String path_get_full_ephemeral_from(String path, String base)
     _file_init_global_state();
 
     isize curr_index = file_global_state.full_path_used_count % FILE_EPHEMERAL_SLOT_COUNT;
-    Error error = path_get_full_from(&file_global_state.full_paths[curr_index], path, base);
+    bool state = path_get_full_from(&file_global_state.full_paths[curr_index], path, base);
     String out_string = file_global_state.full_paths[curr_index].string;
     file_global_state.full_path_used_count += 1;
 
-    if(error_is_ok(error) == false)
-        LOG_ERROR("FILE", "Failed to get full path of file " STRING_FMT " with error: " ERROR_FMT, STRING_PRINT(path), ERROR_PRINT(error));
+    if(state == false)
+        LOG_ERROR("FILE", "Failed to get full path of file '%s'", string_escape_ephemeral(path));
 
     return out_string;
 }
 
 
-EXPORT Error  path_get_full(String_Builder* into, String path) 
+EXPORT bool path_get_full(String_Builder* into, String path) 
 { 
     return path_get_full_from(into, path, string_make(platform_directory_get_current_working())); 
 }
@@ -229,13 +229,13 @@ EXPORT String path_get_relative_ephemeral(String path)
 #include <stdio.h>
 #include <errno.h>
 
-EXPORT Error file_read_entire_append_into(String file_path, String_Builder* append_into)
+EXPORT bool file_read_entire_append_into(String file_path, String_Builder* append_into)
 {
     enum {CHUNK_SIZE = 4096*16};
     isize size_before = append_into->size;
     isize read_bytes = 0;
 
-    const char* full_path = escape_string_ephemeral(file_path);
+    const char* full_path = string_escape_ephemeral(file_path);
     FILE* file = fopen(full_path, "rb");
     bool had_eof = false;
     if(file != NULL)
@@ -261,21 +261,22 @@ EXPORT Error file_read_entire_append_into(String file_path, String_Builder* appe
 
     if (file == NULL || had_eof == false) 
     {
-        return error_from_stdlib(errno);
+        LOG_ERROR("file.h", "error reading file '%s': %s", string_escape_ephemeral(file_path), strerror(errno));
+        return false;
     }
     else    
     {
-        return ERROR_OK;
+        return true;
     }
 }
 
-EXPORT Error _file_write_entire_append_into(String file_path, String written, const char* open_mode)
+EXPORT bool _file_write_entire_append_into(String file_path, String written, const char* open_mode)
 {
     //Maximum read value allowed by the standard
     enum {MAX_READ = 2097152};
     isize wrote_bytes = 0;
     
-    const char* full_path = escape_string_ephemeral(file_path);
+    const char* full_path = string_escape_ephemeral(file_path);
     FILE* file = fopen(full_path, open_mode);
     if(file != NULL)
     {
@@ -296,25 +297,33 @@ EXPORT Error _file_write_entire_append_into(String file_path, String written, co
     }
     
     if (file == NULL || ferror(file) || wrote_bytes != written.size) 
-        return error_from_stdlib(errno);
+        return false;
     else    
-        return ERROR_OK;
+        return true;
 }
 
-EXPORT Error file_read_entire(String file_path, String_Builder* append_into)
+EXPORT bool file_read_entire(String file_path, String_Builder* append_into)
 {
     builder_clear(append_into);
     return file_read_entire_append_into(file_path, append_into);
 }
 
-EXPORT Error file_append_entire(String file_path, String contents)
+EXPORT bool file_append_entire(String file_path, String contents)
 {
-    return _file_write_entire_append_into(file_path, contents, "ab");
+    if(_file_write_entire_append_into(file_path, contents, "ab"))
+        return true;
+    
+    LOG_ERROR("file.h", "error appending to a file '%s': %s", string_escape_ephemeral(file_path), strerror(errno));
+    return false;
 }
 
-EXPORT Error file_write_entire(String file_path, String contents)
+EXPORT bool file_write_entire(String file_path, String contents)
 {
-    return _file_write_entire_append_into(file_path, contents, "wb");
+    if(_file_write_entire_append_into(file_path, contents, "wb"))
+        return true;
+    
+    LOG_ERROR("file.h", "error writing file '%s': %s", string_escape_ephemeral(file_path), strerror(errno));
+    return false;
 }
 
 #endif

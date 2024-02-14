@@ -9,7 +9,7 @@
 INTERNAL void test_log()
 {
     LOG_INFO("TEST", "Ignore all logs below since they are a test!");
-    log_group_push();
+    log_group();
 
     Debug_Allocator debug_allocator = {0};
     debug_allocator_init_use(&debug_allocator, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK);
@@ -48,7 +48,7 @@ INTERNAL void test_log()
         memory_logger_deinit(&mem_logger);
     }
     debug_allocator_deinit(&debug_allocator);
-    log_group_pop();
+    log_ungroup();
     
     LOG_INFO("TEST", "Tetsing log finished!");
 }

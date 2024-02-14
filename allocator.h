@@ -78,6 +78,10 @@ EXPORT void allocator_out_of_memory(
 EXPORT Allocator* allocator_get_default(); //returns the default allocator used for returning values from a function
 EXPORT Allocator* allocator_get_scratch(); //returns the scracth allocator used for temp often stack order allocations inside a function
 EXPORT Allocator* allocator_get_static(); //returns the static allocator used for allocations with potentially unbound lifetime. This includes things that will never be deallocated.
+EXPORT Arena_Stack* allocator_get_scratch_arena_stack();
+EXPORT Arena scratch_arena_acquire();
+EXPORT bool allocator_is_arena(Allocator* allocator);
+
 //@NOTE: static is useful for example for static dyanmic lookup tables, caches inside functions, quick hacks that will not be deallocated for whatever reason.
 
 //All of these return the previously used Allocator_Set. This enables simple set/restore pair. 
@@ -109,23 +113,6 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         __builtin_alloca_with_align((size_t) size, (size_t) align)
 #endif
 
-typedef struct Memory_Format {
-    const char* unit;
-    isize unit_value;
-    f64 fraction;
-
-    i32 whole;
-    i32 remainder;
-} Memory_Format;
-
-EXPORT Memory_Format get_memory_format(isize bytes);
-
-#define MEMORY_FMT "%.2lf%s"
-#define MEMORY_PRINT(bytes) get_memory_format((bytes)).fraction, get_memory_format((bytes)).unit
-//@NOTE We call the fucntion twice. Its not optimal however I dont think its gonna be used in perf critical situations
-
-EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator);
-EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_type, Allocator_Stats stats);
 
 #endif
 
@@ -139,12 +126,12 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
 
     EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(4) void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
-        PERF_COUNTER_START(c);
+        PERF_COUNTER_START();
         void* out = NULL;
         ASSERT(new_size >= 0 && old_size >= 0 && is_power_of_two(align) && "provided arguments must be valid!");
         
         //If is arena use the arena function directly (inlined)
-        if(from_allocator && from_allocator->allocate == arena_reallocate)
+        if(allocator_is_arena(from_allocator))
         {
             if(new_size > old_size)
             {
@@ -161,7 +148,7 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
                 out = from_allocator->allocate(from_allocator, new_size, old_ptr, old_size, align);
         }
             
-        PERF_COUNTER_END(c);
+        PERF_COUNTER_END();
         return out;
     }
 
@@ -204,6 +191,12 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
         return self->get_stats(self);
     }
 
+    
+    EXPORT bool allocator_is_arena(Allocator* allocator)
+    {
+        return allocator != NULL && allocator->allocate == arena_reallocate;
+    }
+
     EXPORT Arena scratch_arena_acquire()
     {
         return arena_acquire(&_scratch_arena_stack);
@@ -221,7 +214,7 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
     {
         return _static_allocator;
     }
-    EXPORT Arena_Stack* allocator_get_scratch_arena()
+    EXPORT Arena_Stack* allocator_get_scratch_arena_stack()
     {
         return &_scratch_arena_stack;
     }
@@ -306,124 +299,5 @@ EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_ty
 
         return (void*) ptr_num;
     }
-
-    EXPORT Memory_Format get_memory_format(isize bytes)
-    {
-        isize TB = TEBI_BYTE;
-        isize GB = GIBI_BYTE;
-        isize MB = MEBI_BYTE;
-        isize KB = KIBI_BYTE;
-        isize B = (isize) 1;
-
-        Memory_Format out = {0};
-        out.unit = "";
-        out.unit_value = 1;
-        if(bytes >= TB)
-        {
-            out.unit = "TB";
-            out.unit_value = TB;
-        }
-        else if(bytes >= GB)
-        {
-            out.unit = "GB";
-            out.unit_value = GB;
-        }
-        else if(bytes >= MB)
-        {
-            out.unit = "MB";
-            out.unit_value = MB;
-        }
-        else if(bytes >= KB)
-        {
-            out.unit = "KB";
-            out.unit_value = KB;
-        }
-        else
-        {
-            out.unit = "B";
-            out.unit_value = B;
-        }
-
-        out.fraction = (f64) bytes / (f64) out.unit_value;
-        out.whole = (i32) (bytes / out.unit_value);
-        out.remainder = (i32) (bytes / out.unit_value);
-
-        return out;
-    }
     
-    EXPORT void log_allocator_stats_provided(const char* log_module, Log_Type log_type, Allocator_Stats stats)
-    {
-        if(stats.type_name == NULL)
-            stats.type_name = "<no type name>";
-
-        if(stats.name == NULL)
-            stats.name = "<no name>";
-
-        LOG(log_module, log_type, "type_name:           %s", stats.type_name);
-        LOG(log_module, log_type, "name:                %s", stats.name);
-
-        LOG(log_module, log_type, "bytes_allocated:     " MEMORY_FMT, MEMORY_PRINT(stats.bytes_allocated));
-        LOG(log_module, log_type, "max_bytes_allocated: " MEMORY_FMT, MEMORY_PRINT(stats.max_bytes_allocated));
-
-        LOG(log_module, log_type, "allocation_count:    %lli", stats.allocation_count);
-        LOG(log_module, log_type, "deallocation_count:  %lli", stats.deallocation_count);
-        LOG(log_module, log_type, "reallocation_count:  %lli", stats.reallocation_count);
-    }
-    
-    EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator)
-    {
-        Allocator_Stats stats = {0};
-        if(allocator != NULL && allocator->get_stats != NULL)
-        {
-            stats = allocator_get_stats(allocator);
-            log_allocator_stats_provided(log_module, log_type, stats);
-        }
-        else
-            LOG(log_module, log_type, "Allocator NULL or missing get_stats callback.");
-
-        return stats;
-    }
-
-    #ifndef ALLOCATOR_CUSTOM_OUT_OF_MEMORY
-    EXPORT void allocator_out_of_memory(
-        Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align, const char* format_string, ...)
-    {
-        Allocator_Stats stats = {0};
-        if(allocator != NULL && allocator->get_stats != NULL)
-            stats = allocator_get_stats(allocator);
-        
-        if(stats.type_name == NULL)
-            stats.type_name = "<no type name>";
-
-        if(stats.name == NULL)
-            stats.name = "<no name>";
-
-        LOG_FATAL("memory", "Allocator %s %s reported out of memory! (%s : %lli)", stats.type_name, stats.name);
-
-            LOG_INFO(">memory", "new_size:    %lli B", new_size);
-            if(old_ptr != NULL)
-                LOG_INFO(">memory", "old_ptr:     0x%08llx", (lli) old_ptr);
-            else
-                LOG_INFO(">memory", "old_ptr:     NULL");
-            LOG_INFO(">memory", "old_size:    %lli B", old_size);
-            LOG_INFO(">memory", "align:       %lli B", align);
-        
-            if(format_string != NULL && strlen(format_string) > 0)
-            {
-                va_list args;               
-                va_start(args, format_string);     
-                VLOG(">>memory", LOG_FATAL, format_string, args);
-                va_end(args);  
-            }
-
-            LOG_INFO(">memory", "Allocator_Stats:");
-                log_allocator_stats_provided(">>memory", LOG_INFO, stats);
-    
-            log_callstack(">memory", LOG_TRACE, 1, "callstack:");
-
-        log_flush();
-        platform_debug_break(); 
-        abort();
-    }
-    #endif
 #endif

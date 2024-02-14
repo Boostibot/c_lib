@@ -1,7 +1,7 @@
 #ifndef JOT_ASSERT
 #define JOT_ASSERT
 
-#include "log.h"
+#include "platform.h"
 #include <stdlib.h>
 
 #undef TEST
@@ -22,13 +22,14 @@
 //Is useful for validating if compile time settings are correct
 #define STATIC_ASSERT(x) typedef char PP_CONCAT(__static_assertion__, __LINE__)[(x) ? 1 : -1]
 
+//@TODO: remove _MSG variants!
 
 //If x evaluates to false executes assertion_report() without any message. 
-#define TEST(x)                 TEST_MSG(x, "")              /* executes always (even in release) */
-#define ASSERT(x)               ASSERT_MSG(x, "")            /* is enabled by DO_ASSERTS */
-#define ASSERT_SLOW(x)          ASSERT_SLOW_MSG(x, "")       /* is enabled by DO_ASSERTS_SLOW */
-#define CHECK_BOUNDS(i, to)     CHECK_RANGE_BOUNDS(i, 0, to) /* if i is not within [0, to) panics. is enabled by DO_BOUNDS_CHECKS*/
-#define UNREACHABLE()           platform_assume_unreachable(), ASSERT_MSG(false, "unreachable code reached!")
+#define TEST(x, ...)                TEST_MSG(x, "" __VA_ARGS__)              /* executes always (even in release) */
+#define ASSERT(x, ...)              ASSERT_MSG(x, "" __VA_ARGS__)            /* is enabled by DO_ASSERTS */
+#define ASSERT_SLOW(x, ...)         ASSERT_SLOW_MSG(x, "" __VA_ARGS__)       /* is enabled by DO_ASSERTS_SLOW */
+#define CHECK_BOUNDS(i, to)         CHECK_RANGE_BOUNDS(i, 0, to) /* if i is not within [0, to) panics. is enabled by DO_BOUNDS_CHECKS*/
+#define UNREACHABLE(...)            (ASSERT_MSG(false, "Unreachable code reached! " __VA_ARGS__), platform_assume_unreachable())
 
 //If x evaluates to false executes assertion_report() with the specified message. 
 #define TEST_MSG(x, msg, ...)               (!(x) ? (assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, (msg), ##__VA_ARGS__), abort()) : (void) 0)
@@ -53,32 +54,20 @@ EXPORT ATTRIBUTE_FORMAT_FUNC(format, 5) void assertion_report(const char* expres
     #define _IF_NOT_DO_ASSERTS(ignore)         DISSABLED_TEST_MSG
     #define _IF_NOT_DO_ASSERTS_SLOW(ignore)    DISSABLED_TEST_MSG
     #define _IF_NOT_DO_BOUNDS_CHECKS(ignore)   DISSABLED_TEST_MSG
+    
+    //Pre-Processor (PP) utils
+    #define PP_STRINGIFY_(x)        #x
+    #define PP_CONCAT2(a, b)        a ## b
+    #define PP_CONCAT3(a, b, c)     PP_CONCAT2(PP_CONCAT2(a, b), c)
+    #define PP_CONCAT4(a, b, c, d)  PP_CONCAT2(PP_CONCAT3(a, b, c), d)
+    #define PP_CONCAT(a, b)         PP_CONCAT2(a, b)
+    #define PP_STRINGIFY(x)         PP_STRINGIFY_(x)
+    #define PP_ID(x)                x
 
-
-#endif
-
-#if (defined(JOT_ALL_IMPL) || defined(JOT_ASSERT_IMPL)) && !defined(JOT_ASSERT_HAS_IMPL)
-#define JOT_ASSERT_HAS_IMPL
-
-    #ifndef ASSERT_CUSTOM_REPORT
-
-        EXPORT ATTRIBUTE_FORMAT_FUNC(format, 5) void assertion_report(const char* expression, int line, const char* file, const char* function, ATTRIBUTE_FORMAT_ARG const char* format, ...)
-        {
-            Source_Info source = {line, file, function};
-            log_message("assert", LOG_FATAL, source, "TEST(%s) TEST/ASSERT failed! (%s : %lli) ", expression, source.file, source.line);
-            if(format != NULL && strlen(format) != 0)
-            {
-                log_message(">assert", LOG_FATAL, source, "message:");
-
-                va_list args;               
-                va_start(args, format);     
-                vlog_message(">>assert", LOG_FATAL, source, format, args);
-                va_end(args);  
-            }
-
-            log_callstack(">assert", LOG_TRACE, -1, "callstack:");
-        }
-    #endif
-
-
+    //if CONDITION_DEFINE is defined: expands to x, 
+    //else: expands to _IF_NOT_##CONDITION_DEFINE(x). See above how to use this.
+    //The reason for its use is that simply all other things I have tried either didnt
+    // work or failed to compose for obscure reasons
+    #define PP_IF(CONDITION_DEFINE, x)         PP_CONCAT(_IF_NOT_, CONDITION_DEFINE)(x)
+    #define _IF_NOT_(x) x
 #endif
