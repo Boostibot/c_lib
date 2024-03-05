@@ -1,6 +1,123 @@
 #ifndef JOT_ARENA
 #define JOT_ARENA
 
+
+// This is a 'safe' implementation of the arena concept. It maintains the stack like order of allocations 
+// on its own without the possibility of accidental invalidation of allocations from 'lower' levels. 
+// (Read more for proper explanations).
+// 
+// Arena is a allocator used to coglomerate individual allocations to a continuous buffer, which allows for
+// extremely quick free-all/reset operation (just move the index back). It cannot be implemented on top of
+// the allocator interface (see allocator.h or below) because it does not know its maximum size up front.
+// (ie. we couldnt reserve and had to hard allocate 64GB of space). 
+// 
+// Note that Arenas except for their perf and cache locality dont provide *any* benefits over a tracking 
+// allocator with linked list of allocations. As such they should mostly be use for scratch allocator 
+// functionality where the quick free-all is a major advantage.
+// 
+// ===================================== REASONING =================================================
+// 
+// This implementation views two concepts: 
+// 1) Arena_Stack - which holds the actual reserved memory and allocates individual Arenas
+// 2) Arena - which allocates the user memory
+// 
+// The user memory acquired from Arena does NOT need to be freed because it gets recycled when the Arena
+// does get freed, as such both Arena and Arena_Stack do NEED to be freed.
+//
+// We make this Arena_Stack/Arena distinction because it allows us to reason about the coglomerated lifetimes
+// and provide the stack order guarantees. The problem at hand is deciding to what furtherst point we are able to
+// to rewind inside Arena_Stack on each release of Arena. If we did the usual rewing to hard set index we would 
+// invalidate the stack order. Consider the following scenario (using the names of the functions defined below):
+// 
+// 
+// //A fresh new Arena_Stack with used_to = 0 
+// Arena_Stack stack = {0};
+// arena_stack_init(&stack, ...);
+// 
+// //saves restore point as arena1.restore_to = stack.used_to = 0 
+// Arena arena1 = arena_acquire(&stack);
+// void* alloc1 = arena_push(&arena1, 256, 8); //allocate 256B aligend to 8B boundary
+// 
+// //saves restore point as arena2.restore_to = stack.used_to = 256
+// Arena arena2 = arena_acquire(&stack);
+// void* alloc2 = arena_push(&arena2, 256, 8); //another allocation
+// 
+// arena_release(&arena1); //Release arena1 thus setting stack.used_to = arena1.restore_to = 0 
+// 
+// //Now alloc2 is past the used to index, meaning it can be overriden by subsequent allocation!
+// Arena arena3 = arena_acquire(&stack);
+// void* alloc3 = arena_push(&arena3, 512, 8);
+// 
+// //alloc3 shares the same emmory as alloc2! 
+// 
+// arena_release(alloc3);
+// 
+// 
+// Note that this situation does occur indeed occur in practice, typically while implicitly passing arena across 
+// a function boundary, for example by passing a dynamic Array to function that will push to it (thus pontetially 
+// triggering realloc). This can happen even in a case when both the caller and function called are 'well behaved'
+// and handle arenas corrrectly.
+// Also note that this situation does happen when switching between any finite ammount of backing memory regions. 
+// We switch whenever we acquire arena thus in the exmaple above arena1 would reside in memory 'A' while arena2 
+// in memory 'B'. This would prevent that specific case above from breaking but not even two arenas (Ryan Flurry 
+// style) will save us if we are not careful. I will be presuming two memory regions A and B in the examples 
+// below but the examples trivially extend to N arenas.
+// 
+// To illustrate the point we will need to start talking about *levels*.
+// Level is a positive number starting at 1 that gets incremented every time we acquire Arena from Arena_Stack
+// and decremeted whenever we release the acquired Arena. This coresponds to a depth in a stack.
+//
+// The diagrams show level on the Y axis along with the memory region A, B where the level resides in. The X axis
+// shows the order of allocations. ### is symbol marking the alive region of an allocation. It is preceeded by a 
+// number coresponding to the level it was allocated from.
+//
+// First we illustarte the problem above with two memory regions A and B in diagram form.
+// 
+// level
+//   ^
+// A |         3### [1]### //here we allocate at level one from A
+// B |     2###
+// A | 1###
+//   +--------------------------> time
+// 
+// After lifetime of 3 ends
+// 
+//   ^
+// B |     2### //Missing the last allocation thus we reached error state!
+// A | 1###
+//   +--------------------------> time
+// 
+// One potential fix is to enforce the stack like nesting by flattening out the arena_acquire()/arena_release() 
+// on problematic allocations 'from below' ([1]). We dont actually have to do anything besides ignoring calls 
+// to arena_release of levels 2 and 3 (somehow). In diagram form:
+// 
+//   ^
+// A |         3### 
+// B |     2###     
+// A | 1###         1### //from below allocation
+//   +--------------------------> time
+// 
+//                | Flatten
+//                V 
+//   ^
+//   |         
+//   |     
+// A | 1###2###3###1###  //We completely ignore the 2, 3 Allocations and are treating them as a part of 1
+//   +--------------------------> time
+//
+// Now of course we are having a level 2 and level 3 worth of wasted memory inside the level 1 allocation. 
+// This is suboptimal but clearly better then having a hard to track down error.
+//
+// ===================================== IMPLEMENTATION =================================================
+// 
+// We achive this flattening by storing the list of restore points within the arena. For simplicity we store
+// some max number of restore points which are just integers to the used_to index. When a problematic allocation
+// 'from bellow' arises we set these restore indeces to values so that they will not result in error. In practice
+// this results in only one extra if with branch thats almost never taken. We further stop the compielr from 
+// inlining the unusual case code thus having extremely low impact on the resulting speed of the arena for the
+// simple arena_push() case. The acquire and release functions are a tiny bit more expensive but those are not 
+// of primary concern.
+
 #include "defines.h"
 #include "assert.h"
 #include "platform.h"
@@ -10,12 +127,7 @@
 typedef struct Allocator        Allocator;
 typedef struct Allocator_Stats  Allocator_Stats;
 
-//@TODO: use this new Allocator func as it allows us to reduce the memory footprint of allocators (arenas down)
-// and also allows us to declare this callback in every file separately without having to include allocator. For that we would need to also declare
-//the actual relloc func. Idk.
 void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
-typedef void* (*_Allocator2)(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Stats* stats);
-
 
 typedef void* (*Allocator_Allocate_Func)(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
 typedef Allocator_Stats (*Allocator_Get_Stats_Func)(Allocator* self);
@@ -52,31 +164,6 @@ typedef isize (*Arena_Stack_Commit_Func)(void* addr, isize size, isize reserved_
 #define ARENA_DEF_STACK_SIZE   128
 #define ARENA_DEF_RESERVE_SIZE (isize) 64 * 1024*1024*1024 //GB
 #define ARENA_DEF_COMMIT_SIZE  (isize) 8 * 1024*1024 //MB
-
-
-//@TODO: Think about generation counter in conjunction with arenas. Thsi counter would go up on every acquire() and release()
-//       This would allow us to distinguish two disjoint same level allocation set frome oen another and free automatically
-//       This could be used to make interfaces that doent need to worry about freeing *at all*
-//       
-//            2A#### 2B####           2B#####
-//       1####      #         -> 1####
-//                  ^
-//                  we dropped level and immedietely went back up again!
-// 
-//       Note that this would require always acquiring levels through Arena not Arena_Stack! So that we could actually dinstinguish such cases
-//       as now this situation would result in
-//
-//                  2B####
-//            2A####
-//       1####
-//
-//       ---> No this is a vey bad idea:
-//
-//       Arena arena1 = arena_acquire(parent);
-//       Arena arena2 = arena_acquire(parent);
-//
-//       ...allocate from arena1...
-//       ...allocate from arena2... => arena1 freed!!!
 
 
 typedef struct Arena_Stack {
