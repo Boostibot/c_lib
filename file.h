@@ -1,11 +1,7 @@
 #ifndef JOT_FILE
 #define JOT_FILE
 
-#include "platform.h"
-#include "allocator.h"
 #include "string.h"
-//#include "error.h"
-#include "profile.h"
 
 EXPORT bool file_read_entire_append_into(String file_path, String_Builder* append_into);
 EXPORT bool file_read_entire(String file_path, String_Builder* data);
@@ -29,11 +25,43 @@ EXPORT String path_get_file_directory(String file_path);
 
 EXPORT String path_get_name_from_path(String path);
 
+
+// "/path/forward" + "filename.txt" ---> "/path/forward/filename.txt"
+// ""              + "filename.txt" ---> "filename.txt"
+// "C:/"           + "filename.txt" ---> "C:/filename.txt"
+
+
+// identity + path = ???
+// 
+// if path is relative nonempty, identity can be "." or ""
+// if path is relative empty,    identity must be "."
+// if path is absolute,          identity must be ""
+//
+// => there is no clear candidate for the identity element in the usual path
+//    convention (both unix and windows)
+
+// Thus we declare "" to be indentity and define path_append() which will operate on the
+// identity element correctly according to the given prefix.
+
+// String -> Path_String { String, Info }
+// 
+// Path_Builder only takes valid Path_Strings and produces valid path strings. It also accumulates errors.
+
+// What about splitting into individual segments? Do we want linked list style approach?
+
+// String -> Path_Segement_Array { String, Info }
+
+// No probably what we want is String -> Path_Info 
+// and then Path_Builder { String_Array segments, Info } 
+// bool path_append(Path_Builder* path, Path path);
+
+
+
 // Represents the following:
-// //?//C:/Users/Program_Files/./../Dir/file.txt
-// <---><-><-------------------------->|<------>
-//   P   R         D                   |  F  <->
-//                                     M*      E
+// \\?\C:/Users/Program_Files/./../Dir/file.txt
+// <--><-><-------------------------->|<------>
+//   P   R         D                  |  F  <->
+//                                    M*      E
 //                               
 // Where:
 //  P - prefix_size - this is OS specific (win32) prefix that carries meta data
@@ -51,29 +79,421 @@ typedef struct Path_Info {
     i32 directories_size;
     i32 file_size;
     i32 extension_size;
-    bool is_valid;
-    bool is_relative;
+    i32 segment_count;
+    bool is_absolute;
+    bool is_non_empty;
+    bool is_directory;
 } Path_Info;
 
+typedef union Path_Builder {
+    struct {
+        Allocator* allocator;
+        String string;
+    };
+    struct {
+        String_Builder builder;
+        Path_Info info;
+    };
+} Path_Builder;
+
 typedef struct Path {
+    String string;
     Path_Info info;
-    String path;
 } Path;
 
-EXPORT Path_Info path_parse(String path);
-EXPORT String path_get_part_prexif(String path, Path_Info info);
-EXPORT String path_get_part_root(String path, Path_Info info);
-EXPORT String path_get_part_diretcories(String path, Path_Info info);
-EXPORT String path_get_part_extension(String path, Path_Info info);
-EXPORT String path_get_part_filename(String path, Path_Info info);
+EXPORT Path   path_parse(String path);
+EXPORT Path   path_parse_c(const char* path);
+EXPORT String path_get_prexif(Path path);
+EXPORT String path_get_root(Path path);
+EXPORT String path_get_except_root(Path path);
+EXPORT String path_get_directories(Path path);
+EXPORT String path_get_extension(Path path);
+EXPORT String path_get_filename(Path path);
 
-//path_parse: String -> Path_Info fast entirely on my side. Should be okay since we have the parse.h. 
-//path_validate: String -> File_Info
-//path_get_full: String -> Path
+enum {
+    PATH_APPEND_EVEN_WITH_ERROR = 1,
+};
 
-//path_get_fr
+EXPORT bool path_builder_append(Path_Builder* builder, Path path, int flags)
+{
+    bool state = true;
+    if(builder->info.is_non_empty == false)
+    {
+        builder_append(&builder->builder, path.string);
+        builder->info = path.info;
+    }
+    else
+    {
+        if(builder->info.is_absolute && path.info.is_absolute)
+            state = false;
 
-//Path is fully safe path. It however does not have to point to a valid file.
+        if(state || (flags & PATH_APPEND_EVEN_WITH_ERROR))
+        {
+            String not_root = path_get_except_root(path);
+            builder_append(&builder->builder, not_root);
+        }
+
+        //Actually probably
+        //@TODO: reparse but only the rest not root.
+        //@TEMP
+        Path reparsed = path_parse(builder->string);
+        builder->info = reparsed.info;
+    }
+
+    return state;
+}
+
+INTERNAL bool is_path_sep(char c)
+{
+    return c == '/' || c == '\\';
+}
+
+isize string_find_first_path_separator(String string, isize from)
+{
+    for(isize i = from; i < string.size; i++)
+        if(string.data[i] == '/' || string.data[i] == '\\')
+            return i;
+
+    return -1;
+}
+
+isize string_find_last_path_separator(String string, isize from)
+{
+    for(isize i = from; i-- > 0; )
+        if(string.data[i] == '/' || string.data[i] == '\\')
+            return i;
+
+    return -1;
+}
+
+EXPORT Path_Builder path_canonicalize(Path path, Allocator* alloc)
+{
+    String root = path_get_root(path);
+    String rest = path_get_except_root(path);
+
+    Path_Builder out = {alloc};
+    if(root.size > 0)
+        builder_append(&out.builder, root);
+
+    if(rest.size > 0)
+    {
+        isize dir_i = 0;
+        ASSERT(is_path_sep(rest.data[dir_i]) == false);
+        for(; dir_i < rest.size;)
+        {
+            isize i_next = -1;
+            for(isize k = dir_i; k < rest.size; k++)
+                if(rest.data[k] == '/' || rest.data[k] == '\\')
+                    i_next = k;
+
+            if(i_next == -1)
+                i_next = rest.size;
+
+            String segment = string_range(rest, dir_i, i_next);
+            if(segment.size == 0 || string_is_equal(segment, STRING(".")))
+            {
+                //nothing;
+            }
+            else if(string_is_equal(segment, STRING("..")))
+            {
+                //pop segment
+                isize segment_from = string_find_last_path_separator(out.string, out.string.size);
+                if(segment_from == -1 || segment_from < root.size)
+                {
+                    //If there was no segement to pop push the .. sgement
+                    if(path.info.is_absolute == false)
+                        builder_append(&out.builder, STRING("../"));
+                    //If is absolute there is nowehere left to backup to
+                    else
+                        builder_resize(&out.builder, root.size);
+                }
+                else
+                {
+                    //else trim
+                    builder_resize(&out.builder, segment_from);
+                }
+            }
+            else
+            {
+                //push segment
+                builder_append(&out.builder, segment);
+                builder_push(&out.builder, '/');
+            }
+
+            dir_i = i_next + 1;
+        }
+    }
+
+    bool is_directory = false;
+    if(out.string.size > 0)
+        is_directory = is_path_sep(out.string.data[out.string.size - 1]);
+
+    //If desired path is directory but we arent
+    if(path.info.is_directory)
+    {
+        if(is_directory == false)
+        {
+            if(out.string.size == 0)
+                builder_append(&out.builder, STRING("./"));
+            else
+                builder_append(&out.builder, STRING("/"));
+        }
+    }
+    //If desired path is file but we are a directory
+    else
+    {
+        if(is_directory == true)
+        {
+            //if its just root then there is nothing we can do
+            if(out.string.size == root.size)
+            {}
+            else
+            {
+                builder_push(&out.builder, '/');
+            }
+        }
+    }
+
+    return out;
+}
+
+EXPORT const char* path_builder_get_cstring(Path_Builder path)
+{
+    if(path.info.is_non_empty)
+        return cstring_escape(path.string.data);
+    else
+        return ".";
+}
+
+//
+
+EXPORT Path path_parse(String path)
+{
+    //@NOTE: We attempt to cover a few edge cases and gain as much insigth into the
+    //       path as we can but we by no means attempt to be exhaustively correct
+    //       for all special windows cases. As such this should be viewed as an
+    //       approximation of the exact solution rather than the final product.
+
+    Path_Info info = {0};
+    String prefix_path = path;
+
+    //https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file
+    String win32_file_namespace = STRING("\\\\?\\");    // "\\?\"
+    String win32_device_namespace = STRING("\\\\.\\");  // "\\.\"
+
+    //Attempt to parse windows prefixes 
+    if(string_is_prefixed_with(prefix_path, win32_file_namespace)) 
+    {
+        info.prefix_size = (i32) win32_file_namespace.size;
+    }
+    else if(string_is_prefixed_with(prefix_path, win32_device_namespace))
+    {
+        info.prefix_size = (i32) win32_device_namespace.size;
+    }
+
+    String root_path = string_tail(prefix_path, info.prefix_size);
+    if(root_path.size == 0 || string_is_equal(root_path, STRING(".")))
+    {
+        info.is_non_empty = false;
+        info.is_absolute = false;
+        info.is_directory = true; //empty path is current directory. Thus a directory
+    }
+    else
+    {
+        info.is_non_empty = true;
+
+        //unix style root
+        if(root_path.size >= 1 && is_path_sep(root_path.data[0]))
+        {
+            info.is_absolute = true;
+            info.root_size = 1;
+        }
+        //unix style home
+        else if(root_path.size >= 1 && root_path.data[0] == '~')
+        {
+            info.is_absolute = true;
+            info.root_size = 1;
+
+            //We take both ~ and ~/ as valid 
+            if(root_path.size >= 2 && is_path_sep(root_path.data[1]))
+                info.root_size = 2;
+        }
+        //Windows style root
+        else if(root_path.size >= 2 && char_is_alphabetic(root_path.data[0]) && root_path.data[1] == ':')
+        {
+            //In windows "C:some_file" means relative path on the drive C
+            // while "C:/some_file" is absolute path starting from root C
+            if(root_path.size >= 3 && is_path_sep(root_path.data[2]))
+            {
+                info.is_absolute = true;
+                info.root_size = 3;
+            }
+            else
+            {
+                info.is_absolute = false;
+                info.root_size = 2;
+            }
+        }
+        //Windows UNC server path //My_Root
+        else if(root_path.size >= 2 && is_path_sep(root_path.data[0]) && is_path_sep(root_path.data[1]))
+        {
+            isize root_end = string_find_first_path_separator(root_path, 2);
+            if(root_end == -1)
+                root_end = root_path.size;
+
+            info.root_size = (i32) root_end;
+            info.is_absolute = false;
+        }
+        
+        //We consider path a directory path if it ends with slash. This incldues just "/" directory
+        isize last = root_path.size - 1;
+        ASSERT(last > 0);
+        info.is_directory = is_path_sep(root_path.data[last]);
+
+        //@TODO: From now on does not need to happen as far as I am concerned or at least not on 
+        // internal calls from path_builder.
+
+        //Parse directories
+        String directory_path = string_tail(root_path, info.root_size);
+        if(directory_path.size > 0)
+        {
+            //Find the last directory segment
+            isize dir_i = directory_path.size;
+            if(info.is_directory == false)
+            {
+                dir_i = string_find_last_path_separator(directory_path, directory_path.size);
+                if(dir_i < 0)
+                    dir_i = 0;
+            }
+
+            info.directories_size = (i32) dir_i;
+
+            //Parse filename (of course only if is not a directory)
+            if(info.is_directory == false)
+            {
+                String filename_path = string_safe_tail(directory_path, dir_i + 1);
+                if(filename_path.size > 0)
+                {
+                    //If is . or .. then is actually a directory
+                    if(string_is_equal(filename_path, STRING(".")) || string_is_equal(filename_path, STRING("..")))
+                    {
+                        info.is_directory = true;
+                        info.directories_size = (i32) directory_path.size;
+                    }
+                    else
+                    {
+                        //find the extension if any    
+                        isize dot_i = string_find_last_char(filename_path, '.');
+                        if(dot_i == -1)
+                            dot_i = filename_path.size;
+                        else
+                            dot_i += 1;
+
+                        info.file_size = (i32) filename_path.size;
+                        info.extension_size = (i32) (filename_path.size - dot_i);
+                    }
+                }
+            }
+        }
+    }
+
+    Path out_path = {0};
+    out_path.info = info;
+    out_path.string = path;
+    return out_path;
+}
+
+EXPORT Path path_parse_c(const char* path)
+{
+    return path_parse(string_make(path));
+}
+
+typedef enum {
+    PATH_IS_DIR = 1,
+    PATH_IS_EMPTY = 2,
+    PATH_IS_ABSOLUTE = 4,
+} Path_Is_Dir;
+
+void test_single_path(const char* path, const char* prefix, const char* root, const char* directories, const char* filename, const char* extension, Path_Is_Dir flags)
+{
+    String _path = string_make(path);
+    Path parsed = path_parse(_path);
+    String _prefix = path_get_prexif(parsed);
+    String _root = path_get_root(parsed);
+    String _directories = path_get_directories(parsed);
+    String _filename = path_get_filename(parsed);
+    String _extension = path_get_extension(parsed);
+
+    if(prefix)
+        TEST(string_is_equal(_prefix, string_make(prefix)),             STRING_FMT " == %s (%s)", STRING_PRINT(_prefix), prefix, path);
+    if(root)
+        TEST(string_is_equal(_root, string_make(root)),                 STRING_FMT " == %s (%s)", STRING_PRINT(_root), root, path);
+    if(directories)
+        TEST(string_is_equal(_directories, string_make(directories)),   STRING_FMT " == %s (%s)", STRING_PRINT(_directories), directories, path);
+    if(filename)
+        TEST(string_is_equal(_filename, string_make(filename)),         STRING_FMT " == %s (%s)", STRING_PRINT(_filename), filename, path);
+    if(extension)
+        TEST(string_is_equal(_extension, string_make(extension)),       STRING_FMT " == %s (%s)", STRING_PRINT(_extension), extension, path);
+
+    TEST(parsed.info.is_absolute == (flags & PATH_IS_ABSOLUTE) > 0);
+    TEST(parsed.info.is_directory == (flags & PATH_IS_DIR) > 0);
+    TEST(parsed.info.is_non_empty != (flags & PATH_IS_EMPTY) > 0);
+}
+
+void test_path()
+{
+    test_single_path("", "", "", "", "", "", PATH_IS_EMPTY | PATH_IS_DIR);
+    test_single_path(".", "", "", "", "", "", PATH_IS_EMPTY | PATH_IS_DIR);
+    test_single_path("..", "", "", "", "", "", PATH_IS_DIR);
+    test_single_path("./", "", "", "", "", "", PATH_IS_EMPTY | PATH_IS_DIR);
+    test_single_path("../", "", "", "", "", "", PATH_IS_DIR);
+
+    test_single_path("file.txt", "", "", "", "file.txt", "txt", 0);
+    test_single_path("C:/my/files/file.txt", "", "C:/", "my/files", "file.txt", "txt", PATH_IS_ABSOLUTE);
+    test_single_path("/my/files/file/", "", "/", "my/files/file", "", "", PATH_IS_ABSOLUTE | PATH_IS_DIR);
+    test_single_path("my/files/file", "", "", "my/files", "file", "", 0);
+    test_single_path("~/my/files/file/", "", "~/", "my/files/file", "", "", PATH_IS_ABSOLUTE | PATH_IS_DIR);
+    test_single_path("~my/files/file", "", "~", "my/files", "file", "", PATH_IS_ABSOLUTE);
+    test_single_path("\\\\?\\C:my/files/file", "\\\\?\\", "C:", "my/files", "file", "", PATH_IS_ABSOLUTE);
+    test_single_path("//Server/files/.gitignore", "", "//Server", "my/files", "", "gitignore", PATH_IS_ABSOLUTE);
+}
+
+EXPORT String path_get_prexif(Path path)
+{
+    String out = string_head(path.string, path.info.prefix_size);
+    return out;
+}
+
+EXPORT String path_get_root(Path path)
+{
+    String out = string_range(path.string, path.info.prefix_size, path.info.prefix_size + path.info.root_size);
+    return out;
+}
+
+EXPORT String path_get_except_root(Path path)
+{
+    String out = string_tail(path.string, path.info.prefix_size + path.info.root_size);
+    return out;
+}
+
+EXPORT String path_get_directories(Path path)
+{
+    isize from = path.info.prefix_size + path.info.root_size;
+    String out = string_range(path.string, from, from + path.info.directories_size);
+    return out;
+}
+
+EXPORT String path_get_filename(Path path)
+{
+    String out = string_range(path.string, path.string.size - path.info.file_size, path.string.size);
+    return out;
+}
+
+EXPORT String path_get_extension(Path path)
+{
+    String out = string_range(path.string, path.string.size - path.info.extension_size, path.string.size);
+    return out;
+}
 
 
 #endif

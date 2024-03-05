@@ -99,6 +99,14 @@ EXPORT void builder_array_deinit(String_Builder_Array* array);
 //So string_replace(..., "Hello world", "lw", ".\0") -> "He..o or.d"
 EXPORT String_Builder string_replace(Allocator* allocator, String source, String to_replace, String replace_with);
 
+EXPORT bool char_is_space(char c);
+EXPORT bool char_is_digit(char c);
+EXPORT bool char_is_lowercase(char c);
+EXPORT bool char_is_uppercase(char c);
+EXPORT bool char_is_alphabetic(char c);
+EXPORT bool char_is_id(char c);
+
+
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_STRING_IMPL)) && !defined(JOT_STRING_HAS_IMPL)
@@ -685,5 +693,57 @@ EXPORT String_Builder string_replace(Allocator* allocator, String source, String
     EXPORT int builder_compare(String_Builder a, String_Builder b)
     {
         return string_compare(a.string, b.string);
+    }
+
+    EXPORT bool char_is_space(char c)
+    {
+        switch(c)
+        {
+            case ' ':
+            case '\n':
+            case '\t':
+            case '\r':
+            case '\v':
+            case '\f':
+                return true;
+            default: 
+                return false;
+        }
+    }
+
+    EXPORT bool char_is_digit(char c)
+    {
+        return '0' <= c && c <= '9';
+    }
+
+    EXPORT bool char_is_lowercase(char c)
+    {
+        return 'a' <= c && c <= 'z';
+    }
+
+    EXPORT bool char_is_uppercase(char c)
+    {
+        return 'A' <= c && c <= 'Z';
+    }
+
+    EXPORT bool char_is_alphabetic(char c)
+    {
+        //return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z');
+
+        //this is just a little flex of doing the two range checks in one
+        //using the fact that all uppercase to lowercase leters are 32 appart.
+        //That means we can just maks the fift bit and test once.
+        //You can simply test this works by comparing the result of both approaches on all char values.
+        char diff = c - 'A';
+        char masked = diff & ~(1 << 5);
+        bool is_letter = 0 <= masked && masked <= ('Z' - 'A');
+
+        return is_letter;
+    }
+
+    //all characters permitted inside a common programming language id. [0-9], _, [a-z], [A-Z]
+    EXPORT bool char_is_id(char c)
+    {
+        return char_is_digit(c) || char_is_alphabetic(c) || c == '_';
     }
 #endif

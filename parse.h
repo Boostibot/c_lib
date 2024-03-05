@@ -10,12 +10,6 @@ typedef enum Match_Kind
     MATCH_INVERTED,
 } Match_Kind;
 
-EXPORT bool char_is_space(char c);
-EXPORT bool char_is_digit(char c);
-EXPORT bool char_is_lowercase(char c);
-EXPORT bool char_is_uppercase(char c);
-EXPORT bool char_is_alphabetic(char c);
-EXPORT bool char_is_id(char c);
 
 EXPORT bool match_char_custom(String str, isize* index, char c, Match_Kind match);
 EXPORT bool match_any_of_custom(String str, isize* index, String any_of, Match_Kind match);
@@ -62,57 +56,7 @@ EXPORT String string_trim_whitespace(String s);
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PARSE_IMPL)) && !defined(JOT_PARSE_HAS_IMPL)
 #define JOT_PARSE_HAS_IMPL
 
-EXPORT bool char_is_space(char c)
-{
-    switch(c)
-    {
-        case ' ':
-        case '\n':
-        case '\t':
-        case '\r':
-        case '\v':
-        case '\f':
-            return true;
-        default: 
-            return false;
-    }
-}
 
-EXPORT bool char_is_digit(char c)
-{
-    return '0' <= c && c <= '9';
-}
-
-EXPORT bool char_is_lowercase(char c)
-{
-    return 'a' <= c && c <= 'z';
-}
-
-EXPORT bool char_is_uppercase(char c)
-{
-    return 'A' <= c && c <= 'Z';
-}
-
-EXPORT bool char_is_alphabetic(char c)
-{
-    //return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z');
-
-    //this is just a little flex of doing the two range checks in one
-    //using the fact that all uppercase to lowercase leters are 32 appart.
-    //That means we can just maks the fift bit and test once.
-    //You can simply test this works by comparing the result of both approaches on all char values.
-    char diff = c - 'A';
-    char masked = diff & ~(1 << 5);
-    bool is_letter = 0 <= masked && masked <= ('Z' - 'A');
-
-    return is_letter;
-}
-
-//all characters permitted inside a common programming language id. [0-9], _, [a-z], [A-Z]
-EXPORT bool char_is_id(char c)
-{
-    return char_is_digit(c) || char_is_alphabetic(c) || c == '_';
-}
 
 
 EXPORT bool match_char_custom(String str, isize* index, char c, Match_Kind match)
