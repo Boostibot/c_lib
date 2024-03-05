@@ -10,7 +10,7 @@ static void test_find_first_single(String string, char c, isize from)
     isize sse = string_find_first_char_sse(string, c, from);
 
     if(truth != sse || truth != unsafe || truth != sse)
-        TEST_MSG(false, "test_find_first_single failed! with string '" STRING_FMT "' char '%c' and from: %lli", STRING_PRINT(string), c, (lli) from);
+        TEST(false, "test_find_first_single failed! with string '" STRING_FMT "' char '%c' and from: %lli", STRING_PRINT(string), c, (lli) from);
 }
 
 static isize string_find_first_char_strlen(String string, char c, isize from)

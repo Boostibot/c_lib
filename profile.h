@@ -145,6 +145,10 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 
 	#define _IF_NOT_PERF_END_DISCARD_DO_PERF_COUNTERS(name, ...) (void) (_run##name)
 	#define _IF_NOT_PERF_END_DISCARD_(name, ...) global_perf_counter_end_discard(&(_run##name))
+
+	#define PP_ID(x)                x
+	#define _PP_CONCAT(a, b)        a ## b
+	#define PP_CONCAT(a, b)         _PP_CONCAT(a, b)
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PROFILE_IMPL)) && !defined(JOT_PROFILE_HAS_IMPL)
@@ -180,7 +184,7 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 		Global_Perf_Counter* counter = running->my_counter;
 		int64_t delta = platform_perf_counter() - running->running;
 		i64 runs = perf_end_atomic_delta(&counter->counter, delta, is_detailed);
-		ASSERT_MSG(running->stopped == false, "Global_Perf_Counter_Running running counter stopped more than once!");
+		ASSERT(running->stopped == false, "Global_Perf_Counter_Running running counter stopped more than once!");
 
 		//only save the stats that dont need to be updated on the first run
 		if(runs == 1)

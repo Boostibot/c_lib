@@ -58,6 +58,7 @@ EXPORT typedef struct File_Logger {
     Logger logger;
     Allocator* default_allocator;
     String_Builder buffer;
+    Platform_Mutex mutex;
 
     // Flushes the file once some number of bytes were written (buffer size) 
     // or if mor than flush_every_seconds passed since the last flush. 
@@ -70,12 +71,6 @@ EXPORT typedef struct File_Logger {
     //For example LOG_INFO has value 0 so its bitmask is 1 << 0 or 1 << LOG_INFO
     u64 file_type_filter;                       //defaults to all 1s in binary ie 0xFFFFFFFFFFFFFFFF    
     u64 console_type_filter;                    //defaults to all 1s in binary ie 0xFFFFFFFFFFFFFFFF
-    
-    //Specify wheter any module filtering should be used.
-    // (this is setting primarily important because often we want to print all
-    //  log modules without apriory knowing their names)
-    bool console_use_filter;                        //defaults to false
-    bool file_use_filter;                           //defaults to false
     
     String_Builder file_directory_path;             //defaults to "logs/"
     String_Builder file_prefix;                     //defaults to ""
@@ -103,13 +98,10 @@ EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, i
 EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, const char* folder);
 EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, const char* folder);
 
-extern File_Logger global_logger;
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_LOGGER_FILE_IMPL)) && !defined(JOT_LOGGER_FILE_HAS_IMPL)
 #define JOT_LOGGER_FILE_HAS_IMPL
-
-File_Logger global_logger = {0};
 
 EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* append_to, i32 depth, const Log* log)
 {       
@@ -248,26 +240,28 @@ EXPORT void file_logger_deinit(File_Logger* logger)
     if(logger->file)
         fclose(logger->file);
 
+    platform_mutex_deinit(&logger->mutex);
     memset(logger, 0, sizeof *logger);
 }
 
-EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, isize flush_every_bytes, f64 flush_every_seconds, String folder, String prefix, String postfix)
+EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* alloc, isize flush_every_bytes, f64 flush_every_seconds, String folder, String prefix, String postfix)
 {
     file_logger_deinit(logger);
     
-    logger->default_allocator = def_alloc;
-    builder_init_with_capacity(&logger->buffer, def_alloc, flush_every_bytes);
-    builder_init(&logger->file_directory_path, def_alloc);
-    builder_init(&logger->file_prefix, def_alloc);
-    builder_init(&logger->file_postfix, def_alloc);
+    Platform_Error error = platform_mutex_init(&logger->mutex);
+    (void) error; //discarding the error for the moment;
+
+    logger->default_allocator = alloc;
+    builder_init_with_capacity(&logger->buffer, alloc, flush_every_bytes);
+    builder_init(&logger->file_directory_path, alloc);
+    builder_init(&logger->file_prefix, alloc);
+    builder_init(&logger->file_postfix, alloc);
 
     logger->logger.log = file_logger_log;
     logger->flush_every_bytes = flush_every_bytes;
     logger->flush_every_seconds = flush_every_seconds;
     logger->file_type_filter = 0xFFFFFFFFFFFFFFFF;
     logger->console_type_filter = 0xFFFFFFFFFFFFFFFF;
-    logger->console_use_filter = false;
-    logger->file_use_filter = false;
     logger->init_epoch_time = platform_epoch_time();
 
     builder_assign(&logger->file_directory_path, folder);
@@ -326,55 +320,69 @@ EXPORT bool file_logger_flush(File_Logger* logger)
     return state;
 }
 
+//Some of the ansi colors that can be used within logs. 
+//However their usage is not recommended since these will be written to log files and thus make their parsing more difficult.
+#define ANSI_COLOR_NORMAL       "\x1B[0m"
+#define ANSI_COLOR_RED          "\x1B[31m"
+#define ANSI_COLOR_BRIGHT_RED   "\x1B[91m"
+#define ANSI_COLOR_GREEN        "\x1B[32m"
+#define ANSI_COLOR_YELLOW       "\x1B[33m"
+#define ANSI_COLOR_BLUE         "\x1B[34m"
+#define ANSI_COLOR_MAGENTA      "\x1B[35m"
+#define ANSI_COLOR_CYAN         "\x1B[36m"
+#define ANSI_COLOR_WHITE        "\x1B[37m"
+#define ANSI_COLOR_GRAY         "\x1B[90m"
+
 void file_logger_log(Logger* logger_, const Log* log_list, i32 depth, Log_Action action)
 {
+    PERF_COUNTER_START(counter);
     File_Logger* self = (File_Logger*) (void*) logger_;
+    
+    platform_mutex_lock(&self->mutex);
+
     if(action == LOG_ACTION_FLUSH)
     {
         file_logger_flush(self);
-        return;
     }
-    //@TODO
-    if(action != LOG_ACTION_LOG)
-        return;
-
-    PERF_COUNTER_START(counter);
-
-    Log_Type type = log_list->type;
-    Arena arena = scratch_arena_acquire();
+    else if(action == LOG_ACTION_LOG)
     {
-        String_Builder formatted_log = builder_make(&arena.allocator, 1024);
-        file_logger_log_append_into(&arena.allocator, &formatted_log, depth, log_list);
-
-        bool print_to_console = (type > LOG_TYPE_MAX) || (((Log_Filter) 1 << type) & self->console_type_filter);
-        bool print_to_file = (type > LOG_TYPE_MAX) || (((Log_Filter) 1 << type) & self->file_type_filter);
-
-        if(print_to_console)
+        Log_Type type = log_list->type;
+        Arena arena = scratch_arena_acquire();
         {
-            const char* color_mode = ANSI_COLOR_NORMAL;
-            if(type == LOG_ERROR || type == LOG_FATAL)
-                color_mode = ANSI_COLOR_BRIGHT_RED;
-            else if(type == LOG_WARN)
-                color_mode = ANSI_COLOR_YELLOW;
-            else if(type == LOG_OKAY)
-                color_mode = ANSI_COLOR_GREEN;
-            else if(type == LOG_TRACE || type == LOG_DEBUG)
-                color_mode = ANSI_COLOR_GRAY;
+            String_Builder formatted_log = builder_make(&arena.allocator, 1024);
+            file_logger_log_append_into(&arena.allocator, &formatted_log, depth, log_list);
 
-            if(self->console_print_func)
-                self->console_print_func(formatted_log.data, formatted_log.size, self->console_print_context);
-            else
-                printf("%s%s" ANSI_COLOR_NORMAL, color_mode, formatted_log.data);
-        }
+            bool print_to_console = (type > LOG_TYPE_MAX) || (((Log_Filter) 1 << type) & self->console_type_filter);
+            bool print_to_file = (type > LOG_TYPE_MAX) || (((Log_Filter) 1 << type) & self->file_type_filter);
 
-        if(print_to_file)
-            builder_append(&self->buffer, formatted_log.string);
+            if(print_to_console)
+            {
+                const char* color_mode = ANSI_COLOR_NORMAL;
+                if(type == LOG_ERROR || type == LOG_FATAL)
+                    color_mode = ANSI_COLOR_BRIGHT_RED;
+                else if(type == LOG_WARN)
+                    color_mode = ANSI_COLOR_YELLOW;
+                else if(type == LOG_OKAY)
+                    color_mode = ANSI_COLOR_GREEN;
+                else if(type == LOG_TRACE || type == LOG_DEBUG)
+                    color_mode = ANSI_COLOR_GRAY;
+
+                if(self->console_print_func)
+                    self->console_print_func(formatted_log.data, formatted_log.size, self->console_print_context);
+                else
+                    printf("%s%s" ANSI_COLOR_NORMAL, color_mode, formatted_log.data);
+            }
+
+            if(print_to_file)
+                builder_append(&self->buffer, formatted_log.string);
     
-        f64 time_since_last_flush = clock_s() - self->last_flush_time;
-        if(self->buffer.size > self->flush_every_bytes || time_since_last_flush > self->flush_every_seconds)
-            file_logger_flush(self);
+            f64 time_since_last_flush = clock_s() - self->last_flush_time;
+            if(self->buffer.size > self->flush_every_bytes || time_since_last_flush > self->flush_every_seconds)
+                file_logger_flush(self);
+        }
+        arena_release(&arena);
     }
-    arena_release(&arena);
+    platform_mutex_unlock(&self->mutex);
     PERF_COUNTER_END(counter);
 }
 

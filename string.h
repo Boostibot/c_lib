@@ -188,7 +188,7 @@ EXPORT String_Builder string_replace(Allocator* allocator, String source, String
         if(search_for.size == 0)
             return from;
 
-        ASSERT_MSG(false, "UNTESTED! @TODO: test!");
+        ASSERT(false, "UNTESTED! @TODO: test!");
         ASSERT(from >= 0);
         isize start = from;
         if(in_str.size - start < search_for.size)

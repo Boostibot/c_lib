@@ -424,7 +424,7 @@ void set_variable_sized_int(void* integer, isize integer_type_size, i64 value)
         case 2: *(i16*) (integer) = (i16) value; return;
         case 4: *(i32*) (integer) = (i32) value; return;
         case 8: *(i64*) (integer) = (i64) value; return;
-        default: ASSERT_MSG(false, "Strange type size submitted!");
+        default: ASSERT(false, "Strange type size submitted!");
     }
 }
 
@@ -436,7 +436,7 @@ i64 get_variable_sized_int(void* integer, isize integer_type_size)
         case 2: return *(i16*) (integer);
         case 4: return *(i32*) (integer);
         case 8: return *(i64*) (integer);
-        default: ASSERT_MSG(false, "Strange type size submitted!"); return 0;
+        default: ASSERT(false, "Strange type size submitted!"); return 0;
     }
 }
 
@@ -551,7 +551,7 @@ EXPORT bool serialize_float_typed(Lpf_Entry* entry, void* float_value, isize flo
     if(entry == NULL)
         return false;
 
-    ASSERT_MSG(float_type_size == 4 || float_type_size == 8, "Invalid floating point format!");
+    ASSERT(float_type_size == 4 || float_type_size == 8, "Invalid floating point format!");
     if(action == SERIALIZE_READ)
     {
         isize index = 0;

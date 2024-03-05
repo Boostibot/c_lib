@@ -41,13 +41,17 @@ EXPORT Id id_generate()
     //Note that the hash64 function is bijective and maps 0 -> 0
     static i64 salt = 0;
     static i64 counter = 0;
+    
+    //This works even in mutithreaded because the worst that could happen is we twice assign 
+    // the salt to the same value. Even in partially filled states this branch will not run.
     if(salt == 0)
         salt = platform_perf_counter_startup(); 
     
+    //... and the rest is atomic ...
     u64 ordered_id = platform_atomic_add64(&counter, 1) + salt;
     u64 hashed_id = hash64(ordered_id);
 
-    //In case we wrap around which shouldnt even happen...
+    //In case we wrap around (which will almost certainly never even happen)...
     if(hashed_id == 0)
         return id_generate();
     

@@ -361,7 +361,7 @@ EXPORT Lpf_Entry lpf_read(Arena* arena, String source, const Lpf_Read_Options* r
                     }
 
                     blanks_before += 1;
-                    ASSERT_MSG(value.size == 0, "shouldnt be possible to have a value while staying blank!");
+                    ASSERT(value.size == 0, "shouldnt be possible to have a value while staying blank!");
                 } break;
 
                 case ENTRY: {

@@ -174,7 +174,7 @@ INTERNAL void test_base64_stress(f64 max_seconds, Base64_Encoding encoding, Base
             String decoded_block_str = decoded_block.string;
             String original_block_str = {random_data.data + random_data_prev_size, block_size};
             
-            TEST_MSG(string_is_equal(original_block_str, decoded_block_str), "Every encoded block must match!");
+            TEST(string_is_equal(original_block_str, decoded_block_str), "Every encoded block must match!");
         }
 
         //Decode the whole concatenation of blocks and test if the data was preserved
@@ -182,7 +182,7 @@ INTERNAL void test_base64_stress(f64 max_seconds, Base64_Encoding encoding, Base
         if(encoding.do_pad) 
         {
             base64_decode_into(&decoded, encoded.data, encoded.size, decoding);
-            TEST_MSG(builder_is_equal(decoded, random_data), "The whole encoded block must match!");
+            TEST(builder_is_equal(decoded, random_data), "The whole encoded block must match!");
         }
     }
     

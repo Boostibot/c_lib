@@ -51,7 +51,7 @@ INTERNAL ATTRIBUTE_INLINE_NEVER void* _stack_allocator_allocate_from_parent(Stac
 {
     if(self->parent == NULL)
     {
-        allocator_out_of_memory(&self->allocator, new_size, old_ptr, old_size, align, "");
+        allocator_out_of_memory(&self->allocator, new_size, old_ptr, old_size, align);
         return NULL;
     }
     else

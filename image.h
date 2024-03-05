@@ -393,8 +393,8 @@ EXPORT void subimage_copy(Subimage to_image, Subimage from_image, isize offset_x
         return;
 
     Subimage to_portion = subimage_portion(to_image, offset_x, offset_y, copy_width, copy_height);
-    ASSERT_MSG(from_image.type == to_image.type, "formats must match!");
-    ASSERT_MSG(from_image.pixel_size == to_image.pixel_size, "formats must match!");
+    ASSERT(from_image.type == to_image.type, "formats must match!");
+    ASSERT(from_image.pixel_size == to_image.pixel_size, "formats must match!");
 
     isize to_image_stride = subimage_byte_stride(to_image); 
     isize from_image_stride = subimage_byte_stride(from_image); 

@@ -4,15 +4,15 @@
 #include <time.h>
 #include <stdlib.h>
 
-#ifndef TEST_MSG
+#ifndef TEST
 #include <assert.h>
-#define TEST_MSG(a, msg, ...) (!(a) ? printf((msg), ##__VA_ARGS__), assert((a) && (msg)) : (void) 0)
-#endif // !TEST_MSG
+#define TEST(a, msg, ...) (!(a) ? printf((msg), ##__VA_ARGS__), assert((a) && (msg)) : (void) 0)
+#endif // !TEST
 
 #define TEST_MATH_EPSILON (EPSILON*2)
 
-#define TEST_NEAR_FLOAT(a, b, msg) TEST_MSG(is_near_scaledf(a, b, TEST_MATH_EPSILON), msg)
-#define TEST_NEAR_VEC3(a, b, msg) TEST_MSG(vec3_is_near_scaled(a, b, TEST_MATH_EPSILON), msg)
+#define TEST_NEAR_FLOAT(a, b, msg) TEST(is_near_scaledf(a, b, TEST_MATH_EPSILON), msg)
+#define TEST_NEAR_VEC3(a, b, msg) TEST(vec3_is_near_scaled(a, b, TEST_MATH_EPSILON), msg)
 
 static int compare_near_scaledf(float a, float b)
 {
@@ -54,9 +54,9 @@ static void test_vec3_identities(Vec3 a, Vec3 b)
     }
     //@NOTE: this check requires larger epsilon even if scaled
     float large_epsilon = TEST_MATH_EPSILON*5;
-    TEST_MSG(is_near_scaledf(vec3_dot(n, u), 0.0f, large_epsilon), "Ortogonalization shoould produce ortogonal vectors");
-    TEST_MSG(is_near_scaledf(vec3_dot(n, v), 0.0f, large_epsilon), "Ortogonalization shoould produce ortogonal vectors");
-    TEST_MSG(is_near_scaledf(vec3_dot(v, u), 0.0f, large_epsilon), "Ortogonalization shoould produce ortogonal vectors");
+    TEST(is_near_scaledf(vec3_dot(n, u), 0.0f, large_epsilon), "Ortogonalization shoould produce ortogonal vectors");
+    TEST(is_near_scaledf(vec3_dot(n, v), 0.0f, large_epsilon), "Ortogonalization shoould produce ortogonal vectors");
+    TEST(is_near_scaledf(vec3_dot(v, u), 0.0f, large_epsilon), "Ortogonalization shoould produce ortogonal vectors");
 
     TEST_NEAR_FLOAT(vec3_angle_between(a, a), 0, "Angle between the same vector should be 0");
     TEST_NEAR_FLOAT(vec3_angle_between(n, u), PI/2, "Angle between should measure ortogonal correctly");
@@ -85,7 +85,7 @@ static void test_vec3_identities(Vec3 a, Vec3 b)
         float schwarz_l = vec3_dot(a, b)*vec3_dot(a, b);
         float schwarz_r = vec3_dot(a, a)*vec3_dot(b, b);
 
-        TEST_MSG(compare_near_scaledf(schwarz_l, schwarz_r) <= 0, "Schwarz inequality must hold");
+        TEST(compare_near_scaledf(schwarz_l, schwarz_r) <= 0, "Schwarz inequality must hold");
     }
     
     {
@@ -96,11 +96,11 @@ static void test_vec3_identities(Vec3 a, Vec3 b)
 
         float bessel_l1 = SQR(vec3_dot(a, e1)) + SQR(vec3_dot(a, e2)) + SQR(vec3_dot(a, e3));
         float bessel_r1 = vec3_len(a)*vec3_len(a);
-        TEST_MSG(compare_near_scaledf(bessel_l1, bessel_r1) <= 0, "Bessel's inequality must hold");
+        TEST(compare_near_scaledf(bessel_l1, bessel_r1) <= 0, "Bessel's inequality must hold");
 
         float bessel_l2 = SQR(vec3_dot(a, n)) + SQR(vec3_dot(a, u)) + SQR(vec3_dot(a, v));
         float bessel_r2 = vec3_len(a)*vec3_len(a);
-        TEST_MSG(compare_near_scaledf(bessel_l2, bessel_r2) <= 0, "Bessel's inequality must hold with any OG sequence of basis vectors");
+        TEST(compare_near_scaledf(bessel_l2, bessel_r2) <= 0, "Bessel's inequality must hold with any OG sequence of basis vectors");
 
         #undef SQR
     }

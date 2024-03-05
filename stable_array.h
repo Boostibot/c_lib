@@ -87,7 +87,7 @@ EXPORT void  stable_array_reserve(Stable_Array* stable, isize to);
     for(isize _block_i = 0; _block_i < (stable).blocks_size; _block_i++)                        \
     {                                                                                           \
         Ptr_Type _dummy = NULL;                                                                 \
-        ASSERT_MSG((stable).item_size == sizeof(*_dummy), "wrong type submitted to ITERATE_STABLE_ARRAY_BEGIN"); \
+        ASSERT((stable).item_size == sizeof(*_dummy), "wrong type submitted to ITERATE_STABLE_ARRAY_BEGIN"); \
         Stable_Array_Block* _block = &(stable).blocks[_block_i];                                \
         for(isize _item_i = 0; _item_i < STABLE_ARRAY_BLOCK_SIZE; _item_i++)                    \
         {                                                                                       \
@@ -108,7 +108,7 @@ EXPORT void  stable_array_reserve(Stable_Array* stable, isize to);
             _item_i = 0;                                                                        \
         }                                                                                       \
         Ptr_Type _dummy = NULL;                                                                 \
-        ASSERT_MSG((stable).item_size == sizeof(*_dummy), "wrong type submitted to ITERATE_STABLE_ARRAY_BEGIN"); \
+        ASSERT((stable).item_size == sizeof(*_dummy), "wrong type submitted to ITERATE_STABLE_ARRAY_BEGIN"); \
         Stable_Array_Block* _block = &(stable).blocks[_block_i];                                \
         if(_block->filled_mask & ((u64) 1 << _item_i))                                      \
         {                                                                                   \
@@ -250,7 +250,7 @@ EXPORT void* stable_array_at(const Stable_Array* stable, isize index)
     #ifdef DO_BOUNDS_CHECKS
     u64 bit = (u64) 1 << lookup.item_i;
     bool is_alive = !!(lookup.block->filled_mask & bit);
-    TEST_MSG(is_alive, "Needs to be alive! Use stable_array_at_if_alive if unsure!");
+    TEST(is_alive, "Needs to be alive! Use stable_array_at_if_alive if unsure!");
     #endif // DO_BOUNDS_CHECKS
 
     return lookup.item;
@@ -290,13 +290,13 @@ EXPORT isize stable_array_insert(Stable_Array* stable, void** out)
     if(stable->size + 1 > stable_array_capacity(stable))
         stable_array_reserve(stable, stable->size + 1);
 
-    ASSERT_MSG(out != NULL, "out must not be NULL!");
-    ASSERT_MSG(stable->first_not_filled_i1 != 0, "needs to have a place thats not filled when we reserved one!");
+    ASSERT(out != NULL, "out must not be NULL!");
+    ASSERT(stable->first_not_filled_i1 != 0, "needs to have a place thats not filled when we reserved one!");
     isize block_i = stable->first_not_filled_i1 - 1;
     CHECK_BOUNDS(block_i, stable->blocks_size);
 
     Stable_Array_Block* block = &stable->blocks[block_i];
-    ASSERT_MSG(block->filled_mask != STABLE_ARRAY_FILLED_MASK_FULL, "Needs to have a free slot");
+    ASSERT(block->filled_mask != STABLE_ARRAY_FILLED_MASK_FULL, "Needs to have a free slot");
 
     isize first_empty_index = platform_find_first_set_bit32(~block->filled_mask);
     block->filled_mask |= (u64) 1 << first_empty_index;
@@ -357,7 +357,7 @@ EXPORT void stable_array_reserve(Stable_Array* stable, isize to_size)
     if(to_size > capacity)
     {
         _stable_array_check_invariants(stable);
-        ASSERT_MSG(stable->first_not_filled_i1 == 0, "If there are not empty slots the stable array should really be full");
+        ASSERT(stable->first_not_filled_i1 == 0, "If there are not empty slots the stable array should really be full");
         
         isize new_capacity_item = (isize) (stable->size * (stable->growth_mult)) + stable->growth_lin;
         new_capacity_item = MAX(new_capacity_item, to_size);
@@ -451,25 +451,25 @@ INTERNAL void _stable_array_check_invariants(const Stable_Array* stable)
     {
         if(stable->blocks_capacity > 0)
         {
-            TEST_MSG((stable->allocator != NULL), 
+            TEST((stable->allocator != NULL), 
                 "If there is something alloced allocator must not be null!");
-            //TEST_MSG(stable->first_not_filled_i1 != 0, 
+            //TEST(stable->first_not_filled_i1 != 0, 
                 //"The not filled list is empty exactly when the stable array is completely filled (size == capacity)");
         }
 
-        TEST_MSG((stable->blocks != NULL) == (stable->blocks_capacity > 0), 
+        TEST((stable->blocks != NULL) == (stable->blocks_capacity > 0), 
             "When blocks are alloced capacity is non zero");
 
-        TEST_MSG(stable->blocks_size <= stable->blocks_capacity, 
+        TEST(stable->blocks_size <= stable->blocks_capacity, 
             "Size must be smaller than capacity!");
             
-        TEST_MSG(stable->size <= stable_array_capacity(stable), 
+        TEST(stable->size <= stable_array_capacity(stable), 
             "Size must be smaller than capacity!");
 
-        TEST_MSG(stable->item_size > 0 && is_power_of_two(stable->item_align), 
+        TEST(stable->item_size > 0 && is_power_of_two(stable->item_align), 
             "The item size and item align are those of a valid C type");
         
-        TEST_MSG(IS_IN_RANGE(0, stable->first_not_filled_i1, stable->blocks_size + 1), 
+        TEST(IS_IN_RANGE(0, stable->first_not_filled_i1, stable->blocks_size + 1), 
             "The not filled list needs to be in valid range");
 
         if(do_slow_check)
@@ -483,12 +483,12 @@ INTERNAL void _stable_array_check_invariants(const Stable_Array* stable)
             {
                 Stable_Array_Block* block = &stable->blocks[i];
 
-                TEST_MSG(block != NULL && block->ptr != NULL,                           
+                TEST(block != NULL && block->ptr != NULL,                           
                     "block is not null");
-                TEST_MSG(IS_IN_RANGE(0, block->next_not_filled_i1, stable->blocks_size + 1),  
+                TEST(IS_IN_RANGE(0, block->next_not_filled_i1, stable->blocks_size + 1),  
                     "its next not filled needs to be in range");
                     
-                TEST_MSG(block->ptr == align_forward(block->ptr, stable->item_align), 
+                TEST(block->ptr == align_forward(block->ptr, stable->item_align), 
                     "the block must be properly aligned");
 
                 isize item_count_in_block = 0;
@@ -503,7 +503,7 @@ INTERNAL void _stable_array_check_invariants(const Stable_Array* stable)
                 u64* alloced_mask = _stable_array_alloced_mask(stable, (u32) i, &alloced_bit);
                 bool was_alloced = !!(*alloced_mask & alloced_bit);
                 if(i == 0)
-                    TEST_MSG(was_alloced, 
+                    TEST(was_alloced, 
                         "The first block must be always alloced!");
 
                 if(was_alloced)
@@ -514,10 +514,10 @@ INTERNAL void _stable_array_check_invariants(const Stable_Array* stable)
 
                 computed_size += item_count_in_block;
             }
-            TEST_MSG(computed_size == stable->size, 
+            TEST(computed_size == stable->size, 
                 "The size retrieved from the used masks form all blocks needs to be exactly the tracked size");
             
-            TEST_MSG(alloacted_count <= stable->blocks_size, 
+            TEST(alloacted_count <= stable->blocks_size, 
                 "The allocated size must be smaller than the total size. ");
 
             //Check not filled linked list for validity
@@ -528,17 +528,17 @@ INTERNAL void _stable_array_check_invariants(const Stable_Array* stable)
                 if(block_i1 == 0)
                     break;
             
-                TEST_MSG(IS_IN_RANGE(0, block_i1, stable->blocks_size + 1), "the block needs to be in range");
+                TEST(IS_IN_RANGE(0, block_i1, stable->blocks_size + 1), "the block needs to be in range");
                 Stable_Array_Block* block = &stable->blocks[block_i1 - 1];
 
                 block_i1 = block->next_not_filled_i1;
                 linke_list_size += 1;
 
-                TEST_MSG(~block->filled_mask > 0,        "needs to have an empty slot");
-                TEST_MSG(iters++ <= stable->blocks_size, "needs to not get stuck in an infinite loop");
+                TEST(~block->filled_mask > 0,        "needs to have an empty slot");
+                TEST(iters++ <= stable->blocks_size, "needs to not get stuck in an infinite loop");
             }
 
-            TEST_MSG(linke_list_size == not_filled_blocks, "the number of not_filled blocks needs to be the lenght of the list");
+            TEST(linke_list_size == not_filled_blocks, "the number of not_filled blocks needs to be the lenght of the list");
         }
     }
 

@@ -4,11 +4,6 @@
 #include "platform.h"
 #include <stdlib.h>
 
-#undef TEST
-#undef TEST_MSG
-#undef ASSERT
-#undef ASSERT_MSG
-
 #if !defined(ASSERT_CUSTOM_SETTINGS) && !defined(NDEBUG)
     //Locally enables/disables asserts. If we wish to disable for part of
     // code we simply undefine them then redefine them after.
@@ -22,52 +17,42 @@
 //Is useful for validating if compile time settings are correct
 #define STATIC_ASSERT(x) typedef char PP_CONCAT(__static_assertion__, __LINE__)[(x) ? 1 : -1]
 
-//@TODO: remove _MSG variants!
+//If x evaluates to false executes assertion_report() with optional provided message
+#define TEST(x, ...)                            (!(x) ? (assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, "" __VA_ARGS__), abort()) : (void) 0)
+#define _DISSABLED_TEST(x, ...)                 (0 ? ((x), assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, "" __VA_ARGS__), abort()) : (void) 0)
 
-//If x evaluates to false executes assertion_report() without any message. 
-#define TEST(x, ...)                TEST_MSG(x, "" __VA_ARGS__)              /* executes always (even in release) */
-#define ASSERT(x, ...)              ASSERT_MSG(x, "" __VA_ARGS__)            /* is enabled by DO_ASSERTS */
-#define ASSERT_SLOW(x, ...)         ASSERT_SLOW_MSG(x, "" __VA_ARGS__)       /* is enabled by DO_ASSERTS_SLOW */
-#define CHECK_BOUNDS(i, to)         CHECK_RANGE_BOUNDS(i, 0, to) /* if i is not within [0, to) panics. is enabled by DO_BOUNDS_CHECKS*/
-#define UNREACHABLE(...)            (ASSERT_MSG(false, "Unreachable code reached! " __VA_ARGS__), platform_assume_unreachable())
+//In debug builds do the same as TEST() else do nothing
+#ifdef DO_ASSERTS
+    #define ASSERT(x, ...)              TEST(x, __VA_ARGS__)          
+#else
+    #define ASSERT(x, ...)              _DISSABLED_TEST(x, __VA_ARGS__)
+#endif
 
-//If x evaluates to false executes assertion_report() with the specified message. 
-#define TEST_MSG(x, msg, ...)               (!(x) ? (assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, (msg), ##__VA_ARGS__), abort()) : (void) 0)
-#define ASSERT_MSG(x, msg, ...)             PP_IF(DO_ASSERTS,       TEST_MSG)(x, msg, ##__VA_ARGS__)
-#define ASSERT_SLOW_MSG(x, msg, ...)        PP_IF(DO_ASSERTS_SLOW,  TEST_MSG)(x, msg, ##__VA_ARGS__)
-#define CHECK_RANGE_BOUNDS(i, from, to)     PP_IF(DO_BOUNDS_CHECKS, TEST_MSG)((from) <= (i) && (i) < (to), \
+//In slow debug builds do the same as TEST() else do nothing
+#ifdef DO_ASSERTS_SLOW
+    #define ASSERT_SLOW(x, ...)          TEST(x, __VA_ARGS__)          
+#else
+    #define ASSERT_SLOW(x, ...)          _DISSABLED_TEST(x, __VA_ARGS__)
+#endif
+
+//In debug builds checks wheter the value falls into the valid range
+#ifdef DO_BOUNDS_CHECKS
+    #define CHECK_RANGE_BOUNDS(i, from, to)  TEST((from) <= (i) && (i) < (to), \
                                                 "Bounds check failed! %lli is not from the interval [%lli, %lli)!", \
-                                                (long long) (i), (long long) (from), (long long) (to))
+                                                (long long) (i), (long long) (from), (long long) (to))          
+#else
+    #define CHECK_RANGE_BOUNDS(i, from, to)  _DISSABLED_TEST((from) <= (i) && (i) < (to))
+#endif
+
+#define CHECK_BOUNDS(i, to)         CHECK_RANGE_BOUNDS(i, 0, to)
+#define UNREACHABLE(...)            (ASSERT(false, "Unreachable code reached! " __VA_ARGS__), platform_assume_unreachable())
 
 //Gets called when assertion fails. 
 //Does not have to terminate process since that is done at call site by the assert macro itself.
 //if ASSERT_CUSTOM_REPORT is defined is left unimplemented
 EXPORT ATTRIBUTE_FORMAT_FUNC(format, 5) void assertion_report(const char* expression, int line, const char* file, const char* function, ATTRIBUTE_FORMAT_ARG const char* format, ...);
 
-//==================== IMPLEMENTATION =======================
-
-    //Doesnt do anything (failed branch) but still properly expands x and msg so it can be type checked.
-    //Dissabled asserts expand to this.
-    #define DISSABLED_TEST_MSG(x, msg, ...)           (0 ? ((void) (x), assertion_report("", 0, "", "", (msg), ##__VA_ARGS__)) : (void) 0)
-
-    //If dissabled expand to this
-    #define _IF_NOT_DO_ASSERTS(ignore)         DISSABLED_TEST_MSG
-    #define _IF_NOT_DO_ASSERTS_SLOW(ignore)    DISSABLED_TEST_MSG
-    #define _IF_NOT_DO_BOUNDS_CHECKS(ignore)   DISSABLED_TEST_MSG
-    
-    //Pre-Processor (PP) utils
-    #define PP_STRINGIFY_(x)        #x
-    #define PP_CONCAT2(a, b)        a ## b
-    #define PP_CONCAT3(a, b, c)     PP_CONCAT2(PP_CONCAT2(a, b), c)
-    #define PP_CONCAT4(a, b, c, d)  PP_CONCAT2(PP_CONCAT3(a, b, c), d)
-    #define PP_CONCAT(a, b)         PP_CONCAT2(a, b)
-    #define PP_STRINGIFY(x)         PP_STRINGIFY_(x)
-    #define PP_ID(x)                x
-
-    //if CONDITION_DEFINE is defined: expands to x, 
-    //else: expands to _IF_NOT_##CONDITION_DEFINE(x). See above how to use this.
-    //The reason for its use is that simply all other things I have tried either didnt
-    // work or failed to compose for obscure reasons
-    #define PP_IF(CONDITION_DEFINE, x)         PP_CONCAT(_IF_NOT_, CONDITION_DEFINE)(x)
-    #define _IF_NOT_(x) x
+//Pre-Processor (PP) utils
+#define _PP_CONCAT(a, b)        a ## b
+#define PP_CONCAT(a, b)         _PP_CONCAT(a, b)
 #endif

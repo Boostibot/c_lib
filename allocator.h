@@ -38,6 +38,10 @@ typedef struct Allocator_Set {
     Allocator* allocator_default;
     Allocator* allocator_scratch;
     Allocator* allocator_static;
+
+    bool set_default;
+    bool set_scratch;
+    bool set_static;
 } Allocator_Set;
 
 #define DEF_ALIGN PLATFORM_MAX_ALIGN
@@ -59,21 +63,12 @@ void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align)
 EXPORT 
 void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize old_size, isize align);
 
-//Calls the realloc function of from_allocator, then if reallocating up fills the added memory with zeros
-EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(4) 
-void* allocator_reallocate_cleared(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
-
-//Calls the realloc function of from_allocator to allocate, then fills the memory with zeros if fails panics
-EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(2) 
-void* allocator_allocate_cleared(Allocator* from_allocator, isize new_size, isize align);
-
 //Retrieves stats from the allocator. The stats can be only partially filled.
 EXPORT Allocator_Stats allocator_get_stats(Allocator* self);
 
 //Gets called when function requiring to always succeed fails an allocation - most often from allocator_reallocate
 //If ALLOCATOR_CUSTOM_OUT_OF_MEMORY is defines is left unimplemented
-EXPORT void allocator_out_of_memory(
-    Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align, const char* format_string, ...);
+EXPORT void allocator_out_of_memory(Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align);
 
 EXPORT Allocator* allocator_get_default(); //returns the default allocator used for returning values from a function
 EXPORT Allocator* allocator_get_scratch(); //returns the scracth allocator used for temp often stack order allocations inside a function
@@ -113,16 +108,19 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         __builtin_alloca_with_align((size_t) size, (size_t) align)
 #endif
 
-
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_IMPL)) && !defined(JOT_ALLOCATOR_HAS_IMPL)
 #define JOT_ALLOCATOR_HAS_IMPL
 
-    INTERNAL ATTRIBUTE_THREAD_LOCAL Allocator* _default_allocator = NULL;
-    INTERNAL ATTRIBUTE_THREAD_LOCAL Allocator* _scratch_allocator = NULL;
-    INTERNAL ATTRIBUTE_THREAD_LOCAL Allocator* _static_allocator = NULL;
-    INTERNAL ATTRIBUTE_THREAD_LOCAL Arena_Stack _scratch_arena_stack = {0};
+    typedef struct Global_Allocator_State {
+        Allocator* default_allocator;
+        Allocator* scratch_allocator;
+        Allocator* static_allocator;
+        Arena_Stack scratch_arena_stack;
+    } Global_Allocator_State;
+
+    INTERNAL ATTRIBUTE_THREAD_LOCAL Global_Allocator_State _allocator_state = {0};
 
     EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(4) void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
@@ -156,7 +154,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     {
         void* obtained = allocator_try_reallocate(from_allocator, new_size, old_ptr, old_size, align);
         if(obtained == NULL && new_size != 0)
-            allocator_out_of_memory(from_allocator, new_size, old_ptr, old_size, align, "");
+            allocator_out_of_memory(from_allocator, new_size, old_ptr, old_size, align);
 
         return obtained;
     }
@@ -170,27 +168,15 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     {
         allocator_reallocate(from_allocator, 0, old_ptr, old_size, align);
     }
-    
-    EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(4) void* allocator_reallocate_cleared(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
-    {
-        void* ptr = allocator_reallocate(from_allocator, new_size, old_ptr, old_size, align);
-        if(new_size > old_size)
-            memset((u8*) ptr + old_size, 0, (size_t) (new_size - old_size));
-        return ptr;
-    }
-
-    EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(2) void* allocator_allocate_cleared(Allocator* from_allocator, isize new_size, isize align)
-    {
-        void* ptr = allocator_allocate(from_allocator, new_size, align);
-        memset(ptr, 0, (size_t) new_size);
-        return ptr;
-    }
 
     EXPORT Allocator_Stats allocator_get_stats(Allocator* self)
     {
-        return self->get_stats(self);
-    }
+        Allocator_Stats out = {0};
+        if(self && self->get_stats)
+            out = self->get_stats(self);
 
+        return out;
+    }
     
     EXPORT bool allocator_is_arena(Allocator* allocator)
     {
@@ -199,66 +185,82 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
 
     EXPORT Arena scratch_arena_acquire()
     {
-        return arena_acquire(&_scratch_arena_stack);
+        return arena_acquire(&_allocator_state.scratch_arena_stack);
     }
 
     EXPORT Allocator* allocator_get_default()
     {
-        return _default_allocator;
+        return _allocator_state.default_allocator;
     }
     EXPORT Allocator* allocator_get_scratch()
     {
-        return _scratch_allocator;
+        return _allocator_state.scratch_allocator;
     }
     EXPORT Allocator* allocator_get_static()
     {
-        return _static_allocator;
+        return _allocator_state.static_allocator;
     }
     EXPORT Arena_Stack* allocator_get_scratch_arena_stack()
     {
-        return &_scratch_arena_stack;
+        return &_allocator_state.scratch_arena_stack;
     }
 
     EXPORT Allocator_Set allocator_set_default(Allocator* new_default)
     {
-        return allocator_set_both(new_default, NULL);
+        Allocator_Set set_to = {0};
+        set_to.allocator_default = new_default;
+        set_to.set_default = true;
+        return allocator_set(set_to);
     }
+
     EXPORT Allocator_Set allocator_set_scratch(Allocator* new_scratch)
     {
-        return allocator_set_both(NULL, new_scratch);
+        Allocator_Set set_to = {0};
+        set_to.allocator_scratch = new_scratch;
+        set_to.set_scratch = true;
+        return allocator_set(set_to);
     }
+
     EXPORT Allocator_Set allocator_set_static(Allocator* new_static)
     {
         Allocator_Set set_to = {0};
         set_to.allocator_static = new_static;
+        set_to.set_static = true;
         return allocator_set(set_to);
     }
 
     EXPORT Allocator_Set allocator_set_both(Allocator* new_default, Allocator* new_scratch)
     {
         Allocator_Set set_to = {new_default, new_scratch};
+        set_to.set_default = true;
+        set_to.set_scratch = true;
         return allocator_set(set_to);
     }
 
     EXPORT Allocator_Set allocator_set(Allocator_Set set_to)
     {
+        Global_Allocator_State* state = &_allocator_state;
+
         Allocator_Set prev = {0};
-        if(set_to.allocator_default != NULL)
+        if(set_to.set_default)
         {
-            prev.allocator_default = _default_allocator;
-            _default_allocator = set_to.allocator_default;
+            prev.allocator_default = state->default_allocator;
+            prev.set_default = true;
+            state->default_allocator = set_to.allocator_default;
         }
 
-        if(set_to.allocator_scratch != NULL)
+        if(set_to.set_scratch)
         {
-            prev.allocator_scratch = _scratch_allocator;
-            _scratch_allocator = set_to.allocator_scratch;
+            prev.allocator_scratch = state->scratch_allocator;
+            prev.set_scratch = true;
+            state->scratch_allocator = set_to.allocator_scratch;
         }
         
-        if(set_to.allocator_static != NULL)
+        if(set_to.set_static)
         {
-            prev.allocator_static = _static_allocator;
-            _static_allocator = set_to.allocator_static;
+            prev.allocator_static = state->static_allocator;
+            prev.set_static = true;
+            state->static_allocator = set_to.allocator_static;
         }
 
         return prev;

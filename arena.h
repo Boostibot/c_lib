@@ -397,15 +397,15 @@ void _arena_debug_check_invarinats(Arena_Stack* arena)
     if(ARENA_DEBUG)
     {
         isize* stack = (isize*) (void*) arena->data;
-        ASSERT_MSG(arena->stack_max_depth * (isize)sizeof *stack <= arena->used_to && arena->used_to <= arena->size, "used_to needs to be within [0, size]");
-        ASSERT_MSG(0 <= arena->stack_depht && arena->stack_depht <= arena->stack_max_depth, "used_to stack_depht to be within [0, stack_max_depth]");
+        ASSERT(arena->stack_max_depth * (isize)sizeof *stack <= arena->used_to && arena->used_to <= arena->size, "used_to needs to be within [0, size]");
+        ASSERT(0 <= arena->stack_depht && arena->stack_depht <= arena->stack_max_depth, "used_to stack_depht to be within [0, stack_max_depth]");
 
-        ASSERT_MSG((arena->data == NULL) == (arena->size == 0), "only permitted to be NULL when zero sized");
+        ASSERT((arena->data == NULL) == (arena->size == 0), "only permitted to be NULL when zero sized");
 
         isize till_end = arena->size - arena->used_to;
         isize check_size = MIN(till_end, ARENA_DEBUG_DATA_SIZE);
-        ASSERT_MSG(memcmp_byte(arena->data + arena->used_to, ARENA_DEBUG_DATA_PATTERN, check_size) == 0, "The memory after the arena needs not be corrupted!");
-        ASSERT_MSG(memcmp_byte(stack + arena->stack_depht, ARENA_DEBUG_STACK_PATTERN, (arena->stack_max_depth - arena->stack_depht) * sizeof *stack) == 0, "The memory after stack needs to be valid");
+        ASSERT(memcmp_byte(arena->data + arena->used_to, ARENA_DEBUG_DATA_PATTERN, check_size) == 0, "The memory after the arena needs not be corrupted!");
+        ASSERT(memcmp_byte(stack + arena->stack_depht, ARENA_DEBUG_STACK_PATTERN, (arena->stack_max_depth - arena->stack_depht) * sizeof *stack) == 0, "The memory after stack needs to be valid");
     }
 }
 
