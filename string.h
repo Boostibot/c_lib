@@ -73,11 +73,15 @@ EXPORT isize  string_find_first_char_sse(String string, char search_for, isize f
 EXPORT isize  string_find_last_char_from(String in_str, char search_for, isize from);
 EXPORT isize  string_find_last_char(String string, char search_for); 
 
-EXPORT String string_duplicate(Arena* arena, String string);
+EXPORT void string_deallocate(Allocator* arena, String* string);
 
 EXPORT String_Builder builder_make(Allocator* alloc_or_null, isize capacity_or_zero);
-EXPORT String_Builder builder_from_cstring(const char* cstring, Allocator* allocator); //Allocates a String_Builder from cstring.
-EXPORT String_Builder builder_from_string(String string, Allocator* allocator);  //Allocates a String_Builder from String using an allocator.
+EXPORT String_Builder builder_from_cstring(Allocator* allocator, const char* cstring); //Allocates a String_Builder from cstring.
+EXPORT String_Builder builder_from_string(Allocator* allocator, String string);  //Allocates a String_Builder from String using an allocator.
+
+EXPORT String_Builder string_concat(Allocator* allocator, String a, String b);
+EXPORT String_Builder string_concat3(Allocator* allocator, String a, String b, String c);
+
 
 EXPORT void builder_init(String_Builder* builder, Allocator* alloc);
 EXPORT void builder_init_with_capacity(String_Builder* builder, Allocator* alloc, isize capacity_or_zero);
@@ -458,14 +462,30 @@ EXPORT bool char_is_id(char c);
         return string_is_equal(portion, smaller_string);
     }
     
-    EXPORT String string_duplicate(Arena* arena, String string)
+    
+    EXPORT String_Builder string_concat(Allocator* allocator, String a, String b)
     {
-        char* data = (char*) arena_push_nonzero(arena, string.size + 1, 1);
-        memcpy(data, string.data, string.size);
-        data[string.size] = '\0';
-        String out = {data, string.size};
-
+        String_Builder out = builder_make(allocator, a.size + b.size);
+        builder_append(&out, a);
+        builder_append(&out, b);
         return out;
+    }
+
+    EXPORT String_Builder string_concat3(Allocator* allocator, String a, String b, String c)
+    {
+        String_Builder out = builder_make(allocator, a.size + b.size + c.size);
+        builder_append(&out, a);
+        builder_append(&out, b);
+        builder_append(&out, c);
+        return out;
+    }
+
+    EXPORT void string_deallocate(Allocator* alloc, String* string)
+    {
+        if(string->size != 0)
+            allocator_deallocate(alloc, (void*) string->data, string->size + 1, 1);
+        String nil = {0};
+        *string = nil;
     }
 
     EXPORT const char* cstring_escape(const char* string)
@@ -672,17 +692,18 @@ EXPORT bool char_is_id(char c);
 
         array_deinit(array);
     }
-
-    EXPORT String_Builder builder_from_string(String string, Allocator* allocator)
+    
+    EXPORT String_Builder builder_from_string(Allocator* allocator, String string)
     {
-        String_Builder builder = {allocator};
-        builder_assign(&builder, string);
+        String_Builder builder = builder_make(allocator, string.size);
+        if(string.size)
+            builder_assign(&builder, string);
         return builder;
     }
 
-    EXPORT String_Builder builder_from_cstring(const char* cstring, Allocator* allocator)
+    EXPORT String_Builder builder_from_cstring(Allocator* allocator, const char* cstring)
     {
-        return builder_from_string(string_make(cstring), allocator);
+        return builder_from_string(allocator, string_make(cstring));
     }
 
     EXPORT bool builder_is_equal(String_Builder a, String_Builder b)

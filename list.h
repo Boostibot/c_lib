@@ -45,7 +45,7 @@
 #define chain_push_nil(first, node, next, NULL)                     \
     ASSERT("node must not be null and izolated"                     \
         && (node) != NULL                                           \
-        && (node)->next == NULL                                     \
+        /* && (node)->next == NULL*/                                     \
     ),                                                              \
     ((node)->next = (first), (first)=(node))                        \
 
@@ -69,7 +69,7 @@
 #define list_push_front_nil(first, last, node, next, NULL) (        \
     ASSERT("node must not be null and izolated, list must be valid" \
         && (node) != NULL                                           \
-        && (node)->next == NULL                                     \
+        /* && (node)->next == NULL */                               \
         && ((first) == NULL) == ((last) == NULL)                    \
     ), \
     (first) == NULL                                                 \
@@ -88,12 +88,12 @@
 
 
 //Bilist
-#define bilist_insert_nil(first, last, after, node, next, prev, NULL) (                     \
-    ASSERT("node must not be null and izolated, after must be properly linked,"             \
-           "list must be valid"                                                             \
-        && (node) != NULL                                                                   \
-        && (node)->next == NULL && (node)->prev == NULL                                     \
-        && ((first) == NULL) == ((last) == NULL)                                            \
+#define bilist_insert_nil_cond(first, last, after, insert_first, node, next, prev, NULL) (      \
+    ASSERT("node must not be null and izolated, after must be properly linked," \
+           "list must be valid"                                                 \
+        && (node) != NULL                                                       \
+        /*&& (node)->next == NULL && (node)->prev == NULL*/                     \
+        && ((first) == NULL) == ((last) == NULL)                                \
         && _is_properly_linked((after),next,prev,NULL)                          \
         && _is_properly_linked((first),next,prev,NULL)                          \
         && _is_properly_linked((last),next,prev,NULL)                           \
@@ -104,7 +104,7 @@
             (node)->next = NULL,                                                \
             (node)->prev = NULL                                                 \
         )                                                                       \
-        : (after) == NULL                                                       \
+        : (insert_first)                                                        \
             ? (                                                                 \
                 (node)->prev = NULL,                                            \
                 (node)->next = (first),                                         \
@@ -122,6 +122,9 @@
                     ? (last) = (node) : 0)                                      \
             )                                                                   \
     )                                                                           \
+
+#define bilist_insert_nil(first, last, after, node, next, prev, NULL) \
+    bilist_insert_nil_cond((first), (last), (after), (after) == NULL, (node), next, prev, NULL);
 
 #define bilist_remove_nil(first, last, node, next, prev, NULL) (                \
     ASSERT("node must not be null and must be properly linked. List must be valid"                  \
@@ -151,8 +154,8 @@
             )                                                                   \
     )                                                                           \
     
-#define bilist_push_back_nil(first, last, node, next, prev, NULL) bilist_insert_nil((first),(last),(last),(node),next,prev,NULL)
-#define bilist_push_front_nil(first, last, node, next, prev, NULL) bilist_insert_nil((first),(last),NULL,(node),next,prev,NULL)
+#define bilist_push_back_nil(first, last, node, next, prev, NULL) bilist_insert_nil_cond((first),(last),(last),0,(node),next,prev,NULL)
+#define bilist_push_front_nil(first, last, node, next, prev, NULL) bilist_insert_nil_cond((first),(last),(last),1,(node),next,prev,NULL)
 
 #define bilist_pop_back_nil(first, last, next, prev, NULL) ((last) != NULL ? bilist_remove_nil((first),(last),(last),next,prev,NULL), 1 : 0)
 #define bilist_pop_front_nil(first, last, next, prev, NULL) ((first) != NULL ? bilist_remove_nil((first),(last),(first),next,prev,NULL), 1 : 0)
@@ -178,22 +181,18 @@
 #define bilist_pop_back(first, last)            bilist_pop_back_nil(*(first),*(last),next,prev,NULL)
 #define bilist_pop_front(first, last)           bilist_pop_front_nil(*(first),*(last),next,prev,NULL)
 
+#endif
+
+#if (defined(JOT_ALL_TEST) || defined(JOT_LIST_TEST)) && !defined(JOT_LIST_HAS_TEST)
+#define JOT_LIST_HAS_TEST
 static void test_list()
 {
-    typedef struct Node {
-        int val;
-        struct Node* next;
-    } Node;
-
-    typedef struct BiNode {
-        int val;
-        struct BiNode* next;
-        struct BiNode* prev;
-    } BiNode;
-
     enum {NODES = 10};
-
     {
+        typedef struct Node {
+            int val;
+            struct Node* next;
+        } Node;
         Node* first = NULL;
         Node* last = NULL;
 
@@ -202,10 +201,26 @@ static void test_list()
             nodes[i].val = i;
         
         for(int i = 0; i < NODES; i++)
-            list_push(&first, &last, &nodes[i]);
+            list_push_front(&first, &last, &nodes[i]);
 
+        //now the list looks like: NODES -1, ... 2, 1, 0, 0, 1, 2, ... NODES - 1
+        // so popping from front should first produce descending series 
         ASSERT(first != NULL);
         ASSERT(last != NULL);
+        for(int i = 0; i < NODES; i++)
+        {
+            int first_val = first->val;
+            ASSERT(first_val == NODES - i - 1);
+            list_pop(&first, &last);
+        }
+        
+        for(int i = 0; i < NODES; i++)
+        {
+            nodes[i].next = NULL;
+            list_push(&first, &last, &nodes[i]);
+        }
+            
+        //... and then ascending series
         for(int i = 0; i < NODES; i++)
         {
             int first_val = first->val;
@@ -218,6 +233,12 @@ static void test_list()
     }   
     
     {
+        typedef struct BiNode {
+            int val;
+            struct BiNode* next;
+            struct BiNode* prev;
+        } BiNode;
+
         BiNode* first = NULL;
         BiNode* last = NULL;
 
@@ -225,9 +246,10 @@ static void test_list()
         for(int i = 0; i < NODES; i++)
             nodes[i].val = i;
         
+        //push_back, pop_front
         for(int i = 0; i < NODES; i++)
             bilist_push_back(&first, &last, &nodes[i]);
-
+            
         ASSERT(first != NULL);
         ASSERT(last != NULL);
         for(int i = 0; i < NODES; i++)
@@ -239,7 +261,19 @@ static void test_list()
 
         ASSERT(first == NULL);
         ASSERT(last == NULL);
+        
+        //push_front, pop_back
+        for(int i = 0; i < NODES; i++)
+            bilist_push_front(&first, &last, &nodes[i]);
+
+        ASSERT(first != NULL);
+        ASSERT(last != NULL);
+        for(int i = 0; i < NODES; i++)
+        {
+            int popped = last->val;
+            ASSERT(popped == i);
+            bilist_pop_back(&first, &last);
+        }
     }   
 }
-
 #endif
