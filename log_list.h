@@ -14,6 +14,8 @@ typedef struct Log_List {
     Log* first;
     Log* last;
 
+    isize size;
+
     //For init_and_use type of tasks
     Logger* prev_logger;
     bool had_prev_logger;
@@ -104,6 +106,7 @@ void log_list_log_func(Logger* logger_, const Log* log_list, i32 group_depth, Lo
         Log** first = &logger->first;
         Log** last = &logger->last;
 
+        logger->size += 1;
         //Try to reach the desired depth and allocate there
         for(; reached_depth < group_depth && *last != NULL; reached_depth += 1)
         {

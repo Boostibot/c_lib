@@ -11,9 +11,10 @@ typedef Platform_String String;
 // (as long as it was properly initialized - ie. not in = {0} state)
 typedef struct String_Builder {
     Allocator* allocator;
+    isize capacity;
     //A slightly weird construction so that we can easily 
     // obtain a string from the string builder.
-    //This prevents us from constantly ahvign to type
+    //This prevents us from constantly havign to type
     //  string_from_builder(builder)
     // and instead just
     //  builder.string
@@ -25,7 +26,6 @@ typedef struct String_Builder {
 
         String string;
     };
-    isize capacity;
 } String_Builder;
 
 DEFINE_ARRAY_TYPE(String, String_Array);

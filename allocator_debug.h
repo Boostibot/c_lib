@@ -185,7 +185,7 @@ EXPORT void debug_allocator_init_custom(Debug_Allocator* debug, Allocator* paren
         options.dead_zone_size = 16;
     if(options.dead_zone_size < 0)
         options.dead_zone_size = 0;
-    options.dead_zone_size = DIV_ROUND_UP(options.dead_zone_size, DEF_ALIGN)*DEF_ALIGN;
+    options.dead_zone_size = DIV_CEIL(options.dead_zone_size, DEF_ALIGN)*DEF_ALIGN;
 
     debug->captured_callstack_size = options.captured_callstack_size;
     debug->do_deinit_leak_check = options.do_deinit_leak_check;

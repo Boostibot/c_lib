@@ -1,7 +1,7 @@
 #ifndef JOT_ASSERT
 #define JOT_ASSERT
 
-#include "platform.h"
+#include "defines.h"
 #include <stdlib.h>
 
 #if !defined(ASSERT_CUSTOM_SETTINGS) && !defined(NDEBUG)
@@ -45,7 +45,7 @@
 #endif
 
 #define CHECK_BOUNDS(i, to)         CHECK_RANGE_BOUNDS(i, 0, to)
-#define UNREACHABLE(...)            (ASSERT(false, "Unreachable code reached! " __VA_ARGS__), platform_assume_unreachable())
+#define UNREACHABLE(...)            (ASSERT(false, "Unreachable code reached! " __VA_ARGS__), ASSUME_UNREACHABLE())
 
 //Gets called when assertion fails. 
 //Does not have to terminate process since that is done at call site by the assert macro itself.
