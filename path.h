@@ -370,6 +370,40 @@ EXPORT Path path_parse(String path)
     return out_path;
 }
 
+typedef struct Path_Segement_Iterator {
+    String segment;
+    isize segment_number; //one based segment index
+    isize segment_from;
+    isize segment_to;
+} Path_Segement_Iterator;
+
+EXPORT bool path_segment_iterate_string(Path_Segement_Iterator* it, String path, isize till_root_size)
+{
+    isize segment_from = till_root_size;
+    if(it->segment_number != 0)
+        segment_from = it->segment_to + 1;
+
+    if(segment_from >= path.size)
+        return false;
+        
+    isize segment_to = string_find_first_path_separator(path, segment_from);
+        
+    if(segment_to == -1)
+        segment_to = path.size;
+        
+    it->segment_number += 1;
+    it->segment_from = segment_from;
+    it->segment_to = segment_to;
+    it->segment = string_range(path, segment_from, segment_to);
+
+    return true;
+}
+
+EXPORT bool path_segment_iterate(Path_Segement_Iterator* it, Path path)
+{
+    return path_segment_iterate_string(it, path.string, path.info.prefix_size + path.info.root_size);
+}
+
 EXPORT Path_Builder path_builder_make(Allocator* alloc_or_null, isize initial_capacity_or_zero)
 {
     Path_Builder builder = {builder_make(alloc_or_null, initial_capacity_or_zero)};
@@ -382,193 +416,165 @@ EXPORT void path_builder_clear(Path_Builder* builder)
     builder_clear(&builder->builder);
 }
 
-enum {
-    //This is an internal flag. It essentially skips the enire function
-    // and only performs transformation of file to dir and vice versa.
-    //Is used to implement the coresponding functions.
-    _PATH_CANONICALIZE_TRANSFORM_DIR_FILE_ONLY = 1 << 30
-};
-
-EXPORT void path_canonicalize_in_place(Path_Builder* path, int flags)
+EXPORT void path_builder_push_unsafe(Path_Builder* into, String segment, int flags, isize root_till)
 {
     char slash = (flags & PATH_CANONICALIZE_BACK_SLASH) ? '\\' : '/';
     bool remove_dot = (flags & PATH_CANONICALIZE_NO_REMOVE_DOT) == 0;
     bool remove_dot_dot = (flags & PATH_CANONICALIZE_NO_REMOVE_DOT_DOT) == 0;
+    bool push_segment = true;
+
+    //Multiple separators next to each otehr
+    if(segment.size == 0)
+        push_segment = false;
+    //Single dot segment
+    else if(remove_dot && string_is_equal(segment, STRING(".")))
+        push_segment = false;
+    //pop segment
+    else if(remove_dot_dot && string_is_equal(segment, STRING("..")))
+    {
+        if(into->info.is_absolute)
+            push_segment = false;
+        else
+            push_segment = true;
+
+        //If there was no segment to pop push the ".." segment
+        if(into->info.segment_count > 0)
+        {
+            isize last_segment_i = string_find_last_path_separator(into->string, into->string.size);
+            if(last_segment_i >= root_till)
+            {
+                builder_resize(&into->builder, last_segment_i);
+                into->info.segment_count -= 1;
+                push_segment = false;
+            }
+        }
+    }
+
+    //push segment 
+    if(push_segment)
+    {
+        if(into->info.segment_count > 0)
+            builder_push(&into->builder, slash);
+
+        builder_append(&into->builder, segment);
+        into->info.segment_count += 1;
+    }
+}
+
+EXPORT void path_builder_assign(Path_Builder* into, Path path, int flags)
+{
+    char slash = (flags & PATH_CANONICALIZE_BACK_SLASH) ? '\\' : '/';
     bool transform_dir = (flags & PATH_CANONICALIZE_TRANSFORM_TO_DIR) > 0;
     bool transform_file = (flags & PATH_CANONICALIZE_TRANSFORM_TO_FILE) > 0;
-    bool only_transform = (flags & _PATH_CANONICALIZE_TRANSFORM_DIR_FILE_ONLY) > 0;
-
-    if(only_transform == false)
-        path->info = path_parse(path->string).info;
-
-    isize till_content = path->info.prefix_size + path->info.root_size;
-    String rest = path_get_except_root(path->path);
-
-    bool make_directory = path->info.is_directory;
+    
+    bool make_directory = path.info.is_directory;
     if(transform_dir)
         make_directory = true;
     else if(transform_file)
         make_directory = false;
-        
+
+    path_builder_clear(into);
+    builder_reserve(&into->builder, path.string.size*9/8 + 5);
+
+    builder_append(&into->builder, path_get_prefix(path));
+    into->info.is_absolute = path.info.is_absolute;
+
+    String root_content = path_get_root_content(path);
     isize segment_count = 0;
-    if(path_is_empty(path->path) == false)
+    if(path_is_empty(path) == false)
     {
+        switch(path.info.root_kind)
         {
-            isize except_prefix_size = path->string.size - path->info.prefix_size;
-            char* data = path->builder.data + path->info.prefix_size;
-            for(isize i = 0; i < except_prefix_size; i++)
-                if(data[i] == '\\')
-                    data[i] = slash;
+            case PATH_ROOT_NONE: {
+                ASSERT(path.info.is_absolute == false);
+            } break;
+
+            case PATH_ROOT_SLASH: {
+                builder_push(into, slash);
+            } break;
+
+            case PATH_ROOT_SLASH_SLASH: {
+                builder_push(into, slash);
+                builder_push(into, slash);
+            } break;
+
+            case PATH_ROOT_SERVER: {
+                builder_push(into, slash);
+                builder_push(into, slash);
+                if(path.info.root_content_to > path.info.root_content_from)
+                {
+                    builder_append(into, root_content);
+                    builder_push(into, slash);
+                }
+                else
+                    LOG_WARN("path", "Empty prefix' with PATH_ROOT_SERVER", string_escape_ephemeral(root_content));
+            } break;
+
+            case PATH_ROOT_WIN: {
+                char c = 'C';
+                if(root_content.size > 0 && char_is_alphabetic(root_content.data[0]))
+                    c = root_content.data[0];
+                else
+                    LOG_WARN("path", "Strange prefix '%s' with PATH_ROOT_WIN", string_escape_ephemeral(root_content));
+
+                //to uppercase
+                if('a' <= c && c <= 'z')
+                    c = c - 'a' + 'A';
+
+                builder_push(into, c);
+                builder_push(into, ':');
+                if(path.info.is_absolute)
+                    builder_push(into, slash);
+            } break;
+
+            case PATH_ROOT_UNKNOWN: {
+                builder_append(into, path_get_root(path));
+            } break;
         }
         
-        if(rest.size > 0 && only_transform == false)
-        {
-            isize read_i = 0;
-            isize write_i = 0;
-            char* rest_data = (char*) rest.data;
+        isize root_till = into->builder.size;
+        for(Path_Segement_Iterator it = {0}; path_segment_iterate(&it, path);)
+            path_builder_push_unsafe(into, it.segment, flags, root_till);
 
-            for(isize i_next = 0; read_i < rest.size; read_i = i_next + 1)
-            {
-                ASSERT(write_i <= read_i);
+        ASSERT(into->builder.size >= path.info.prefix_size);
+        if(into->builder.size == path.info.prefix_size)
+            builder_push(&into->builder, '.');
 
-                i_next = string_find_first_path_separator(rest, read_i);
-                if(i_next == -1)
-                    i_next = rest.size;
-
-                String segment = string_range(rest, read_i, i_next);
-                //Multiple separators next to each otehr
-                if(segment.size == 0)
-                {}
-                //Single dot segment
-                else if(remove_dot && string_is_equal(segment, STRING(".")))
-                {}
-                //pop segment
-                else if(remove_dot_dot && string_is_equal(segment, STRING("..")))
-                {
-                    //If there was no segment to pop push the ".." segment
-                    if(segment_count <= 0)
-                    {
-                        if(path->info.is_absolute == false)
-                        {
-                            String back = STRING("..");
-                            CHECK_BOUNDS(back.size - 1, rest.size);
-                            memmove(rest_data, back.data, back.size);
-                            write_i = back.size;
-                            segment_count = 1;
-                        }
-                        else
-                        {
-                            write_i = 0;
-                            segment_count = 0;
-                        }
-                    }
-                    //else trim to the last separator
-                    else
-                    {
-                        write_i = string_find_last_path_separator(rest, write_i);
-                        if(write_i == -1)
-                            write_i = 0;
-                        segment_count -= 1;
-                    }
-                }
-                //push segment 
-                else
-                {
-                    if(segment_count != 0)
-                    {
-                        CHECK_BOUNDS(write_i, rest.size);
-                        rest_data[write_i++] = slash;
-                    }
-                        
-                    CHECK_BOUNDS(write_i + segment.size - 1, rest.size);
-                    memmove(rest_data + write_i, rest_data + read_i, segment.size);
-                    write_i += segment.size;
-                    segment_count += 1;
-                }
-            }
-            
-            //Trim the builder to the final write pos
-            builder_resize(&path->builder, till_content + write_i);
-        }
-
-        ASSERT(path->builder.size >= path->info.prefix_size);
-        if(path->builder.size == path->info.prefix_size)
-            builder_push(&path->builder, '.');
-
-        //We require all normal type directories to be '/' terminated even in root!
-        bool is_directory = is_path_sep(path->builder.data[path->builder.size - 1]); 
-
-        //If desired path is directory but we arent
-        if(make_directory)
-        {
-            if(is_directory == false)
-            {
-                ASSERT(path->string.size > 0);
-                builder_push(&path->builder, slash);
-            }
-        }
-        //If desired path is file but we are a directory
-        else
-        {
-            if(is_directory)
-            {
-                //if its just root then there is nothing we can do
-                if(path->string.size > till_content)
-                    builder_pop(&path->builder);
-            }
-        }
-
-        _path_parse_rest(path->string, &path->info);
+        if(make_directory && segment_count > 0)
+            builder_push(&into->builder, slash);
     }
-    
-    path->info.segment_count = (i32) segment_count;
-    path->info.is_invariant = true;
+
+    i32 segment_count = path.info.segment_count;
+    path.info = path_parse(into->string).info;
+    path.info.segment_count = (i32) segment_count;
+    path.info.is_invariant = true;
 }
 
-EXPORT bool path_builder_append_custom(Path_Builder* builder, Path path, int flags)
+EXPORT void path_normalize_in_place(Path_Builder* into, int flags)
 {
-    if(path.string.size == 0)
-        return true;
-    
-    bool state = true;
-    //If is completely empty
-    if(builder->string.size == 0)
-    {
-        builder_assign(&builder->builder, path.string);
-        builder->info = path.info;
-    }
-    //If has just prefix (unusual)
-    else if(path_is_empty(builder->path))
-    {
-        String not_prefix = string_tail(path.string, path.info.prefix_size);
-        builder_append(&builder->builder, not_prefix);
-        
-        if(flags & PATH_APPEND_NO_CANONICALIZE)
-            builder->info = path_parse(builder->string).info;
-    }
-    //Concatenate
-    else
-    {
-        //Cannot concatenate two absolute paths!
-        if(builder->info.is_absolute && path.info.is_absolute)
-            state = false;
+    Arena arena = scratch_arena_acquire();
+    String_Builder copy = builder_from_string(&arena.allocator, into->string);
+    Path path = path_parse(copy.string);
+    path_builder_assign(into, path, flags);
 
-        if(state || (flags & PATH_APPEND_EVEN_WITH_ERROR))
-        {
-            String not_root = path_get_except_root(path);
-            String not_root_builder = path_get_except_root(builder->path);
-            if(not_root_builder.size > 0)
-                builder_push(&builder->builder, '/');
-                
-            builder_append(&builder->builder, not_root);
-        }
-        
-        if(flags & PATH_APPEND_NO_CANONICALIZE)
-            _path_parse_rest(builder->string, &builder->info);
-    }
+    arena_release(&arena);
+}
 
-    if((flags & PATH_APPEND_NO_CANONICALIZE) == false)
-        path_canonicalize_in_place(builder, flags);
+EXPORT bool path_builder_append_custom(Path_Builder* into, Path path, int flags)
+{
+    bool state = !path.info.is_absolute;
+
+    //if is completely empty assign
+    if(into->string.size == 0)
+        path_builder_assign(into, path, flags);
+    else if(state || (flags & PATH_APPEND_EVEN_WITH_ERROR))
+    {
+        isize root_till = into->info.prefix_size + into->info.root_size;
+        for(Path_Segement_Iterator it = {0}; path_segment_iterate(&it, path);)
+            path_builder_push_unsafe(into, it.segment, flags, root_till);
+
+        path_normalize_in_place(into, )
+    }
 
     return state;
 }
@@ -578,13 +584,12 @@ EXPORT bool path_builder_append(Path_Builder* builder, Path path)
     return path_builder_append_custom(builder, path, 0);
 }
 
-EXPORT Path_Builder path_canonicalize(Allocator* alloc, Path path, int flags)
+EXPORT Path_Builder path_normalize(Allocator* alloc, Path path, int flags)
 {
     Path_Builder builder = path_builder_make(alloc, 0);
     path_builder_append_custom(&builder, path, flags & ~PATH_APPEND_NO_CANONICALIZE);
     return builder;
 }
-
 
 EXPORT Path_Builder path_concat_many(Allocator* alloc, const Path* paths, isize path_count)
 {
@@ -595,9 +600,8 @@ EXPORT Path_Builder path_concat_many(Allocator* alloc, const Path* paths, isize 
 
     Path_Builder builder = path_builder_make(alloc, combined_cap);
     for(isize i = 0; i < path_count; i++)
-        path_builder_append_custom(&builder, paths[i], PATH_APPEND_NO_CANONICALIZE | PATH_APPEND_EVEN_WITH_ERROR);
-
-    path_canonicalize_in_place(&builder, 0);
+        path_builder_append_custom(&builder, paths[i], 0);
+    
     return builder;
 }
 
@@ -607,18 +611,13 @@ EXPORT Path_Builder path_concat(Allocator* alloc, Path a, Path b)
     return path_concat_many(alloc, paths, 2);
 }
 
-EXPORT const char* path_builder_get_cstring(Path_Builder path)
-{
-    return cstring_escape(path.string.data);
-}
-
 EXPORT void path_transform_to_file(Path_Builder* path)
 {
-    path_canonicalize_in_place(path, PATH_CANONICALIZE_TRANSFORM_TO_FILE | _PATH_CANONICALIZE_TRANSFORM_DIR_FILE_ONLY);
+    path_canonicalize_in_place(path, PATH_CANONICALIZE_TRANSFORM_TO_FILE);
 }
 EXPORT void path_transform_to_directory(Path_Builder* path)
 {
-    path_canonicalize_in_place(path, PATH_CANONICALIZE_TRANSFORM_TO_DIR | _PATH_CANONICALIZE_TRANSFORM_DIR_FILE_ONLY);
+    path_canonicalize_in_place(path, PATH_CANONICALIZE_TRANSFORM_TO_DIR);
 }
 
 EXPORT Path path_parse_cstring(const char* path)
@@ -754,46 +753,6 @@ EXPORT Path path_get_current_working_directory()
     return cached.path;
 }
 
-EXPORT void path_builder_assign(Path_Builder* into, Path path)
-{
-    path_builder_clear(into);
-    path_builder_append(into, path);
-}
-
-typedef struct Path_Segement_Iterator {
-    String segment;
-    isize segment_number; //one based segment index
-    isize segment_from;
-    isize segment_to;
-} Path_Segement_Iterator;
-
-EXPORT bool path_segment_iterate_string(Path_Segement_Iterator* it, String path, isize till_root_size)
-{
-    isize segment_from = till_root_size;
-    if(it->segment_number != 0)
-        segment_from = it->segment_to + 1;
-
-    if(segment_from >= path.size)
-        return false;
-        
-    isize segment_to = string_find_first_path_separator(path, segment_from);
-        
-    if(segment_to == -1)
-        segment_to = path.size;
-        
-    it->segment_number += 1;
-    it->segment_from = segment_from;
-    it->segment_to = segment_to;
-    it->segment = string_range(path, segment_from, segment_to);
-
-    return true;
-}
-
-EXPORT bool path_segment_iterate(Path_Segement_Iterator* it, Path path)
-{
-    return path_segment_iterate_string(it, path.string, path.info.prefix_size + path.info.root_size);
-}
-
 EXPORT void path_make_relative_into(Path_Builder* into, Path relative_to, Path path)
 {
     path_builder_clear(into);
@@ -806,7 +765,7 @@ EXPORT void path_make_relative_into(Path_Builder* into, Path relative_to, Path p
         || (path.info.is_absolute && relative_to.info.is_absolute == false)
         || (path_is_empty(relative_to) && path_is_empty(path)))
     {
-        path_builder_assign(into, path);
+        path_builder_assign(into, path, 0);
     }
     else
     {
@@ -837,19 +796,9 @@ EXPORT void path_make_relative_into(Path_Builder* into, Path relative_to, Path p
 
         //If roots differ we cannot make it more relative
         if(string_is_equal(rel_root, path_root) == false)
-            path_builder_assign(into, path);
+            path_builder_assign(into, path, 0);
         else
         {
-            //C:/the/base/path/
-            // 
-            //C:/the/file.txt                 -> ../../file.txt
-            //C:/the/base/path/next/file.txt  -> next/file.txt
-            
-            //the/base/path/
-            // 
-            //the/file.txt                 -> ../../file.txt
-            //the/base/path/next/file.txt  -> next/file.txt
-
             Path_Segement_Iterator rel_it = {0};
             Path_Segement_Iterator path_it = {0};
             
@@ -873,91 +822,35 @@ EXPORT void path_make_relative_into(Path_Builder* into, Path relative_to, Path p
                 }
                 else
                 {
-                    int transform_to = path.info.is_directory ? PATH_CANONICALIZE_TRANSFORM_TO_DIR : PATH_CANONICALIZE_TRANSFORM_TO_FILE;
-                    
-                    //@TODO: I dont really know if direct append is safe to do. Safer would be to 
-                    //       use path_builder_append() always. For the moment we assert equality.
-                    //       We will want to revisit this in the future if there are no problems and use the faster approach
-                    
                     //If rel is shorter than path add all remainig segments of `path` into `into`
                     if(has_rel == false)
                     {
-                        #ifdef DO_ASSERTS_SLOW
-                            Path_Builder control = path_builder_make(&arena.allocator, 0); 
-                            path_builder_append(&control, path_parse(path_get_prefix(pathi)));
-                            path_builder_append(&control, path_parse(path_it.segment));
-                        #endif
-
                         builder_append(&into->builder, path_it.segment);
                         while(path_segment_iterate(&path_it, pathi))
                         {
-                            #ifdef DO_ASSERTS_SLOW
-                                path_builder_append(&control, path_parse(path_it.segment));
-                            #endif
-
                             builder_push(&into->builder, '/');
                             builder_append(&into->builder, path_it.segment);
                         }
 
-                        path_canonicalize_in_place(into, transform_to);
-                        
-                        #ifdef DO_ASSERTS_SLOW
-                            if(path.info.is_directory)
-                                path_transform_to_directory(&control);
-                            else
-                                path_transform_to_file(&control);
-
-                            ASSERT_SLOW(string_is_equal(control.string, into->string), "Control must be equal!");
-                        #endif
                     }
                     //If there was a difference in the path or path is shorter
                     // we add appropriate ammount of ".." segments then the rest of the path
                     else
                     {
-                        #ifdef DO_ASSERTS_SLOW
-                            Path_Builder control = path_builder_make(&arena.allocator, 0); 
-                            path_builder_append(&control, path_parse(path_get_prefix(pathi)));
-                            path_builder_append(&control, path_parse(STRING("..")));
-                        #endif
-
                         builder_append(&into->builder, STRING(".."));
                         while(path_segment_iterate(&rel_it, reli))
-                        {
-                            #ifdef DO_ASSERTS_SLOW
-                                path_builder_append(&control, path_parse(STRING("..")));
-                            #endif
-
                             builder_append(&into->builder, STRING("/.."));
-                        }
-                            
-                        #ifdef DO_ASSERTS_SLOW
-                            path_builder_append(&control, path_parse(path_it.segment));
-                        #endif
 
                         builder_append(&into->builder, STRING("/"));
                         builder_append(&into->builder, path_it.segment);
                         while(path_segment_iterate(&path_it, pathi))
                         {
-                            #ifdef DO_ASSERTS_SLOW
-                                path_builder_append(&control, path_parse(path_it.segment));
-                            #endif
-
                             builder_push(&into->builder, '/');
                             builder_append(&into->builder, path_it.segment);
                         }
-                        
-                        path_canonicalize_in_place(into, transform_to);
-
-                        #ifdef DO_ASSERTS_SLOW
-                            if(path.info.is_directory)
-                                path_transform_to_directory(&control);
-                            else
-                                path_transform_to_file(&control);
-
-                            ASSERT_SLOW(string_is_equal(control.string, into->string), "Control must be equal! '%s' != '%s' ", control.builder.data, into->builder.data);
-                        #endif
                     }
-
+                    
+                    path_normalize_in_place(into, path.info.is_directory ? PATH_CANONICALIZE_TRANSFORM_TO_DIR : PATH_CANONICALIZE_TRANSFORM_TO_FILE);
                     break;
                 }
             }
@@ -971,9 +864,8 @@ EXPORT void path_make_absolute_into(Path_Builder* into, Path relative_to, Path p
 {
     path_builder_clear(into);
     if(path.info.is_absolute == false)
-        path_builder_append_custom(into, relative_to, PATH_APPEND_NO_CANONICALIZE | PATH_APPEND_EVEN_WITH_ERROR);
-    path_builder_append_custom(into, path, PATH_APPEND_NO_CANONICALIZE | PATH_APPEND_EVEN_WITH_ERROR);
-    path_canonicalize_in_place(into, 0);
+        path_builder_append(into, relative_to);
+    path_builder_append(into, path);
 }
 EXPORT Path_Builder path_make_relative(Allocator* alloc, Path relative_to, Path path)
 {
@@ -1186,14 +1078,14 @@ void path_list_normalize(Path_List* path_list, int flags)
         if(pop_curr)
         {
             path_list->segment_count -= 1;
-            bilist_remove(&path_list->segment_first, &path_list->segment_first, curr); 
+            bilist_remove(&path_list->segment_first, &path_list->segment_last, curr); 
             path_segment_deallocate(curr, path_list->alloc);
         }
         
         if(pop_prev)
         {
             path_list->segment_count -= 1;
-            bilist_remove(&path_list->segment_first, &path_list->segment_first, prev); 
+            bilist_remove(&path_list->segment_first, &path_list->segment_last, prev); 
             path_segment_deallocate(prev, path_list->alloc);
         }
 
