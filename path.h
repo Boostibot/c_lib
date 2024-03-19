@@ -127,18 +127,16 @@ typedef union Path_Builder {
 } Path_Builder;
 
 enum {
-    PATH_APPEND_EVEN_WITH_ERROR = 1,
-    PATH_APPEND_NO_CANONICALIZE = 2,
+    PATH_FLAG_APPEND_EVEN_WITH_ERROR = 1,   //Allows append: C:/hello/world + C:/file.txt == C:/hello/world/file.txt but still returns false
+    PATH_FLAG_NO_REMOVE_DOT = 4,            //Treats "." segement as any other segment
+    PATH_FLAG_NO_REMOVE_DOT_DOT = 8,        //Treats ".." segement as any other segment
+    PATH_FLAG_BACK_SLASH = 16,              //Changes to use '\' instead of '/'
+    PATH_FLAG_TRANSFORM_TO_DIR = 32,        //Adds trailing /
+    PATH_FLAG_TRANSFORM_TO_FILE = 64,       //Removes trailing /
+    PATH_FLAG_NO_ROOT = 128,                //Does not append root (for normalize this meens the result will not have root)
+    PATH_FLAG_NO_PREFIX = 256,              //Does not append prefix (for normalize this meens the result will not have prefix)
 };
-enum {
-    PATH_CANONICALIZE_NO_REMOVE_DOT = 4,
-    PATH_CANONICALIZE_NO_REMOVE_DOT_DOT = 8,
-    PATH_CANONICALIZE_BACK_SLASH = 16,
-    PATH_CANONICALIZE_TRANSFORM_TO_DIR = 32, 
-    PATH_CANONICALIZE_TRANSFORM_TO_FILE = 64, 
-    PATH_CANONICALIZE_NO_ROOT = 128,
-    PATH_CANONICALIZE_NO_PREFIX = 256,
-};
+
 EXPORT Path   path_parse(String path);
 EXPORT Path   path_parse_cstring(const char* path);
 EXPORT String path_get_prefix(Path path);
@@ -149,13 +147,12 @@ EXPORT String path_get_directories(Path path);
 EXPORT String path_get_extension(Path path);
 EXPORT String path_get_filename(Path path);
 EXPORT String path_get_root_content(Path path);
-EXPORT String path_get_stem(Path path);
+EXPORT String path_get_filename_without_extension(Path path);
 EXPORT bool   path_is_empty(Path path);
 EXPORT Path   path_get_file_directory(Path path);
 
-
 EXPORT Path_Builder path_builder_make(Allocator* alloc_or_null, isize initial_capacity_or_zero);
-EXPORT void         path_builder_append(Path_Builder* builder, Path path, int flags);
+EXPORT bool         path_builder_append(Path_Builder* into, Path path, int flags);
 EXPORT void         path_builder_clear(Path_Builder* builder);
 EXPORT void         path_normalize_in_place(Path_Builder* path, int flags);
 EXPORT Path_Builder path_normalize(Allocator* alloc, Path path, int flags);
@@ -428,38 +425,20 @@ EXPORT void path_builder_clear(Path_Builder* builder)
     builder_clear(&builder->builder);
 }
 
-EXPORT void path_builder_set_trailing_slash(Path_Builder* into, bool should_have_trailing_slash)
-{
-    if(into->info.has_trailing_slash && should_have_trailing_slash == false)
-    {
-        ASSERT(into->info.segment_count > 0);
-        ASSERT(into->builder.size > 1);
-        builder_resize(&into->builder, into->builder.size - 1);        
-        _path_parse_rest(into->string, &into->info);
-    }
-    if(into->info.has_trailing_slash == false && should_have_trailing_slash)
-    {
-        if(into->info.segment_count > 0)
-        {
-            ASSERT(into->builder.size > 1);
-            builder_resize(&into->builder, into->builder.size - 1);        
-            _path_parse_rest(into->string, &into->info);
-        }
-    }
-}
-
-EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
+EXPORT bool path_builder_append(Path_Builder* into, Path path, int flags)
 {
     //@NOTE: this function is the main normalization function. It expects 
     // into to be in a valid state.
+    builder_reserve(&into->builder, path.string.size*9/8 + 5);
 
-    char slash = (flags & PATH_CANONICALIZE_BACK_SLASH) ? '\\' : '/';
-    bool remove_dot = (flags & PATH_CANONICALIZE_NO_REMOVE_DOT) == 0;
-    bool remove_dot_dot = (flags & PATH_CANONICALIZE_NO_REMOVE_DOT_DOT) == 0;
-    bool transform_dir = (flags & PATH_CANONICALIZE_TRANSFORM_TO_DIR) > 0;
-    bool transform_file = (flags & PATH_CANONICALIZE_TRANSFORM_TO_FILE) > 0;
-    bool add_prefix = (flags & PATH_CANONICALIZE_NO_PREFIX) == 0;
-    bool add_root = (flags & PATH_CANONICALIZE_NO_ROOT) == 0;
+    char slash = (flags & PATH_FLAG_BACK_SLASH) ? '\\' : '/';
+    bool remove_dot = (flags & PATH_FLAG_NO_REMOVE_DOT) == 0;
+    bool remove_dot_dot = (flags & PATH_FLAG_NO_REMOVE_DOT_DOT) == 0;
+    bool transform_dir = (flags & PATH_FLAG_TRANSFORM_TO_DIR) > 0;
+    bool transform_file = (flags & PATH_FLAG_TRANSFORM_TO_FILE) > 0;
+    bool add_prefix = (flags & PATH_FLAG_NO_PREFIX) == 0;
+    bool add_root = (flags & PATH_FLAG_NO_ROOT) == 0;
+    bool ignore_error = (flags & PATH_FLAG_APPEND_EVEN_WITH_ERROR) == 0;
     
     bool make_directory = path.info.is_directory;
     if(transform_dir)
@@ -467,9 +446,6 @@ EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
     else if(transform_file)
         make_directory = false;
 
-    // path_builder_clear(into);
-    builder_reserve(&into->builder, path.string.size*9/8 + 5);
-    
     #ifdef DO_ASSERTS_SLOW
     bool has_trailing_slash = false;
     String except_root = path_get_except_root(into->path);
@@ -486,9 +462,10 @@ EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
         into->info.has_trailing_slash = false;
     }
 
-    bool has_prefix = path_get_prefix(into->path).size > 0;
     bool was_empty = path_is_empty(into->path);
-    if(add_prefix && was_empty && has_prefix == false)
+
+    bool state = true;
+    if(add_prefix && was_empty && into->info.prefix_size == 0)
     {
         String prefix = path_get_prefix(path);
         builder_append(&into->builder, prefix);
@@ -497,67 +474,75 @@ EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
 
     if(path_is_empty(path) == false)
     {
-        if(add_root && was_empty)
+        if(add_root && path.info.root_kind != PATH_ROOT_NONE)
         {
-            String root_content = path_get_root_content(path);
-            ASSERT(into->info.root_kind == PATH_ROOT_NONE);
-            ASSERT(into->info.root_size == 0);
-            ASSERT(into->info.root_content_from == 0);
-            ASSERT(into->info.root_content_to == 0);
-
-            switch(path.info.root_kind)
+            //Only set root when empty else bad bad.
+            if(was_empty)
             {
-                case PATH_ROOT_NONE: {
-                    ASSERT(path.info.is_absolute == false);
-                } break;
+                String root_content = path_get_root_content(path);
+                ASSERT(into->info.root_kind == PATH_ROOT_NONE);
+                ASSERT(into->info.root_size == 0);
+                ASSERT(into->info.root_content_from == 0);
+                ASSERT(into->info.root_content_to == 0);
 
-                case PATH_ROOT_SLASH: {
-                    builder_push(&into->builder, slash);
-                } break;
+                switch(path.info.root_kind)
+                {
+                    case PATH_ROOT_NONE: {
+                        ASSERT(path.info.is_absolute == false);
+                    } break;
 
-                case PATH_ROOT_SLASH_SLASH: {
-                    builder_push(&into->builder, slash);
-                    builder_push(&into->builder, slash);
-                } break;
-
-                case PATH_ROOT_SERVER: {
-                    builder_push(&into->builder, slash);
-                    builder_push(&into->builder, slash);
-                    if(path.info.root_content_to > path.info.root_content_from)
-                    {
-                        builder_append(&into->builder, root_content);
+                    case PATH_ROOT_SLASH: {
                         builder_push(&into->builder, slash);
-                    }
-                    else
-                        LOG_WARN("path", "Empty prefix' with PATH_ROOT_SERVER", string_escape_ephemeral(root_content));
-                } break;
+                    } break;
 
-                case PATH_ROOT_WIN: {
-                    char c = 'C';
-                    if(root_content.size > 0 && char_is_alphabetic(root_content.data[0]))
-                        c = root_content.data[0];
-                    else
-                        LOG_WARN("path", "Strange prefix '%s' with PATH_ROOT_WIN", string_escape_ephemeral(root_content));
-
-                    //to uppercase
-                    if('a' <= c && c <= 'z')
-                        c = c - 'a' + 'A';
-
-                    builder_push(&into->builder, c);
-                    builder_push(&into->builder, ':');
-                    if(path.info.is_absolute)
+                    case PATH_ROOT_SLASH_SLASH: {
                         builder_push(&into->builder, slash);
-                } break;
+                        builder_push(&into->builder, slash);
+                    } break;
 
-                case PATH_ROOT_UNKNOWN: {
-                    builder_append(&into->builder, path_get_root(path));
-                } break;
+                    case PATH_ROOT_SERVER: {
+                        builder_push(&into->builder, slash);
+                        builder_push(&into->builder, slash);
+                        if(path.info.root_content_to > path.info.root_content_from)
+                        {
+                            builder_append(&into->builder, root_content);
+                            builder_push(&into->builder, slash);
+                        }
+                        else
+                            LOG_WARN("path", "Empty prefix' with PATH_ROOT_SERVER", string_escape_ephemeral(root_content));
+                    } break;
+
+                    case PATH_ROOT_WIN: {
+                        char c = 'C';
+                        if(root_content.size > 0 && char_is_alphabetic(root_content.data[0]))
+                            c = root_content.data[0];
+                        else
+                            LOG_WARN("path", "Strange prefix '%s' with PATH_ROOT_WIN", string_escape_ephemeral(root_content));
+
+                        //to uppercase
+                        if('a' <= c && c <= 'z')
+                            c = c - 'a' + 'A';
+
+                        builder_push(&into->builder, c);
+                        builder_push(&into->builder, ':');
+                        if(path.info.is_absolute)
+                            builder_push(&into->builder, slash);
+                    } break;
+
+                    case PATH_ROOT_UNKNOWN: {
+                        builder_append(&into->builder, path_get_root(path));
+                    } break;
+                }
+
+                if(path.info.root_kind != PATH_ROOT_NONE)
+                    _path_parse_root(into->string, &into->info);
             }
-
-            if(path.info.root_kind != PATH_ROOT_NONE)
-                _path_parse_root(into->string, &into->info);
+            else
+            {
+                state = false;
+            }
+        
         }
-
         #ifdef DO_ASSERTS_SLOW
         Path_Info new_info = path_parse(into->string).info;
         ASSERT_SLOW(new_info.prefix_size == into->info.prefix_size);
@@ -567,50 +552,53 @@ EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
         ASSERT_SLOW(new_info.root_content_to == into->info.root_content_to);
         #endif
 
-        //@TODO: inline the loop and root_till!
-        isize root_till = into->path.string.size - path_get_except_root(into->path).size;
-        for(Path_Segement_Iterator it = {0}; path_segment_iterate(&it, path);)
+        if(state || ignore_error)
         {
-            bool push_segment = true;
-            String segment = it.segment;
-            //Multiple separators next to each otehr
-            if(segment.size == 0)
-                push_segment = false;
-            //Single dot segment
-            else if(remove_dot && string_is_equal(segment, STRING(".")))
-                push_segment = false;
-            //pop segment
-            else if(remove_dot_dot && string_is_equal(segment, STRING("..")))
+            //@TODO: inline the loop and root_till!
+            isize root_till = into->info.root_size + into->info.prefix_size;
+            for(Path_Segement_Iterator it = {0}; path_segment_iterate(&it, path);)
             {
-                if(into->info.is_absolute)
+                bool push_segment = true;
+                String segment = it.segment;
+                //Multiple separators next to each otehr
+                if(segment.size == 0)
                     push_segment = false;
-                else
-                    push_segment = true;
-
-                //If there was no segment to pop push the ".." segment
-                if(into->info.segment_count > 0)
+                //Single dot segment
+                else if(remove_dot && string_is_equal(segment, STRING(".")))
+                    push_segment = false;
+                //pop segment
+                else if(remove_dot_dot && string_is_equal(segment, STRING("..")))
                 {
-                    isize last_segment_i = string_find_last_path_separator(into->string, into->string.size);
-                    if(last_segment_i < root_till)
-                       last_segment_i = root_till;
-                    String last_segement = string_tail(into->string, last_segment_i);
-                    if(string_is_equal(last_segement, STRING("..")) == false)
-                    {
-                        builder_resize(&into->builder, last_segment_i);
-                        into->info.segment_count -= 1;
+                    if(into->info.is_absolute)
                         push_segment = false;
+                    else
+                        push_segment = true;
+
+                    //If there was no segment to pop push the ".." segment
+                    if(into->info.segment_count > 0)
+                    {
+                        isize last_segment_i = string_find_last_path_separator(into->string, into->string.size);
+                        if(last_segment_i < root_till)
+                           last_segment_i = root_till;
+                        String last_segement = string_tail(into->string, last_segment_i);
+                        if(string_is_equal(last_segement, STRING("..")) == false)
+                        {
+                            builder_resize(&into->builder, last_segment_i);
+                            into->info.segment_count -= 1;
+                            push_segment = false;
+                        }
                     }
                 }
-            }
 
-            //push segment 
-            if(push_segment)
-            {
-                if(into->info.segment_count > 0)
-                    builder_push(&into->builder, slash);
+                //push segment 
+                if(push_segment)
+                {
+                    if(into->info.segment_count > 0)
+                        builder_push(&into->builder, slash);
 
-                builder_append(&into->builder, segment);
-                into->info.segment_count += 1;
+                    builder_append(&into->builder, segment);
+                    into->info.segment_count += 1;
+                }
             }
         }
 
@@ -620,11 +608,30 @@ EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
             into->info.segment_count += 1;
         }
 
-        if(make_directory && into->info.segment_count > 0)
-            builder_push(&into->builder, slash);
+        _path_parse_rest(into->string, &into->info);
+
+        //We know it 100% does not have trialing slash
+        ASSERT(into->info.has_trailing_slash == false);
+
+        if(into->info.segment_count > 0)
+        {
+            //1) If it is a directory but is not trailing slash
+            // it must be '.' or '..' then we add slash
+            // because thats the normal form.
+            //2) If we explicitly want to make a directory
+            //3) If the path was a directory and we dont want explicitly want to make a file
+            if(into->info.is_directory || transform_dir || (path.info.is_directory && transform_file == false))
+            {
+                builder_push(&into->builder, slash);
+                _path_parse_rest(into->string, &into->info);
+            }
+        }
+    }
+    else
+    {
+        _path_parse_rest(into->string, &into->info);
     }
 
-    _path_parse_rest(into->string, &into->info);
     into->info.is_invariant = true;
 
     #ifdef DO_ASSERTS_SLOW
@@ -633,6 +640,8 @@ EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
     new_info.segment_count = into->info.segment_count;
     ASSERT(memcmp(&new_info, &into->info, sizeof(new_info)) == 0);
     #endif
+
+    return state;
 }
 
 EXPORT void path_builder_assign(Path_Builder* into, Path path, int flags)
@@ -751,7 +760,7 @@ EXPORT Path path_get_file_directory(Path path)
     return out;
 }
 
-EXPORT String path_get_stem(Path path)
+EXPORT String path_get_filename_without_extension(Path path)
 {
     String filename = path_get_filename(path);
     if(path.info.extension_size > 0)
@@ -773,7 +782,7 @@ EXPORT Path path_get_executable()
     if(was_parsed == false)
     {
         Path path = path_parse_cstring(platform_get_executable_path());
-        builder = path_normalize(allocator_get_static(), path, PATH_CANONICALIZE_TRANSFORM_TO_FILE);
+        builder = path_normalize(allocator_get_static(), path, PATH_FLAG_TRANSFORM_TO_FILE);
     }
 
     return builder.path;
@@ -787,7 +796,7 @@ EXPORT Path path_get_executable_directory()
     {
         Path path = path_parse_cstring(platform_get_executable_path());
         Path dir = path_get_file_directory(path);
-        builder = path_normalize(allocator_get_static(), dir, PATH_CANONICALIZE_TRANSFORM_TO_DIR);
+        builder = path_normalize(allocator_get_static(), dir, PATH_FLAG_TRANSFORM_TO_DIR);
     }
 
     return builder.path;
@@ -905,7 +914,7 @@ EXPORT void path_make_relative_into(Path_Builder* into, Path relative_to, Path p
                         }
                     }
                     
-                    path_normalize_in_place(into, path.info.is_directory ? PATH_CANONICALIZE_TRANSFORM_TO_DIR : PATH_CANONICALIZE_TRANSFORM_TO_FILE);
+                    path_normalize_in_place(into, path.info.is_directory ? PATH_FLAG_TRANSFORM_TO_DIR : PATH_FLAG_TRANSFORM_TO_FILE);
                     break;
                 }
             }
@@ -1077,49 +1086,49 @@ void test_path()
     test_canonicalize_with_roots_and_prefixes(0, "xxx/../../dir/xxx/../././file", "dir/file");
 
     //Flags
-    test_path_normalize(PATH_CANONICALIZE_BACK_SLASH, "xxx/../../dir/xxx/../././file", "..\\dir\\file");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_NO_REMOVE_DOT, "xxx/./../dir/xxx/../././file", "xxx/dir/././file");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_NO_REMOVE_DOT_DOT, "xxx/./../dir/xxx/../././file", "xxx/../dir/xxx/../file");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_NO_REMOVE_DOT_DOT | PATH_CANONICALIZE_NO_REMOVE_DOT, "xxx/./../dir/xxx\\../.\\./file", "xxx/./../dir/xxx/../././file");
+    test_path_normalize(PATH_FLAG_BACK_SLASH, "xxx/../../dir/xxx/../././file", "..\\dir\\file");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_NO_REMOVE_DOT, "xxx/./../dir/xxx/../././file", "xxx/dir/././file");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_NO_REMOVE_DOT_DOT, "xxx/./../dir/xxx/../././file", "xxx/../dir/xxx/../file");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_NO_REMOVE_DOT_DOT | PATH_FLAG_NO_REMOVE_DOT, "xxx/./../dir/xxx\\../.\\./file", "xxx/./../dir/xxx/../././file");
 
     #if 1
     //Transform to dir
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "", "");
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_DIR, ".", "./");
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "..", "../");
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "dir/..", "./");
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "file", "file/");
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "file/", "file/");
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "dir/file", "dir/file/");
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "dir/file/", "dir/file/");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_DIR, "", "");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_DIR, ".", "./");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_DIR, "..", "../");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_DIR, "dir/..", "./");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_DIR, "file", "file/");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_DIR, "file/", "file/");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_DIR, "dir/file", "dir/file/");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_DIR, "dir/file/", "dir/file/");
 
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "", "");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_DIR, ".", "");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "..", "");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "dir/..", "");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "file", "file/");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "file/", "file/");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "dir/file", "dir/file/");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "dir/file/", "dir/file/");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_DIR, "", "");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_DIR, ".", "");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_DIR, "..", "");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_DIR, "dir/..", "");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_DIR, "file", "file/");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_DIR, "file/", "file/");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_DIR, "dir/file", "dir/file/");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_DIR, "dir/file/", "dir/file/");
 
     //Transform to file
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "", "");
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_FILE, ".", ".");
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "..", "..");
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "dir/..", ".");
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "file", "file");
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "file/", "file");
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "dir/file", "dir/file");
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "dir/file/", "dir/file");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_FILE, "", "");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_FILE, ".", "./");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_FILE, "..", "../");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_FILE, "dir/..", "./");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_FILE, "file", "file");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_FILE, "file/", "file");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_FILE, "dir/file", "dir/file");
+    test_path_normalize(PATH_FLAG_TRANSFORM_TO_FILE, "dir/file/", "dir/file");
 
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "", "");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_FILE, ".", "");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "..", "");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "dir/..", "");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "file", "file");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "file/", "file");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "dir/file", "dir/file");
-    test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "dir/file/", "dir/file");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_FILE, "", "");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_FILE, ".", "");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_FILE, "..", "");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_FILE, "dir/..", "");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_FILE, "file", "file");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_FILE, "file/", "file");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_FILE, "dir/file", "dir/file");
+    test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_FILE, "dir/file/", "dir/file");
     #endif
 
     //Make absolute
