@@ -148,21 +148,20 @@ EXPORT String path_get_except_prefix(Path path);
 EXPORT String path_get_directories(Path path);
 EXPORT String path_get_extension(Path path);
 EXPORT String path_get_filename(Path path);
+EXPORT String path_get_root_content(Path path);
 EXPORT String path_get_stem(Path path);
 EXPORT bool   path_is_empty(Path path);
 EXPORT Path   path_get_file_directory(Path path);
 
+
 EXPORT Path_Builder path_builder_make(Allocator* alloc_or_null, isize initial_capacity_or_zero);
-EXPORT const char*  path_builder_get_cstring(Path_Builder path);
-EXPORT bool         path_builder_append(Path_Builder* builder, Path path);
-EXPORT bool         path_builder_append_custom(Path_Builder* builder, Path path, int flags);
+EXPORT void         path_builder_append(Path_Builder* builder, Path path, int flags);
 EXPORT void         path_builder_clear(Path_Builder* builder);
-EXPORT void         path_canonicalize_in_place(Path_Builder* path, int flags);
-EXPORT Path_Builder path_canonicalize(Allocator* alloc, Path path, int flags);
+EXPORT void         path_normalize_in_place(Path_Builder* path, int flags);
+EXPORT Path_Builder path_normalize(Allocator* alloc, Path path, int flags);
+EXPORT void         path_builder_set_trailing_slash(Path_Builder* into, bool should_have_trailing_slash);
 EXPORT Path_Builder path_concat(Allocator* alloc, Path a, Path b);
 EXPORT Path_Builder path_concat_many(Allocator* alloc, const Path* paths, isize path_count);
-EXPORT void         path_transform_to_file(Path_Builder* path);
-EXPORT void         path_transform_to_directory(Path_Builder* path);
 EXPORT void         path_make_relative_into(Path_Builder* into, Path relative_to, Path path);
 EXPORT void         path_make_absolute_into(Path_Builder* into, Path relative_to, Path path);
 EXPORT Path_Builder path_make_relative(Allocator* alloc, Path relative_to, Path path);
@@ -429,6 +428,26 @@ EXPORT void path_builder_clear(Path_Builder* builder)
     builder_clear(&builder->builder);
 }
 
+EXPORT void path_builder_set_trailing_slash(Path_Builder* into, bool should_have_trailing_slash)
+{
+    if(into->info.has_trailing_slash && should_have_trailing_slash == false)
+    {
+        ASSERT(into->info.segment_count > 0);
+        ASSERT(into->builder.size > 1);
+        builder_resize(&into->builder, into->builder.size - 1);        
+        _path_parse_rest(into->string, &into->info);
+    }
+    if(into->info.has_trailing_slash == false && should_have_trailing_slash)
+    {
+        if(into->info.segment_count > 0)
+        {
+            ASSERT(into->builder.size > 1);
+            builder_resize(&into->builder, into->builder.size - 1);        
+            _path_parse_rest(into->string, &into->info);
+        }
+    }
+}
+
 EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
 {
     //@NOTE: this function is the main normalization function. It expects 
@@ -460,7 +479,7 @@ EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
     ASSERT(into->info.has_trailing_slash == has_trailing_slash);
     #endif
 
-    if(has_trailing_slash)
+    if(into->info.has_trailing_slash)
     {
         ASSERT(into->info.segment_count > 0);
         builder_resize(&into->builder, into->builder.size - 1);        
@@ -473,7 +492,7 @@ EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
     {
         String prefix = path_get_prefix(path);
         builder_append(&into->builder, prefix);
-        into->info.prefix_size = prefix.size;
+        into->info.prefix_size = (i32) prefix.size;
     }
 
     if(path_is_empty(path) == false)
@@ -486,7 +505,6 @@ EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
             ASSERT(into->info.root_content_from == 0);
             ASSERT(into->info.root_content_to == 0);
 
-            isize before = into->builder.size;
             switch(path.info.root_kind)
             {
                 case PATH_ROOT_NONE: {
@@ -507,10 +525,7 @@ EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
                     builder_push(&into->builder, slash);
                     if(path.info.root_content_to > path.info.root_content_from)
                     {
-                        into->info.root_content_from = into->builder.size;
                         builder_append(&into->builder, root_content);
-                        into->info.root_content_to = into->builder.size;
-
                         builder_push(&into->builder, slash);
                     }
                     else
@@ -528,27 +543,19 @@ EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
                     if('a' <= c && c <= 'z')
                         c = c - 'a' + 'A';
 
-                    into->info.root_content_from = into->builder.size;
                     builder_push(&into->builder, c);
-                    into->info.root_content_to = into->builder.size;
-
                     builder_push(&into->builder, ':');
                     if(path.info.is_absolute)
                         builder_push(&into->builder, slash);
                 } break;
 
                 case PATH_ROOT_UNKNOWN: {
-                    into->info.root_content_from = into->builder.size;
                     builder_append(&into->builder, path_get_root(path));
-                    into->info.root_content_to = into->builder.size;
                 } break;
             }
-            isize after = into->builder.size;
+
             if(path.info.root_kind != PATH_ROOT_NONE)
-            {
-                into->info.root_size = after - before;
-                into->info.root_kind = path.info.root_kind;
-            }
+                _path_parse_root(into->string, &into->info);
         }
 
         #ifdef DO_ASSERTS_SLOW
@@ -584,15 +591,14 @@ EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
                 if(into->info.segment_count > 0)
                 {
                     isize last_segment_i = string_find_last_path_separator(into->string, into->string.size);
-                    if(last_segment_i >= root_till)
+                    if(last_segment_i < root_till)
+                       last_segment_i = root_till;
+                    String last_segement = string_tail(into->string, last_segment_i);
+                    if(string_is_equal(last_segement, STRING("..")) == false)
                     {
-                        String last_segement = string_tail(into->string, last_segment_i);
-                        if(string_is_equal(last_segement, STRING("..")) == false)
-                        {
-                            builder_resize(&into->builder, last_segment_i);
-                            into->info.segment_count -= 1;
-                            push_segment = false;
-                        }
+                        builder_resize(&into->builder, last_segment_i);
+                        into->info.segment_count -= 1;
+                        push_segment = false;
                     }
                 }
             }
@@ -619,11 +625,12 @@ EXPORT void path_builder_append(Path_Builder* into, Path path, int flags)
     }
 
     _path_parse_rest(into->string, &into->info);
-    path.info.is_invariant = true;
+    into->info.is_invariant = true;
 
     #ifdef DO_ASSERTS_SLOW
     Path_Info new_info = path_parse(into->string).info;
-    new_info.is_invariant = true;
+    new_info.is_invariant = into->info.is_invariant;
+    new_info.segment_count = into->info.segment_count;
     ASSERT(memcmp(&new_info, &into->info, sizeof(new_info)) == 0);
     #endif
 }
@@ -633,6 +640,7 @@ EXPORT void path_builder_assign(Path_Builder* into, Path path, int flags)
     path_builder_clear(into);
     path_builder_append(into, path, flags);
 }
+
 EXPORT void path_normalize_in_place(Path_Builder* into, int flags)
 {
     Arena arena = scratch_arena_acquire();
@@ -667,16 +675,6 @@ EXPORT Path_Builder path_concat(Allocator* alloc, Path a, Path b)
 {
     Path paths[2] = {a, b};
     return path_concat_many(alloc, paths, 2);
-}
-
-//@TODO
-EXPORT void path_transform_to_file(Path_Builder* path)
-{
-    path_canonicalize_in_place(path, PATH_CANONICALIZE_TRANSFORM_TO_FILE);
-}
-EXPORT void path_transform_to_directory(Path_Builder* path)
-{
-    path_canonicalize_in_place(path, PATH_CANONICALIZE_TRANSFORM_TO_DIR);
 }
 
 EXPORT Path path_parse_cstring(const char* path)
@@ -775,7 +773,7 @@ EXPORT Path path_get_executable()
     if(was_parsed == false)
     {
         Path path = path_parse_cstring(platform_get_executable_path());
-        builder = path_canonicalize(allocator_get_static(), path, PATH_CANONICALIZE_TRANSFORM_TO_FILE);
+        builder = path_normalize(allocator_get_static(), path, PATH_CANONICALIZE_TRANSFORM_TO_FILE);
     }
 
     return builder.path;
@@ -789,7 +787,7 @@ EXPORT Path path_get_executable_directory()
     {
         Path path = path_parse_cstring(platform_get_executable_path());
         Path dir = path_get_file_directory(path);
-        builder = path_canonicalize(allocator_get_static(), dir, PATH_CANONICALIZE_TRANSFORM_TO_DIR);
+        builder = path_normalize(allocator_get_static(), dir, PATH_CANONICALIZE_TRANSFORM_TO_DIR);
     }
 
     return builder.path;
@@ -808,9 +806,7 @@ EXPORT Path path_get_current_working_directory()
 
         String cwd_string = string_make(cwd);
         builder_assign(&last, cwd_string);
-
-        path_builder_clear(&cached);
-        path_builder_append(&cached, path_parse(cwd_string));
+        path_builder_assign(&cached, path_parse(cwd_string), 0);
     }
 
     return cached.path;
@@ -845,12 +841,12 @@ EXPORT void path_make_relative_into(Path_Builder* into, Path relative_to, Path p
         Path_Builder pathi_builder = {0}; 
         if(relative_to.info.is_invariant == false)
         {
-            reli_builder = path_canonicalize(&arena.allocator, relative_to, 0); 
+            reli_builder = path_normalize(&arena.allocator, relative_to, 0); 
             reli = reli_builder.path;
         }
         if(path.info.is_invariant == false)
         {
-            pathi_builder = path_canonicalize(&arena.allocator, path, 0); 
+            pathi_builder = path_normalize(&arena.allocator, path, 0); 
             pathi = pathi_builder.path;
         }
 
@@ -866,7 +862,7 @@ EXPORT void path_make_relative_into(Path_Builder* into, Path relative_to, Path p
                 bool has_rel = path_segment_iterate(&rel_it, reli);
                 bool has_path = path_segment_iterate(&path_it, pathi);
                 bool are_equal = string_is_equal(rel_it.segment, path_it.segment);
-                path_builder_append(into, path_parse(path_get_prefix(pathi)));
+                path_builder_append(into, path_parse(path_get_prefix(pathi)), 0);
 
                 //If both are present and same do nothing
                 if(has_rel && has_path && are_equal)
@@ -876,7 +872,7 @@ EXPORT void path_make_relative_into(Path_Builder* into, Path relative_to, Path p
                 //If they were same and end the same then also do nothing
                 else if(has_rel == false && has_path == false && are_equal)
                 {
-                    path_builder_append(into, path_parse_cstring("."));
+                    path_builder_append(into, path_parse_cstring("."), 0);
                     break;
                 }
                 else
@@ -923,15 +919,17 @@ EXPORT void path_make_absolute_into(Path_Builder* into, Path relative_to, Path p
 {
     path_builder_clear(into);
     if(path.info.is_absolute == false)
-        path_builder_append(into, relative_to);
-    path_builder_append(into, path);
+        path_builder_append(into, relative_to, 0);
+    path_builder_append(into, path, 0);
 }
+
 EXPORT Path_Builder path_make_relative(Allocator* alloc, Path relative_to, Path path)
 {
     Path_Builder out = path_builder_make(alloc, 0);
     path_make_relative_into(&out, relative_to, path);
     return out;
 }
+
 EXPORT Path_Builder path_make_absolute(Allocator* alloc, Path relative_to, Path path)
 {
     Path_Builder out = path_builder_make(alloc, 0);
@@ -985,7 +983,7 @@ void test_path_normalize(int flags, const char* cpath, const char* cexpected)
         Path path = path_parse(prefixed_path.string);
         Path expected = path_parse(prefixed_expected.string);
 
-        String_Builder canonical = path_normalize(&arena.allocator, path, flags);
+        Path_Builder canonical = path_normalize(&arena.allocator, path, flags);
         TEST_STRING_EQ(canonical.string, expected.string);
         arena_release(&arena);
     }
@@ -1027,11 +1025,11 @@ void test_make_relative_absolute_with_prefixes(int flags, const char* crelative,
         Path path = path_parse(prefixed_path.string);
         Path expected = path_parse(prefixed_expected.string);
 
-        String_Builder transformed = {0};
+        Path_Builder transformed = {0};
         if(flags == TEST_MAKE_RELATIVE)
-            transformed = _path_make_relative(&arena.allocator, relative, path);
+            transformed = path_make_relative(&arena.allocator, relative, path);
         else
-            transformed = _path_make_absolute(&arena.allocator, relative, path);
+            transformed = path_make_absolute(&arena.allocator, relative, path);
 
         TEST_STRING_EQ(transformed.string, expected.string);
         int k = 0; (void) k;
@@ -1056,7 +1054,7 @@ void test_path()
     test_single_path("//Server/my/files/.gitignore", "", "//Server/", "my/files", ".gitignore", "gitignore", PATH_IS_ABSOLUTE);
 
     //Relative
-    test_path_normalize(0, "", "./");
+    test_path_normalize(0, "", "");
     test_path_normalize(0, ".", "./");
     test_path_normalize(0, "..", "../");
     test_path_normalize(0, "C:..", "C:../");
@@ -1086,7 +1084,7 @@ void test_path()
 
     #if 1
     //Transform to dir
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "", "./");
+    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "", "");
     test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_DIR, ".", "./");
     test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "..", "../");
     test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "dir/..", "./");
@@ -1105,7 +1103,7 @@ void test_path()
     test_canonicalize_with_roots_and_prefixes(PATH_CANONICALIZE_TRANSFORM_TO_DIR, "dir/file/", "dir/file/");
 
     //Transform to file
-    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "", ".");
+    test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "", "");
     test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_FILE, ".", ".");
     test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "..", "..");
     test_path_normalize(PATH_CANONICALIZE_TRANSFORM_TO_FILE, "dir/..", ".");
@@ -1125,7 +1123,7 @@ void test_path()
     #endif
 
     //Make absolute
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_ABSOLUTE, "", "", "./");
+    test_make_relative_absolute_with_prefixes(TEST_MAKE_ABSOLUTE, "", "", "");
     test_make_relative_absolute_with_prefixes(TEST_MAKE_ABSOLUTE, "", ".", "./");
     test_make_relative_absolute_with_prefixes(TEST_MAKE_ABSOLUTE, "", "..", "../");
     test_make_relative_absolute_with_prefixes(TEST_MAKE_ABSOLUTE, "bye\\dir/", "hello\\.\\world/file.txt", "bye/dir/hello/world/file.txt");
@@ -1135,7 +1133,7 @@ void test_path()
     test_make_relative_absolute_with_prefixes(TEST_MAKE_ABSOLUTE, "D:/bye\\dir/", "C:/hello\\.\\world/file.txt", "C:/hello/world/file.txt");
 
     //Make relative
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_RELATIVE, "", "", "./");
+    test_make_relative_absolute_with_prefixes(TEST_MAKE_RELATIVE, "", "", "");
     test_make_relative_absolute_with_prefixes(TEST_MAKE_RELATIVE, "C:/path/to/dir", "C:/path/to/world/file.txt", "../world/file.txt");
     test_make_relative_absolute_with_prefixes(TEST_MAKE_RELATIVE, "path/to/dir", "path/dir1/dir2/dir3/file.txt", "../../dir1/dir2/dir3/file.txt");
     test_make_relative_absolute_with_prefixes(TEST_MAKE_RELATIVE, "path/to/dir1/dir2/", "path/to/dir1/dir2/dir3/file.txt", "dir3/file.txt");
