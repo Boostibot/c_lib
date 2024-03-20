@@ -174,10 +174,6 @@ EXPORT Path path_get_current_working_directory();
 
 #endif
 
-//@TEMP
-#define JOT_ALL_IMPL
-#define JOT_ALL_TEST
-
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PATH_IMPL)) && !defined(JOT_PATH_HAS_IMPL)
 #define JOT_PATH_HAS_IMPL
 
