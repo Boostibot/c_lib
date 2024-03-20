@@ -7,7 +7,7 @@
 // This is a not exhaustive filepath handling facility. 
 // We require all strings to pass through some basic parsing and be wrapped in Path struct. 
 // This makes it easy to distinguish desiganted paths from any other strings. 
-// Further we define Path_Builder which is guranteed to always be in invarinat form.
+// Further we define Path_Builder which is guranteed to always be in normalized form.
 //
 // Path_Info Represents the following:
 // 
@@ -20,17 +20,16 @@
 //  P - prefix_size - this is OS specific (win32) prefix that carries meta data
 //  R - root_size
 //  D - directories_size
-//  F - file_size
+//  F - filename_size
 //  E - extension_size
 //  M* - This / is explicitly not including in directory_size.
 //       This is because non normalized directory paths can but dont have to end
 //       on /. This makes sure that both cases have the same size.
-// 
 //
 // All handling in this file respects the above categories and nothing more.
-// Notably prefix is ignored in almost all operations but still is properly propagated.
+// Notably prefix is ignored in almost all operations but still is properly propagated when appending.
 //
-// Path_Builder is in invariant form. The following algrohitm is used 
+// Path_Builder is in normalized form. The following algrohitm is used for normalization:
 // (modified version of the one use std::filesystem::path. We respect "/" traling to denote directories. We also respect windows prefixes.)
 // 1 - If the path is empty, stop (normal form of an empty path is an empty path).
 // 2 - Replace each directory-separator (which may consist of multiple /) with a single /
@@ -45,9 +44,10 @@
 // The canonical path has the following invariants:
 // 1) Path_Info is up to date including segment_count.
 // 2) Path_Info.is_directory <=> ends with /
-// 3) Includes only / 
+// 3) Includes only / (and not \)
 // 4) Absolute paths do not contain any "." or ".." segments
-// 5) Relative paths contain "." segments at the last position and ".." at the first position
+// 5) Relative paths are either only "." and nothing more or dont contain "." at all. 
+//    Relative paths contain ".." segemnts only as a prefix. 
 //
 //@NOTE: We attempt to cover a few edge cases and gain as much insigth into the
 //       path as we can but we by no means attempt to be exhaustively correct
@@ -63,49 +63,68 @@ typedef enum Path_Root_Kind {
     PATH_ROOT_UNKNOWN,
 } Path_Root_Kind;
 
-//@TODO: chnage categories to: Note that we dont even need to store
-//       the info about root end. We never need to treat those segments any differently
-//       from anything else. The only effect it has is on the directoryness.
-//       Anyhow we dont need file_size and extension size.
-//
-//       Is asbolute: Yes needs to be present because is very non trivial to get
-//       Is directory: Yes depends on root, trailing slash, .. and .
-//       Is invariant: Yes can save us a lot of perf on common operations
-//       has trailing slash: Not very necessary if we have segments_size
-//
-// //?/......C:/.....path/to/directory/........... 
-// <-prefix-><-root-><---segments----><-trailing->
-//              
-// //?/......C:/.....path/to/directory/file.txt 
-// <-prefix-><-root-><--------segments-------->
-//                                     <-file->
-//                                        <ext>
-
 typedef struct Path_Info {
     i32 prefix_size;
     i32 root_content_from;
     i32 root_content_to;
     i32 root_size;
     i32 directories_size;
-    i32 file_size;
+    i32 filename_size;
     i32 extension_size;
-    i32 segment_count;
+    i32 segment_count; //0 unless is_normalized
+    Path_Root_Kind root_kind;
     bool is_absolute;
     bool is_directory;
-    bool is_invariant; 
+    bool is_normalized; 
     bool has_trailing_slash;
-    Path_Root_Kind root_kind;
 
-    //Denotes if is in the canonical representation
+    //is_normalized denotes if is in the canonical representation
     // is only set for Path_Info from Path_Builder, but is still
-    // useful since we use Path as the interface type and the information
-    // of canonicity can save us some time.
+    // useful since we use Path as the interface type and thus
+    // the is_normalized propagates. This can be used to not waste time
+    // renormalizing again already normalized path.
 } Path_Info;
 
 typedef struct Path {
     String string;
     Path_Info info;
 } Path;
+
+EXPORT bool is_path_sep(char c);
+EXPORT isize string_find_first_path_separator(String string, isize from);
+EXPORT isize string_find_last_path_separator(String string, isize from);
+
+EXPORT Path   path_parse(String path);
+EXPORT Path   path_parse_cstring(const char* path);
+EXPORT void   path_parse_root(String path, Path_Info* info);
+EXPORT void   path_parse_rest(String path, Path_Info* info);
+EXPORT bool   path_is_empty(Path path);
+EXPORT String path_get_prefix(Path path);
+EXPORT String path_get_root(Path path);
+EXPORT String path_get_directories(Path path);
+EXPORT String path_get_extension(Path path);
+EXPORT String path_get_filename(Path path);
+EXPORT String path_get_root_content(Path path);
+EXPORT String path_get_filename_without_extension(Path path);
+EXPORT String path_get_without_trailing_slash(Path path);
+EXPORT String path_get_segments(Path path);
+
+EXPORT Path path_strip_prefix(Path path);
+EXPORT Path path_strip_root(Path path);
+EXPORT Path path_strip_trailing_slash(Path path);
+EXPORT Path path_strip_last_segment(Path path, String* last_segment_or_null);
+EXPORT Path path_strip_first_segment(Path path, Path* first_segment_or_null);
+EXPORT Path path_strip_to_containing_directory(Path path);
+
+typedef struct Path_Segement_Iterator {
+    String segment;
+    isize segment_number; //one based segment index
+    isize segment_from;
+    isize segment_to;
+} Path_Segement_Iterator;
+
+EXPORT bool path_segment_iterate_string(Path_Segement_Iterator* it, String path, isize till_root_size);
+EXPORT bool path_segment_iterate(Path_Segement_Iterator* it, Path path);
 
 typedef union Path_Builder {
     struct {
@@ -137,26 +156,11 @@ enum {
     PATH_FLAG_NO_PREFIX = 256,              //Does not append prefix (for normalize this meens the result will not have prefix)
 };
 
-EXPORT Path   path_parse(String path);
-EXPORT Path   path_parse_cstring(const char* path);
-EXPORT String path_get_prefix(Path path);
-EXPORT String path_get_root(Path path);
-EXPORT String path_get_except_root(Path path);
-EXPORT String path_get_except_prefix(Path path);
-EXPORT String path_get_directories(Path path);
-EXPORT String path_get_extension(Path path);
-EXPORT String path_get_filename(Path path);
-EXPORT String path_get_root_content(Path path);
-EXPORT String path_get_filename_without_extension(Path path);
-EXPORT bool   path_is_empty(Path path);
-EXPORT Path   path_get_file_directory(Path path);
-
 EXPORT Path_Builder path_builder_make(Allocator* alloc_or_null, isize initial_capacity_or_zero);
 EXPORT bool         path_builder_append(Path_Builder* into, Path path, int flags);
 EXPORT void         path_builder_clear(Path_Builder* builder);
 EXPORT void         path_normalize_in_place(Path_Builder* path, int flags);
 EXPORT Path_Builder path_normalize(Allocator* alloc, Path path, int flags);
-EXPORT void         path_builder_set_trailing_slash(Path_Builder* into, bool should_have_trailing_slash);
 EXPORT Path_Builder path_concat(Allocator* alloc, Path a, Path b);
 EXPORT Path_Builder path_concat_many(Allocator* alloc, const Path* paths, isize path_count);
 EXPORT void         path_make_relative_into(Path_Builder* into, Path relative_to, Path path);
@@ -182,12 +186,12 @@ EXPORT bool path_is_empty(Path path)
     return path.string.size <= path.info.prefix_size;
 }
 
-INTERNAL bool is_path_sep(char c)
+EXPORT bool is_path_sep(char c)
 {
     return c == '/' || c == '\\';
 }
 
-isize string_find_first_path_separator(String string, isize from)
+EXPORT isize string_find_first_path_separator(String string, isize from)
 {
     for(isize i = from; i < string.size; i++)
         if(string.data[i] == '/' || string.data[i] == '\\')
@@ -196,7 +200,7 @@ isize string_find_first_path_separator(String string, isize from)
     return -1;
 }
 
-isize string_find_last_path_separator(String string, isize from)
+EXPORT isize string_find_last_path_separator(String string, isize from)
 {
     for(isize i = from; i-- > 0; )
         if(string.data[i] == '/' || string.data[i] == '\\')
@@ -205,7 +209,7 @@ isize string_find_last_path_separator(String string, isize from)
     return -1;
 }
 
-INTERNAL void _path_parse_root(String path, Path_Info* info)
+EXPORT void path_parse_root(String path, Path_Info* info)
 {
     memset(info, 0, sizeof(info));
     String prefix_path = path;
@@ -229,7 +233,7 @@ INTERNAL void _path_parse_root(String path, Path_Info* info)
     if(root_path.size == 0)
     {
         info->is_absolute = false;
-        info->is_invariant = true;
+        info->is_normalized = true;
     }
     else
     {
@@ -298,13 +302,13 @@ INTERNAL void _path_parse_root(String path, Path_Info* info)
     }
 }
 
-INTERNAL void _path_parse_rest(String path, Path_Info* info)
+EXPORT void path_parse_rest(String path, Path_Info* info)
 {
     //Clear the overriden
     info->is_directory = false;
     info->is_directory = false;
     info->directories_size = 0;
-    info->file_size = 0;
+    info->filename_size = 0;
     info->extension_size = 0;
 
     String root_path = string_tail(path, info->prefix_size);
@@ -313,7 +317,7 @@ INTERNAL void _path_parse_rest(String path, Path_Info* info)
     if(root_path.size <= 0)
     {
         info->is_directory = true; //empty path is sometimes current directory. Thus is a directory
-        info->is_invariant = true; //Empty path is invarinat
+        info->is_normalized = true; //Empty path is invarinat
     }
     if(directory_path.size <= 0)
     {
@@ -364,7 +368,7 @@ INTERNAL void _path_parse_rest(String path, Path_Info* info)
                 else
                     dot_i += 1;
 
-                info->file_size = (i32) filename_path.size;
+                info->filename_size = (i32) filename_path.size;
                 info->extension_size = (i32) (filename_path.size - dot_i);
             }
         }
@@ -374,17 +378,157 @@ INTERNAL void _path_parse_rest(String path, Path_Info* info)
 EXPORT Path path_parse(String path)
 {
     Path out_path = {path};
-    _path_parse_root(path, &out_path.info);
-    _path_parse_rest(path, &out_path.info);
+    path_parse_root(path, &out_path.info);
+    path_parse_rest(path, &out_path.info);
     return out_path;
 }
 
-typedef struct Path_Segement_Iterator {
-    String segment;
-    isize segment_number; //one based segment index
-    isize segment_from;
-    isize segment_to;
-} Path_Segement_Iterator;
+EXPORT Path path_parse_cstring(const char* path)
+{
+    return path_parse(string_make(path));
+}
+
+EXPORT String path_get_prefix(Path path)
+{
+    return string_head(path.string, path.info.prefix_size);
+}
+
+EXPORT String path_get_root(Path path)
+{
+    return string_range(path.string, path.info.prefix_size, path.info.prefix_size + path.info.root_size);
+}
+
+EXPORT String path_get_root_content(Path path)
+{
+    return string_range(path.string, path.info.root_content_from, path.info.root_content_to);
+}
+
+EXPORT String path_get_directories(Path path)
+{
+    isize from = path.info.prefix_size + path.info.root_size;
+    return string_range(path.string, from, from + path.info.directories_size);
+}
+
+EXPORT String path_get_without_trailing_slash(Path path)
+{   
+    if(path.info.has_trailing_slash)
+        return path.string;
+    else
+        return string_head(path.string, path.string.size - 1);
+}
+
+EXPORT String path_get_segments(Path path)
+{
+    isize from = path.info.prefix_size + path.info.root_size;
+    isize to = path.string.size;
+    if(path.info.has_trailing_slash)
+        to -= 1;
+
+    return string_range(path.string, from, to);
+}
+
+EXPORT String path_get_filename(Path path)
+{
+    return string_range(path.string, path.string.size - path.info.filename_size, path.string.size);
+}
+
+EXPORT String path_get_filename_without_extension(Path path)
+{
+    String filename = path_get_filename(path);
+    if(path.info.extension_size > 0)
+        filename = string_head(filename, filename.size - path.info.extension_size - 1); 
+
+    return filename;
+}
+
+EXPORT String path_get_extension(Path path)
+{
+    return string_range(path.string, path.string.size - path.info.extension_size, path.string.size);
+}
+
+EXPORT Path path_strip_prefix(Path path)
+{
+    Path out = path;
+    out.string = string_tail(path.string, path.info.prefix_size);
+    out.info.prefix_size = 0;
+    return out;
+}
+
+EXPORT Path path_strip_root(Path path)
+{   
+    Path out = path;
+    out.string = string_tail(path.string, path.info.prefix_size + path.info.root_size);
+    out.info.prefix_size = 0;
+    out.info.root_size = 0;
+    out.info.root_kind = PATH_ROOT_NONE;
+    out.info.root_content_from = 0;
+    out.info.root_content_to = 0;
+    return out;
+}
+
+EXPORT Path path_strip_trailing_slash(Path path)
+{
+    Path out = path;
+    if(path.info.has_trailing_slash)
+    {
+        out.string.size = MAX(out.string.size - 1, 0);
+        path_parse_rest(out.string, &out.info);
+    }
+    return out;
+}
+
+//Splits "C:/path/to/dir/"  --> "C:/path/to/" + "dir"
+//       "path/to/file.txt" --> "path/to/" + "file.txt"
+EXPORT Path path_strip_last_segment(Path path, String* last_segment_or_null)
+{
+    Path no_trailing = path_strip_trailing_slash(path);
+    isize split_i = string_find_last_path_separator(no_trailing.string, no_trailing.string.size);
+    isize root_till = path.info.root_size + path.info.prefix_size;
+    if(split_i < root_till)
+        split_i = root_till;
+    else
+        split_i += 1;
+
+    if(last_segment_or_null)
+        *last_segment_or_null = string_tail(no_trailing.string, split_i);
+    
+    Path out = no_trailing;
+    out.string = string_head(no_trailing.string, split_i);
+    path_parse_rest(out.string, &out.info);
+    return out;
+}
+
+//Splits "C:/path/to/dir/"   --> "C:/path/" + "to/dir/"
+//       "path/to/file.txt"  --> "path/" + "to/file.txt"
+EXPORT Path path_strip_first_segment(Path path, Path* first_segment_or_null)
+{
+    isize root_till = path.info.root_size + path.info.prefix_size;
+    isize split_i = string_find_first_path_separator(path.string, root_till);
+    if(split_i == -1)
+        split_i = path.string.size;
+    else
+        split_i += 1;
+
+    if(first_segment_or_null)
+    {
+        first_segment_or_null->string = string_head(path.string, split_i);
+        first_segment_or_null->info = path.info;
+        path_parse_rest(first_segment_or_null->string, &first_segment_or_null->info);
+    }
+    
+    Path out = path;
+    out.string = string_tail(path.string, split_i);
+    path_parse_root(out.string, &out.info);
+    return out;
+}
+
+EXPORT Path path_strip_to_containing_directory(Path path)
+{
+    if(path.info.is_directory)
+        return path;
+    else
+        return path_strip_last_segment(path, NULL);
+}
 
 EXPORT bool path_segment_iterate_string(Path_Segement_Iterator* it, String path, isize till_root_size)
 {
@@ -448,7 +592,7 @@ EXPORT bool path_builder_append(Path_Builder* into, Path path, int flags)
 
     #ifdef DO_ASSERTS_SLOW
     bool has_trailing_slash = false;
-    String except_root = path_get_except_root(into->path);
+    String except_root = path_strip_root(into->path).string;
     if(except_root.size > 0 && is_path_sep(except_root.data[except_root.size - 1]))
         has_trailing_slash = true;
 
@@ -535,7 +679,7 @@ EXPORT bool path_builder_append(Path_Builder* into, Path path, int flags)
                 }
 
                 if(path.info.root_kind != PATH_ROOT_NONE)
-                    _path_parse_root(into->string, &into->info);
+                    path_parse_root(into->string, &into->info);
             }
             else
             {
@@ -608,7 +752,7 @@ EXPORT bool path_builder_append(Path_Builder* into, Path path, int flags)
             into->info.segment_count += 1;
         }
 
-        _path_parse_rest(into->string, &into->info);
+        path_parse_rest(into->string, &into->info);
 
         //We know it 100% does not have trialing slash
         ASSERT(into->info.has_trailing_slash == false);
@@ -623,20 +767,20 @@ EXPORT bool path_builder_append(Path_Builder* into, Path path, int flags)
             if(into->info.is_directory || transform_dir || (path.info.is_directory && transform_file == false))
             {
                 builder_push(&into->builder, slash);
-                _path_parse_rest(into->string, &into->info);
+                path_parse_rest(into->string, &into->info);
             }
         }
     }
     else
     {
-        _path_parse_rest(into->string, &into->info);
+        path_parse_rest(into->string, &into->info);
     }
 
-    into->info.is_invariant = true;
+    into->info.is_normalized = true;
 
     #ifdef DO_ASSERTS_SLOW
     Path_Info new_info = path_parse(into->string).info;
-    new_info.is_invariant = into->info.is_invariant;
+    new_info.is_normalized = into->info.is_normalized;
     new_info.segment_count = into->info.segment_count;
     ASSERT(memcmp(&new_info, &into->info, sizeof(new_info)) == 0);
     #endif
@@ -686,140 +830,6 @@ EXPORT Path_Builder path_concat(Allocator* alloc, Path a, Path b)
     return path_concat_many(alloc, paths, 2);
 }
 
-EXPORT Path path_parse_cstring(const char* path)
-{
-    return path_parse(string_make(path));
-}
-
-EXPORT String path_get_prefix(Path path)
-{
-    String out = string_head(path.string, path.info.prefix_size);
-    return out;
-}
-
-EXPORT String path_get_root(Path path)
-{
-    String out = string_range(path.string, path.info.prefix_size, path.info.prefix_size + path.info.root_size);
-    return out;
-}
-
-EXPORT String path_get_root_content(Path path)
-{
-    String out = string_range(path.string, path.info.root_content_from, path.info.root_content_to);
-    return out;
-}
-
-EXPORT String path_get_except_prefix(Path path)
-{
-    String out = string_tail(path.string, path.info.prefix_size);
-    return out;
-}
-
-EXPORT String path_get_except_root(Path path)
-{
-    String out = string_tail(path.string, path.info.prefix_size + path.info.root_size);
-    return out;
-}
-
-EXPORT String path_get_directories(Path path)
-{
-    isize from = path.info.prefix_size + path.info.root_size;
-    String out = string_range(path.string, from, from + path.info.directories_size);
-    return out;
-}
-
-EXPORT String path_get_filename(Path path)
-{
-    String out = string_range(path.string, path.string.size - path.info.file_size, path.string.size);
-    return out;
-}
-
-EXPORT Path path_get_file_directory(Path path)
-{
-    Path out = path;
-    if(path.info.is_directory == false)
-    {
-        out.info.extension_size = 0;
-        out.info.file_size = 0;
-        out.info.is_directory = true;
-
-        isize to = path.info.prefix_size + path.info.root_size + path.info.directories_size;
-        //If possible include the '/'. This allows us to stay invarinat if our path is invariant.
-        if(to < path.string.size) 
-        {
-            ASSERT(is_path_sep(path.string.data[to]));
-            out.string = string_head(path.string, to + 1); 
-        }
-        else
-        {
-            out.string = string_head(path.string, to); 
-            out.info.is_invariant = false; //Couldnt add the '/' making our path not invariant
-        }
-    }
-
-    return out;
-}
-
-EXPORT String path_get_filename_without_extension(Path path)
-{
-    String filename = path_get_filename(path);
-    if(path.info.extension_size > 0)
-        filename = string_head(filename, filename.size - path.info.extension_size - 1); 
-
-    return filename;
-}
-
-EXPORT String path_get_extension(Path path)
-{
-    String out = string_range(path.string, path.string.size - path.info.extension_size, path.string.size);
-    return out;
-}
-
-EXPORT Path path_get_executable()
-{
-    static bool was_parsed = false;
-    static Path_Builder builder = {0};
-    if(was_parsed == false)
-    {
-        Path path = path_parse_cstring(platform_get_executable_path());
-        builder = path_normalize(allocator_get_static(), path, PATH_FLAG_TRANSFORM_TO_FILE);
-    }
-
-    return builder.path;
-}
-
-EXPORT Path path_get_executable_directory()
-{
-    static bool was_parsed = false;
-    static Path_Builder builder = {0};
-    if(was_parsed == false)
-    {
-        Path path = path_parse_cstring(platform_get_executable_path());
-        Path dir = path_get_file_directory(path);
-        builder = path_normalize(allocator_get_static(), dir, PATH_FLAG_TRANSFORM_TO_DIR);
-    }
-
-    return builder.path;
-}
-
-EXPORT Path path_get_current_working_directory()
-{
-    static Path_Builder cached = {0};
-    static String_Builder last = {0};
-    
-    const char* cwd = platform_directory_get_current_working();
-    if(last.data == NULL || strcmp(cwd, last.data) != 0)
-    {
-        if(last.allocator == NULL)
-            builder_init(&last, allocator_get_static());
-
-        String cwd_string = string_make(cwd);
-        builder_assign(&last, cwd_string);
-        path_builder_assign(&cached, path_parse(cwd_string), 0);
-    }
-
-    return cached.path;
-}
 
 EXPORT void path_make_relative_into(Path_Builder* into, Path relative_to, Path path)
 {
@@ -839,21 +849,21 @@ EXPORT void path_make_relative_into(Path_Builder* into, Path relative_to, Path p
     {
         Arena arena = scratch_arena_acquire();
         
-        //Make paths invariant if they are not invarinat already. 
+        //Make paths normalized if they are not invarinat already. 
         // It is very likely that at least relative_to will be invarinat since 
         // most often it will be a path to the current executable which is cached
-        // in invariant form.
-        Path reli = path_get_file_directory(relative_to);
+        // in normalized form.
+        Path reli = path_strip_to_containing_directory(relative_to);
         Path pathi = path;
 
         Path_Builder reli_builder = {0}; 
         Path_Builder pathi_builder = {0}; 
-        if(relative_to.info.is_invariant == false)
+        if(relative_to.info.is_normalized == false)
         {
             reli_builder = path_normalize(&arena.allocator, relative_to, 0); 
             reli = reli_builder.path;
         }
-        if(path.info.is_invariant == false)
+        if(path.info.is_normalized == false)
         {
             pathi_builder = path_normalize(&arena.allocator, path, 0); 
             pathi = pathi_builder.path;
@@ -946,6 +956,43 @@ EXPORT Path_Builder path_make_absolute(Allocator* alloc, Path relative_to, Path 
     return out;
 }
 
+EXPORT Path path_get_executable()
+{
+    static bool was_parsed = false;
+    static Path_Builder builder = {0};
+    if(was_parsed == false)
+    {
+        Path path = path_parse_cstring(platform_get_executable_path());
+        builder = path_normalize(allocator_get_static(), path, PATH_FLAG_TRANSFORM_TO_FILE);
+    }
+
+    return builder.path;
+}
+
+EXPORT Path path_get_executable_directory()
+{
+    return path_strip_to_containing_directory(path_get_executable());
+}
+
+EXPORT Path path_get_current_working_directory()
+{
+    static Path_Builder cached = {0};
+    static String_Builder last = {0};
+    
+    const char* cwd = platform_directory_get_current_working();
+    if(last.data == NULL || strcmp(cwd, last.data) != 0)
+    {
+        if(last.allocator == NULL)
+            builder_init(&last, allocator_get_static());
+
+        String cwd_string = string_make(cwd);
+        builder_assign(&last, cwd_string);
+        path_builder_assign(&cached, path_parse(cwd_string), 0);
+    }
+
+    return cached.path;
+}
+
 #endif
 
 #if (defined(JOT_ALL_TEST) || defined(JOT_PATH_TEST)) && !defined(JOT_PATH_HAS_TEST)
@@ -954,9 +1001,10 @@ EXPORT Path_Builder path_make_absolute(Allocator* alloc, Path relative_to, Path 
 #define TEST_STRING_EQ(str1, str2) TEST(string_is_equal(str1, str2), "\"" STRING_FMT "\" == \"" STRING_FMT "\"", STRING_PRINT(str1), STRING_PRINT(str2))
 
 enum {
-    PATH_IS_DIR = 1,
-    PATH_IS_EMPTY = 2,
-    PATH_IS_ABSOLUTE = 4,
+    TEST_PATH_IS_DIR = 1,
+    TEST_PATH_IS_EMPTY = 2,
+    TEST_PATH_IS_ABSOLUTE = 4,
+    TEST_PATH_TRAILING_SLASH = 8,
 };
 
 void test_single_path(const char* path, const char* prefix, const char* root, const char* directories, const char* filename, const char* extension, int flags)
@@ -975,14 +1023,14 @@ void test_single_path(const char* path, const char* prefix, const char* root, co
     TEST_STRING_EQ(_filename, string_make(filename));
     TEST_STRING_EQ(_extension, string_make(extension));
 
-    TEST(parsed.info.is_absolute == (flags & PATH_IS_ABSOLUTE) > 0);
-    TEST(parsed.info.is_directory == (flags & PATH_IS_DIR) > 0);
+    TEST(parsed.info.is_absolute == (flags & TEST_PATH_IS_ABSOLUTE) > 0);
+    TEST(parsed.info.is_directory == (flags & TEST_PATH_IS_DIR) > 0);
+    TEST(parsed.info.has_trailing_slash == (flags & TEST_PATH_TRAILING_SLASH) > 0);
 }
 
 void test_path_normalize(int flags, const char* cpath, const char* cexpected)
 {
     const char* prefixes[] = {"", "\\\\?\\", "\\\\.\\"};
-
     for(isize i = 0; i < STATIC_ARRAY_SIZE(prefixes); i++)
     {
         Arena arena = scratch_arena_acquire();
@@ -1015,11 +1063,11 @@ void test_canonicalize_with_roots_and_prefixes(int flags, const char* cabs_path,
 }
 
 enum {
-    TEST_MAKE_RELATIVE,
-    TEST_MAKE_ABSOLUTE,
+    TEST_PATH_MAKE_RELATIVE,
+    TEST_PATH_MAKE_ABSOLUTE,
 };
 
-void test_make_relative_absolute_with_prefixes(int flags, const char* crelative, const char* cpath, const char* cexpected)
+void test_path_make_relative_absolute_with_prefixes(int flags, const char* crelative, const char* cpath, const char* cexpected)
 {
     const char* prefixes[] = {"", "\\\\?\\", "\\\\.\\"};
     for(isize i = 0; i < STATIC_ARRAY_SIZE(prefixes); i++)
@@ -1035,7 +1083,7 @@ void test_make_relative_absolute_with_prefixes(int flags, const char* crelative,
         Path expected = path_parse(prefixed_expected.string);
 
         Path_Builder transformed = {0};
-        if(flags == TEST_MAKE_RELATIVE)
+        if(flags == TEST_PATH_MAKE_RELATIVE)
             transformed = path_make_relative(&arena.allocator, relative, path);
         else
             transformed = path_make_absolute(&arena.allocator, relative, path);
@@ -1047,20 +1095,58 @@ void test_make_relative_absolute_with_prefixes(int flags, const char* crelative,
     }
 }
 
+void test_path_strip_first(const char* path, const char* expected_head, const char* expected_tail)
+{
+    Path head = {0};
+    Path tail = path_strip_first_segment(path_parse_cstring(path), &head);
+
+    TEST_STRING_EQ(head.string, string_make(expected_head));
+    TEST_STRING_EQ(tail.string, string_make(expected_tail));
+}
+
+void test_path_strip_last(const char* path, const char* expected_head, const char* expected_tail)
+{
+    Path tail = {0};
+    Path head = path_strip_last_segment(path_parse_cstring(path), &tail.string);
+
+    TEST_STRING_EQ(head.string, string_make(expected_head));
+    TEST_STRING_EQ(tail.string, string_make(expected_tail));
+}
+
 void test_path()
 {
-    test_single_path("", "", "", "", "", "", PATH_IS_DIR);
-    test_single_path(".", "", "", ".", "", "", PATH_IS_DIR);
-    test_single_path("..", "", "", "..", "", "", PATH_IS_DIR);
-    test_single_path("./", "", "", ".", "", "", PATH_IS_DIR);
-    test_single_path("../", "", "", "..", "", "", PATH_IS_DIR);
+    test_single_path("", "", "", "", "", "", TEST_PATH_IS_DIR);
+    test_single_path(".", "", "", ".", "", "", TEST_PATH_IS_DIR);
+    test_single_path("..", "", "", "..", "", "", TEST_PATH_IS_DIR);
+    test_single_path("./", "", "", ".", "", "", TEST_PATH_IS_DIR | TEST_PATH_TRAILING_SLASH);
+    test_single_path("../", "", "", "..", "", "", TEST_PATH_IS_DIR | TEST_PATH_TRAILING_SLASH);
+    test_single_path("/", "", "/", "", "", "", TEST_PATH_IS_DIR | TEST_PATH_IS_ABSOLUTE);
 
     test_single_path("file.txt", "", "", "", "file.txt", "txt", 0);
-    test_single_path("C:/my/files/file.txt", "", "C:/", "my/files", "file.txt", "txt", PATH_IS_ABSOLUTE);
-    test_single_path("/my/files/file/", "", "/", "my/files/file", "", "", PATH_IS_ABSOLUTE | PATH_IS_DIR);
+    test_single_path("C:/my/files/file.txt", "", "C:/", "my/files", "file.txt", "txt", TEST_PATH_IS_ABSOLUTE);
+    test_single_path("/my/files/file/", "", "/", "my/files/file", "", "", TEST_PATH_IS_ABSOLUTE | TEST_PATH_IS_DIR | TEST_PATH_TRAILING_SLASH);
     test_single_path("my/files/file", "", "", "my/files", "file", "", 0);
+    test_single_path("my/files/file/..", "", "", "my/files/file/..", "", "", TEST_PATH_IS_DIR);
     test_single_path("\\\\?\\C:my/files/file", "\\\\?\\", "C:", "my/files", "file", "", 0);
-    test_single_path("//Server/my/files/.gitignore", "", "//Server/", "my/files", ".gitignore", "gitignore", PATH_IS_ABSOLUTE);
+    test_single_path("//Server/my/files/.gitignore", "", "//Server/", "my/files", ".gitignore", "gitignore", TEST_PATH_IS_ABSOLUTE);
+
+    //Strip first
+    test_path_strip_first("", "", "");
+    test_path_strip_first("hello", "hello", "");
+    test_path_strip_first("C:/", "C:/", "");
+    test_path_strip_first("C:/..", "C:/..", "");
+    test_path_strip_first("C:/my/files/file.txt", "C:/my/", "files/file.txt");
+    test_path_strip_first("/files/path/to/directory/", "/files/", "path/to/directory/");
+    test_path_strip_first("files/path/to/directory/", "files/", "path/to/directory/");
+
+    //Strip last
+    test_path_strip_last("", "", "");
+    test_path_strip_last("hello", "", "hello");
+    test_path_strip_last("C:/", "C:/", "");
+    test_path_strip_last("C:/..", "C:/", "..");
+    test_path_strip_last("C:/my/files/file.txt", "C:/my/files/", "file.txt");
+    test_path_strip_last("/files/path/to/directory/", "/files/path/to/", "directory");
+    test_path_strip_last("files/path/to/directory/", "files/path/to/", "directory");
 
     //Relative
     test_path_normalize(0, "", "");
@@ -1091,7 +1177,6 @@ void test_path()
     test_canonicalize_with_roots_and_prefixes(PATH_FLAG_NO_REMOVE_DOT_DOT, "xxx/./../dir/xxx/../././file", "xxx/../dir/xxx/../file");
     test_canonicalize_with_roots_and_prefixes(PATH_FLAG_NO_REMOVE_DOT_DOT | PATH_FLAG_NO_REMOVE_DOT, "xxx/./../dir/xxx\\../.\\./file", "xxx/./../dir/xxx/../././file");
 
-    #if 1
     //Transform to dir
     test_path_normalize(PATH_FLAG_TRANSFORM_TO_DIR, "", "");
     test_path_normalize(PATH_FLAG_TRANSFORM_TO_DIR, ".", "./");
@@ -1129,29 +1214,27 @@ void test_path()
     test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_FILE, "file/", "file");
     test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_FILE, "dir/file", "dir/file");
     test_canonicalize_with_roots_and_prefixes(PATH_FLAG_TRANSFORM_TO_FILE, "dir/file/", "dir/file");
-    #endif
 
     //Make absolute
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_ABSOLUTE, "", "", "");
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_ABSOLUTE, "", ".", "./");
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_ABSOLUTE, "", "..", "../");
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_ABSOLUTE, "bye\\dir/", "hello\\.\\world/file.txt", "bye/dir/hello/world/file.txt");
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_ABSOLUTE, "D:/bye\\dir/", "hello\\.\\world/file.txt", "D:/bye/dir/hello/world/file.txt");
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_ABSOLUTE, "/bye\\dir/", "..\\hello/./world/file.txt", "/bye/hello/world/file.txt");
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_ABSOLUTE, "bye\\dir/", "C:/hello\\.\\world/file.txt", "C:/hello/world/file.txt");
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_ABSOLUTE, "D:/bye\\dir/", "C:/hello\\.\\world/file.txt", "C:/hello/world/file.txt");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_ABSOLUTE, "", "", "");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_ABSOLUTE, "", ".", "./");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_ABSOLUTE, "", "..", "../");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_ABSOLUTE, "bye\\dir/", "hello\\.\\world/file.txt", "bye/dir/hello/world/file.txt");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_ABSOLUTE, "D:/bye\\dir/", "hello\\.\\world/file.txt", "D:/bye/dir/hello/world/file.txt");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_ABSOLUTE, "/bye\\dir/", "..\\hello/./world/file.txt", "/bye/hello/world/file.txt");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_ABSOLUTE, "bye\\dir/", "C:/hello\\.\\world/file.txt", "C:/hello/world/file.txt");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_ABSOLUTE, "D:/bye\\dir/", "C:/hello\\.\\world/file.txt", "C:/hello/world/file.txt");
 
     //Make relative
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_RELATIVE, "", "", "");
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_RELATIVE, "C:/path/to/dir", "C:/path/to/world/file.txt", "../world/file.txt");
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_RELATIVE, "path/to/dir", "path/dir1/dir2/dir3/file.txt", "../../dir1/dir2/dir3/file.txt");
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_RELATIVE, "path/to/dir1/dir2/", "path/to/dir1/dir2/dir3/file.txt", "dir3/file.txt");
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_RELATIVE, "C:/path/to/dir1/dir2/", "C:/path/to/dir1/dir2/dir3/file.txt", "dir3/file.txt");
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_RELATIVE, "C:/path/to/dir", "path/to/world/file.txt", "path/to/world/file.txt");
-    test_make_relative_absolute_with_prefixes(TEST_MAKE_RELATIVE, "path/to/dir", "C:/path/to/world/file.txt", "C:/path/to/world/file.txt");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_RELATIVE, "", "", "");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_RELATIVE, "C:/path/to/dir", "C:/path/to/world/file.txt", "../world/file.txt");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_RELATIVE, "path/to/dir", "path/dir1/dir2/dir3/file.txt", "../../dir1/dir2/dir3/file.txt");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_RELATIVE, "path/to/dir1/dir2/", "path/to/dir1/dir2/dir3/file.txt", "dir3/file.txt");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_RELATIVE, "C:/path/to/dir1/dir2/", "C:/path/to/dir1/dir2/dir3/file.txt", "dir3/file.txt");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_RELATIVE, "C:/path/to/dir", "path/to/world/file.txt", "path/to/world/file.txt");
+    test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_RELATIVE, "path/to/dir", "C:/path/to/world/file.txt", "C:/path/to/world/file.txt");
 
     LOG_OKAY("PATH", "Done!");
-    exit(0);
 }   
 
 #endif
