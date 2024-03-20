@@ -11,9 +11,10 @@ typedef Platform_String String;
 // (as long as it was properly initialized - ie. not in = {0} state)
 typedef struct String_Builder {
     Allocator* allocator;
+    isize capacity;
     //A slightly weird construction so that we can easily 
     // obtain a string from the string builder.
-    //This prevents us from constantly ahvign to type
+    //This prevents us from constantly havign to type
     //  string_from_builder(builder)
     // and instead just
     //  builder.string
@@ -25,7 +26,6 @@ typedef struct String_Builder {
 
         String string;
     };
-    isize capacity;
 } String_Builder;
 
 DEFINE_ARRAY_TYPE(String, String_Array);
@@ -73,11 +73,15 @@ EXPORT isize  string_find_first_char_sse(String string, char search_for, isize f
 EXPORT isize  string_find_last_char_from(String in_str, char search_for, isize from);
 EXPORT isize  string_find_last_char(String string, char search_for); 
 
-EXPORT String string_duplicate(Arena* arena, String string);
+EXPORT void string_deallocate(Allocator* arena, String* string);
 
 EXPORT String_Builder builder_make(Allocator* alloc_or_null, isize capacity_or_zero);
-EXPORT String_Builder builder_from_cstring(const char* cstring, Allocator* allocator); //Allocates a String_Builder from cstring.
-EXPORT String_Builder builder_from_string(String string, Allocator* allocator);  //Allocates a String_Builder from String using an allocator.
+EXPORT String_Builder builder_from_cstring(Allocator* allocator, const char* cstring); //Allocates a String_Builder from cstring.
+EXPORT String_Builder builder_from_string(Allocator* allocator, String string);  //Allocates a String_Builder from String using an allocator.
+
+EXPORT String_Builder string_concat(Allocator* allocator, String a, String b);
+EXPORT String_Builder string_concat3(Allocator* allocator, String a, String b, String c);
+
 
 EXPORT void builder_init(String_Builder* builder, Allocator* alloc);
 EXPORT void builder_init_with_capacity(String_Builder* builder, Allocator* alloc, isize capacity_or_zero);
@@ -98,6 +102,14 @@ EXPORT void builder_array_deinit(String_Builder_Array* array);
 //If there is '\0' at the matching position of replace_with, removes the character without substituting"
 //So string_replace(..., "Hello world", "lw", ".\0") -> "He..o or.d"
 EXPORT String_Builder string_replace(Allocator* allocator, String source, String to_replace, String replace_with);
+
+EXPORT bool char_is_space(char c);
+EXPORT bool char_is_digit(char c);
+EXPORT bool char_is_lowercase(char c);
+EXPORT bool char_is_uppercase(char c);
+EXPORT bool char_is_alphabetic(char c);
+EXPORT bool char_is_id(char c);
+
 
 #endif
 
@@ -450,14 +462,30 @@ EXPORT String_Builder string_replace(Allocator* allocator, String source, String
         return string_is_equal(portion, smaller_string);
     }
     
-    EXPORT String string_duplicate(Arena* arena, String string)
+    
+    EXPORT String_Builder string_concat(Allocator* allocator, String a, String b)
     {
-        char* data = (char*) arena_push_nonzero(arena, string.size + 1, 1);
-        memcpy(data, string.data, string.size);
-        data[string.size] = '\0';
-        String out = {data, string.size};
-
+        String_Builder out = builder_make(allocator, a.size + b.size);
+        builder_append(&out, a);
+        builder_append(&out, b);
         return out;
+    }
+
+    EXPORT String_Builder string_concat3(Allocator* allocator, String a, String b, String c)
+    {
+        String_Builder out = builder_make(allocator, a.size + b.size + c.size);
+        builder_append(&out, a);
+        builder_append(&out, b);
+        builder_append(&out, c);
+        return out;
+    }
+
+    EXPORT void string_deallocate(Allocator* alloc, String* string)
+    {
+        if(string->size != 0)
+            allocator_deallocate(alloc, (void*) string->data, string->size + 1, 1);
+        String nil = {0};
+        *string = nil;
     }
 
     EXPORT const char* cstring_escape(const char* string)
@@ -664,17 +692,18 @@ EXPORT String_Builder string_replace(Allocator* allocator, String source, String
 
         array_deinit(array);
     }
-
-    EXPORT String_Builder builder_from_string(String string, Allocator* allocator)
+    
+    EXPORT String_Builder builder_from_string(Allocator* allocator, String string)
     {
-        String_Builder builder = {allocator};
-        builder_assign(&builder, string);
+        String_Builder builder = builder_make(allocator, string.size);
+        if(string.size)
+            builder_assign(&builder, string);
         return builder;
     }
 
-    EXPORT String_Builder builder_from_cstring(const char* cstring, Allocator* allocator)
+    EXPORT String_Builder builder_from_cstring(Allocator* allocator, const char* cstring)
     {
-        return builder_from_string(string_make(cstring), allocator);
+        return builder_from_string(allocator, string_make(cstring));
     }
 
     EXPORT bool builder_is_equal(String_Builder a, String_Builder b)
@@ -685,5 +714,57 @@ EXPORT String_Builder string_replace(Allocator* allocator, String source, String
     EXPORT int builder_compare(String_Builder a, String_Builder b)
     {
         return string_compare(a.string, b.string);
+    }
+
+    EXPORT bool char_is_space(char c)
+    {
+        switch(c)
+        {
+            case ' ':
+            case '\n':
+            case '\t':
+            case '\r':
+            case '\v':
+            case '\f':
+                return true;
+            default: 
+                return false;
+        }
+    }
+
+    EXPORT bool char_is_digit(char c)
+    {
+        return '0' <= c && c <= '9';
+    }
+
+    EXPORT bool char_is_lowercase(char c)
+    {
+        return 'a' <= c && c <= 'z';
+    }
+
+    EXPORT bool char_is_uppercase(char c)
+    {
+        return 'A' <= c && c <= 'Z';
+    }
+
+    EXPORT bool char_is_alphabetic(char c)
+    {
+        //return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z');
+
+        //this is just a little flex of doing the two range checks in one
+        //using the fact that all uppercase to lowercase leters are 32 appart.
+        //That means we can just maks the fift bit and test once.
+        //You can simply test this works by comparing the result of both approaches on all char values.
+        char diff = c - 'A';
+        char masked = diff & ~(1 << 5);
+        bool is_letter = 0 <= masked && masked <= ('Z' - 'A');
+
+        return is_letter;
+    }
+
+    //all characters permitted inside a common programming language id. [0-9], _, [a-z], [A-Z]
+    EXPORT bool char_is_id(char c)
+    {
+        return char_is_digit(c) || char_is_alphabetic(c) || c == '_';
     }
 #endif

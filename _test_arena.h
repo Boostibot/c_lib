@@ -1,10 +1,10 @@
 #pragma once
 #include "arena.h"
 
-static char* arena_push_string(Arena* arena, i32 level, const char* string)
+static char* arena_push_string(Arena* arena, const char* string)
 {
     isize len = string ? strlen(string) : 0;   
-    char* pat1 = (char*) arena_push(arena, level, len + 1, 1);
+    char* pat1 = (char*) arena_push(arena, len + 1, 1);
     memcpy(pat1, string, len);
     pat1[len] = 0;
 
@@ -14,28 +14,27 @@ static char* arena_push_string(Arena* arena, i32 level, const char* string)
 static void test_arena(f64 time)
 {
     (void) time;
-    Arena arena = {0};
-
-    arena_init(&arena, 0, 0);
+    Arena_Stack arena_stack = {0};
+    arena_init(&arena_stack, 0, 0, "test_arena");
     
     #define PATTERN1 ">HelloWorld(Pattern1)"
     #define PATTERN2 ">GoodbyeWorld(Pattern2)"
     #define PATTERN3 ">****(Pattern3)"
 
-    i32 level1 = arena_get_level(&arena);
+    Arena level1 = arena_acquire(&arena_stack);
     {
-        char* pat1 = arena_push_string(&arena, level1, PATTERN1);
+        char* pat1 = arena_push_string(&level1, PATTERN1);
 
-        i32 level2 = arena_get_level(&arena);
+        Arena level2 = arena_acquire(&arena_stack);
         {
-            char* pat2 = arena_push_string(&arena, level2, PATTERN2);
+            char* pat2 = arena_push_string(&level2, PATTERN2);
 
-            i32 level3 = level2 + 10;
+            Arena level3 = arena_acquire(&arena_stack);
             {
-                char* pat3 = arena_push_string(&arena, level3, PATTERN3); (void) pat3;
-                pat1 = arena_push_string(&arena, level1, PATTERN1);
+                char* pat3 = arena_push_string(&level3, PATTERN3); (void) pat3;
+                pat1 = arena_push_string(&level1, PATTERN1);
             }
-            arena_pop(&arena, level3);
+            arena_release(&level3);
 
             TEST(memcmp(pat2, PATTERN2, sizeof PATTERN2 - 1) == 0);
         }
@@ -43,5 +42,5 @@ static void test_arena(f64 time)
         TEST(memcmp(pat1, PATTERN1, sizeof PATTERN1 - 1) == 0);
         //! No free
     }
-    arena_pop(&arena, level1);
+    arena_release(&level1);
 }

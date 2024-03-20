@@ -103,23 +103,6 @@
     #define PLATFORM_HAS_ENDIAN_BIG    PLATFORM_ENDIAN_BIG
 #endif
 
-//=========================================
-// Attributes
-//=========================================
-
-//See below for implementation on each compiler.
-
-#define ATTRIBUTE_RESTRICT                                  /* C's restrict keyword. see: https://en.cppreference.com/w/c/language/restrict */
-#define ATTRIBUTE_INLINE_ALWAYS                             /* Ensures function will get inlined. Applied before function declartion. */
-#define ATTRIBUTE_INLINE_NEVER                              /* Ensures function will not get inlined. Applied before function declartion. */
-#define ATTRIBUTE_THREAD_LOCAL                              /* Declares a variable thread local. Applied before variable declarition. */
-#define ATTRIBUTE_ALIGNED(align)                            /* Places a variable on the stack aligned to 'align' */
-#define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index) /* Marks a function as formatting function. Applied before function declartion. See log.h for example */
-#define ATTRIBUTE_FORMAT_ARG                                /* Marks a format argument. Applied before const char* format argument. See log.h for example */  
-#define ATTRIBUTE_NORETURN                                  /* Specifices that this function will not return (for example abort, exit ...) . Applied before function declartion. */
-#define ATTRIBUTE_RETURN_RESTRICT                           /* Specifies that the retuned pointer from this function does not align any other obejct. Most often used on allocators. */
-#define ATTRIBUTE_RETURN_ALIGNED(align)                     /* Specifies that the retuned pointer is aligned to align. */
-#define ATTRIBUTE_RETURN_ALIGNED_ARG(align_arg_index)       /* Specifies that the retuned pointer is aligned to the integer value of argument at align_arg_index position. */
 
 //=========================================
 // Platform layer setup
@@ -701,17 +684,6 @@ const char* platform_exception_to_string(Platform_Exception error);
     #undef platform_debug_break
     #define platform_debug_break() __debugbreak() 
 
-    #undef platform_assume_unreachable
-    #define platform_assume_unreachable() __assume(0)
-
-    #define ATTRIBUTE_RESTRICT                                                 __restrict
-    #define ATTRIBUTE_INLINE_ALWAYS                                             __forceinline
-    #define ATTRIBUTE_INLINE_NEVER                                                __declspec(noinline)
-    #define ATTRIBUTE_THREAD_LOCAL                                             __declspec(thread)
-    #define ATTRIBUTE_ALIGNED(bytes)                                           __declspec(align(bytes))
-    #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index)                /* empty */
-    #define ATTRIBUTE_FORMAT_ARG                                               _Printf_format_string_  
-
     inline static void platform_compiler_memory_fence() 
     {
         _ReadWriteBarrier();
@@ -826,6 +798,8 @@ const char* platform_exception_to_string(Platform_Exception error);
         return platform_atomic_add64(target, -value);
     }
    
+   
+
 #elif defined(__GNUC__) || defined(__clang__)
     #define _GNU_SOURCE
     #include <signal.h>
@@ -834,17 +808,6 @@ const char* platform_exception_to_string(Platform_Exception error);
     // #define platform_debug_break() __builtin_trap() /* bad looks like a fault in program! */
     #define platform_debug_break() raise(SIGTRAP)
     
-    #undef platform_assume_unreachable
-    #define platform_assume_unreachable()                                    __builtin_unreachable() /*move to platform! */
-
-    #define ATTRIBUTE_RESTRICT                                                __restrict__
-    #define ATTRIBUTE_INLINE_ALWAYS                                            __attribute__((always_inline)) inline
-    #define ATTRIBUTE_INLINE_NEVER                                               __attribute__((noinline))
-    #define ATTRIBUTE_THREAD_LOCAL                                            __thread
-    #define ATTRIBUTE_ALIGNED(bytes)                                          __attribute__((aligned(bytes)))
-    #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index)               __attribute__((format_arg (printf, format_arg_index, 0)))
-    #define ATTRIBUTE_FORMAT_ARG                                      /* empty */    
-    #define ATTRIBUTE_NORETURN                                               __attribute__((noreturn))
 
     typedef char __MAX_ALIGN_TESTER__[
         __alignof__(long long int) == PLATFORM_MAX_ALIGN || 

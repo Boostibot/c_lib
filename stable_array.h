@@ -179,7 +179,7 @@ INTERNAL u64* _stable_array_alloced_mask(const Stable_Array* stable, u32 block_i
 
 INTERNAL isize _stable_array_alloced_mask_size(isize size)
 {
-    return DIV_ROUND_UP(size, 64);
+    return DIV_CEIL(size, 64);
 }
 
 INTERNAL void _stable_array_check_invariants(const Stable_Array* stable);
@@ -363,7 +363,7 @@ EXPORT void stable_array_reserve(Stable_Array* stable, isize to_size)
         new_capacity_item = MAX(new_capacity_item, to_size);
 
         u32 blocks_before = stable->blocks_size;
-        u32 blocks_after = (u32) DIV_ROUND_UP(new_capacity_item, STABLE_ARRAY_BLOCK_SIZE);
+        u32 blocks_after = (u32) DIV_CEIL(new_capacity_item, STABLE_ARRAY_BLOCK_SIZE);
         
         //If the ptr array needs reallocating
         if(blocks_after > stable->blocks_capacity)

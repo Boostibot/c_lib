@@ -73,6 +73,7 @@ EXPORT void allocator_out_of_memory(Allocator* allocator, isize new_size, void* 
 EXPORT Allocator* allocator_get_default(); //returns the default allocator used for returning values from a function
 EXPORT Allocator* allocator_get_scratch(); //returns the scracth allocator used for temp often stack order allocations inside a function
 EXPORT Allocator* allocator_get_static(); //returns the static allocator used for allocations with potentially unbound lifetime. This includes things that will never be deallocated.
+EXPORT Allocator* allocator_or_default(Allocator* allocator_or_null); //Returns the passed in allocator_or_null. If allocator_or_null is NULL returns the current set default allocator
 EXPORT Arena_Stack* allocator_get_scratch_arena_stack();
 EXPORT Arena scratch_arena_acquire();
 EXPORT bool allocator_is_arena(Allocator* allocator);
@@ -203,6 +204,11 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     EXPORT Arena_Stack* allocator_get_scratch_arena_stack()
     {
         return &_allocator_state.scratch_arena_stack;
+    }
+    
+    EXPORT Allocator* allocator_or_default(Allocator* allocator_or_null)
+    {
+        return allocator_or_null ? allocator_or_null : allocator_get_default();
     }
 
     EXPORT Allocator_Set allocator_set_default(Allocator* new_default)

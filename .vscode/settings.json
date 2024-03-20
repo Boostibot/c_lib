@@ -1,0 +1,19 @@
+{
+    "files.associations": {
+        "vector": "c",
+        "__bit_reference": "c",
+        "__split_buffer": "c",
+        "string": "c",
+        "array": "cpp",
+        "bitset": "cpp",
+        "string_view": "cpp",
+        "initializer_list": "cpp",
+        "ranges": "cpp",
+        "utility": "cpp",
+        "__hash_table": "cpp",
+        "deque": "cpp",
+        "queue": "cpp",
+        "random": "cpp",
+        "unordered_map": "cpp"
+    }
+}

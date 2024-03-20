@@ -1,10 +1,14 @@
 #pragma once
+#define JOT_ALL_TEST
+#define JOT_ALL_IMPL
 #include "_test_string.h"
 #include "_test_random.h"
+#include "_test_arena.h"
 #include "_test_array.h"
 #include "_test_hash_index.h"
-//#include "_test_log.h"
+#include "_test_log.h"
 #include "_test_math.h"
+#include "path.h"
 #include "_test_stable_array.h"
 #include "_test_lpf.h"
 #include "_test_image.h"
@@ -20,8 +24,10 @@ INTERNAL void test_all(f64 total_time)
     INCR RUN_TEST(test_image);
     INCR RUN_TEST(test_lpf);
     INCR RUN_TEST(test_stable_array);
-    //INCR RUN_TEST(test_log);
+    INCR RUN_TEST(test_log);
     //INCR RUN_TEST(test_random);
+    INCR RUN_TEST(test_arena);
+    INCR RUN_TEST(test_path);
     
     INCR RUN_TEST_TIMED(test_hash_index, total_time/4);
     INCR RUN_TEST_TIMED(test_string, total_time/4);

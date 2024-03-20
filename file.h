@@ -1,11 +1,8 @@
 #ifndef JOT_FILE
 #define JOT_FILE
 
-#include "platform.h"
-#include "allocator.h"
 #include "string.h"
-//#include "error.h"
-#include "profile.h"
+#include "path.h"
 
 EXPORT bool file_read_entire_append_into(String file_path, String_Builder* append_into);
 EXPORT bool file_read_entire(String file_path, String_Builder* data);
@@ -22,59 +19,7 @@ EXPORT String path_get_full_ephemeral(String path);
 EXPORT void   path_get_relative(String_Builder* into, String path);
 EXPORT String path_get_relative_ephemeral(String path);
 
-EXPORT String path_get_executable();
-EXPORT String path_get_executable_directory();
-EXPORT String path_get_current_working_directory();
-EXPORT String path_get_file_directory(String file_path);
-
 EXPORT String path_get_name_from_path(String path);
-
-// Represents the following:
-// //?//C:/Users/Program_Files/./../Dir/file.txt
-// <---><-><-------------------------->|<------>
-//   P   R         D                   |  F  <->
-//                                     M*      E
-//                               
-// Where:
-//  P - prefix_size - this is OS specific (win32) prefix that carries meta data
-//  R - root_size
-//  D - directories_size
-//  F - file_size
-//  E - extension_size
-//  M* - This / is explicitly not including in directory_size.
-//       This is because non normalized directory paths can bu dont have to end
-//       on /. This makes sure that both cases have the same size.
-// 
-typedef struct Path_Info {
-    i32 prefix_size;
-    i32 root_size;
-    i32 directories_size;
-    i32 file_size;
-    i32 extension_size;
-    bool is_valid;
-    bool is_relative;
-} Path_Info;
-
-typedef struct Path {
-    Path_Info info;
-    String path;
-} Path;
-
-EXPORT Path_Info path_parse(String path);
-EXPORT String path_get_part_prexif(String path, Path_Info info);
-EXPORT String path_get_part_root(String path, Path_Info info);
-EXPORT String path_get_part_diretcories(String path, Path_Info info);
-EXPORT String path_get_part_extension(String path, Path_Info info);
-EXPORT String path_get_part_filename(String path, Path_Info info);
-
-//path_parse: String -> Path_Info fast entirely on my side. Should be okay since we have the parse.h. 
-//path_validate: String -> File_Info
-//path_get_full: String -> Path
-
-//path_get_fr
-
-//Path is fully safe path. It however does not have to point to a valid file.
-
 
 #endif
 
@@ -96,30 +41,6 @@ EXPORT String path_get_name_from_path(String path)
     isize dir_pos = string_find_last_char_from(path, '/', dot_pos - 1);
     String name = string_range(path, dir_pos + 1, dot_pos);
     return name;
-}
-
-EXPORT String path_get_executable()
-{
-    return string_make(platform_get_executable_path());
-}
-
-EXPORT String path_get_executable_directory()
-{
-    String executable = path_get_executable();
-    String executable_directory = path_get_file_directory(executable);
-    return executable_directory;
-}
-
-EXPORT String path_get_current_working_directory()
-{
-    return string_make(platform_directory_get_current_working());
-}
-
-EXPORT String path_get_file_directory(String file_path)
-{
-    isize last_dir_index = string_find_last_char(file_path, '/') + 1;
-    String dir_path = string_head(file_path, last_dir_index);
-    return dir_path;
 }
 
 enum {FILE_EPHEMERAL_SLOT_COUNT = 4};

@@ -1,11 +1,9 @@
 #pragma once
-#if 1
 #include "_test.h"
 #include "hash_index.h"
 
 #include <string.h>
 
-//@TODO: deduplicate this code and test as template!
 //@TODO: test multiplicit keys!
 
 INTERNAL isize u64_array_find(u64_Array array, u64 looking_for)
@@ -29,24 +27,6 @@ INTERNAL isize u32_array_find(u32_Array array, u32 looking_for)
 
 	return -1;
 }
-
-//#include "hash_index_hood.h"
-//
-//#define Hash_Index              Hash_Index_Hood
-//#define Hash_Index_Entry        Hash_Index_Hood_Entry
-//
-//#define hash_index_deinit		hash_index_hood_deinit
-//#define hash_index_init			hash_index_hood_init
-//#define hash_index_escape_value	hash_index_hood_escape_value
-//#define hash_index_insert		hash_index_hood_insert
-//#define hash_index_find			hash_index_hood_find
-//#define hash_index_remove		hash_index_hood_remove
-//#define hash_index_clear		hash_index_hood_clear
-//#define hash_index_copy			hash_index_hood_copy
-//#define hash_index_rehash		hash_index_hood_rehash
-//#define hash_index_reserve		hash_index_hood_reserve
-
-
 INTERNAL void test_hash_index_stress(f64 max_seconds)
 {
 	//max_seconds = 0;
@@ -298,4 +278,3 @@ INTERNAL void test_hash_index(f64 max_seconds)
 {
 	test_hash_index_stress(max_seconds/2);
 }
-#endif
