@@ -89,7 +89,10 @@ INTERNAL void test_hash_index_stress(f64 max_seconds)
 	
 		History history = {0};
 
-		*random_state() = random_state_from_seed(0xc3);
+
+		//uint64_t random_seed = random_clock_seed();
+		uint64_t random_seed = 0x6b3979953b41cf7d;
+		*random_state() = random_state_from_seed(random_seed);
 
 		i32 max_size = 0;
 		i32 max_capacity = 0;
@@ -231,18 +234,25 @@ INTERNAL void test_hash_index_stress(f64 max_seconds)
 				max_capacity = table.entries_count;
 
 			//Test integrity of all current keys
-			ASSERT(truth_key_array.size == truth_val_array.size);
-			for(isize j = 0; j < truth_key_array.size; j++)
+			for(isize z = 0; z < 2; z++)
 			{
-				u64 key = truth_key_array.data[j];
-				u64 val = truth_val_array.data[j];
+				ASSERT(truth_key_array.size == truth_val_array.size);
+				for(isize j = 0; j < truth_key_array.size; j++)
+				{
+					u64 key = truth_key_array.data[j];
+					u64 val = truth_val_array.data[j];
 
-				isize found = hash_index_find(table, key);
-				TEST(table.entries != NULL);
-				TEST(0 <= found && found < table.entries_count && "The returned index must be valid");
-				Hash_Index_Entry entry = table.entries[found];
+					isize found = hash_index_find(table, key);
+					TEST(table.entries != NULL);
+					TEST(0 <= found && found < table.entries_count && "The returned index must be valid");
+					Hash_Index_Entry entry = table.entries[found];
 				
-				TEST(entry.hash == key && entry.value == val && "The entry must be inserted properly");
+					TEST(entry.hash == key && entry.value == val && "The entry must be inserted properly");
+				}
+
+
+				if(z == 0)
+					_hash_index_rehash_in_place(&table);
 			}
 
 			//Test integrity of some non existant keys

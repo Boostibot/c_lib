@@ -20,7 +20,12 @@ INTERNAL void test_all(f64 total_time)
     int passed_count = 0;
 
     #define INCR total_count += 1, passed_count += (int)
-
+    
+    INCR RUN_TEST_TIMED(test_hash_index, total_time/4);
+    INCR RUN_TEST_TIMED(test_string, total_time/4);
+    INCR RUN_TEST_TIMED(test_array, total_time/4);
+    INCR RUN_TEST_TIMED(test_math, total_time/4);
+    
     INCR RUN_TEST(test_image);
     INCR RUN_TEST(test_lpf);
     INCR RUN_TEST(test_stable_array);
@@ -28,11 +33,6 @@ INTERNAL void test_all(f64 total_time)
     //INCR RUN_TEST(test_random);
     INCR RUN_TEST(test_arena);
     INCR RUN_TEST(test_path);
-    
-    INCR RUN_TEST_TIMED(test_hash_index, total_time/4);
-    INCR RUN_TEST_TIMED(test_string, total_time/4);
-    INCR RUN_TEST_TIMED(test_array, total_time/4);
-    INCR RUN_TEST_TIMED(test_math, total_time/4);
     
     #undef INCR
 

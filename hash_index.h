@@ -298,6 +298,79 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
 
         ASSERT(hash_index_is_invariant(*to_table));
     }
+
+    INTERNAL void _hash_index_rehash_in_place(Hash_Index* table)
+    {
+        ASSERT(hash_index_is_invariant(*table));
+
+        uint64_t mod = (uint64_t) table->entries_count - 1;
+        for(uint64_t i = 0; i < (uint64_t) table->entries_count; i++)
+        {
+            Hash_Index_Entry* curr = &table->entries[i];
+
+            //If is full entry 
+            if((curr->value & (HASH_INDEX_EMPTY | HASH_INDEX_GRAVESTONE)) == 0)
+            {
+                //If is suboptimally placed
+                if((curr->hash & mod) != i)
+                {
+                    if(i == 0x12)
+                    {
+                        int k = 0; (void) k;
+                    }
+
+                    Hash_Index_Entry vacant = *curr;
+                    uint64_t next_slot = vacant.hash & mod;
+
+                    //Clear the new vacant one
+                    curr->value = HASH_INDEX_EMPTY;
+                    curr->hash = 0;
+
+                    uint64_t curr_step = 1;
+                    for(uint64_t counter = 0;;)
+                    {
+                        if(counter ++ >= (uint64_t) table->entries_count* (uint64_t)table->entries_count*1000 && "Must not get stuck in infinite loop")
+                        {
+                            int k = 0; (void) k;
+                        }
+                        ASSERT(next_slot < (int32_t) table->entries_count);
+                        Hash_Index_Entry next_vacant = table->entries[next_slot];
+                        if(hash_index_is_entry_used(next_vacant) == false) 
+                        {
+                            table->entries[next_slot] = vacant;
+                            break;
+                        }
+                        //   
+                        // B B
+                        //
+                        //
+                        else if((next_vacant.hash & mod) != next_slot && curr_step == 1)
+                        {
+                            table->entries[next_slot] = vacant;
+                            vacant = next_vacant;
+                            next_slot = next_vacant.hash & mod;
+                        }
+                        else
+                        {
+                            //Quadratic probe next index
+                            next_slot = (next_slot + curr_step) & mod;
+                            curr_step += 1;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                curr->value = HASH_INDEX_EMPTY;
+                curr->hash = 0;
+            }
+        }
+        
+        table->hash_collisions_and_load_factor = (uint32_t) hash_index_get_load_factor(*table);
+        table->gravestone_count = 0;
+        ASSERT(hash_index_is_invariant(*table));
+    }
+
     
     EXPORT bool hash_index_is_invariant(Hash_Index table)
     {
@@ -309,6 +382,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         bool allocator_inv = true;
         bool load_factor_inv = true;
         bool capacity_inv = true;
+        bool fullness_inv = true;
 
         isize load_factor = hash_index_get_load_factor(table);
         if(table.entries != NULL)
@@ -316,8 +390,10 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
             allocator_inv = table.allocator != NULL;
             load_factor_inv = 0 < load_factor && load_factor <= 100;
             capacity_inv = is_power_of_two(table.entries_count);
+            fullness_inv = _hash_index_needs_rehash(table.size, table.entries_count, load_factor) == false;
         }
 
+        ASSERT(fullness_inv);
         int32_t used_count = table.size;
         int32_t gravestone_count = table.gravestone_count;
         if(HASH_INDEX_SLOW_DEBUG)
@@ -330,6 +406,8 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
                 if(hash_index_is_entry_used(*entry))
                 {
                     entries_find_inv = entries_find_inv && hash_index_find(table, entry->hash) != -1;
+                    if(entries_find_inv == false)
+                        entries_find_inv = hash_index_find(table, entry->hash) != -1;
                     ASSERT(entries_find_inv);
                     used_count += 1;
                 }
