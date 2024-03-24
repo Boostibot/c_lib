@@ -152,7 +152,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
                 return -1;
 
             if((table.entries[i].value & HASH_INDEX_GRAVESTONE) == 0 && table.entries[i].hash == hash)
-                return i;
+                return (isize) i;
                 
             ASSERT(counter < (uint64_t) table.entries_count && "must not be completely full!");
             counter += 1; 
@@ -180,7 +180,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
             if(stop_if_found)
             {
                 if(table->entries[i].hash == hash)
-                    return i;
+                    return (isize) i;
                 
                 if((table->entries[i].value & HASH_INDEX_GRAVESTONE) != 0)
                     insert_index = i;
@@ -218,7 +218,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         table->hash_collisions_and_load_factor += (uint32_t) (counter << HASH_INDEX_LOAD_FACTOR_BITS);
         ASSERT(hash_index_is_invariant(*table));
 
-        return insert_index;
+        return (isize) insert_index;
     }
     
     EXPORT isize hash_index_get_hash_collision_count(Hash_Index table)
@@ -252,7 +252,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         return to_size * 100 >= current_size * load_factor;
     }
 
-    INTERNAL void _hash_index_rehash(Hash_Index* to_table, Hash_Index from_table, isize to_size, bool exact_size)
+    INTERNAL void _hash_index_rehash(Hash_Index* to_table, Hash_Index from_table, isize to_size)
     {
         ASSERT(hash_index_is_invariant(*to_table));
         ASSERT(hash_index_is_invariant(from_table));
@@ -269,17 +269,10 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
             if(to_table->allocator == NULL)
                 hash_index_init(to_table, NULL);
 
+            int32_t required = to_size > from_table.size ? to_size : from_table.size;
             int32_t rehash_to = 16;
-            if(exact_size)
-            {
-                while(rehash_to < to_size || rehash_to < from_table.size)
-                    rehash_to *= 2;
-            }
-            else
-            {
-                while(_hash_index_needs_rehash(rehash_to, to_size, load_factor))
-                    rehash_to *= 2;
-            }
+            while(_hash_index_needs_rehash(rehash_to, required, load_factor))
+                rehash_to *= 2;
 
             int32_t elem_size = sizeof(Hash_Index_Entry);
             if(to_table->allocator == NULL)
@@ -390,10 +383,9 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
             allocator_inv = table.allocator != NULL;
             load_factor_inv = 0 < load_factor && load_factor <= 100;
             capacity_inv = is_power_of_two(table.entries_count);
-            fullness_inv = _hash_index_needs_rehash(table.size, table.entries_count, load_factor) == false;
+            fullness_inv = _hash_index_needs_rehash(table.entries_count, table.size, load_factor) == false;
         }
 
-        ASSERT(fullness_inv);
         int32_t used_count = table.size;
         int32_t gravestone_count = table.gravestone_count;
         if(HASH_INDEX_SLOW_DEBUG)
@@ -418,7 +410,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         }
 
         entries_count_inv = used_count == table.size && gravestone_count == table.gravestone_count;
-        bool is_invariant = ptr_size_inv && allocator_inv && capacity_inv && load_factor_inv && sizes_inv && not_full_inv && entries_find_inv && entries_count_inv;
+        bool is_invariant = ptr_size_inv && allocator_inv && capacity_inv && load_factor_inv && fullness_inv && sizes_inv && not_full_inv && entries_find_inv && entries_count_inv;
         ASSERT(is_invariant);
         return is_invariant;
     }
@@ -431,7 +423,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
     EXPORT isize hash_index_find_next(Hash_Index table, uint64_t hash, isize prev_found)
     {
         CHECK_BOUNDS(prev_found, table.entries_count);
-        return _hash_index_find_from(table, hash, prev_found + 1);
+        return _hash_index_find_from(table, hash, (uint64_t) prev_found + 1);
     }
 
     EXPORT void  hash_index_init_load_factor(Hash_Index* table, Allocator* allocator, isize load_factor_percent)
@@ -455,7 +447,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
     EXPORT void hash_index_deinit(Hash_Index* table)
     {
         ASSERT(hash_index_is_invariant(*table));
-        allocator_deallocate(table->allocator, table->entries, table->entries_count * sizeof *table->entries, DEF_ALIGN);
+        allocator_deallocate(table->allocator, table->entries, table->entries_count * (isize) sizeof *table->entries, DEF_ALIGN);
         
         Hash_Index null = {0};
         *table = null;
@@ -463,14 +455,14 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
 
     EXPORT void hash_index_copy(Hash_Index* to_table, Hash_Index from_table)
     {
-        _hash_index_rehash(to_table, from_table, from_table.size, false);
+        _hash_index_rehash(to_table, from_table, from_table.size);
     }
 
     EXPORT void hash_index_rehash(Hash_Index* table, isize to_size)
     {
         Hash_Index rehashed = {0};
         hash_index_init_load_factor(&rehashed, table->allocator, hash_index_get_load_factor(*table));
-        _hash_index_rehash(&rehashed, *table, to_size, true);
+        _hash_index_rehash(&rehashed, *table, to_size);
         hash_index_deinit(table);
         *table = rehashed;
     }
@@ -481,9 +473,11 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         {
             Hash_Index rehashed = {0};
             hash_index_init_load_factor(&rehashed, table->allocator, hash_index_get_load_factor(*table));
-            _hash_index_rehash(&rehashed, *table, to_size, false);
+            _hash_index_rehash(&rehashed, *table, to_size);
             hash_index_deinit(table);
             *table = rehashed;
+
+            ASSERT(hash_index_is_invariant(*table));
         }
     }
     

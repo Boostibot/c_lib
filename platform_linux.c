@@ -25,7 +25,7 @@ Platform_State gp_state = {0};
 static int64_t untested_stack_overflow_calendar_to_time_t(int64_t sec, int64_t min, int64_t hour, int64_t day, int64_t month, int64_t year);
 static int64_t platform_startup_local_epoch_time();
 
-void platform_init()
+void platform_init(Platform_Allocator* alloc_or_null)
 {
     platform_perf_counter_startup();
     platform_startup_epoch_time();
@@ -58,6 +58,161 @@ void* _platform_internal_reallocate(int64_t new_size, void* old_ptr)
 
         return out;
     }
+}
+
+//=========================================
+// Virtual memory
+//=========================================
+
+#define POSIX_ERRNO_CODES_X() \
+    X(E2BIG) \
+    X(EACCES) \
+    X(EADDRINUSE) \
+    X(EADDRNOTAVAIL) \
+    X(EAFNOSUPPORT) \
+    X(EAGAIN) \
+    X(EALREADY) \
+    X(EBADF) \
+    X(EBADMSG) \
+    X(EBUSY) \
+    X(ECANCELED) \
+    X(ECHILD) \
+    X(ECONNABORTED) \
+    X(ECONNREFUSED) \
+    X(ECONNRESET) \
+    X(EDEADLK) \
+    X(EDESTADDRREQ) \
+    X(EDOM) \
+    X(EEXIST) \
+    X(EFAULT) \
+    X(EFBIG) \
+    X(EHOSTUNREACH) \
+    X(EIDRM) \
+    X(EILSEQ) \
+    X(EINPROGRESS) \
+    X(EINTR) \
+    X(EINVAL) \
+    X(EIO) \
+    X(EISCONN) \
+    X(EISDIR) \
+    X(ELOOP) \
+    X(EMFILE) \
+    X(EMLINK) \
+    X(EMSGSIZE) \
+    X(ENAMETOOLONG) \
+    X(ENETDOWN) \
+    X(ENETRESET) \
+    X(ENETUNREACH) \
+    X(ENFILE) \
+    X(ENOBUFS) \
+    X(ENODATA) \
+    X(ENODEV) \
+    X(ENOENT) \
+    X(ENOEXEC) \
+    X(ENOLCK) \
+    X(ENOLINK) \
+    X(ENOMEM) \
+    X(ENOMSG) \
+    X(ENOPROTOOPT) \
+    X(ENOSPC) \
+    X(ENOSR) \
+    X(ENOSTR) \
+    X(ENOSYS) \
+    X(ENOTCONN) \
+    X(ENOTDIR) \
+    X(ENOTEMPTY) \
+    X(ENOTRECOVERABLE) \
+    X(ENOTSOCK) \
+    X(ENOTSUP) \
+    X(ENOTTY) \
+    X(ENXIO) \
+    X(EOPNOTSUPP) \
+    X(EOVERFLOW) \
+    X(EOWNERDEAD) \
+    X(EPERM) \
+    X(EPIPE) \
+    X(EPROTO) \
+    X(EPROTONOSUPPORT) \
+    X(EPROTOTYPE) \
+    X(ERANGE) \
+    X(EROFS) \
+    X(ESPIPE) \
+    X(ESRCH) \
+    X(ETIME) \
+    X(ETIMEDOUT) \
+    X(ETXTBSY) \
+    X(EWOULDBLOCK) \
+    X(EXDEV) \
+
+void print_errno(int errno_val)
+{
+    const char* name = "None";
+    #define X(ERRNO_CODE) \
+        if(errno_val == ERRNO_CODE) name = #ERRNO_CODE;
+
+    POSIX_ERRNO_CODES_X()
+    printf("errno %s: %s\n", name, strerror(errno_val));
+    #undef X
+}
+
+#include <sys/mman.h>
+void* platform_virtual_reallocate(void* allocate_at, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection)
+{
+    void* out = NULL;
+    bool had_action = false;
+    if(action & PLATFORM_VIRTUAL_ALLOC_RESERVE)   
+    {
+        had_action = true;
+        out = mmap(allocate_at, (size_t) bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+        if(out == MAP_FAILED)
+        {
+            print_errno(errno);
+            out = NULL;
+        }
+    }
+    else if(action & PLATFORM_VIRTUAL_ALLOC_RELEASE)
+    {
+        had_action = true;
+        munmap(allocate_at, (size_t) bytes);
+    }
+
+    if(action & PLATFORM_VIRTUAL_ALLOC_COMMIT)
+    {
+        if(action & PLATFORM_VIRTUAL_ALLOC_RESERVE)
+            allocate_at = out;
+
+        if(allocate_at) 
+        {
+            had_action = true;
+            int prot = PROT_NONE;
+            if(protection & PLATFORM_MEMORY_PROT_READ) prot |= PROT_READ;
+            if(protection & PLATFORM_MEMORY_PROT_WRITE) prot |= PROT_WRITE;
+            if(protection & PLATFORM_MEMORY_PROT_EXECUTE) prot |= PROT_EXEC;
+
+            mprotect(allocate_at, (size_t) bytes, prot);
+            madvise(allocate_at, (size_t) bytes, MADV_WILLNEED);
+            out = allocate_at;
+        }
+    }
+    if(action & PLATFORM_VIRTUAL_ALLOC_DECOMMIT && had_action == false)
+    {
+        had_action = true;
+        mprotect(allocate_at, (size_t) bytes, PROT_NONE);
+        madvise(allocate_at, (size_t) bytes, MADV_DONTNEED);
+        out = allocate_at;
+    }
+
+    if(had_action == false)
+        printf("Strange combination of arguments (commit and decommit)\n");
+
+    return out;
+}
+
+#include <unistd.h>
+int64_t platform_page_size()
+{
+    return (int64_t) getpagesize();
 }
 
 //=========================================
@@ -180,7 +335,7 @@ Platform_Error platform_thread_launch(Platform_Thread* thread, void (*func)(void
     return platform_error_code(state);
 }
 
-void            platform_thread_sleep(int64_t ms)
+void platform_thread_sleep(int64_t ms)
 {
     if(ms > 10)
         sleep(ms);
@@ -192,24 +347,25 @@ void            platform_thread_sleep(int64_t ms)
     }
 }
 
-void            platform_thread_exit(int code)
+void platform_thread_exit(int code)
 {
     pthread_exit((void*) (int64_t) code);
 }
 
-void            platform_thread_yield()
+void platform_thread_yield()
 {
     sched_yield();
 }
 
-Platform_Error  platform_thread_detach(Platform_Thread thread)
+void platform_thread_detach(Platform_Thread thread)
 {
     Platform_Pthread_State* thread_state = (Platform_Pthread_State*) thread.handle;
     bool state = pthread_detach(thread_state->thread) == 0;
-    return platform_error_code(state);
+    (void) state;
+    // return platform_error_code(state);
 }
 
-Platform_Error  platform_thread_join(const Platform_Thread* threads, int64_t count)
+void platform_thread_join(const Platform_Thread* threads, int64_t count) 
 {
     Platform_Error last_error = platform_error_code(true);
     for(int64_t i = 0; i < count; i++)
@@ -218,11 +374,11 @@ Platform_Error  platform_thread_join(const Platform_Thread* threads, int64_t cou
         if(pthread_join(thread_state->thread, NULL) != 0)
             last_error = platform_error_code(false);
     }
-
-    return last_error;
+    (void) last_error;
+    // return last_error;
 }
 
-Platform_Error  platform_mutex_init(Platform_Mutex* mutex)
+Platform_Error platform_mutex_init(Platform_Mutex* mutex)
 {
     platform_mutex_deinit(mutex);
     bool state = true;
@@ -239,7 +395,7 @@ Platform_Error  platform_mutex_init(Platform_Mutex* mutex)
 
     return error;
 }
-void  platform_mutex_deinit(Platform_Mutex* mutex)
+void platform_mutex_deinit(Platform_Mutex* mutex)
 {
     Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex->handle;
     if(mutex_state)
@@ -251,21 +407,24 @@ void  platform_mutex_deinit(Platform_Mutex* mutex)
     memset(mutex, 0, sizeof *mutex);
 }
 
-Platform_Error  platform_mutex_lock(Platform_Mutex* mutex)
+void platform_mutex_lock(Platform_Mutex* mutex)
 {
     bool state = false;
     Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex->handle;
     if(mutex_state)
         state = pthread_mutex_lock(&mutex_state->mutex) == 0; 
-
-    return platform_error_code(state);
+    (void) state;
+    // return platform_error_code(state);
 }
 
 void platform_mutex_unlock(Platform_Mutex* mutex)
 {
+    bool state = false;
     Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex->handle;
     if(mutex_state)
-        pthread_mutex_unlock(&mutex_state->mutex);
+        state = pthread_mutex_unlock(&mutex_state->mutex) == 0;
+    (void) state;
+    // return platform_error_code(state);
 }
 
 //=========================================
@@ -874,7 +1033,7 @@ int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t sk
 #define _MAX(a, b)   ((a) > (b) ? (a) : (b))
 #define _CLAMP(value, low, high) _MAX((low), _MIN((value), (high)))
 
-void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void** stack, int64_t stack_size)
+void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void* const* stack, int64_t stack_size)
 {
     assert(stack_size >= 0);
     memset(translated, 0, (size_t) stack_size * sizeof *translated);
@@ -1091,17 +1250,13 @@ Platform_Exception platform_exception_sandbox(
                     }
                 }
                 
-                Platform_Stack_Trace_Entry call_stack[PLATFORM_CALLSTACKS_MAX] = {0}; 
-                platform_translate_call_stack(call_stack, (const void**) handler->stack, handler->stack_size);
-
                 Platform_Sandbox_Error sanbox_error = {PLATFORM_EXCEPTION_NONE};
                 sanbox_error.exception = had_exception;
-                sanbox_error.call_stack = call_stack;
+                sanbox_error.call_stack = (const void * const*) (void*) handler->stack;
                 sanbox_error.call_stack_size = handler->stack_size;
                 sanbox_error.epoch_time = handler->epoch_time;
                 
                 //@TODO
-                sanbox_error.nanosec_offset = 0;
                 sanbox_error.execution_context = NULL;
                 sanbox_error.execution_context_size = 0;
 

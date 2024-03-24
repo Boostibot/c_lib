@@ -130,7 +130,7 @@ EXPORT void _array_append(void* array, isize item_size, const void* data, isize 
 
 //Returns the total size of the array in bytes
 #define array_byte_size(array) \
-    ((array).size * (isize) sizeof *(array)._array_data)
+    ((array).size * isizeof *(array)._array_data)
 
 #endif
 

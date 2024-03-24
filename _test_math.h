@@ -68,7 +68,8 @@ static void test_vec3_identities(Vec3 a, Vec3 b)
     {
         const float angle_l = vec3_angle_between(a, b);
         const float angle_r = vec3_angle_between(vec3_scale(a, b_len*b_len), b);
-        (void) angle_l, angle_r;
+        (void) angle_l;
+        (void) angle_r;
 
         TEST_NEAR_FLOAT(vec3_angle_between(a, b), vec3_angle_between(vec3_scale(a, b_len*b_len), b), "Angle should be size independent");
     }
@@ -106,8 +107,9 @@ static void test_vec3_identities(Vec3 a, Vec3 b)
     }
 }
 
+#if 0
+//TODO:
 #include "linmath/linmath.h"
-
 
 static void test_mat4_render_utils(Vec3 cam, Vec3 cam_front, Vec3 cam_up, float aspect, Vec3 axis, float rotation, Vec3 point1, Vec3 point2, Vec3 point3)
 {
@@ -144,6 +146,7 @@ static void test_mat4_render_utils(Vec3 cam, Vec3 cam_front, Vec3 cam_up, float 
         }
     }
 }
+#endif
 
 static void test_mat4_transforms()
 {
@@ -173,8 +176,6 @@ static float _test_math_random_big_f()
 
 static void test_math(double max_seconds)
 {
-    //test_mat4_render_utils(vec3(1, 1, 1), vec3(2, 1, 2), vec3(0, 1, 0), 16.0f/9.0f, vec3(0, 1, 0), PI/4, vec3(1, 0, 0), vec3(0, 0, 0), vec3(11351, 54, -52));
-
     srand(clock());
     double start = (double) clock() / (double) CLOCKS_PER_SEC;
     while(true)

@@ -18,8 +18,8 @@
 #define STATIC_ASSERT(x) typedef char PP_CONCAT(__static_assertion__, __LINE__)[(x) ? 1 : -1]
 
 //If x evaluates to false executes assertion_report() with optional provided message
-#define TEST(x, ...)                            (!(x) ? (assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, "" __VA_ARGS__), abort()) : (void) 0)
-#define _DISSABLED_TEST(x, ...)                 (0 ? ((x), assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, "" __VA_ARGS__), abort()) : (void) 0)
+#define TEST(x, ...)                            (!(x) ? (assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, " " __VA_ARGS__), abort()) : (void) 0)
+#define _DISSABLED_TEST(x, ...)                 (0 ? ((x), assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, " " __VA_ARGS__), abort()) : (void) 0)
 
 //In debug builds do the same as TEST() else do nothing
 #ifdef DO_ASSERTS

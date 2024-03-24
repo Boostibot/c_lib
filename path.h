@@ -207,7 +207,13 @@ EXPORT isize string_find_last_path_separator(String string, isize from)
 
 EXPORT void path_parse_root(String path, Path_Info* info)
 {
-    memset(info, 0, sizeof(info));
+    info->prefix_size = 0;
+    info->root_content_from = 0;
+    info->root_content_to = 0;
+    info->root_size = 0;
+    info->root_kind = PATH_ROOT_NONE;
+    info->is_absolute = false;
+
     String prefix_path = path;
 
     //https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file
@@ -579,12 +585,6 @@ EXPORT bool path_builder_append(Path_Builder* into, Path path, int flags)
     bool add_prefix = (flags & PATH_FLAG_NO_PREFIX) == 0;
     bool add_root = (flags & PATH_FLAG_NO_ROOT) == 0;
     bool ignore_error = (flags & PATH_FLAG_APPEND_EVEN_WITH_ERROR) == 0;
-    
-    bool make_directory = path.info.is_directory;
-    if(transform_dir)
-        make_directory = true;
-    else if(transform_file)
-        make_directory = false;
 
     #ifdef DO_ASSERTS_SLOW
     bool has_trailing_slash = false;
@@ -1019,9 +1019,9 @@ void test_single_path(const char* path, const char* prefix, const char* root, co
     TEST_STRING_EQ(_filename, string_make(filename));
     TEST_STRING_EQ(_extension, string_make(extension));
 
-    TEST(parsed.info.is_absolute == (flags & TEST_PATH_IS_ABSOLUTE) > 0);
-    TEST(parsed.info.is_directory == (flags & TEST_PATH_IS_DIR) > 0);
-    TEST(parsed.info.has_trailing_slash == (flags & TEST_PATH_TRAILING_SLASH) > 0);
+    TEST(parsed.info.is_absolute == ((flags & TEST_PATH_IS_ABSOLUTE) > 0));
+    TEST(parsed.info.is_directory == ((flags & TEST_PATH_IS_DIR) > 0));
+    TEST(parsed.info.has_trailing_slash == ((flags & TEST_PATH_TRAILING_SLASH) > 0));
 }
 
 void test_path_normalize(int flags, const char* cpath, const char* cexpected)

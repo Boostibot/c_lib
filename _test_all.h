@@ -1,6 +1,12 @@
-#pragma once
+#ifndef JOT_TEST_ALL_H
+#define JOT_TEST_ALL_H
+
 #define JOT_ALL_TEST
+
+#if defined(TEST_RUNNER)
 #define JOT_ALL_IMPL
+#endif
+
 #include "_test_string.h"
 #include "_test_random.h"
 #include "_test_arena.h"
@@ -41,3 +47,42 @@ INTERNAL void test_all(f64 total_time)
     else
         LOG_WARN("TEST", "TESTING FINISHED! passed %i of %i tests", total_count, passed_count);
 }
+
+#if defined(TEST_RUNNER)
+
+    #include "allocator_malloc.h"
+    #include "logger_file.h"
+    int main()
+    {
+        platform_init(NULL);
+
+        Malloc_Allocator allocator = {0};
+        malloc_allocator_init_use(&allocator, "global", 0);
+        allocator_set_static(&allocator.allocator);
+
+        Arena_Stack* global_stack = allocator_get_scratch_arena_stack();
+        arena_init(global_stack, 64*GIBI_BYTE, 8*MEBI_BYTE, "scratch_arena");
+
+        File_Logger logger = {0};
+        file_logger_init_use(&logger, NULL, "logs");
+
+        test_all(12);
+
+        file_logger_deinit(&logger);
+        malloc_allocator_deinit(&allocator);
+
+        platform_deinit();
+        return 0;
+    }
+
+    #if PLATFORM_OS == PLATFORM_OS_UNIX
+        #include "platform_linux.c"
+    #elif PLATFORM_OS == PLATFORM_OS_WINDOWS
+        #include "platform_windows.c"
+    #else
+        #error Unsupported OS! Add implementation
+    #endif
+
+#endif
+
+#endif

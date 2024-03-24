@@ -199,7 +199,7 @@ void arena_release(Arena* arena);
 Arena arena_acquire(Arena_Stack* stack);
 void* arena_push(Arena* arena, isize size, isize align);
 void* arena_push_nonzero(Arena* arena, isize size, isize align);
-ATTRIBUTE_INLINE_ALWAYS void* arena_push_nonzero_inline(Arena* arena, isize size, isize align);
+static ATTRIBUTE_INLINE_ALWAYS void* arena_push_nonzero_inline(Arena* arena, isize size, isize align);
 
 #define ARENA_PUSH(arena_ptr, count, Type) ((Type*) arena_push((arena_ptr), (count) * sizeof(Type), __alignof(Type)))
 
@@ -242,14 +242,14 @@ void arena_init_custom(Arena_Stack* arena, void* data, isize size, isize reserve
     isize* stack = (isize*) data;
     u8* aligned_data = (u8*) _align_forward(data, sizeof *stack);
     isize aligned_size = size - (aligned_data - (u8*) data);
-    isize stack_max_depth_that_fits = aligned_size / sizeof *stack;
+    isize stack_max_depth_that_fits = aligned_size / isizeof *stack;
 
     if(stack_max_depth <= 0)
         stack_max_depth = ARENA_DEF_STACK_SIZE;
     if(stack_max_depth > stack_max_depth_that_fits)
         stack_max_depth = stack_max_depth_that_fits;
 
-    arena->used_to = stack_max_depth * sizeof *stack;
+    arena->used_to = stack_max_depth * isizeof *stack;
     arena->data = aligned_data;
     arena->size = aligned_size;
     arena->stack_max_depth = (i32) stack_max_depth;
@@ -336,7 +336,7 @@ ATTRIBUTE_INLINE_NEVER void* arena_unusual_push(Arena_Stack* arena, i32 depth, i
     return data;
 }
 
-ATTRIBUTE_INLINE_ALWAYS void* arena_push_nonzero_inline(Arena* arena, isize size, isize align)
+static ATTRIBUTE_INLINE_ALWAYS void* arena_push_nonzero_inline(Arena* arena, isize size, isize align)
 {
     PERF_COUNTER_START();
     ASSERT(arena->stack && arena->level > 0);
@@ -364,7 +364,7 @@ void* arena_push_nonzero(Arena* arena, isize size, isize align)
 void* arena_push(Arena* arena, isize size, isize align)
 {
     void* ptr = arena_push_nonzero(arena, size, align);
-    memset(ptr, 0, size);
+    memset(ptr, 0, (size_t) size);
     return ptr;
 }
 
@@ -381,7 +381,7 @@ void arena_release(Arena* arena)
         isize new_used_to = levels[arena->level - 1];
         isize old_used_to = stack->used_to;
 
-        isize stack_bytes = stack->stack_max_depth * (isize) sizeof *levels;
+        isize stack_bytes = stack->stack_max_depth * isizeof *levels;
         ASSERT(stack_bytes <= new_used_to && new_used_to <= stack->used_to);
 
         if(stack->max_release_from_size < stack->used_to)
@@ -417,7 +417,7 @@ Allocator_Stats arena_get_allocatator_stats(Allocator* self)
     Arena_Stack* stack = arena->stack;
 
     isize max_used_to = MAX(stack->used_to, stack->max_release_from_size);
-    isize stack_to = stack->stack_max_depth * (isize) sizeof(isize);
+    isize stack_to = stack->stack_max_depth * isizeof(isize);
 
     Allocator_Stats stats = {0};
     stats.type_name = "Arena";
@@ -464,7 +464,7 @@ int memcmp_byte(const void* ptr, int byte, isize size)
     if((isize) ptr % 8 == 0)
     {
         //pattern is 8 repeats of byte
-        u64 pattern = 0x0101010101010101ULL * (u64) byte;
+        u64 pattern = (u64) 0x0101010101010101ULL * (u64) byte;
         for(isize k = 0; k < size/8; k++)
             if(*(u64*) ptr != pattern)
                 return (int) (k*8);
@@ -492,7 +492,7 @@ void _arena_debug_check_invarinats(Arena_Stack* arena)
         isize till_end = arena->size - arena->used_to;
         isize check_size = MIN(till_end, ARENA_DEBUG_DATA_SIZE);
         ASSERT(memcmp_byte(arena->data + arena->used_to, ARENA_DEBUG_DATA_PATTERN, check_size) == 0, "The memory after the arena needs not be corrupted!");
-        ASSERT(memcmp_byte(stack + arena->stack_depht, ARENA_DEBUG_STACK_PATTERN, (arena->stack_max_depth - arena->stack_depht) * sizeof *stack) == 0, "The memory after stack needs to be valid");
+        ASSERT(memcmp_byte(stack + arena->stack_depht, ARENA_DEBUG_STACK_PATTERN, (arena->stack_max_depth - arena->stack_depht) * isizeof *stack) == 0, "The memory after stack needs to be valid");
     }
 }
 
@@ -500,7 +500,7 @@ void _arena_debug_fill_stack(Arena_Stack* arena)
 {
     isize* stack = (isize*) (void*) arena->data;
     if(ARENA_DEBUG)
-        memset(stack + arena->stack_depht, ARENA_DEBUG_STACK_PATTERN, (arena->stack_max_depth - arena->stack_depht) * sizeof *stack);
+        memset(stack + arena->stack_depht, ARENA_DEBUG_STACK_PATTERN, (size_t) (arena->stack_max_depth - arena->stack_depht) * sizeof *stack);
 }
 
 void _arena_debug_fill_data(Arena_Stack* arena, isize size)
@@ -509,7 +509,7 @@ void _arena_debug_fill_data(Arena_Stack* arena, isize size)
     {
         isize till_end = arena->size - arena->used_to;
         isize check_size = MIN(till_end, size);
-        memset(arena->data + arena->used_to, ARENA_DEBUG_DATA_PATTERN, check_size);
+        memset(arena->data + arena->used_to, ARENA_DEBUG_DATA_PATTERN, (size_t) check_size);
     }
 }
 

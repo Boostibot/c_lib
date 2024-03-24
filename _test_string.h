@@ -15,7 +15,7 @@ static void test_find_first_single(String string, char c, isize from)
 
 static isize string_find_first_char_strlen(String string, char c, isize from)
 {
-    return strlen(string.data + from); (void) c;
+    return (isize) strlen(string.data + from); (void) c;
 }
 
 static void test_find_first(f64 time)
@@ -44,7 +44,7 @@ static void test_find_first(f64 time)
     builder_deinit(&data);
 }
 
-static void bemchmark_find_first(isize max_size, int max_value, f64 discard, f64 time)
+static void bemchmark_find_first(isize max_size, u64 max_value, f64 discard, f64 time)
 {
     String_Builder data = {0};
     builder_resize(&data, max_size);
@@ -82,7 +82,7 @@ static void bemchmark_find_first(isize max_size, int max_value, f64 discard, f64
             i64 running = perf_start();
             for(isize i = 0; i < repeats; i++)
             {
-                if(test_case->func(str, find, from) != -1);
+                if(test_case->func(str, find, from) != -1)
                     test_case->num_found += 1;
             }
 
@@ -138,7 +138,7 @@ static void test_memset_pattern()
     for(isize i = 0; i < STATIC_ARRAY_SIZE(test_cases); i++)
     {
         Test_Case test_case = test_cases[i];
-        isize pattern_len = strlen(test_case.pattern);
+        isize pattern_len = (isize) strlen(test_case.pattern);
 
         memset(field, 0, sizeof field);
         memset(expected, 0, sizeof expected);

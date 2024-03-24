@@ -33,7 +33,7 @@ void _log_dealloc_recursive(Log* log_list, Allocator* allocator, isize depth)
             _log_dealloc_recursive(curr->first_child, allocator, depth + 1);
 
         Log* next = curr->next;
-        allocator_deallocate(allocator, curr, sizeof(Log) + curr->message.size + 1, DEF_ALIGN);
+        allocator_deallocate(allocator, curr, isizeof(Log) + curr->message.size + 1, DEF_ALIGN);
         curr = next;
     }
 }
@@ -46,7 +46,7 @@ void _log_alloc_recursive(Log** first_child_ptr, Log** last_child_ptr, const Log
         if(filter & (Log_Filter) 1 << curr->type)
         {
             //Coalesce allocation of the Log and the message into one.
-            void* allocated = allocator_allocate(allocator, sizeof(Log) + curr->message.size + 1, DEF_ALIGN);
+            void* allocated = allocator_allocate(allocator, isizeof(Log) + curr->message.size + 1, DEF_ALIGN);
 
             //Copy everything except pointers
             Log* pushed = (Log*) allocated; 
@@ -58,7 +58,7 @@ void _log_alloc_recursive(Log** first_child_ptr, Log** last_child_ptr, const Log
         
             //copy string
             char* copied_string = (char*) (void*) (pushed + 1);
-            memcpy(copied_string, curr->message.data, curr->message.size);
+            memcpy(copied_string, curr->message.data, (size_t) curr->message.size);
             copied_string[curr->message.size] = '\0';
             pushed->message.data = copied_string;
             pushed->message.size = curr->message.size;

@@ -148,8 +148,8 @@ EXPORT Lpf_Entry* lpf_entry_push_child(Arena* arena, Lpf_Entry* parent, Lpf_Entr
     if(parent->children_count >= parent->children_capacity)
     {
         i32 new_capacity = parent->children_capacity * 3/2 + 2;
-        Lpf_Entry* new_children = (Lpf_Entry*) arena_push(arena, new_capacity*sizeof(Lpf_Entry), 8);
-        memcpy(new_children, parent->children, parent->children_count * sizeof(Lpf_Entry));
+        Lpf_Entry* new_children = (Lpf_Entry*) arena_push(arena, new_capacity*isizeof(Lpf_Entry), 8);
+        memcpy(new_children, parent->children, (size_t) parent->children_count * sizeof(Lpf_Entry));
 
         parent->children_capacity = new_capacity;
         parent->children = new_children;
@@ -162,7 +162,7 @@ EXPORT Lpf_Entry* lpf_entry_push_child(Arena* arena, Lpf_Entry* parent, Lpf_Entr
 EXPORT String lpf_string_duplicate(Arena* arena, String string)
 {
     char* str = (char*) arena_push_nonzero(arena, string.size + 1, 1);
-    memcpy(str, string.data, string.size);
+    memcpy(str, string.data, (size_t) string.size);
     str[string.size] = '\0';
     String duped = {str, string.size};
     return duped;
@@ -188,8 +188,8 @@ INTERNAL void _lpf_commit_collection(Lpf_Entry_Array* entries_stack, i32_Array* 
     Lpf_Entry* parent = &entries_stack->data[collection_from - 1];
     parent->children_count = (i32) (entries_stack->size - collection_from);
     parent->children_capacity = parent->children_count;
-    parent->children = (Lpf_Entry*) arena_push_nonzero(arena, parent->children_count*sizeof(Lpf_Entry), 8);
-    memcpy(parent->children, entries_stack->data + collection_from, parent->children_count*sizeof(Lpf_Entry));
+    parent->children = (Lpf_Entry*) arena_push_nonzero(arena, parent->children_count*isizeof(Lpf_Entry), 8);
+    memcpy(parent->children, entries_stack->data + collection_from, (size_t) parent->children_count*sizeof(Lpf_Entry));
 
     array_resize(entries_stack, collection_from);
     array_pop(collections_from);
@@ -347,7 +347,8 @@ EXPORT Lpf_Entry lpf_read(Arena* arena, String source, const Lpf_Read_Options* r
             i32 line = (i32) (i + 1);
             //String line = string_range(source, token.label_from, token.value_to); 
 
-            bool had_error = false;
+            //@TODO: ERROR reporting!!!
+            bool had_error = false; (void) had_error;
             switch(token.type)
             {
                 case BLANK: {
@@ -689,7 +690,7 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
         //We only pad up to 127 chars. If thats not enough too bad.
         String_Builder label_padding_buffer = builder_make(&scratch.allocator, 127);
         builder_resize(&label_padding_buffer, 127);
-        memset(label_padding_buffer.data, ' ', label_padding_buffer.size);
+        memset(label_padding_buffer.data, ' ', (size_t) label_padding_buffer.size);
 
         for(isize token_i = 0; token_i < tokens.size; token_i ++)
         {

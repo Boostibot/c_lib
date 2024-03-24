@@ -151,9 +151,9 @@ EXPORT void log_ungroup();  //Decreases group depth (indentation) of subsequent 
 EXPORT i32* log_group_depth(); //Returns the current group depth
 EXPORT void log_captured(const Log* log_list);
 
-EXPORT const char* log_type_to_string(Log_Filter type);
+EXPORT const char* log_type_to_string(Log_Type type);
 
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 5) void log_message(const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, ATTRIBUTE_FORMAT_ARG const char* format, ...);
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 6) void log_message(const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, ATTRIBUTE_FORMAT_ARG const char* format, ...);
 EXPORT void vlog_message(const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args);
 
 EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_callstack(const char* log_module, Log_Type log_type, isize skip, ATTRIBUTE_FORMAT_ARG const char* format, ...);
@@ -269,7 +269,7 @@ EXPORT Log_Filter log_set_filter(Log_Filter filter)
     return prev;
 }
 
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_message(const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, ATTRIBUTE_FORMAT_ARG const char* format, ...)
+EXPORT ATTRIBUTE_FORMAT_FUNC(format, 6) void log_message(const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, ATTRIBUTE_FORMAT_ARG const char* format, ...)
 {
     va_list args;               
     va_start(args, format);     
@@ -397,7 +397,7 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, co
         {
             va_list args;               
             va_start(args, format);     
-            vlog_message(">assert", "", LOG_FATAL, source, NULL, format, args);
+            vlog_message(">assert", "", LOG_FATAL, source, NULL, format + 1, args); //+1 to get around the annoying zero length printf warning in gcc
             va_end(args);  
         }
 

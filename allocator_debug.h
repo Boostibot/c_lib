@@ -273,7 +273,7 @@ typedef struct Debug_Alloc_Sizes {
 
 INTERNAL Debug_Alloc_Sizes _debug_allocator_allocation_sizes(const Debug_Allocator* self, isize size, isize align)
 {
-    isize preamble_size = (isize) sizeof(Debug_Allocation_Header) + self->dead_zone_size + self->captured_callstack_size * (isize) sizeof(void*);
+    isize preamble_size = isizeof(Debug_Allocation_Header) + self->dead_zone_size + self->captured_callstack_size * isizeof(void*);
     isize postamble_size = self->dead_zone_size;
     isize total_size = preamble_size + postamble_size + align + size;
 
@@ -324,7 +324,7 @@ INTERNAL Debug_Allocator_Panic_Reason _debug_allocator_check_block(const Debug_A
     if(align_or_zero > 0 && pre.header->align != align_or_zero)
         return DEBUG_ALLOC_PANIC_INVALID_PARAMS;
         
-    if((u64) user_ptr % pre.header->align != 0)
+    if((size_t) user_ptr % (size_t) pre.header->align != 0)
         return DEBUG_ALLOC_PANIC_INVALID_PARAMS;
 
     Debug_Allocation_Post_Block post = _debug_allocator_get_post_block(self, user_ptr, pre.header->size);
@@ -503,7 +503,7 @@ EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_
         if(allocator.captured_callstack_size > 0)
         {
             log_group();
-            log_captured_callstack(log_module, log_type, curr.allocation_trace, allocator.captured_callstack_size);
+            log_captured_callstack(log_module, log_type, (const void * const*) (void*) curr.allocation_trace, allocator.captured_callstack_size);
             log_ungroup();
         }
     }

@@ -98,14 +98,20 @@ void* platform_virtual_reallocate(void* adress, int64_t bytes, Platform_Virtual_
         #pragma warning(default:6250)
         return NULL;
     }
- 
+
     int prot = 0;
-    if(protection == PLATFORM_MEMORY_PROT_NO_ACCESS)
-        prot = PAGE_NOACCESS;
     if(protection == PLATFORM_MEMORY_PROT_READ)
         prot = PAGE_READONLY;
-    else
+    if(protection & PLATFORM_MEMORY_PROT_WRITE)
         prot = PAGE_READWRITE;
+    if(protection == PLATFORM_MEMORY_PROT_EXECUTE)
+        prot = PAGE_EXECUTE;
+    if(protection == PLATFORM_MEMORY_PROT_READ | PLATFORM_MEMORY_PROT_EXECUTE)
+        prot = PAGE_EXECUTE_READ;
+    if(protection & (PLATFORM_MEMORY_PROT_WRITE | PLATFORM_MEMORY_PROT_EXECUTE))
+        prot = PAGE_EXECUTE_READWRITE;
+    else
+        prot = PAGE_NOACCESS;
 
     if(action == PLATFORM_VIRTUAL_ALLOC_RESERVE)
         return VirtualAlloc(adress, bytes, MEM_RESERVE, prot);

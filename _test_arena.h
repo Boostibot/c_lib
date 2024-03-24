@@ -3,8 +3,8 @@
 
 static char* arena_push_string(Arena* arena, const char* string)
 {
-    isize len = string ? strlen(string) : 0;   
-    char* pat1 = (char*) arena_push(arena, len + 1, 1);
+    size_t len = string ? strlen(string) : 0;   
+    char* pat1 = (char*) arena_push(arena, (isize) len + 1, 1);
     memcpy(pat1, string, len);
     pat1[len] = 0;
 

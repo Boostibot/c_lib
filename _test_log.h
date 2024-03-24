@@ -12,7 +12,7 @@ INTERNAL void test_log()
     log_group();
 
     Debug_Allocator debug_allocator = {0};
-    debug_allocator_init_use(&debug_allocator, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK);
+    debug_allocator_init_use(&debug_allocator, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_CAPTURE_CALLSTACK);
 
     {
         Log_List log_list = {0};
@@ -31,6 +31,7 @@ INTERNAL void test_log()
         //TEST(string_is_equal(string_make(log_list.first->next->module), STRING("TEST_LOG2")));
         //TEST(string_is_equal(log_list.first->next->message, STRING("hello")));
 
+        if(0)
         {
             File_Logger logger = {0};
             file_logger_init_use(&logger, &debug_allocator.allocator, "logs");

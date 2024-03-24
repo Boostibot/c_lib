@@ -264,13 +264,13 @@ EXPORT void image_init(Image* image, Allocator* alloc, isize channel_count, Pixe
 
 //EXPORT void image_init_pixel_sized(Image* image, Allocator* alloc, isize width, isize height, isize pixel_size, Pixel_Type type, const void* data_or_null);
 
-EXPORT void image_init_sized(Image* image, Allocator* alloc, isize width, isize height, isize channel_count, Pixel_Type type, void* data_or_null)
+EXPORT void image_init_sized(Image* image, Allocator* alloc, isize width, isize height, isize channel_count, Pixel_Type type, const void* data_or_null)
 {
     image_deinit(image);
     image->allocator = alloc;
     image_reshape(image, width, height, channel_count, type, data_or_null);
     if(data_or_null == NULL)
-        memset(image->pixels, 0, image->capacity);
+        memset(image->pixels, 0, (size_t) image->capacity);
 }
 
 EXPORT void* image_at(Image image, isize x, isize y)
@@ -458,7 +458,7 @@ EXPORT void image_reserve(Image* image, isize capacity)
         isize old_byte_size = image_byte_size(*image);
         u8* new_pixels = (u8*) allocator_allocate(image->allocator, capacity, DEF_ALIGN);
         
-        memcpy(new_pixels, image->pixels, old_byte_size);
+        memcpy(new_pixels, image->pixels, (size_t) old_byte_size);
         allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN);
 
         image->pixels = new_pixels;
@@ -488,7 +488,7 @@ EXPORT void image_reshape_pixel_size(Image* image, isize width, isize height, is
     if(data_or_null)
     {
         ASSERT(image->capacity >= needed_size);   
-        memmove(image->pixels, data_or_null, needed_size);
+        memmove(image->pixels, data_or_null, (size_t) needed_size);
     }
 
     image->width = (i32) width;

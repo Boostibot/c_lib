@@ -5,6 +5,7 @@
 #include "array.h"
 #include "time.h"
 #include "random.h"
+#include "log.h"
 
 typedef struct Discrete_Distribution {
     Random_State state;

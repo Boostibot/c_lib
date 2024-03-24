@@ -87,7 +87,7 @@ EXPORT void  stable_array_reserve(Stable_Array* stable, isize to);
     for(isize _block_i = 0; _block_i < (stable).blocks_size; _block_i++)                        \
     {                                                                                           \
         Ptr_Type _dummy = NULL;                                                                 \
-        ASSERT((stable).item_size == sizeof(*_dummy), "wrong type submitted to ITERATE_STABLE_ARRAY_BEGIN"); \
+        ASSERT((stable).item_size == isizeof(*_dummy), "wrong type submitted to ITERATE_STABLE_ARRAY_BEGIN"); \
         Stable_Array_Block* _block = &(stable).blocks[_block_i];                                \
         for(isize _item_i = 0; _item_i < STABLE_ARRAY_BLOCK_SIZE; _item_i++)                    \
         {                                                                                       \
@@ -108,7 +108,7 @@ EXPORT void  stable_array_reserve(Stable_Array* stable, isize to);
             _item_i = 0;                                                                        \
         }                                                                                       \
         Ptr_Type _dummy = NULL;                                                                 \
-        ASSERT((stable).item_size == sizeof(*_dummy), "wrong type submitted to ITERATE_STABLE_ARRAY_BEGIN"); \
+        ASSERT((stable).item_size == isizeof(*_dummy), "wrong type submitted to ITERATE_STABLE_ARRAY_BEGIN"); \
         Stable_Array_Block* _block = &(stable).blocks[_block_i];                                \
         if(_block->filled_mask & ((u64) 1 << _item_i))                                      \
         {                                                                                   \
@@ -139,8 +139,8 @@ EXPORT void stable_array_init_custom(Stable_Array* stable, Allocator* alloc, isi
 
     stable_array_deinit(stable);
     stable->allocator = alloc;
-    stable->item_size = (u32) item_size;
-    stable->item_align = (u32) item_align;
+    stable->item_size = (i32) item_size;
+    stable->item_align = (i32) item_align;
     stable->growth_lin = (i32) growth_lin;
     stable->growth_mult = growth_mult;
 }
@@ -208,8 +208,8 @@ EXPORT void stable_array_deinit(Stable_Array* stable)
         i = k;
     }
 
-    isize prev_extra = _stable_array_alloced_mask_size(stable->blocks_capacity) * sizeof(u64);
-    isize prev_size = stable->blocks_capacity * sizeof(Stable_Array_Block);
+    isize prev_extra = _stable_array_alloced_mask_size(stable->blocks_capacity) * isizeof(u64);
+    isize prev_size = stable->blocks_capacity * isizeof(Stable_Array_Block);
     allocator_deallocate(stable->allocator, stable->blocks, prev_size + prev_extra, _STABLE_ARRAY_BLOCKS_ARR_ALIGN);
 
     memset(stable, 0, sizeof *stable);
@@ -310,7 +310,7 @@ EXPORT isize stable_array_insert(Stable_Array* stable, void** out)
 
     isize out_index = block_i * STABLE_ARRAY_BLOCK_SIZE + first_empty_index;
     void* out_ptr = (u8*) block->ptr + first_empty_index * stable->item_size;
-    memset(out_ptr, 0, stable->item_size);
+    memset(out_ptr, 0, (size_t) stable->item_size);
 
     stable->size += 1;
     _stable_array_check_invariants(stable);
@@ -328,7 +328,7 @@ EXPORT bool stable_array_remove(Stable_Array* stable, isize index)
         Stable_Array_Block* block = lookup.block;
         u64 bit = (u64) 1 << lookup.item_i;
 
-        memset(lookup.item, 0, stable->item_size);
+        memset(lookup.item, 0, (size_t) stable->item_size);
         bool is_alive = !!(block->filled_mask & bit);
 
         //If is full
@@ -372,22 +372,22 @@ EXPORT void stable_array_reserve(Stable_Array* stable, isize to_size)
             while(new_capacity < blocks_after)
                 new_capacity *= 2;
 
-            isize old_extra = _stable_array_alloced_mask_size(stable->blocks_capacity) * sizeof(u64);
-            isize old_alloced = stable->blocks_capacity * sizeof(Stable_Array_Block);
+            isize old_extra = _stable_array_alloced_mask_size(stable->blocks_capacity) * isizeof(u64);
+            isize old_alloced = stable->blocks_capacity * isizeof(Stable_Array_Block);
 
-            isize new_extra = _stable_array_alloced_mask_size(new_capacity) * sizeof(u64);
-            isize new_alloced = new_capacity * sizeof(Stable_Array_Block);
+            isize new_extra = _stable_array_alloced_mask_size(new_capacity) * isizeof(u64);
+            isize new_alloced = new_capacity * isizeof(Stable_Array_Block);
             
             u8* alloced = (u8*) allocator_reallocate(stable->allocator, new_alloced + new_extra, stable->blocks, old_alloced + old_extra, _STABLE_ARRAY_BLOCKS_ARR_ALIGN);
           
             ASSERT(old_extra <= new_extra);
 
             //move over the extra info
-            memmove(alloced + new_alloced, alloced + old_alloced, old_extra);
+            memmove(alloced + new_alloced, alloced + old_alloced, (size_t)  old_extra);
             //clear the newly added info
-            memset(alloced + new_alloced + old_extra, 0, new_extra - old_extra);
+            memset(alloced + new_alloced + old_extra, 0, (size_t) (new_extra - old_extra));
             //zero the added pointers - optional
-            memset(alloced + old_alloced, 0, new_alloced - old_alloced);
+            memset(alloced + old_alloced, 0, (size_t) (new_alloced - old_alloced));
             stable->blocks = (Stable_Array_Block*) alloced;
             stable->blocks_capacity = (u32) new_capacity;
         }
@@ -409,7 +409,7 @@ EXPORT void stable_array_reserve(Stable_Array* stable, isize to_size)
 
         u8* alloced_blocks = (u8*) allocator_allocate(stable->allocator, alloced_blocks_bytes, stable->item_align);
         //Optional!
-        memset(alloced_blocks, 0, alloced_blocks_bytes);
+        memset(alloced_blocks, 0, (size_t) alloced_blocks_bytes);
 
         //Add the blocks into our array (backwards so that the next added item has lowest index)
         u8* curr_block_addr = (u8*) alloced_blocks + alloced_blocks_bytes;

@@ -51,8 +51,8 @@ typedef struct Allocation_List_Block {
 } Allocation_List_Block;
 
 typedef struct Allocation_List_Info {
-    u64 size;
-    u64 align;
+    i64 size;
+    i64 align;
     bool is_offset;
 } Allocation_List_Info;
 
@@ -165,7 +165,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         void* out_ptr = NULL;
         if(new_size != 0)
         {
-            isize new_allocation_size = new_size + capped_align - DEF_ALIGN + (isize) sizeof(Allocation_List_Block);
+            isize new_allocation_size = new_size + capped_align - DEF_ALIGN + isizeof(Allocation_List_Block);
             void* new_allocation = NULL;
             if(parent_or_null != NULL)
                 new_allocation = parent_or_null->allocate(parent_or_null, new_allocation_size, NULL, 0, DEF_ALIGN);
@@ -247,7 +247,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
                 old_allocation = (u8*) old_allocation - *offset;
             }   
 
-            isize old_allocation_size = old_size + capped_align - DEF_ALIGN + (isize) sizeof(Allocation_List_Block);
+            isize old_allocation_size = old_size + capped_align - DEF_ALIGN + isizeof(Allocation_List_Block);
             if(parent_or_null != NULL)
                 parent_or_null->allocate(parent_or_null, 0, old_allocation, old_allocation_size, DEF_ALIGN);
             else

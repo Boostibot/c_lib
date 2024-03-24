@@ -130,20 +130,24 @@ void platform_deinit();
 //=========================================
 
 typedef enum Platform_Virtual_Allocation {
-    PLATFORM_VIRTUAL_ALLOC_RESERVE  = 0, //Reserves adress space so that no other allocation can be made there
-    PLATFORM_VIRTUAL_ALLOC_COMMIT   = 1, //Commits adress space causing operating system to suply physical memory or swap file
-    PLATFORM_VIRTUAL_ALLOC_DECOMMIT = 2, //Removes adress space from commited freeing physical memory
-    PLATFORM_VIRTUAL_ALLOC_RELEASE  = 3, //Free adress space
+    PLATFORM_VIRTUAL_ALLOC_RESERVE  = 1, //Reserves adress space so that no other allocation can be made there
+    PLATFORM_VIRTUAL_ALLOC_COMMIT   = 2, //Commits adress space causing operating system to suply physical memory or swap file
+    PLATFORM_VIRTUAL_ALLOC_DECOMMIT = 4, //Removes adress space from commited freeing physical memory
+    PLATFORM_VIRTUAL_ALLOC_RELEASE  = 8, //Free adress space
 } Platform_Virtual_Allocation;
 
 typedef enum Platform_Memory_Protection {
     PLATFORM_MEMORY_PROT_NO_ACCESS  = 0,
     PLATFORM_MEMORY_PROT_READ       = 1,
     PLATFORM_MEMORY_PROT_WRITE      = 2,
-    PLATFORM_MEMORY_PROT_READ_WRITE = 3,
+    PLATFORM_MEMORY_PROT_EXECUTE    = 4,
+    PLATFORM_MEMORY_PROT_READ_WRITE = PLATFORM_MEMORY_PROT_READ | PLATFORM_MEMORY_PROT_WRITE,
+    PLATFORM_MEMORY_PROT_READ_WRITE_EXECUTE = PLATFORM_MEMORY_PROT_READ_WRITE | PLATFORM_MEMORY_PROT_EXECUTE,
 } Platform_Memory_Protection;
 
 void* platform_virtual_reallocate(void* allocate_at, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection);
+int64_t platform_page_size();
+
 void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align);
 //Returns the size in bytes of an allocated block. 
 //old_ptr needs to be value returned from platform_heap_reallocate. Align must be the one supplied to platform_heap_reallocate.
@@ -659,7 +663,7 @@ const char* platform_exception_to_string(Platform_Exception error);
     #define ATTRIBUTE_NORETURN                                      __attribute__((noreturn))
     #define ATTRIBUTE_RETURN_RESTRICT                               __attribute__((malloc))
     #define ATTRIBUTE_RETURN_ALIGNED(align)                         __attribute__((assume_aligned(align))
-    #define ATTRIBUTE_RETURN_ALIGNED_ARG(align_arg_index)           __attribute__((alloc_align (align_arg_index)));
+    #define ATTRIBUTE_RETURN_ALIGNED_ARG(align_arg_index)           __attribute__((alloc_align (align_arg_index)))
 #else
     #define ATTRIBUTE_RESTRICT                                      /* empty */                              
     #define ATTRIBUTE_INLINE_ALWAYS                                  /* empty */                            
@@ -845,20 +849,20 @@ const char* platform_exception_to_string(Platform_Exception error);
     //for refernce see: https://gcc.gnu.org/onlinedocs/gcc/Other-Builtins.html
     inline static int32_t platform_find_last_set_bit32(uint32_t num)
     {
-        return __builtin_ffs((int) num) - 1;
+        return 32 - __builtin_ctz((unsigned int) num) - 1;
     }
     inline static int32_t platform_find_last_set_bit64(uint64_t num)
     {
-        return __builtin_ffsll((long long) num) - 1;
+        return 64 - __builtin_ctzll((unsigned long long) num) - 1;
     }
 
     inline static int32_t platform_find_first_set_bit32(uint32_t num)
     {
-        return 32 - __builtin_ctz((unsigned int) num) - 1;
+        return __builtin_ffs((int) num) - 1;
     }
     inline static int32_t platform_find_first_set_bit64(uint64_t num)
     {
-        return 64 - __builtin_ctzll((unsigned long long) num) - 1;
+        return __builtin_ffsll((long long) num) - 1;
     }
 
     inline static int32_t platform_pop_count32(uint32_t num)

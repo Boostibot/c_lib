@@ -142,6 +142,11 @@ INTERNAL void test_hash_index_stress(f64 max_seconds)
 						array_push(&truth_key_array, key);
 						array_push(&truth_val_array, val);
 
+						if(i == 20)
+						{
+							int k = 0; (void) k;
+						}
+
 						isize inserted = hash_index_insert(&table, key, val);
 						isize found = hash_index_find(table, key);
 				
@@ -156,8 +161,8 @@ INTERNAL void test_hash_index_stress(f64 max_seconds)
 				case REMOVE: {
 					if(truth_val_array.size != 0)
 					{
-						u64 removed_index = random_range(0, truth_val_array.size);
-						u64 last_index = truth_val_array.size - 1;
+						u64 removed_index = (u64) random_range(0, truth_val_array.size);
+						u64 last_index = (u64) truth_val_array.size - 1;
 
 						CHECK_BOUNDS((isize) removed_index, truth_key_array.size);
 						CHECK_BOUNDS((isize) removed_index, truth_val_array.size);

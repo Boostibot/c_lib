@@ -41,6 +41,7 @@ typedef struct Source_Info {
     const char* function;
 } Source_Info;
 
+#define isizeof (isize) sizeof
 #define MIN(a, b)   ((a) < (b) ? (a) : (b))
 #define MAX(a, b)   ((a) > (b) ? (a) : (b))
 #define CLAMP(value, low, high) MAX(low, MIN(value, high))
@@ -73,8 +74,8 @@ typedef struct Source_Info {
 #if defined(_MSC_VER)
     #define ASSUME_UNREACHABLE() __assume(0)
     #define ATTRIBUTE_RESTRICT                                      __restrict
-    #define ATTRIBUTE_INLINE_ALWAYS                                  __forceinline
-    #define ATTRIBUTE_INLINE_NEVER                                     __declspec(noinline)
+    #define ATTRIBUTE_INLINE_ALWAYS                                 __forceinline
+    #define ATTRIBUTE_INLINE_NEVER                                  __declspec(noinline)
     #define ATTRIBUTE_THREAD_LOCAL                                  __declspec(thread)
     #define ATTRIBUTE_ALIGNED(bytes)                                __declspec(align(bytes))
     #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index)     /* empty */
@@ -85,8 +86,8 @@ typedef struct Source_Info {
 #elif defined(__GNUC__) || defined(__clang__)
     #define ASSUME_UNREACHABLE()                                                __builtin_unreachable() /*move to platform! */
     #define ATTRIBUTE_RESTRICT                                      __restrict__
-    #define ATTRIBUTE_INLINE_ALWAYS                                  __attribute__((always_inline)) inline
-    #define ATTRIBUTE_INLINE_NEVER                                     __attribute__((noinline))
+    #define ATTRIBUTE_INLINE_ALWAYS                                 __attribute__((always_inline)) inline
+    #define ATTRIBUTE_INLINE_NEVER                                  __attribute__((noinline))
     #define ATTRIBUTE_THREAD_LOCAL                                  __thread
     #define ATTRIBUTE_ALIGNED(bytes)                                __attribute__((aligned(bytes)))
     #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index)     __attribute__((format_arg (printf, format_arg_index, 0)))

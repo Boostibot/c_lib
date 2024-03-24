@@ -334,7 +334,14 @@ EXPORT bool char_is_id(char c);
         #undef haszero64
     }
     
-    #include <intrin.h>
+    #if PLATFORM_OS == PLATFORM_OS_UNIX
+        #include <xmmintrin.h>
+    #elif PLATFORM_OS == PLATFORM_OS_WINDOWS
+        #include <intrin.h>
+    #else
+        #error Unsupported OS! Add implementation
+    #endif
+
     EXPORT isize string_find_first_char_sse(String string, char c, isize from)
     {
         ASSERT(from >= 0);
@@ -366,38 +373,39 @@ EXPORT bool char_is_id(char c);
 
         return -1;
 
-        found:
-        int first = platform_find_first_set_bit32(vmask);
-        isize offset = first + (isize) cursor - (isize) string.data;
-        if(offset >= string.size)
-            return -1;
-        else
-            return offset;
+        found: {
+            int first = platform_find_first_set_bit32(vmask);
+            isize offset = first + (isize) cursor - (isize) string.data;
+            if(offset >= string.size)
+                return -1;
+            else
+                return offset;
+        }
     }
 
     EXPORT void memset_pattern(void *field, isize field_size, const void* pattern, isize pattern_size)
     {
         if (field_size <= pattern_size)
-            memcpy(field, pattern, field_size);
+            memcpy(field, pattern, (size_t) field_size);
         else if(pattern_size == 0)
-            memset(field, 0, field_size);
+            memset(field, 0, (size_t) field_size);
         else
         {
             isize cursor = pattern_size;
             isize copy_size = pattern_size;
 
             // make one full copy
-            memcpy((char*) field, pattern, pattern_size);
+            memcpy((char*) field, pattern, (size_t) pattern_size);
         
             // now copy from destination buffer, doubling size each iteration
             for (; cursor + copy_size < field_size; copy_size *= 2) 
             {
-                memcpy((char*) field + cursor, field, copy_size);
+                memcpy((char*) field + cursor, field, (size_t) copy_size);
                 cursor += copy_size;
             }
         
             // copy any remainder
-            memcpy((char*) field + cursor, field, field_size - cursor);
+            memcpy((char*) field + cursor, field, (size_t) (field_size - cursor));
         }
     }
 

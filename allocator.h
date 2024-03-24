@@ -136,7 +136,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
             {
                 Arena* arena = (Arena*) (void*) from_allocator;
                 out = arena_push_nonzero_inline(arena, new_size, align);
-                memcpy(out, old_ptr, old_size);
+                memcpy(out, old_ptr, (size_t) old_size);
             }
         }
         else 
