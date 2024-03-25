@@ -16,31 +16,34 @@ INTERNAL void test_log()
 
     {
         Log_List log_list = {0};
-        log_capture(&log_list, &debug_allocator.allocator);
+        log_list_init_capture(&log_list, &debug_allocator.allocator);
 
         LOG_INFO("TEST_LOG1", "%d", 25);
         LOG_INFO("TEST_LOG2", "hello");
 
-        //@TODO: nesting???
-
-        //@TODO: log list num logs!
         TEST(log_list.size == 2);
-        //TEST(string_is_equal(string_make(log_list.first->module), STRING("TEST_LOG1")));
-        //TEST(string_is_equal(log_list.first->message, STRING("25")));
-        //
-        //TEST(string_is_equal(string_make(log_list.first->next->module), STRING("TEST_LOG2")));
-        //TEST(string_is_equal(log_list.first->next->message, STRING("hello")));
+        TEST(string_is_equal(string_make(log_list.first->module), STRING("TEST_LOG1")));
+        TEST(string_is_equal(log_list.first->message, STRING("25")));
 
-        if(0)
+        TEST(string_is_equal(string_make(log_list.first->next->module), STRING("TEST_LOG2")));
+        TEST(string_is_equal(log_list.first->next->message, STRING("hello")));
+
         {
             File_Logger logger = {0};
             file_logger_init_use(&logger, &debug_allocator.allocator, "logs");
+            LOG_TRACE("TEST_LOG", "trace %s", "?");
+            LOG_DEBUG("TEST_LOG", "debug %s", "?");
+            LOG_INFO("TEST_LOG", "info %s", ".");
+            LOG_OKAY("TEST_LOG", "okay %s", ".");
+            LOG_WARN("TEST_LOG", "warn %s", "!");
+            LOG_ERROR("TEST_LOG", "error %s", "!");
+
             LOG_INFO("TEST_LOG", "iterating all entitites");
 
             for(int i = 0; i < 5; i++)
                 LOG_INFO(">TEST_LOG", 
                     "entity id:%d found\n"
-                    "Hello from entity", i);
+                    "Hello from entity\n\n\n", i);
 
             LOG_DEBUG("TEST_LOG", 
                 "Debug info\n"

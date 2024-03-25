@@ -123,8 +123,6 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
 #if (defined(JOT_ALL_IMPL) || defined(JOT_HASH_INDEX_IMPL)) && !defined(JOT_HASH_INDEX_HAS_IMPL)
 #define JOT_HASH_INDEX_HAS_IMPL
     
-    //#define HASH_INDEX_DEBUG 1
-
     #ifndef HASH_INDEX_DEBUG
         #ifdef DO_ASSERTS_SLOW
             #define HASH_INDEX_DEBUG 1

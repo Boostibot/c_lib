@@ -91,7 +91,7 @@ EXPORT typedef struct File_Logger {
     Logger* prev_logger;
 } File_Logger;
 
-EXPORT void file_logger_log(Logger* logger_, const Log* log_list, i32 depth, Log_Action action);
+EXPORT void file_logger_log(Logger* logger_, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args);
 EXPORT bool file_logger_flush(File_Logger* logger);
 
 EXPORT void file_logger_deinit(File_Logger* logger);
@@ -111,7 +111,7 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
 
     for(const Log* it = log; it != NULL; it = it->next)
     {
-        const isize module_field_size = 5;
+        const isize module_field_size = 10;
         String module = string_make(it->module);
         //String subject = string_make(it->subject);
 
@@ -125,23 +125,25 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
         //                                 <--------------->
         //                                 module_field_size
         builder_resize(&formatted_module, MAX(module.size, module_field_size));
-
-        isize writting_to = 0;
-        for(isize i = 0; i < module.size; i++)
         {
-            //to ascii uppercase
-            char c = module.data[i];
-            if('a' <= c && c <= 'z')
-                c = c - 'a' + 'A';
+            isize written = 0;
+            for(isize i = 0; i < module_field_size - module.size; i++)
+                formatted_module.data[written++] = ' ';
 
-            if(c == '\n' || c == ' ' || c == '\f' || c == '\t' || c == '\r' || c == '\v')
-                formatted_module.data[writting_to ++] = '_'; 
-            else
-                formatted_module.data[writting_to ++] = c; 
+            for(isize i = 0; i < module.size; i++)
+            {
+                //to ascii uppercase
+                char c = module.data[i];
+                if('a' <= c && c <= 'z')
+                    c = c - 'a' + 'A';
+
+                if(c == '\n' || c == ' ' || c == '\f' || c == '\t' || c == '\r' || c == '\v')
+                    formatted_module.data[written++] = '_'; 
+                else
+                    formatted_module.data[written++] = c; 
+            }
         }
 
-        for(isize i = writting_to; i < formatted_module.size; i++)
-            formatted_module.data[i] = ' ';
 
         //Skip all trailing newlines
         for(isize message_size = message.size; message_size > 0; message_size --)
@@ -335,24 +337,36 @@ EXPORT bool file_logger_flush(File_Logger* logger)
 #define ANSI_COLOR_WHITE        "\x1B[37m"
 #define ANSI_COLOR_GRAY         "\x1B[90m"
 
-void file_logger_log(Logger* logger_, const Log* log_list, i32 depth, Log_Action action)
+EXPORT void file_logger_log(Logger* logger_, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args)
 {
     PERF_COUNTER_START();
     File_Logger* self = (File_Logger*) (void*) logger_;
     
     platform_mutex_lock(&self->mutex);
-
-    if(action == LOG_ACTION_FLUSH)
+    bool did_flush = false;
+    Log log_list = {0};
+    if(actions & LOG_ACTION_LOG)
     {
-        file_logger_flush(self);
+        log_list.module = module;
+        log_list.subject = subject;
+        log_list.message = vformat_ephemeral(format, args);
+        log_list.type = type;
+        log_list.time = platform_epoch_time();
+        log_list.source = source;
+        log_list.first_child = (Log*) child;
+        log_list.last_child = (Log*) child;
     }
-    else if(action == LOG_ACTION_LOG)
+    else
     {
-        Log_Type type = log_list->type;
+        log_list = *child;
+    }
+
+    if(actions & (LOG_ACTION_LOG | LOG_ACTION_CHILD))
+    {
         Arena arena = scratch_arena_acquire();
         {
             String_Builder formatted_log = builder_make(&arena.allocator, 1024);
-            file_logger_log_append_into(&arena.allocator, &formatted_log, depth, log_list);
+            file_logger_log_append_into(&arena.allocator, &formatted_log, group_depth, &log_list);
 
             bool print_to_console = (type > LOG_TYPE_MAX) || (((Log_Filter) 1 << type) & self->console_type_filter);
             bool print_to_file = (type > LOG_TYPE_MAX) || (((Log_Filter) 1 << type) & self->file_type_filter);
@@ -380,10 +394,19 @@ void file_logger_log(Logger* logger_, const Log* log_list, i32 depth, Log_Action
     
             f64 time_since_last_flush = clock_s() - self->last_flush_time;
             if(self->buffer.size > self->flush_every_bytes || time_since_last_flush > self->flush_every_seconds)
+            {
                 file_logger_flush(self);
+                did_flush = true;
+            }
         }
         arena_release(&arena);
     }
+    
+    if((actions & LOG_ACTION_FLUSH) && did_flush == false)
+    {
+        file_logger_flush(self);
+    }
+
     platform_mutex_unlock(&self->mutex);
     PERF_COUNTER_END();
 }

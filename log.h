@@ -85,7 +85,9 @@ void log_example_nested()
 
 #endif
 
-#include "vformat.h"
+#include "defines.h"
+#include <string.h>
+#include <stdarg.h>
 
 typedef u64 Log_Filter;
 typedef enum Log_Type{
@@ -103,14 +105,15 @@ typedef enum Log_Type{
 
 //Communicates desired action to logger
 typedef enum Log_Action {
-    LOG_ACTION_LOG      = 0, //Logs the provided log_list
-    LOG_ACTION_FLUSH    = 1, //Only Flushes the log
+    LOG_ACTION_LOG   = 1, //Makes a log out of the arguments
+    LOG_ACTION_CHILD = 2, //Logs the provided child 
+    LOG_ACTION_FLUSH = 4, //Flushes the log
     //Custom can be defined...
 } Log_Action;
 
 typedef struct Logger Logger;
 typedef struct Log Log;
-typedef void (*Log_Func)(Logger* logger, const Log* log_list, i32 group_depth, Log_Action action);
+typedef void (*Log_Func)(Logger* logger, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args);
 
 typedef struct Logger {
     Log_Func log;
@@ -187,18 +190,14 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
 #define LOG_ERROR_CHILD(module, subject, child, format, ...)        LOG_CHILD(module, subject, LOG_ERROR, child, format, ##__VA_ARGS__)
 #define LOG_FATAL_CHILD(module, subject, child, format, ...)        LOG_CHILD(module, subject, LOG_FATAL, child, format, ##__VA_ARGS__)
 
-#define TIME_FMT "%02i:%02i:%02i %03i"
-#define TIME_PRINT(c) (int)(c).hour, (int)(c).minute, (int)(c).second, (int)(c).millisecond
-
 #define STRING_FMT "%.*s"
 #define STRING_PRINT(string) (int) (string).size, (string).data
 
 #define MEMORY_FMT "%.2lf%s"
-#define MEMORY_PRINT(bytes) get_memory_format((bytes)).fraction, get_memory_format((bytes)).unit
+#define MEMORY_PRINT(bytes) get_memory_format((bytes)).fraction, get_memory_format((bytes)).unit //@NOTE We call the fucntion twice. Its not optimal however I dont think its going to be used in perf critical situations
 
 #define PTR_FMT "0x%08llx"
 #define PTR_PRINT(ptr) (lli) ptr
-//@NOTE We call the fucntion twice. Its not optimal however I dont think its gonna be used in perf critical situations
 
 #endif
 
@@ -230,9 +229,10 @@ EXPORT void log_captured(const Log* log_list)
     Global_Log_State* state = &_global_log_state;
     if(state->logger && (state->filter & ((Log_Filter) 1 << log_list->type)))
     {
+        va_list args = {0};
         Logger* logger = state->logger;
         state->logger = NULL;
-        logger->log(logger, log_list, state->group_depth, LOG_ACTION_LOG);
+        logger->log(logger, state->group_depth, LOG_ACTION_CHILD, "", "", (Log_Type) 0, SOURCE_INFO(), log_list, "", args);
         state->logger = logger;
     }
 }
@@ -240,7 +240,10 @@ EXPORT void log_flush()
 {   
     Global_Log_State* state = &_global_log_state;
     if(state->logger)
-        state->logger->log(state->logger, NULL, 0, LOG_ACTION_FLUSH);
+    {
+        va_list args = {0};
+        state->logger->log(state->logger, 0, LOG_ACTION_FLUSH, "", "", (Log_Type) 0, SOURCE_INFO(), NULL, "", args);
+    }
 }
 EXPORT void log_group()
 {
@@ -282,42 +285,18 @@ EXPORT void vlog_message(const char* module, const char* subject, Log_Type type,
     Global_Log_State* state = &_global_log_state;
     if(state->logger && (state->filter & ((Log_Filter) 1 << type)))
     {
-        enum {RESET_EVERY = 32, KEPT_SIZE = 512};
-        typedef struct {
-            String_Builder formatted;
-            isize index;
-            isize indentation;
-        } Local_Cache;
-
-        static ATTRIBUTE_THREAD_LOCAL Local_Cache _cache = {0};
-        Local_Cache* cache = &_cache;
-
-        //Reset cache every once in a while if too big.
-        if(cache->index % RESET_EVERY == 0)
-        {
-            if(cache->formatted.capacity == 0 || cache->formatted.capacity > KEPT_SIZE)
-                builder_init_with_capacity(&cache->formatted, allocator_get_static(), KEPT_SIZE);
-        }
-        cache->index += 1;
-        vformat_into(&cache->formatted, format, args);
-
         i32 extra_indentation = 0;
         for(; module[extra_indentation] == '>'; extra_indentation++);
-
-        Log logged = {0};
-        logged.module = module + extra_indentation;
-        logged.subject = subject;
-        logged.message = cache->formatted.string;
-        logged.type = type;
-        logged.source = source;
-        logged.time = platform_epoch_time();
-        logged.first_child = (Log*) first_child;
         
+        int action = LOG_ACTION_LOG;
+        if(first_child)
+            action |= LOG_ACTION_CHILD;
+
         //We temporarily dissable loggers while we are logging. This prevents log infinite recursion which occurs for example
         // when the logger fails to acquire a resource (memory) and that failiure logs 
         Logger* logger = state->logger;
         state->logger = NULL;
-        logger->log(logger, &logged, state->group_depth + extra_indentation, LOG_ACTION_LOG);
+        logger->log(logger, state->group_depth + extra_indentation, action, module + extra_indentation, subject, type, source, first_child, format, args);
         state->logger = logger;
     }
 }
@@ -514,5 +493,3 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
         return out;
     }
 #endif
-
-
