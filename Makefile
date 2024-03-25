@@ -1,5 +1,4 @@
 BUILD_DIR := build
-# -Wfloat-conversion -Wsign-conversion
 HOST_COMP  := gcc
 HOST_FLAGS := -g -ggdb -Wall -DTEST_RUNNER -Wformat -Wlogical-op -Wconversion -Wsign-compare -Wno-unknown-pragmas -Wno-unused-function -Wno-unused-local-typedefs -Wno-missing-braces
 HOST_LINK  := -lm -rdynamic

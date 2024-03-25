@@ -87,6 +87,7 @@ EXPORT typedef struct File_Logger {
     void* console_print_context;    //defaults to NULL
     void* file_print_context;       //defaults to NULL
 
+    bool open_failed;
     bool has_prev_logger;
     Logger* prev_logger;
 } File_Logger;
@@ -284,6 +285,19 @@ EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, cons
     logger->has_prev_logger = true;
 }
 
+//Some of the ansi colors that can be used within logs. 
+//However their usage is not recommended since these will be written to log files and thus make their parsing more difficult.
+#define ANSI_COLOR_NORMAL       "\x1B[0m"
+#define ANSI_COLOR_RED          "\x1B[31m"
+#define ANSI_COLOR_BRIGHT_RED   "\x1B[91m"
+#define ANSI_COLOR_GREEN        "\x1B[32m"
+#define ANSI_COLOR_YELLOW       "\x1B[33m"
+#define ANSI_COLOR_BLUE         "\x1B[34m"
+#define ANSI_COLOR_MAGENTA      "\x1B[35m"
+#define ANSI_COLOR_CYAN         "\x1B[36m"
+#define ANSI_COLOR_WHITE        "\x1B[37m"
+#define ANSI_COLOR_GRAY         "\x1B[90m"
+
 EXPORT bool file_logger_flush(File_Logger* logger)
 {
     PERF_COUNTER_START();
@@ -298,11 +312,13 @@ EXPORT bool file_logger_flush(File_Logger* logger)
         {
             if(self->file == NULL)
             {
+                platform_directory_create(logger->file_directory_path.string, NULL);
+
                 Posix_Date calendar = local_date_from_epoch_time(logger->init_epoch_time);
                 const char* filename = format_ephemeral("%s/%s%04d-%02d-%02d__%02d-%02d-%02d%s", 
                     self->file_directory_path.data,
                     self->file_prefix.data,
-                    (int) calendar.tm_year, (int) calendar.tm_mon, (int) calendar.tm_mday, 
+                    (int) calendar.tm_year + 1900, (int) calendar.tm_mon, (int) calendar.tm_mday, 
                     (int) calendar.tm_hour, (int) calendar.tm_min, (int) calendar.tm_sec,
                     self->file_postfix.data
                 ).data;
@@ -310,6 +326,16 @@ EXPORT bool file_logger_flush(File_Logger* logger)
                 self->file = fopen(filename, "ab");
                 state = state && self->file != NULL;
                 state = state && setvbuf(self->file , NULL, _IONBF, 0) == 0;
+
+                if(state == false && self->open_failed == false)
+                {
+                    printf(ANSI_COLOR_RED "File logger failed to create/open log file or containing directory '%s' " ANSI_COLOR_NORMAL "\n", filename);
+                    self->open_failed = true;
+                }
+
+                if(state == true)
+                    self->open_failed = false;
+
             }
 
             if(self->file)
@@ -324,18 +350,6 @@ EXPORT bool file_logger_flush(File_Logger* logger)
     return state;
 }
 
-//Some of the ansi colors that can be used within logs. 
-//However their usage is not recommended since these will be written to log files and thus make their parsing more difficult.
-#define ANSI_COLOR_NORMAL       "\x1B[0m"
-#define ANSI_COLOR_RED          "\x1B[31m"
-#define ANSI_COLOR_BRIGHT_RED   "\x1B[91m"
-#define ANSI_COLOR_GREEN        "\x1B[32m"
-#define ANSI_COLOR_YELLOW       "\x1B[33m"
-#define ANSI_COLOR_BLUE         "\x1B[34m"
-#define ANSI_COLOR_MAGENTA      "\x1B[35m"
-#define ANSI_COLOR_CYAN         "\x1B[36m"
-#define ANSI_COLOR_WHITE        "\x1B[37m"
-#define ANSI_COLOR_GRAY         "\x1B[90m"
 
 EXPORT void file_logger_log(Logger* logger_, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args)
 {
