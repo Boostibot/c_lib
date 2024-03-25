@@ -56,7 +56,7 @@ INTERNAL void test_all(f64 total_time)
 #if defined(TEST_RUNNER)
 
     #include "allocator_malloc.h"
-    #include "logger_file.h"
+    #include "log_file.h"
     int main()
     {
         platform_init(NULL);

@@ -48,15 +48,15 @@ typedef struct Allocator_Set {
 #define SIMD_ALIGN PLATFORM_SIMD_ALIGN
 
 //Attempts to call the realloc funtion of the from_allocator. Can return nullptr indicating failiure
-EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(4) 
+EXPORT ATTRIBUTE_ALLOCATOR(2, 5) 
 void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
 
 //Calls the realloc function of from_allocator. If fails calls the currently installed Allocator_Out_Of_Memory_Func (panics). This should be used most of the time
-EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(4) 
+EXPORT ATTRIBUTE_ALLOCATOR(2, 5) 
 void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
 
 //Calls the realloc function of from_allocator to allocate, if fails panics
-EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(2) 
+EXPORT ATTRIBUTE_ALLOCATOR(2, 3) 
 void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align);
 
 //Calls the realloc function of from_allocator to deallocate
@@ -122,8 +122,8 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     } Global_Allocator_State;
 
     INTERNAL ATTRIBUTE_THREAD_LOCAL Global_Allocator_State _allocator_state = {0};
-
-    EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(4) void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
+    EXPORT ATTRIBUTE_ALLOCATOR(2, 5) 
+    void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         PERF_COUNTER_START();
         void* out = NULL;
@@ -151,7 +151,8 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         return out;
     }
 
-    EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(4) void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
+    EXPORT ATTRIBUTE_ALLOCATOR(2, 5) 
+    void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         void* obtained = allocator_try_reallocate(from_allocator, new_size, old_ptr, old_size, align);
         if(obtained == NULL && new_size != 0)
@@ -160,7 +161,8 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         return obtained;
     }
 
-    EXPORT ATTRIBUTE_RETURN_RESTRICT ATTRIBUTE_RETURN_ALIGNED_ARG(2) void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align)
+    EXPORT ATTRIBUTE_ALLOCATOR(2, 3) 
+    void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align)
     {
         return allocator_reallocate(from_allocator, new_size, NULL, 0, align);
     }

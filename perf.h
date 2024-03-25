@@ -188,7 +188,7 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 			max_s = (double) counter.max_counter / (double) (batch_size * counter.frquency);
 		}
 		if(iters != 0)
-			mean_s = total_s / iters;
+			mean_s = total_s / (double) iters;
 
 		ASSERT(mean_s >= 0 && min_s >= 0 && max_s >= 0);
 

@@ -51,8 +51,8 @@ typedef struct Allocation_List_Block {
 } Allocation_List_Block;
 
 typedef struct Allocation_List_Info {
-    u64 size;
-    u64 align;
+    i64 size;
+    i64 align;
     bool is_offset;
 } Allocation_List_Info;
 
@@ -113,7 +113,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
     
     EXPORT u64 allocation_list_info_pack(Allocation_List_Info info)
     {
-        u64 max_align = ((u64) 1 << ALLOCATION_LIST_ALIGN_BITS) - 1;
+        isize max_align = ((isize) 1 << ALLOCATION_LIST_ALIGN_BITS) - 1;
         ASSERT(is_power_of_two(info.align) && info.align <= max_align);
 
         u64 size_and_align = ((u64) info.is_offset << ALLOCATION_LIST_IS_OFFSET_BIT) 
@@ -140,7 +140,6 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
                 ASSERT_SLOW(block->next_block->prev_block == block);
         #endif
     }
-
     
     EXPORT void allocation_list_free_all(Allocation_List* self, Allocator* parent_or_null)
     {
@@ -150,7 +149,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
             Allocation_List_Block* prev_block = block->prev_block;
             _allocation_list_assert_block_coherency(self, block);
             
-            Allocation_List_Info info = allocation_list_info_unpack(prev_block->packed_info);
+            Allocation_List_Info info = allocation_list_info_unpack(block->packed_info);
             allocation_list_allocate(self, parent_or_null, 0, block + 1, info.size, info.align);
             block = prev_block;
         }
@@ -165,7 +164,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         void* out_ptr = NULL;
         if(new_size != 0)
         {
-            isize new_allocation_size = new_size + capped_align - DEF_ALIGN + isizeof(Allocation_List_Block);
+            isize new_allocation_size = new_size + capped_align - DEF_ALIGN + (isize) sizeof(Allocation_List_Block);
             void* new_allocation = NULL;
             if(parent_or_null != NULL)
                 new_allocation = parent_or_null->allocate(parent_or_null, new_allocation_size, NULL, 0, DEF_ALIGN);
@@ -247,7 +246,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
                 old_allocation = (u8*) old_allocation - *offset;
             }   
 
-            isize old_allocation_size = old_size + capped_align - DEF_ALIGN + isizeof(Allocation_List_Block);
+            isize old_allocation_size = old_size + capped_align - DEF_ALIGN + (isize) sizeof(Allocation_List_Block);
             if(parent_or_null != NULL)
                 parent_or_null->allocate(parent_or_null, 0, old_allocation, old_allocation_size, DEF_ALIGN);
             else

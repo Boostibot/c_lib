@@ -17,7 +17,7 @@ INTERNAL void test_image_builder_copy()
 
         for(u16 x = 0; x < 4; x++)
             for(u16 y = 0; y < 4; y++)
-                *(u16*) image_at(from_image, x, y) = x + y*4;
+                *(u16*) image_at(from_image, x, y) = (u16) (x + y*4);
     
         u16 pattern[16] = {0};
         for(u16 i = 0; i < 16; i++)

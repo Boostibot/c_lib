@@ -338,7 +338,7 @@ Platform_Error platform_thread_launch(Platform_Thread* thread, void (*func)(void
 void platform_thread_sleep(int64_t ms)
 {
     if(ms > 10)
-        sleep(ms);
+        sleep((unsigned) ms);
     else
     {
         struct timespec req = {0};
@@ -786,7 +786,7 @@ int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
 
 void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align)
 {
-    if(align <= sizeof(long long int))
+    if(align <= (int64_t) sizeof(long long int))
     {
         if(new_size <= 0)
         {
@@ -862,7 +862,7 @@ void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const
     assert(stack_size >= 0);
     memset(translated, 0, (size_t) stack_size * sizeof *translated);
 
-    char **semi_translated = backtrace_symbols((void *const *) stack, stack_size);
+    char **semi_translated = backtrace_symbols((void *const *) stack, (int) stack_size);
     if (semi_translated != NULL)
     {
         for (int64_t i = 0; i < stack_size; i++)
@@ -986,14 +986,14 @@ void platform_sighandler(int sig, struct sigcontext ctx)
 {
     (void) ctx;
 
-    int32_t my_index_i1 = platform_signal_handler_i1;
+    int64_t my_index_i1 = platform_signal_handler_i1;
     if(my_index_i1 >= 1)
     {
         //@TODO: add more specific flag testing!
         Signal_Handler_State* handler = &platform_signal_handler_queue[my_index_i1-1];
         handler->perf_counter = platform_perf_counter();
         handler->perf_counter = platform_epoch_time();
-        handler->stack_size = platform_capture_call_stack(handler->stack, PLATFORM_CALLSTACKS_MAX, 1);
+        handler->stack_size = (int32_t) platform_capture_call_stack(handler->stack, PLATFORM_CALLSTACKS_MAX, 1);
         handler->signal = sig;
         siglongjmp(handler->jump_buffer, PLATFORM_SANDBOXE_JUMP_CODE);
     }

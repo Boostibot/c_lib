@@ -176,7 +176,7 @@ static float _test_math_random_big_f()
 
 static void test_math(double max_seconds)
 {
-    srand(clock());
+    srand((unsigned) clock());
     double start = (double) clock() / (double) CLOCKS_PER_SEC;
     while(true)
     {

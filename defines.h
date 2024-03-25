@@ -62,7 +62,7 @@ typedef struct Source_Info {
 
 #define SOURCE_INFO() BRACE_INIT(Source_Info){__LINE__, __FILE__, __FUNCTION__}
 
-#define STATIC_ARRAY_SIZE(array) (sizeof(array) / sizeof((array)[0]))
+#define STATIC_ARRAY_SIZE(array) (isize) (sizeof(array) / sizeof((array)[0]))
 
 
 //=========================================
@@ -79,12 +79,11 @@ typedef struct Source_Info {
     #define ATTRIBUTE_THREAD_LOCAL                                  __declspec(thread)
     #define ATTRIBUTE_ALIGNED(bytes)                                __declspec(align(bytes))
     #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index)     /* empty */
-    #define ATTRIBUTE_FORMAT_ARG                                    _Printf_format_string_  
-    #define ATTRIBUTE_RETURN_RESTRICT                               __declspec(restrict)
-    #define ATTRIBUTE_RETURN_ALIGNED(align)                         /* empty */
-    #define ATTRIBUTE_RETURN_ALIGNED_ARG(align_arg_index)           /* empty */
+    #define ATTRIBUTE_FORMAT_ARG                                    _Printf_format_string_ 
+    #define ATTRIBUTE_NORETURN                                      __declspec(noreturn)
+    #define ATTRIBUTE_ALLOCATOR(size_arg_index, align_arg_index)    __declspec(restrict)
 #elif defined(__GNUC__) || defined(__clang__)
-    #define ASSUME_UNREACHABLE()                                                __builtin_unreachable() /*move to platform! */
+    #define ASSUME_UNREACHABLE()                                    __builtin_unreachable() 
     #define ATTRIBUTE_RESTRICT                                      __restrict__
     #define ATTRIBUTE_INLINE_ALWAYS                                 __attribute__((always_inline)) inline
     #define ATTRIBUTE_INLINE_NEVER                                  __attribute__((noinline))
@@ -93,9 +92,7 @@ typedef struct Source_Info {
     #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index)     __attribute__((format_arg (printf, format_arg_index, 0)))
     #define ATTRIBUTE_FORMAT_ARG                                    /* empty */    
     #define ATTRIBUTE_NORETURN                                      __attribute__((noreturn))
-    #define ATTRIBUTE_RETURN_RESTRICT                               __attribute__((malloc))
-    #define ATTRIBUTE_RETURN_ALIGNED(align)                         __attribute__((assume_aligned(align))
-    #define ATTRIBUTE_RETURN_ALIGNED_ARG(align_arg_index)           __attribute__((alloc_align (align_arg_index)));
+    #define ATTRIBUTE_ALLOCATOR(size_arg_index, align_arg_index)    __attribute__((malloc, alloc_size(size_arg_index), alloc_align(align_arg_index)))
 #else
     #define ASSUME_UNREACHABLE()                                (*(int*)0 = 0)
     #define ATTRIBUTE_RESTRICT                                  /* C's restrict keyword. see: https://en.cppreference.com/w/c/language/restrict */
@@ -106,9 +103,7 @@ typedef struct Source_Info {
     #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index) /* Marks a function as formatting function. Applied before function declartion. See log.h for example */
     #define ATTRIBUTE_FORMAT_ARG                                /* Marks a format argument. Applied before const char* format argument. See log.h for example */  
     #define ATTRIBUTE_NORETURN                                  /* Specifices that this function will not return (for example abort, exit ...) . Applied before function declartion. */
-    #define ATTRIBUTE_RETURN_RESTRICT                           /* Specifies that the retuned pointer from this function does not align any other obejct. Most often used on allocators. */
-    #define ATTRIBUTE_RETURN_ALIGNED(align)                     /* Specifies that the retuned pointer is aligned to align. */
-    #define ATTRIBUTE_RETURN_ALIGNED_ARG(align_arg_index)       /* Specifies that the retuned pointer is aligned to the integer value of argument at align_arg_index position. */
+    #define ATTRIBUTE_ALLOCATOR(size_arg_index, align_arg_index)
 #endif
 
 #ifndef EXPORT

@@ -326,7 +326,7 @@ EXPORT bool stable_array_remove(Stable_Array* stable, isize index)
     {
         _Stable_Array_Lookup lookup = _stable_array_lookup(stable, index);
         Stable_Array_Block* block = lookup.block;
-        u64 bit = (u64) 1 << lookup.item_i;
+        u32 bit = (u32) 1 << lookup.item_i;
 
         memset(lookup.item, 0, (size_t) stable->item_size);
         bool is_alive = !!(block->filled_mask & bit);
@@ -359,7 +359,7 @@ EXPORT void stable_array_reserve(Stable_Array* stable, isize to_size)
         _stable_array_check_invariants(stable);
         ASSERT(stable->first_not_filled_i1 == 0, "If there are not empty slots the stable array should really be full");
         
-        isize new_capacity_item = (isize) (stable->size * (stable->growth_mult)) + stable->growth_lin;
+        isize new_capacity_item = (isize) ((f32) stable->size * stable->growth_mult) + stable->growth_lin;
         new_capacity_item = MAX(new_capacity_item, to_size);
 
         u32 blocks_before = stable->blocks_size;

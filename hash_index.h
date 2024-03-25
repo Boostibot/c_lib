@@ -195,7 +195,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
             i = (i + counter) & mod;
         }
         
-        if(insert_index == -1)
+        if(insert_index == (uint64_t) -1)
             insert_index = i;
 
         //If writing over a gravestone reduce the removed counter
@@ -211,7 +211,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         table->size += 1;
 
         //Saturating add of new_counter
-        table->info_extra_probes += (uint32_t) counter;
+        table->info_extra_probes += (int32_t) counter;
         ASSERT(hash_index_is_invariant(*table, HASH_INDEX_DEBUG));
 
         return (isize) insert_index;
@@ -385,8 +385,8 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         {
             Arena arena = scratch_arena_acquire();
             Hash_Index copy = *table;
-            copy.entries = arena_push_nonzero_inline(&arena, table->entries_count * sizeof(Hash_Index_Entry), __alignof(Hash_Index_Entry));
-            memcpy(copy.entries, table->entries, table->entries_count * sizeof(Hash_Index_Entry));
+            copy.entries = arena_push_nonzero_inline(&arena, table->entries_count * isizeof(Hash_Index_Entry), __alignof(Hash_Index_Entry));
+            memcpy(copy.entries, table->entries, (size_t) table->entries_count * sizeof(Hash_Index_Entry));
 
             _hash_index_rehash_copy(table, copy, table->entries_count, true);
             arena_release(&arena);

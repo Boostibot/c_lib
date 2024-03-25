@@ -86,9 +86,9 @@ EXPORT void log_perf_counters(const char* log_module, Log_Type log_type, Log_Per
 		switch(sort_by)
 		{
 			default:
-			case PERF_SORT_BY_NAME: qsort(counters.data, counters.size, sizeof(Global_Perf_Counter), perf_counter_compare_file_func); break;
-			case PERF_SORT_BY_TIME: qsort(counters.data, counters.size, sizeof(Global_Perf_Counter), perf_counter_compare_total_time_func); break;
-			case PERF_SORT_BY_RUNS: qsort(counters.data, counters.size, sizeof(Global_Perf_Counter), perf_counter_compare_runs); break;
+			case PERF_SORT_BY_NAME: qsort(counters.data, (size_t) counters.size, sizeof(Global_Perf_Counter), perf_counter_compare_file_func); break;
+			case PERF_SORT_BY_TIME: qsort(counters.data, (size_t) counters.size, sizeof(Global_Perf_Counter), perf_counter_compare_total_time_func); break;
+			case PERF_SORT_BY_RUNS: qsort(counters.data, (size_t) counters.size, sizeof(Global_Perf_Counter), perf_counter_compare_runs); break;
 		}
 
 		LOG(log_module, log_type, "Logging perf counters (still running %lli):", (lli) profile_get_total_running_counters_count());
