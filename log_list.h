@@ -27,7 +27,7 @@ void _log_dealloc_recursive(Log* log_list, Allocator* allocator, isize depth)
     //Is removed in release builds
     ASSERT(depth < 100);
 
-    for(Log* curr = log_list; curr != NULL && curr != log_list->next; )
+    for(Log* curr = log_list; curr != NULL; )
     {
         if(curr->first_child != NULL)
             _log_dealloc_recursive(curr->first_child, allocator, depth + 1);

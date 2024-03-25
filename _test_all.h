@@ -15,10 +15,12 @@
 #include "_test_log.h"
 #include "_test_math.h"
 #include "path.h"
+#include "list.h"
 #include "_test_stable_array.h"
 #include "_test_lpf.h"
 #include "_test_image.h"
 
+#include "profile_utils.h"
 INTERNAL void test_all(f64 total_time)
 {
     LOG_INFO("TEST", "RUNNING ALL TESTS");
@@ -32,6 +34,7 @@ INTERNAL void test_all(f64 total_time)
     INCR RUN_TEST_TIMED(test_array, total_time/4);
     INCR RUN_TEST_TIMED(test_math, total_time/4);
     
+    INCR RUN_TEST(test_list);
     INCR RUN_TEST(test_image);
     INCR RUN_TEST(test_lpf);
     INCR RUN_TEST(test_stable_array);
@@ -46,6 +49,8 @@ INTERNAL void test_all(f64 total_time)
         LOG_OKAY("TEST", "TESTING FINISHED! passed %i of %i test uwu", total_count, passed_count);
     else
         LOG_WARN("TEST", "TESTING FINISHED! passed %i of %i tests", total_count, passed_count);
+
+    log_perf_counters("TEST", LOG_INFO, PERF_SORT_BY_NAME);
 }
 
 #if defined(TEST_RUNNER)
@@ -66,7 +71,7 @@ INTERNAL void test_all(f64 total_time)
         File_Logger logger = {0};
         file_logger_init_use(&logger, NULL, "logs");
 
-        test_all(12);
+        test_all(10);
 
         file_logger_deinit(&logger);
         malloc_allocator_deinit(&allocator);

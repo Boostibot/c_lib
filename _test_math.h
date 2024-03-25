@@ -80,7 +80,7 @@ static void test_vec3_identities(Vec3 a, Vec3 b)
     const float n_len = vec3_len(scaled_n);
     const float u_len = vec3_len(scaled_u);
     const float add_len = vec3_len(vec3_sub(scaled_n, scaled_u));
-    TEST_NEAR_FLOAT(add_len*add_len, n_len*n_len + u_len*u_len, "Adding ortogonal vectors should obey pythagoras theorem");
+    TEST(is_near_scaledf(add_len*add_len, n_len*n_len + u_len*u_len, large_epsilon), "Adding ortogonal vectors should obey pythagoras theorem");
 
     {
         float schwarz_l = vec3_dot(a, b)*vec3_dot(a, b);

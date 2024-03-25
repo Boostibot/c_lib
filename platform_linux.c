@@ -28,7 +28,7 @@ static int64_t platform_startup_local_epoch_time();
 void platform_init(Platform_Allocator* alloc_or_null)
 {
     platform_perf_counter_startup();
-    platform_startup_epoch_time();
+    platform_epoch_time_startup();
     platform_perf_counter_startup();
 }
 
@@ -458,193 +458,20 @@ int64_t platform_perf_counter_startup()
     return gp_state.startup_perf_counter;
 }
 
-#if 0
-typedef struct Platform_Calendar_Time {
-    int32_t year;       // any
-    int8_t month;       // [0, 12)
-    int8_t day_of_week; // [0, 7) where 0 is sunday
-    int8_t day;         // [0, 31] !note the end bracket!
-    
-    int8_t hour;        // [0, 24)
-    int8_t minute;      // [0, 60)
-    int8_t second;      // [0, 60)
-    
-    int16_t millisecond; // [0, 1000)
-    int16_t microsecond; // [0, 1000)
-    //int16_t day_of_year; // [0, 365]
-} Platform_Calendar_Time;
-#endif
-
 int64_t platform_epoch_time()
 {
     struct timespec ts = {0};
     (void) clock_gettime(CLOCK_REALTIME , &ts);
-    return (int64_t) ts.tv_nsec / (_SECOND_NANOSECS / _SECOND_MICROSECS) + ts.tv_sec * _SECOND_MICROSECS;
+    return (int64_t) ts.tv_nsec/1000 + ts.tv_sec * _SECOND_MICROSECS;
 }
 
-int64_t platform_startup_epoch_time()
+int64_t platform_epoch_time_startup()
 {
     if(gp_state.startup_epoch_time == 0)
         gp_state.startup_epoch_time = platform_epoch_time();
 
     return gp_state.startup_epoch_time;
 }
-
-
-Platform_Calendar_Time platform_calendar_time_from_tm(const struct tm* converted)
-{
-    assert(converted && "locatime must never fail on this architecture!");
-    Platform_Calendar_Time out = {0};
-    out.year = converted->tm_year + 1900;
-    out.month = converted->tm_mon;
-    out.day_of_week = converted->tm_wday;
-    out.day = converted->tm_mday - 1;
-    out.hour = converted->tm_hour;
-    out.minute = converted->tm_min;
-    out.second = converted->tm_sec;
-
-    return out;
-}
-
-
-
-Platform_Calendar_Time _platform_calendar_time_from_epoch_time(int64_t epoch_time_usec, bool is_local)
-{
-    time_t epoch_seconds = (time_t) (epoch_time_usec / _SECOND_MICROSECS);
-    struct tm* tm = is_local ? localtime(&epoch_seconds) : gmtime(&epoch_seconds);
-        
-    Platform_Calendar_Time calendar = platform_calendar_time_from_tm(tm);
-    int64_t remaining_micros = epoch_time_usec % _SECOND_MICROSECS;
-    calendar.microsecond = remaining_micros % 1000;
-    calendar.millisecond = remaining_micros / 1000;
-    return calendar;
-}
-
-Platform_Calendar_Time platform_calendar_time_from_epoch_time(int64_t epoch_time_usec)
-{
-    Platform_Calendar_Time out = _platform_calendar_time_from_epoch_time(epoch_time_usec, false);
-    assert(platform_epoch_time_from_calendar_time(out) == epoch_time_usec);
-    return out;
-}
-
-Platform_Calendar_Time platform_local_calendar_time_from_epoch_time(int64_t epoch_time_usec)
-{
-    return _platform_calendar_time_from_epoch_time(epoch_time_usec, true);
-}
-
-//Converts calendar time to the precise epoch time (micro second time since unix epoch)
-int64_t platform_epoch_time_from_calendar_time(Platform_Calendar_Time calendar_time)
-{
-    Platform_Calendar_Time c = calendar_time;
-    int64_t seconds = untested_stack_overflow_calendar_to_time_t(
-        c.second, c.minute, c.hour, c.day + 1, c.month + 1, c.year);
-
-    int64_t microseconds = seconds * _SECOND_MICROSECS;
-    microseconds += calendar_time.microsecond;
-    microseconds += calendar_time.millisecond * 1000;
-
-    return microseconds;
-}
-
-
-int64_t _sgn(int64_t val)
-{
-    return (0 < val) - (val < 0);
-}
-
-int64_t platform_epoch_time_from_local_calendar_time(Platform_Calendar_Time calendar_time)
-{
-    #ifndef NDEBUG
-    int64_t now = platform_epoch_time();
-    assert(platform_epoch_time_from_calendar_time(platform_calendar_time_from_epoch_time(now)) == now);
-    #endif
-
-    //We attempt to find a time such that when converted to local calendar time will give us the correct
-    //starting time back. We do this by calculating the error and trying to get the error as low as possible.
-    //If we overshoot we reduce the step taken.
-
-    int64_t base_time = platform_epoch_time_from_calendar_time(calendar_time);
-    int64_t represented_epoch_time = base_time;
-    int64_t last_error = INT64_MAX;
-    for(int i = 0; i < 20; i++)
-    {
-        Platform_Calendar_Time local_calendar_time_converted = platform_local_calendar_time_from_epoch_time(represented_epoch_time);
-        int64_t roundtrip_local = platform_epoch_time_from_calendar_time(local_calendar_time_converted);
-        int64_t error = base_time - roundtrip_local;
-
-        #ifndef NDEBUG
-        assert(last_error != error);
-        assert(llabs(last_error) >= llabs(error));
-        if(memcmp(&calendar_time, &local_calendar_time_converted, sizeof calendar_time) == 0)
-            assert(error == 0);
-        #endif
-
-        //If exact answer break
-        if(error == 0)
-            break;
-        //if we overshot use smaller increment
-        else if(llabs(last_error) < llabs(error))
-            error = last_error * _sgn(error) / 2;
-        else
-            represented_epoch_time += error;
-
-        last_error = error;
-    }
-
-    return represented_epoch_time;
-}
-
-//see: https://stackoverflow.com/a/57744744
-//Note that both day and month is one based
-static int64_t untested_stack_overflow_calendar_to_time_t(int64_t sec, int64_t min, int64_t hour, int64_t day, int64_t month, int64_t year)
-{
-  assert(day >= 1);
-  assert(month >= 1);
-
-  // Cumulative days for each previous month of the year
-  const int64_t mdays[] = { 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334 };
-  // Year is to be relative to the epoch start
-  year -= 1970;
-  // Compensation of the non-leap years
-  int64_t minusYear = 0;
-  // Detect potential lead day (February 29th) in this year?
-  if ( month >= 3 )
-  {
-    // Then add this year into "sum of leap days" computation
-    year++;
-    // Compute one year less in the non-leap years sum
-    minusYear = 1;
-  }
-
-  return (int64_t)(
-    // + Seconds from computed minutes
-    60LL * (
-      // + Minutes from computed hours
-      60LL * (
-        // + Hours from computed days
-        24LL * (
-          // + Day (zero index)
-          day - 1
-          // + days in previous months (leap day not included)
-          + mdays[month - 1]
-          // + days for each year divisible by 4 (starting from 1973)
-          + ( ( year + 1LL ) / 4LL )
-          // - days for each year divisible by 100 (starting from 2001)
-          - ( ( year + 69LL ) / 100LL )
-          // + days for each year divisible by 400 (starting from 2001)
-          + ( ( year + 369LL ) / 100LL / 4LL )
-          // + days for each year (as all are non-leap years) from 1970 (minus this year if potential leap day taken into account)
-          + ( 5 * 73 /*=365*/ ) * ( year - minusYear )
-          // + Hours
-        ) + hour
-        // + Minutes
-      ) + min 
-      // + Seconds
-    ) + sec
-  );
-}
-
-
 
 //=========================================
 // Filesystem
@@ -857,7 +684,6 @@ const char* platform_directory_get_current_working()
 
     for(int i = 0; i < 24; i++)
     {
-        printf("[%lli]: dir_path_size: %lli\n", (lli)i, (lli)dir_path_size);
         if(dir_path_size > 0 && dir_path != NULL)
         {
             //if success
@@ -886,8 +712,6 @@ const char* platform_directory_get_current_working()
 
         dir_path = (char*) realloced_to;
     }
-
-    printf("dir_path: %s\n", dir_path);
 
     if(dir_path)
         return dir_path;

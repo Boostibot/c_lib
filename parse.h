@@ -4,12 +4,10 @@
 #include "defines.h"
 #include "string.h"
 
-typedef enum Match_Kind
-{
+typedef enum Match_Kind {
     MATCH_NORMAL,
     MATCH_INVERTED,
 } Match_Kind;
-
 
 EXPORT bool match_char_custom(String str, isize* index, char c, Match_Kind match);
 EXPORT bool match_any_of_custom(String str, isize* index, String any_of, Match_Kind match);

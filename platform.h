@@ -275,38 +275,14 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 //=========================================
 // Timings
 //=========================================
-
-typedef struct Platform_Calendar_Time {
-    int32_t year;       // any
-    int8_t month;       // [0, 12)
-    int8_t day_of_week; // [0, 7) where 0 is sunday
-    int8_t day;         // [0, 31] !note the end bracket!
-    
-    int8_t hour;        // [0, 24)
-    int8_t minute;      // [0, 60)
-    int8_t second;      // [0, 60)
-    
-    int16_t millisecond; // [0, 1000)
-    int16_t microsecond; // [0, 1000)
-    //int16_t day_of_year; // [0, 365]
-} Platform_Calendar_Time;
-
 //returns the number of micro-seconds since the start of the epoch.
 //This functions is very fast and suitable for fast profiling
 int64_t platform_epoch_time();   
 //returns the number of micro-seconds between the epoch and the call to platform_init()
-int64_t platform_startup_epoch_time(); 
-
-//converts the epoch time (micro second time since unix epoch) to calendar representation
-Platform_Calendar_Time platform_calendar_time_from_epoch_time(int64_t epoch_time_usec);
-//Converts calendar time to the precise epoch time (micro second time since unix epoch)
-int64_t platform_epoch_time_from_calendar_time(Platform_Calendar_Time calendar_time);
-
-Platform_Calendar_Time platform_local_calendar_time_from_epoch_time(int64_t epoch_time_usec);
-int64_t platform_epoch_time_from_local_calendar_time(Platform_Calendar_Time calendar_time);
+int64_t platform_epoch_time_startup(); 
 
 //Returns the current value of monotonic lowlevel performance counter. Is ideal for benchamrks.
-//Generally is with nanosecond precisions.
+//Generally is with around 1-100 nanosecond precision.
 int64_t platform_perf_counter();         
 //returns the frequency of the performance counter (that is counter ticks per second)
 int64_t platform_perf_counter_frequency();  
@@ -626,56 +602,6 @@ const char* platform_exception_to_string(Platform_Exception error);
         #define PLATFORM_COMPILER PLATFORM_COMPILER_UNKNOWN
     #endif
 
-#endif
-
-#undef ATTRIBUTE_RESTRICT                                   
-#undef ATTRIBUTE_ALIGNED                            
-#undef ATTRIBUTE_INLINE_ALWAYS                               
-#undef ATTRIBUTE_INLINE_NEVER                                  
-#undef ATTRIBUTE_THREAD_LOCAL                               
-#undef ATTRIBUTE_FORMAT_FUNC 
-#undef ATTRIBUTE_FORMAT_ARG                          
-#undef ATTRIBUTE_NORETURN  
-
-#undef ATTRIBUTE_RETURN_RESTRICT
-#undef ATTRIBUTE_RETURN_ALIGNED
-#undef ATTRIBUTE_RETURN_ALIGNED_ARG
-
-#if defined(_MSC_VER)
-    #define ATTRIBUTE_RESTRICT                                      __restrict
-    #define ATTRIBUTE_INLINE_ALWAYS                                  __forceinline
-    #define ATTRIBUTE_INLINE_NEVER                                     __declspec(noinline)
-    #define ATTRIBUTE_THREAD_LOCAL                                  __declspec(thread)
-    #define ATTRIBUTE_ALIGNED(bytes)                                __declspec(align(bytes))
-    #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index)     /* empty */
-    #define ATTRIBUTE_FORMAT_ARG                                    _Printf_format_string_  
-    #define ATTRIBUTE_RETURN_RESTRICT                               __declspec(restrict)
-    #define ATTRIBUTE_RETURN_ALIGNED(align)                         /* empty */
-    #define ATTRIBUTE_RETURN_ALIGNED_ARG(align_arg_index)           /* empty */
-#elif defined(__GNUC__) || defined(__clang__)
-    #define ATTRIBUTE_RESTRICT                                      __restrict__
-    #define ATTRIBUTE_INLINE_ALWAYS                                  __attribute__((always_inline)) inline
-    #define ATTRIBUTE_INLINE_NEVER                                     __attribute__((noinline))
-    #define ATTRIBUTE_THREAD_LOCAL                                  __thread
-    #define ATTRIBUTE_ALIGNED(bytes)                                __attribute__((aligned(bytes)))
-    #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index)     __attribute__((format_arg (printf, format_arg_index, 0)))
-    #define ATTRIBUTE_FORMAT_ARG                                    /* empty */    
-    #define ATTRIBUTE_NORETURN                                      __attribute__((noreturn))
-    #define ATTRIBUTE_RETURN_RESTRICT                               __attribute__((malloc))
-    #define ATTRIBUTE_RETURN_ALIGNED(align)                         __attribute__((assume_aligned(align))
-    #define ATTRIBUTE_RETURN_ALIGNED_ARG(align_arg_index)           __attribute__((alloc_align (align_arg_index)))
-#else
-    #define ATTRIBUTE_RESTRICT                                      /* empty */                              
-    #define ATTRIBUTE_INLINE_ALWAYS                                  /* empty */                            
-    #define ATTRIBUTE_INLINE_NEVER                                     /* empty */                              
-    #define ATTRIBUTE_THREAD_LOCAL                                  /* empty */                           
-    #define ATTRIBUTE_ALIGNED                                       /* empty */                   
-    #define ATTRIBUTE_FORMAT_FUNC                                   /* empty */  
-    #define ATTRIBUTE_FORMAT_ARG                                    /* empty */                   
-    #define ATTRIBUTE_NORETURN                                      /* empty */  
-    #define ATTRIBUTE_RETURN_RESTRICT                               /* empty */
-    #define ATTRIBUTE_RETURN_ALIGNED(align)                         /* empty */
-    #define ATTRIBUTE_RETURN_ALIGNED_ARG(align_arg_index)           /* empty */
 #endif
 
 // =================== INLINE IMPLEMENTATION ============================

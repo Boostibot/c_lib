@@ -333,6 +333,7 @@ EXPORT const char* log_type_to_string(Log_Type type)
         case LOG_FATAL: return "FATAL"; break;
         case LOG_DEBUG: return "DEBUG"; break;
         case LOG_TRACE: return "TRACE"; break;
+        case LOG_TYPE_MAX:
         default: return "";
     }
 }

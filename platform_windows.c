@@ -106,7 +106,7 @@ void* platform_virtual_reallocate(void* adress, int64_t bytes, Platform_Virtual_
         prot = PAGE_READWRITE;
     if(protection == PLATFORM_MEMORY_PROT_EXECUTE)
         prot = PAGE_EXECUTE;
-    if(protection == PLATFORM_MEMORY_PROT_READ | PLATFORM_MEMORY_PROT_EXECUTE)
+    if(protection == (PLATFORM_MEMORY_PROT_READ | PLATFORM_MEMORY_PROT_EXECUTE))
         prot = PAGE_EXECUTE_READ;
     if(protection & (PLATFORM_MEMORY_PROT_WRITE | PLATFORM_MEMORY_PROT_EXECUTE))
         prot = PAGE_EXECUTE_READWRITE;
@@ -347,141 +347,12 @@ int64_t platform_epoch_time()
     return epoch_time;
 }
 
-int64_t platform_startup_epoch_time()
+int64_t platform_epoch_time_startup()
 {
     if(gp_state.startup_epoch_time == 0)
         gp_state.startup_epoch_time = platform_epoch_time();
 
     return gp_state.startup_epoch_time;
-}
-
-//returns the number of micro-seconds since the start of the epoch
-// with respect to local timezones/daylight saving times and other
-int64_t platform_epoch_time_from_local_time(int64_t local_time)
-{
-    FILETIME local_file_time = _epoch_time_to_filetime(local_time);
-    FILETIME global_file_time = {0};
-
-    bool okay = LocalFileTimeToFileTime(&local_file_time, &global_file_time);
-    assert(okay); (void) okay;
-
-    int64_t epoch_time = _filetime_to_epoch_time(global_file_time);
-    return epoch_time;
-}
-int64_t platform_local_time_from_epoch_time(int64_t epoch_time)
-{
-    FILETIME global_file_time = _epoch_time_to_filetime(epoch_time);
-    FILETIME local_file_time = {0};
-
-    bool okay = FileTimeToLocalFileTime(&global_file_time, &local_file_time);
-    assert(okay); (void) okay;
-
-    int64_t local_time = _filetime_to_epoch_time(global_file_time);
-    return local_time;
-}
-
-#if 0
-int64_t platform_local_epoch_time()
-{
-    FILETIME filetime;
-    GetSystemTimeAsFileTime(&filetime);
-    FILETIME local_filetime = {0};
-    bool okay = FileTimeToLocalFileTime(&filetime, &local_filetime);
-    assert(okay); (void) okay;
-    int64_t epoch_time = _filetime_to_epoch_time(local_filetime);
-    return epoch_time;
-}
-#endif
-
-Platform_Calendar_Time platform_calendar_time_from_epoch_time(int64_t epoch_time_usec)
-{
-    const int64_t _EPOCH_YEAR              = (int64_t) 1970;
-    const int64_t _MILLISECOND_MICROSECOND = (int64_t) 1000;
-    const int64_t _SECOND_MICROSECONDS     = (int64_t) 1000000;
-    const int64_t _DAY_SECONDS             = (int64_t) 86400;
-    const int64_t _YEAR_SECONDS            = (int64_t) 31556952;
-    const int64_t _DAY_MICROSECONDS        = (_DAY_SECONDS * _SECOND_MICROSECONDS);
-    const int64_t _YEAR_MICROSECONDS       = (_YEAR_SECONDS * _SECOND_MICROSECONDS);
-
-    (void) _DAY_SECONDS;
-    (void) _DAY_MICROSECONDS;
-
-    SYSTEMTIME systime = {0};
-    FILETIME filetime = _epoch_time_to_filetime(epoch_time_usec);
-    bool okay = FileTimeToSystemTime(&filetime, &systime);
-    assert(okay);
-
-    Platform_Calendar_Time time = {0};
-    time.day = (int8_t) systime.wDay - 1;
-    time.day_of_week = (int8_t) systime.wDayOfWeek;
-    time.hour = (int8_t) systime.wHour;
-    time.millisecond = (int16_t) systime.wMilliseconds;
-    time.minute = (int8_t) systime.wMinute;
-    time.month = (int8_t) systime.wMonth - 1;
-    time.second = (int8_t) systime.wSecond;
-    time.year = (int32_t) systime.wYear;
-
-    int64_t years_since_epoch = (int64_t) time.year - _EPOCH_YEAR;
-    int64_t microsec_diff = epoch_time_usec - years_since_epoch*_YEAR_MICROSECONDS;
-    //int64_t microsec_remainder = microsec_diff % YEAR_MICROSECONDS;
-    //int64_t day_of_year = (microsec_remainder / DAY_MICROSECONDS);
-    //int64_t microsecond = (microsec_remainder % MILLISECOND_MICROSECOND);
-    int64_t microsecond = (microsec_diff % _MILLISECOND_MICROSECOND);
-
-    //time.day_of_year = (int16_t) day_of_year;
-    time.microsecond = (int16_t) microsecond;
-
-    //int64_t times = time.day_of_year;
-    assert(0 <= time.month && time.month < 12);
-    assert(0 <= time.day && time.day < 31);
-    assert(0 <= time.hour && time.hour < 24);
-    assert(0 <= time.minute && time.minute < 60);
-    assert(0 <= time.second && time.second < 60);
-    assert(0 <= time.millisecond && time.millisecond < 1000);
-    assert(0 <= time.day_of_week && time.day_of_week < 7);
-    //assert(0 <= time.day_of_year && time.day_of_year <= 365);
-    
-    #ifndef NDEBUG
-    int64_t epoch_time_roundtrip = platform_epoch_time_from_calendar_time(time);
-    if(epoch_time_roundtrip != epoch_time_usec)
-    {
-        Platform_Calendar_Time roundtrip_time = platform_calendar_time_from_epoch_time(epoch_time_roundtrip); (void) roundtrip_time;
-        assert(epoch_time_roundtrip == epoch_time_usec && "roundtrip must be correct");
-    }
-    #endif // !NDEBUG
-
-    return time;
-}
-
-int64_t platform_epoch_time_from_calendar_time(Platform_Calendar_Time calendar_time)
-{
-    SYSTEMTIME systime = {0};
-    systime.wDay = calendar_time.day + 1;
-    systime.wDayOfWeek = calendar_time.day_of_week;
-    systime.wHour = calendar_time.hour;
-    systime.wMilliseconds = calendar_time.millisecond;
-    systime.wMinute = calendar_time.minute;
-    systime.wMonth = calendar_time.month + 1;
-    systime.wSecond = calendar_time.second;
-    systime.wYear = (WORD) calendar_time.year;
-
-    FILETIME filetime;
-    bool okay = SystemTimeToFileTime(&systime, &filetime) != 0;
-    assert(okay);
-
-    int64_t epoch_time = _filetime_to_epoch_time(filetime);
-    epoch_time += calendar_time.microsecond;
-
-    return epoch_time;
-}
-
-Platform_Calendar_Time platform_local_calendar_time_from_epoch_time(int64_t epoch_time_usec)
-{
-    return platform_calendar_time_from_epoch_time(platform_local_time_from_epoch_time(epoch_time_usec));
-}
-int64_t platform_epoch_time_from_local_calendar_time(Platform_Calendar_Time calendar_time)
-{   
-    return platform_epoch_time_from_local_time(platform_epoch_time_from_calendar_time(calendar_time));
 }
 
 //=========================================
@@ -1961,7 +1832,7 @@ void platform_init(Platform_Allocator* allocator)
     platform_deinit();
 
     platform_perf_counter();
-    platform_startup_epoch_time();
+    platform_epoch_time_startup();
     platform_perf_counter_startup();
 
     _platform_set_console_utf8();

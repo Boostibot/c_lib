@@ -51,8 +51,8 @@ typedef struct Allocation_List_Block {
 } Allocation_List_Block;
 
 typedef struct Allocation_List_Info {
-    i64 size;
-    i64 align;
+    u64 size;
+    u64 align;
     bool is_offset;
 } Allocation_List_Info;
 

@@ -50,6 +50,7 @@
 #include "string.h"
 #include "profile.h"
 #include "vformat.h"
+#include "time.h"
 #include "log.h"
 
 typedef bool(*File_Logger_Print)(const void* data, isize size, void* context); 
@@ -106,7 +107,7 @@ EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, cons
 EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* append_to, i32 depth, const Log* log)
 {       
     isize indentation = depth;
-    PERF_COUNTER_START(counter);
+    PERF_COUNTER_START();
 
     for(const Log* it = log; it != NULL; it = it->next)
     {
@@ -154,8 +155,8 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
 
         //Convert type to string
         //Platform_Calendar_Time c = platform_epoch_time_to_calendar_time(epoch_time);
-        Platform_Calendar_Time c = platform_local_calendar_time_from_epoch_time(it->time);
-    
+        Posix_Date c = local_date_from_epoch_time(it->time);
+        
         //Try to guess size
         builder_reserve(append_to, size_before + message.size + 100 + module.size);
 
@@ -163,12 +164,12 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
         if(strlen(type_str) > 0)
         {
             format_append_into(append_to, "%02i-%02i-%02i %-5s ", 
-                (int) c.hour, (int) c.minute, (int) c.second, type_str);
+                (int) c.tm_hour, (int) c.tm_min, (int) c.tm_sec, type_str);
         }
         else
         {
             format_append_into(append_to, "%02i-%02i-%02i %-5i ", 
-                (int) c.hour, (int) c.minute, (int) c.second, (int) it->type);
+                (int) c.tm_hour, (int) c.tm_min, (int) c.tm_sec, (int) it->type);
         }
     
         isize header_size = append_to->size - size_before;
@@ -224,7 +225,7 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
         if(it->first_child)
             file_logger_log_append_into(scratch, append_to, depth + 1, it->first_child);
     }
-    PERF_COUNTER_END(counter);
+    PERF_COUNTER_END();
 }
 
 EXPORT void file_logger_deinit(File_Logger* logger)
@@ -283,6 +284,7 @@ EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, cons
 
 EXPORT bool file_logger_flush(File_Logger* logger)
 {
+    PERF_COUNTER_START();
     File_Logger* self = (File_Logger*) (void*) logger;
 
     bool state = true;
@@ -294,13 +296,12 @@ EXPORT bool file_logger_flush(File_Logger* logger)
         {
             if(self->file == NULL)
             {
-                Platform_Calendar_Time calendar = platform_local_calendar_time_from_epoch_time(logger->init_epoch_time);
-
+                Posix_Date calendar = local_date_from_epoch_time(logger->init_epoch_time);
                 const char* filename = format_ephemeral("%s/%s%04d-%02d-%02d__%02d-%02d-%02d%s", 
                     self->file_directory_path.data,
                     self->file_prefix.data,
-                    (int) calendar.year, (int) calendar.month, (int) calendar.day, 
-                    (int) calendar.hour, (int) calendar.minute, (int) calendar.second,
+                    (int) calendar.tm_year, (int) calendar.tm_mon, (int) calendar.tm_mday, 
+                    (int) calendar.tm_hour, (int) calendar.tm_min, (int) calendar.tm_sec,
                     self->file_postfix.data
                 ).data;
 
@@ -317,6 +318,7 @@ EXPORT bool file_logger_flush(File_Logger* logger)
         builder_clear(&self->buffer);
     }
 
+    PERF_COUNTER_END();
     return state;
 }
 
@@ -335,7 +337,7 @@ EXPORT bool file_logger_flush(File_Logger* logger)
 
 void file_logger_log(Logger* logger_, const Log* log_list, i32 depth, Log_Action action)
 {
-    PERF_COUNTER_START(counter);
+    PERF_COUNTER_START();
     File_Logger* self = (File_Logger*) (void*) logger_;
     
     platform_mutex_lock(&self->mutex);
@@ -383,7 +385,7 @@ void file_logger_log(Logger* logger_, const Log* log_list, i32 depth, Log_Action
         arena_release(&arena);
     }
     platform_mutex_unlock(&self->mutex);
-    PERF_COUNTER_END(counter);
+    PERF_COUNTER_END();
 }
 
 

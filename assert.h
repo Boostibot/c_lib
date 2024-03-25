@@ -12,6 +12,9 @@
     #define DO_BOUNDS_CHECKS /* checks bounds prior to lookup */
 #endif
 
+//#undef DO_ASSERTS
+//#undef DO_ASSERTS_SLOW
+
 //If fails does not compile. 
 //x must be a valid compile time exception. 
 //Is useful for validating if compile time settings are correct
@@ -19,20 +22,20 @@
 
 //If x evaluates to false executes assertion_report() with optional provided message
 #define TEST(x, ...)                            (!(x) ? (assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, " " __VA_ARGS__), abort()) : (void) 0)
-#define _DISSABLED_TEST(x, ...)                 (0 ? ((x), assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, " " __VA_ARGS__), abort()) : (void) 0)
+#define _DISSABLED_TEST(x, ...)                 TEST(sizeof(x) != 0, ##__VA_ARGS__)
 
 //In debug builds do the same as TEST() else do nothing
 #ifdef DO_ASSERTS
     #define ASSERT(x, ...)              TEST(x, __VA_ARGS__)          
 #else
-    #define ASSERT(x, ...)              _DISSABLED_TEST(x, __VA_ARGS__)
+    #define ASSERT(x, ...)              _DISSABLED_TEST(x, ##__VA_ARGS__)
 #endif
 
 //In slow debug builds do the same as TEST() else do nothing
 #ifdef DO_ASSERTS_SLOW
     #define ASSERT_SLOW(x, ...)          TEST(x, __VA_ARGS__)          
 #else
-    #define ASSERT_SLOW(x, ...)          _DISSABLED_TEST(x, __VA_ARGS__)
+    #define ASSERT_SLOW(x, ...)          _DISSABLED_TEST(x, ##__VA_ARGS__)
 #endif
 
 //In debug builds checks wheter the value falls into the valid range

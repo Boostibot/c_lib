@@ -198,6 +198,8 @@ EXPORT void debug_allocator_init_custom(Debug_Allocator* debug, Allocator* paren
     debug->allocator.get_stats = debug_allocator_get_stats;
     debug->panic_handler = options.panic_handler;
     debug->panic_context = options.panic_context;
+
+    debug->alive_allocations_hash.do_in_place_rehash = true;
     debug->is_init = true;
 }
 
