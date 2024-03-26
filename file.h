@@ -48,6 +48,7 @@ enum {FILE_EPHEMERAL_SLOT_COUNT = 4};
 typedef struct File_Global_State
 {
     bool is_init;
+    bool _padding[7];
     isize full_path_used_count;
     isize relative_path_used_count;
 

@@ -67,6 +67,7 @@ typedef struct Stable_Array {
     i32 item_align;
     i32 growth_lin;
     f32 growth_mult;
+    i32 _padding;
 } Stable_Array;
 
 EXPORT void  stable_array_init_custom(Stable_Array* stable, Allocator* alloc, isize item_size, isize item_align, isize growth_lin, f32 growth_mult);

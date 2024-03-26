@@ -89,6 +89,7 @@ EXPORT typedef struct File_Logger {
 
     bool open_failed;
     bool has_prev_logger;
+    bool _padding[6];
     Logger* prev_logger;
 } File_Logger;
 

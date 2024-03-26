@@ -116,7 +116,7 @@ static void test_memset_pattern()
 {
     typedef struct  {
         const char* pattern;
-        int field_size;
+        isize field_size;
         const char* expected;
     } Test_Case;
     

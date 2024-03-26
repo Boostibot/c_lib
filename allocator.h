@@ -42,6 +42,8 @@ typedef struct Allocator_Set {
     bool set_default;
     bool set_scratch;
     bool set_static;
+    
+	bool _padding[5];
 } Allocator_Set;
 
 #define DEF_ALIGN PLATFORM_MAX_ALIGN

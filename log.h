@@ -86,6 +86,7 @@ void log_example_nested()
 #endif
 
 #include "defines.h"
+#include "platform.h"
 #include <string.h>
 #include <stdarg.h>
 
@@ -130,9 +131,10 @@ typedef struct Log {
     //       yp being static stirngs
     const char* module;
     const char* subject;
-    String message;
+    Platform_String message;
     
     Log_Type type;
+    int _padding;
     i64 time;
     Source_Info source;
 
@@ -208,6 +210,7 @@ typedef struct Global_Log_State {
     Log_Filter filter;
     Logger* logger;
     i32 group_depth;
+    i32 _padding;
 } Global_Log_State;
 
 static ATTRIBUTE_THREAD_LOCAL Global_Log_State _global_log_state = {~(Log_Filter) 0}; //All channels on!
@@ -372,7 +375,7 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, co
     EXPORT ATTRIBUTE_FORMAT_FUNC(format, 5) void assertion_report(const char* expression, int line, const char* file, const char* function, ATTRIBUTE_FORMAT_ARG const char* format, ...)
     {
         Source_Info source = {line, file, function};
-        log_message("assert", "", LOG_FATAL, source, NULL, "TEST(%s) TEST/ASSERT failed! %s:%lli", expression, file, line);
+        log_message("assert", "", LOG_FATAL, source, NULL, "TEST(%s) TEST/ASSERT failed! %s:%i", expression, file, line);
         if(format != NULL && strlen(format) != 0)
         {
             va_list args;               

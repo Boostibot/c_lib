@@ -54,6 +54,7 @@ typedef struct Allocation_List_Info {
     i64 size;
     i64 align;
     bool is_offset;
+    bool _padding[7];
 } Allocation_List_Info;
 
 EXPORT Allocation_List_Info allocation_list_info_unpack(u64 size_and_align);

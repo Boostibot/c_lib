@@ -178,6 +178,7 @@ const char* platform_translate_error(Platform_Error error);
 typedef struct Platform_Thread {
     void* handle;
     int32_t id;
+    int32_t _padding;
 } Platform_Thread;
 
 //A handle to fast (ie non kernel code) recursive mutex. (pthread_mutex_t on linux, CRITICAL_SECTION win32)
@@ -384,6 +385,7 @@ typedef enum Platform_File_Watch_Flag {
  
 typedef struct Platform_File_Watch_Event {
     Platform_File_Watch_Flag flag;
+    int32_t _padding;
     Platform_File_Watch handle;
     Platform_String path;
     Platform_String old_path; //only used in case of PLATFORM_FILE_WATCH_RENAMED to store the previous path.
@@ -517,6 +519,7 @@ typedef enum Platform_Exception {
 typedef struct Platform_Sandbox_Error {
     //The exception that occured
     Platform_Exception exception;
+    uint8_t _padding[sizeof(void*) - sizeof(Platform_Exception)];
     
     //A translated stack trace and its size
     const void* const* call_stack; 

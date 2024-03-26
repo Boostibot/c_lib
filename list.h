@@ -191,6 +191,7 @@ static void test_list()
     {
         typedef struct Node {
             int val;
+            int _padding;
             struct Node* next;
         } Node;
         Node* first = NULL;
@@ -235,6 +236,7 @@ static void test_list()
     {
         typedef struct BiNode {
             int val;
+            int _padding;
             struct BiNode* next;
             struct BiNode* prev;
         } BiNode;

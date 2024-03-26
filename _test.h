@@ -12,6 +12,7 @@ typedef struct Discrete_Distribution {
 	i32_Array prob_table;
 	i32 prob_sum;
     bool use_state;
+    bool _padding[3];
 } Discrete_Distribution;
 
 EXPORT Discrete_Distribution random_discrete_make(const i32 probabilities[], isize probabilities_size);
@@ -47,6 +48,7 @@ typedef struct Test_Run_Context {
     void* func;
     const char* name;
     Test_Func_Type type;
+    u32 _padding;
     f64 max_time;
     void* user_data;
 } Test_Run_Context;

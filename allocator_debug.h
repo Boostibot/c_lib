@@ -84,8 +84,9 @@ typedef struct Debug_Allocator
                                  //icurs huge performance costs. can be safely toggled during runtime.
     bool do_deinit_leak_check;   //If the memory use on initialization and deinitializtion does not match panics.
                                  //can be toggled during runtime. 
-    bool is_init; //prevents double init
-    bool is_within_allocation;  //prevents infinite recursion on logging functions
+    bool is_init;                //prevents double init
+    bool is_within_allocation;   //prevents infinite recursion on logging functions
+    bool _padding[3];
 
     isize captured_callstack_size; //number of stack frames to capture on each allocation. Defaults to 0.
                                    //If this is greater than 0 replaces passed source info in reports
@@ -160,7 +161,7 @@ typedef struct Debug_Allocator_Options
     bool do_printing;        //prints all allocations/deallocation
     bool do_contnual_checks; //continually checks all allocations
     bool do_deinit_leak_check;   //If the memory use on initialization and deinitializtion does not match panics.
-
+    bool _padding[5];
     //Optional name of this allocator for printing and debugging. No defualt is set
     const char* name;
 } Debug_Allocator_Options;

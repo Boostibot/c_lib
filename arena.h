@@ -147,6 +147,7 @@ typedef struct Allocator_Stats {
     const char* name;
     //if doesnt use any other allocator to obtain its memory. For example malloc allocator or VM memory allocator have this set.
     bool is_top_level; 
+	bool _padding[7];
 
     //The number of bytes given out to the program by this allocator. (does NOT include book keeping bytes).
     //Might not be totally accurate but is required to be localy stable - if we allocate 100B and then deallocate 100B this should not change.
@@ -189,6 +190,7 @@ typedef struct Arena {
     Allocator allocator;
     Arena_Stack* stack;
     i32 level;
+    i32 _padding;
 } Arena;
 
 void arena_init(Arena_Stack* arena, isize reserve_size_or_zero, isize stack_max_depth_or_zero, const char* name_or_null);

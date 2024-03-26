@@ -18,6 +18,7 @@ typedef struct Log_List {
 
     //For init_and_use type of tasks
     bool had_prev_logger;
+    bool _padding[3];
     Logger* prev_logger;
 } Log_List;
 

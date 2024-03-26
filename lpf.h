@@ -120,6 +120,7 @@ typedef struct Lpf_Write_Options {
     bool compact_empty_collections;
 
     i32 indentations_per_level;
+    u32 _padding;
     isize max_line_width;
 } Lpf_Write_Options;
 

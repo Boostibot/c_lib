@@ -90,12 +90,13 @@ typedef struct Hash_Index {
     int32_t size;                   //The number of key-value pairs in the hash            
     int32_t entries_count;          //The size of the underlaying Hash_Index_Entry array
     int32_t gravestone_count;
-
-    int8_t  load_factor;            //defaults to 75%
-    int8_t  load_factor_gravestone; //defaults to 33%
-    bool    do_in_place_rehash;     //Does not allocated new space when rehashing because of too many gravestones. Can be set at any moment. Is useful for FIFO usage when placed in an arena.
-    uint8_t info_rehash_count;      //Purely informative. The number of rehashes that occured so far. Caps at 255.
+    int32_t info_rehash_count;      //Purely informative. The number of rehashes that occured so far.
     int32_t info_extra_probes;      //Purely informative. Contains the number of extra probes required to find all keys. That means `sum of number of probes to find all keys` - `number of keys`.
+
+    int8_t  load_factor;            //defaults to 75%. Valid values [0, 100)
+    int8_t  load_factor_gravestone; //defaults to 33%. Valid values [0, 100)
+    bool    do_in_place_rehash;     //Does not allocated new space when rehashing because of too many gravestones. Can be set at any moment. Is useful for FIFO usage when placed in an arena.
+    bool    _padding;
 } Hash_Index;
 
 EXPORT void  hash_index_init(Hash_Index* table, Allocator* allocator); //Initalizes table to use the given allocator and the default load factor (75%) 
@@ -295,8 +296,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
                 _hash_index_find_or_insert(to_table, curr.hash, curr.value, false);
         }
 
-        int32_t new_rehash_count = (int32_t) to_table->info_rehash_count + 1;
-        to_table->info_rehash_count = (uint8_t) (new_rehash_count < 255 ? new_rehash_count : 255);
+        to_table->info_rehash_count += 1;
 
         ASSERT(hash_index_is_invariant(*to_table, HASH_INDEX_DEBUG));
     }
@@ -335,8 +335,6 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
                 if(hash_index_is_entry_used(*entry))
                 {
                     entries_find_inv = entries_find_inv && hash_index_find(table, entry->hash) != -1;
-                    if(entries_find_inv == false)
-                        entries_find_inv = hash_index_find(table, entry->hash) != -1;
                     ASSERT(entries_find_inv);
                     used_count += 1;
                 }

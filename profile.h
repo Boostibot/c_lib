@@ -93,6 +93,7 @@ typedef struct Global_Perf_Counter
 	const char* name;
 
 	bool is_detailed;
+	bool _padding[7];
 	Perf_Counter counter;
 } Global_Perf_Counter;
 
@@ -105,6 +106,7 @@ typedef struct Global_Perf_Counter_Running
 	const char* function;
 	const char* name;
 	bool stopped;
+	bool _padding[7];
 } Global_Perf_Counter_Running;
 
 //@TODO: perf counter tick - add a macro that does not do any time tracking but only atomically increments a counter. 

@@ -31,6 +31,7 @@ typedef struct Wrapper_Allocator
     Allocator allocator;
     Allocator* parent;
     Wrapper_Allocator_Use_Allocator use_allocator;
+    u32 _padding;
 } Wrapper_Allocator;
 
 EXPORT void wrapper_allocator_init(Wrapper_Allocator* allocator, Allocator* parent_allocator, Wrapper_Allocator_Use_Allocator use_allocator);

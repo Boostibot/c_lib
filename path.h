@@ -139,8 +139,8 @@ typedef union Path_Builder {
     };
     
     struct {
-        Allocator* _pad1;
-        isize _pad2;
+        Allocator* _padding1;
+        isize _padding2;
         Path path;
     };
 } Path_Builder;
