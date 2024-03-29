@@ -15,6 +15,12 @@
         "string": "cpp",
         "unordered_map": "cpp",
         "vector": "cpp",
-        "memory": "cpp"
+        "memory": "cpp",
+        "platform.h": "c",
+        "string.h": "c",
+        "stdbool.h": "c",
+        "limits.h": "c",
+        "types.h": "c",
+        "stdlib.h": "c"
     }
 }

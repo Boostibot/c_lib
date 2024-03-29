@@ -2,10 +2,7 @@
 #define JOT_PLATFORM
 
 #undef _CRT_SECURE_NO_WARNINGS
-#undef _GNU_SOURCE
-
 #define _CRT_SECURE_NO_WARNINGS /* ... i hate msvc */
-#define _GNU_SOURCE             /* and gcc as well! */
 
 #include <stdint.h>
 #include <limits.h>
@@ -338,8 +335,12 @@ typedef struct Platform_Memory_Mapping {
     uint64_t state[8];
 } Platform_Memory_Mapping;
 
+#ifdef linux
+    #undef linux //Genuinely guys wtf 
+#endif
+
 typedef struct Platform_File {
-    union {
+    union U {
         void* windows;
         int linux;
     } handle;
@@ -901,13 +902,12 @@ const char* platform_exception_to_string(Platform_Exception error);
 
 #endif
 
-#define TEST_PLATFORM
-#ifndef TEST_PLATFORM
 
-//Empty tests
-static void platform_test_all() {}
-#else
+#ifdef TEST_PLATFORM
 
+#include <stdint.h>
+#include <string.h>
+#include <stdarg.h>
 static bool _platform_test_report(Platform_Error error, bool is_error, char* expression, const char* file, const char* funcion, int line, const char* format, ...)
 {
     is_error = error != 0 || is_error;

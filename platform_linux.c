@@ -1,21 +1,22 @@
-#ifndef __USE_GNU
-    #define __USE_GNU
-#endif
-
-#ifndef _GNU_SOURCE
-    #define _GNU_SOURCE
-#endif
-
+#define __USE_LARGEFILE64
+#define __USE_GNU
+#define _GNU_SOURCE
+#define _GNU_SOURCE_
 #define _LARGEFILE64_SOURCE
+#define _FILE_OFFSET_BITS 64 
 
 #include "platform.h"
+
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 #include <time.h>
-#include <stdio.h>
 #include <limits.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 typedef struct Platform_State {
     int64_t startup_perf_counter;
@@ -608,39 +609,16 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
     return platform_error_code(state);
 }
 
-
-typedef struct Platform_File {
-    union {
-        void* windows;
-        int linux;
-    } handle;
-    bool is_open;
-    bool _pad[7];
-} Platform_File;
-
-typedef enum Platform_File_Open_Flags {
-    PLATFORM_FILE_MODE_READ = 1,
-    PLATFORM_FILE_MODE_WRITE = 2,
-    PLATFORM_FILE_MODE_APPEND = 4,
-    PLATFORM_FILE_MODE_CREATE = 8,
-    PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST = 16, //When supplied alongside PLATFORM_FILE_MODE_CREATE overrides it.
-    PLATFORM_FILE_MODE_TEMPORARY = 32,
-} Platform_File_Open_Flags;
-
-typedef enum Platform_File_Seek {
-    PLATFORM_FILE_SEEK_FROM_START = 0,
-    PLATFORM_FILE_SEEK_FROM_CURRENT = 1,
-    PLATFORM_FILE_SEEK_FROM_END = 2,
-} Platform_File_Seek;
-
 #define OPEN_FULL_PERMS 0777
 
+#include <unistd.h>
+#include <sys/types.h>
 Platform_Error platform_file_open(Platform_File* file, Platform_String path, int open_flags)
 {
     platform_file_close(file);
 
     int mode = 0;
-    if((open_flags & PLATFORM_FILE_MODE_WRITE) && (open_flags & PLATFORM_FILE_MODE_WRITE))
+    if((open_flags & PLATFORM_FILE_MODE_WRITE) && (open_flags & PLATFORM_FILE_MODE_READ))
         mode |= O_RDWR;
     else if(open_flags & PLATFORM_FILE_MODE_READ)
         mode |= O_RDONLY;
@@ -657,6 +635,10 @@ Platform_Error platform_file_open(Platform_File* file, Platform_String path, int
 
     if(open_flags & PLATFORM_FILE_MODE_TEMPORARY)
         mode |= O_TMPFILE;
+
+    #ifndef O_LARGEFILE
+        #define O_LARGEFILE 0
+    #endif
 
     int fd = open(platform_null_terminate(path), mode | O_LARGEFILE, OPEN_FULL_PERMS);
     bool state = fd != -1;
@@ -733,19 +715,21 @@ Platform_Error platform_file_write(Platform_File* file, const void* buffer, int6
 
 }
 //Obtains the current offset from the start of the file and saves it into offset. Does not modify the file 
-Platform_Error platform_file_tell(Platform_File file, int64_t* offset)
+Platform_Error platform_file_tell(Platform_File file, int64_t* offset_ptr)
 {
     bool state = true;
-    int64_t offset = 0;
+    loff_t offset = 0;
     if(file.is_open)
     {
-        *offset = lseek64(file.handle.linux, 0, SEEK_CUR);
+        offset = lseek64(file.handle.linux, 0, SEEK_CUR);
         if(offset == -1)
         {
             state = false;
-            *offset = 0;
+            offset = 0;
         }
     }
+    if(offset_ptr) 
+        *offset_ptr = offset;
 
     return platform_error_code(state);
 }
@@ -817,12 +801,16 @@ Platform_Error platform_file_remove(Platform_String file_path, bool* was_just_de
     return platform_error_code(state);
 }
 
+#include <sys/syscall.h>
+#include <linux/fs.h>
+
 Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path)
 {
     const char* _new = platform_null_terminate(new_path);
     const char* _old = platform_null_terminate(old_path);
-
-    bool state = renameat2(AT_FDCWD, _old, AT_FDCWD, _new, RENAME_NOREPLACE) == 0;
+    
+    bool state = syscall(SYS_renameat2, AT_FDCWD, _old, AT_FDCWD, _new, RENAME_NOREPLACE)== 0;
+    // bool state = renameat2(AT_FDCWD, _old, AT_FDCWD, _new, RENAME_NOREPLACE) == 0;
     return platform_error_code(state);
 }
 
@@ -870,8 +858,7 @@ Platform_Error platform_file_resize(Platform_String file_path, int64_t size)
 
 Platform_Error platform_directory_create(Platform_String dir_path, bool* was_just_created_or_null)
 {
-    int full_permissions = ~0;
-    bool state = mkdir(platform_null_terminate(dir_path), full_permissions) == 0;
+    bool state = mkdir(platform_null_terminate(dir_path), OPEN_FULL_PERMS) == 0;
     return platform_error_code(state);
 }
 
