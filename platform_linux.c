@@ -6,6 +6,8 @@
     #define _GNU_SOURCE
 #endif
 
+#define _LARGEFILE64_SOURCE
+
 #include "platform.h"
 #include <stdlib.h>
 #include <string.h>
@@ -606,9 +608,171 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
     return platform_error_code(state);
 }
 
+
+typedef struct Platform_File {
+    union {
+        void* windows;
+        int linux;
+    } handle;
+    bool is_open;
+    bool _pad[7];
+} Platform_File;
+
+typedef enum Platform_File_Open_Flags {
+    PLATFORM_FILE_MODE_READ = 1,
+    PLATFORM_FILE_MODE_WRITE = 2,
+    PLATFORM_FILE_MODE_APPEND = 4,
+    PLATFORM_FILE_MODE_CREATE = 8,
+    PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST = 16, //When supplied alongside PLATFORM_FILE_MODE_CREATE overrides it.
+    PLATFORM_FILE_MODE_TEMPORARY = 32,
+} Platform_File_Open_Flags;
+
+typedef enum Platform_File_Seek {
+    PLATFORM_FILE_SEEK_FROM_START = 0,
+    PLATFORM_FILE_SEEK_FROM_CURRENT = 1,
+    PLATFORM_FILE_SEEK_FROM_END = 2,
+} Platform_File_Seek;
+
+#define OPEN_FULL_PERMS 0777
+
+Platform_Error platform_file_open(Platform_File* file, Platform_String path, int open_flags)
+{
+    platform_file_close(file);
+
+    int mode = 0;
+    if((open_flags & PLATFORM_FILE_MODE_WRITE) && (open_flags & PLATFORM_FILE_MODE_WRITE))
+        mode |= O_RDWR;
+    else if(open_flags & PLATFORM_FILE_MODE_READ)
+        mode |= O_RDONLY;
+    else if(open_flags & PLATFORM_FILE_MODE_WRITE)
+        mode |= O_WRONLY;
+
+    if(open_flags & PLATFORM_FILE_MODE_APPEND)
+        mode |= O_APPEND;
+
+    if(open_flags & PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST)
+        mode |= O_CREAT | O_EXCL;
+    else if(open_flags & PLATFORM_FILE_MODE_CREATE)
+        mode |= O_CREAT;
+
+    if(open_flags & PLATFORM_FILE_MODE_TEMPORARY)
+        mode |= O_TMPFILE;
+
+    int fd = open(platform_null_terminate(path), mode | O_LARGEFILE, OPEN_FULL_PERMS);
+    bool state = fd != -1;
+    if(state)
+    {
+        file->handle.linux = fd;
+        file->is_open = true;
+    }
+
+    return platform_error_code(state);
+}
+
+Platform_Error platform_file_close(Platform_File* file)
+{
+    bool state = true;
+    if(file->is_open)
+        state = close(file->handle.linux) == 0;
+
+    memset(file, 0, sizeof *file);
+    return platform_error_code(state);
+}
+
+
+Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t size, bool* eof_or_null)
+{
+    bool state = true;
+    bool eof = false;
+    if(file->is_open)
+    {
+        for(int64_t total_read = 0; total_read < size;)
+        {
+            ssize_t bytes_read = read(file->handle.linux, (unsigned char*)buffer + total_read, (size_t) (size - total_read));
+            if(bytes_read == -1)
+            {
+                state = false;
+                break;
+            }
+
+            if(bytes_read == 0)
+            {
+                eof = true;
+                break;
+            }
+
+            total_read += bytes_read;
+        }
+    }
+
+    if(eof_or_null)
+        *eof_or_null = eof;
+
+    return platform_error_code(state);
+}
+
+Platform_Error platform_file_write(Platform_File* file, const void* buffer, int64_t size)
+{
+    bool state = true;
+    if(file->is_open)
+    {
+        for(int64_t total_written = 0; total_written < size;)
+        {
+            ssize_t bytes_written = write(file->handle.linux, (unsigned char*) buffer + total_written, (size_t) (size - total_written));
+            if(bytes_written <= 0)
+            {
+                state = false;
+                break;
+            }
+
+            total_written += bytes_written;
+        }
+    }
+
+    return platform_error_code(state);
+
+}
+//Obtains the current offset from the start of the file and saves it into offset. Does not modify the file 
+Platform_Error platform_file_tell(Platform_File file, int64_t* offset)
+{
+    bool state = true;
+    int64_t offset = 0;
+    if(file.is_open)
+    {
+        *offset = lseek64(file.handle.linux, 0, SEEK_CUR);
+        if(offset == -1)
+        {
+            state = false;
+            *offset = 0;
+        }
+    }
+
+    return platform_error_code(state);
+}
+//Offset the current file position relative to: start of the file (0 value), current possition, end of the file
+Platform_Error platform_file_seek(Platform_File* file, int64_t offset, Platform_File_Seek from)
+{
+    bool state = true;
+    if(file->is_open)
+    {
+        int from_linux = SEEK_SET;
+        if(from == PLATFORM_FILE_SEEK_FROM_START)
+            from_linux = SEEK_SET;
+        else if(from == PLATFORM_FILE_SEEK_FROM_CURRENT)
+            from_linux = SEEK_CUR;
+        else if(from == PLATFORM_FILE_SEEK_FROM_END)
+            from_linux = SEEK_END;
+        else
+            assert(false && "bad Platform_File_Seek given");
+
+        state = lseek64(file->handle.linux, (loff_t) offset, from_linux) != -1;
+    }
+    return platform_error_code(state);
+}
+
 Platform_Error platform_file_create(Platform_String file_path, bool* was_just_created)
 {   
-    int fd = open(platform_null_terminate(file_path), O_RDWR | O_CREAT | O_EXCL , S_IRUSR | S_IRGRP | S_IROTH);
+    int fd = open(platform_null_terminate(file_path), O_RDWR | O_CREAT | O_EXCL | O_LARGEFILE, 0777);
     bool was_just_created_ = true;
     bool state = fd != -1;
 
@@ -652,17 +816,62 @@ Platform_Error platform_file_remove(Platform_String file_path, bool* was_just_de
 
     return platform_error_code(state);
 }
-//@TODO:
-//Moves or renames a file. If the file cannot be found or renamed to file that already exists, fails.
-Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path);
+
+Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path)
+{
+    const char* _new = platform_null_terminate(new_path);
+    const char* _old = platform_null_terminate(old_path);
+
+    bool state = renameat2(AT_FDCWD, _old, AT_FDCWD, _new, RENAME_NOREPLACE) == 0;
+    return platform_error_code(state);
+}
+
 //Copies a file. If the file cannot be found or copy_to_path file that already exists, fails.
-Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String copy_from_path);
+Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String copy_from_path)
+{
+    const char* to = platform_null_terminate(copy_to_path);
+    const char* from = platform_null_terminate(copy_from_path);
+    size_t GB = 1 << (30);
+
+    int to_fd = -1;
+    int from_fd = -1;
+    bool state = true;
+    if(state)
+    {
+        from_fd = open(from, O_RDONLY | O_LARGEFILE, 0777);
+        state = from_fd != -1;
+    }
+
+    if(state)
+    {
+        to_fd = open(to, O_WRONLY | O_CREAT | O_LARGEFILE, 0777);
+        state = to_fd != -1;
+    }
+
+    while(state)
+    {
+        ssize_t bytes_copied = copy_file_range(from_fd, NULL, to_fd, NULL, GB, 0);
+        if(bytes_copied == -1)
+            state = false;
+        //If no more to read stop
+        if(bytes_copied == 0)
+            break;
+    }
+
+    return platform_error_code(state); 
+
+}
 //Resizes a file. The file must exist.
-Platform_Error platform_file_resize(Platform_String file_path, int64_t size);
+Platform_Error platform_file_resize(Platform_String file_path, int64_t size)
+{
+    bool state = truncate64(platform_null_terminate(file_path), size);
+    return platform_error_code(state);
+}
 
 Platform_Error platform_directory_create(Platform_String dir_path, bool* was_just_created_or_null)
 {
-    bool state = mkdir(platform_null_terminate(dir_path), S_IRWXU | S_IRWXG | S_IRWXO) == 0;
+    int full_permissions = ~0;
+    bool state = mkdir(platform_null_terminate(dir_path), full_permissions) == 0;
     return platform_error_code(state);
 }
 

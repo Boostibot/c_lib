@@ -338,6 +338,45 @@ typedef struct Platform_Memory_Mapping {
     uint64_t state[8];
 } Platform_Memory_Mapping;
 
+typedef struct Platform_File {
+    union {
+        void* windows;
+        int linux;
+    } handle;
+    bool is_open;
+    bool _padding[7];
+} Platform_File;
+
+typedef enum Platform_File_Open_Flags {
+    PLATFORM_FILE_MODE_READ = 1,
+    PLATFORM_FILE_MODE_WRITE = 2,
+    PLATFORM_FILE_MODE_APPEND = 4,
+    PLATFORM_FILE_MODE_CREATE = 8,
+    PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST = 16, //When supplied alongside PLATFORM_FILE_MODE_CREATE overrides it.
+    PLATFORM_FILE_MODE_TEMPORARY = 32,
+} Platform_File_Open_Flags;
+
+typedef enum Platform_File_Seek {
+    PLATFORM_FILE_SEEK_FROM_START = 0,
+    PLATFORM_FILE_SEEK_FROM_CURRENT = 1,
+    PLATFORM_FILE_SEEK_FROM_END = 2,
+} Platform_File_Seek;
+
+//Opens the file in the specified combination of Platform_File_Open_Flags. 
+Platform_Error platform_file_open(Platform_File* file, Platform_String path, int open_flags);
+//Closes already opened file. If file was not open does nothing.
+Platform_Error platform_file_close(Platform_File* file);
+//Reads size bytes into the provided buffer. Sets eof_or_null to true if end of file is reached (and eof_or_null is not NULL).
+//Does nothing when file is not open/invalid state. Does not perform partial reads (the read either fails or succeeds nothing in between).
+Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t size, bool* eof_or_null);
+//Writes size bytes from the provided buffer, extending the file if necessary
+//Does nothing when file is not open/invalid state. Does not perform partial writes (the write either fails or succeeds nothing in between).
+Platform_Error platform_file_write(Platform_File* file, const void* buffer, int64_t size);
+//Obtains the current offset from the start of the file and saves it into offset. Does not modify the file 
+Platform_Error platform_file_tell(Platform_File file, int64_t* offset);
+//Offset the current file position relative to: start of the file (0 value), current possition, end of the file
+Platform_Error platform_file_seek(Platform_File* file, int64_t offset, Platform_File_Seek from);
+
 //retrieves info about the specified file or directory
 Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null);
 //Creates an empty file at the specified path. Succeeds if the file exists after the call.
@@ -437,8 +476,7 @@ void* platform_dll_get_function(Platform_DLL* dll, Platform_String name);
 // Window managmenet
 //=========================================
 
-typedef enum Platform_Window_Popup_Style
-{
+typedef enum Platform_Window_Popup_Style {
     PLATFORM_POPUP_STYLE_OK = 0,
     PLATFORM_POPUP_STYLE_ERROR,
     PLATFORM_POPUP_STYLE_WARNING,
@@ -448,8 +486,7 @@ typedef enum Platform_Window_Popup_Style
     PLATFORM_POPUP_STYLE_YES_NO_CANCEL,
 } Platform_Window_Popup_Style;
 
-typedef enum Platform_Window_Popup_Controls
-{
+typedef enum Platform_Window_Popup_Controls {
     PLATFORM_POPUP_CONTROL_OK,
     PLATFORM_POPUP_CONTROL_CANCEL,
     PLATFORM_POPUP_CONTROL_CONTINUE,
@@ -861,5 +898,62 @@ const char* platform_exception_to_string(Platform_Exception error);
 
 
 #endif
+
+#endif
+
+#define TEST_PLATFORM
+#ifndef TEST_PLATFORM
+
+//Empty tests
+static void platform_test_all() {}
+#else
+
+static bool _platform_test_report(Platform_Error error, bool is_error, char* expression, const char* file, const char* funcion, int line, const char* format, ...)
+{
+    is_error = error != 0 || is_error;
+    if(is_error)
+    {
+        printf("TEST(%s) failed in %s %s:%i", expression, file, funcion, line);
+        if(format && strlen(format) > 0)
+        {
+            va_list args;               
+            va_start(args, format);     
+            vprintf(format, args);
+            va_end(args);   
+        }
+        
+        if(error != 0)
+            printf("Error: %s", platform_translate_error(error));
+    }
+
+    return is_error; 
+}
+
+#ifndef _MSC_VER
+    #define __FUNCTION__ __func__
+#endif
+
+#ifdef __cplusplus
+    #define PBRACE_INIT(Struct_Type) Struct_Type
+#else
+    #include <stdbool.h>
+    #define PBRACE_INIT(Struct_Type) (Struct_Type)
+#endif 
+
+#define PTEST(x, ...)           (_platform_test_report(0, !(x), #x, __FILE__, __FUNCTION__, __LINE__, "" __VA_ARGS__) ? abort() : (void) 0)
+#define PTEST_ERROR(error, ...) (_platform_test_report((error), 0, #error, __FILE__, __FUNCTION__, __LINE__, "" __VA_ARGS__) ? abort() : (void) 0)
+#define PSTRING(literal) PBRACE_INIT(Platform_String){"" literal, sizeof(literal) - 1}
+
+static void platform_test_all() 
+{   
+    #define TEST_DIR "__platform_test_directory__"
+    #define TEST_FILE1 TEST_DIR "/file1.txt"
+    #define TEST_FILE2 TEST_DIR "/file2.txt"
+    #define TEST_FILE3 TEST_DIR "/file3"
+
+    PTEST_ERROR(platform_directory_create(PSTRING(TEST_DIR), NULL));
+
+    PTEST_ERROR(platform_directory_remove(PSTRING(TEST_DIR), NULL));
+}
 
 #endif

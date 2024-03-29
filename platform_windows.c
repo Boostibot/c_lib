@@ -142,7 +142,7 @@ int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
 }
 
 
-Platform_Error _paltform_get_last_error_code_if(bool state)
+Platform_Error platform_error_code(bool state)
 {
     Platform_Error err = PLATFORM_ERROR_OK;
     if(!state)
@@ -244,7 +244,7 @@ Platform_Error platform_mutex_init(Platform_Mutex* mutex)
         InitializeCriticalSection(section);
 
     mutex->handle = section;
-    return _paltform_get_last_error_code_if(section != NULL);
+    return platform_error_code(section != NULL);
 }
 
 void platform_mutex_deinit(Platform_Mutex* mutex)
@@ -583,10 +583,175 @@ void _translated_deinit_all()
     }
 }
 
+
+//Opens the file in the specified combination of Platform_File_Open_Flags. 
+Platform_Error platform_file_open(Platform_File* file, Platform_String path, int open_flags)
+{
+    platform_file_close(file);
+
+    bool state = true;
+    const wchar_t* _path = _ephemeral_path(file_path);
+    
+    DWORD access = 0;
+    if(open_flags & PLATFORM_FILE_MODE_READ)
+        access |= GENERIC_READ;
+    if(open_flags & PLATFORM_FILE_MODE_WRITE)
+        access |= GENERIC_WRITE;
+
+    DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+    LPSECURITY_ATTRIBUTES security = NULL;
+
+    DWORD creation = 0; 
+    if(open_flags & PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST)
+        creation |= OPEN_EXISTING;
+    else if(open_flags & PLATFORM_FILE_MODE_CREATE)
+        creation |= OPEN_ALWAYS;
+
+    
+    DWORD flags = FILE_ATTRIBUTE_NORMAL;
+    if(open_flags & PLATFORM_FILE_MODE_TEMPORARY)
+        flags |= FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE;
+
+    HANDLE template_handle = NULL;
+    HANDLE handle = CreateFileW(_path, access, share, security, creation, flags, template_handle);
+    bool state = handle != INVALID_HANDLE_VALUE; 
+    if(state)
+    { 
+        file->handle.windows = handle;
+        file->is_open = true;
+    }
+
+    return platform_error_code(state);
+}
+
+Platform_Error platform_file_close(Platform_File* file)
+{
+    bool state = true;
+    if(file->is_open)
+        state = !!CloseHandle((HANDLE) file->handle.windows);
+
+    memset(file, 0, sizeof *file);
+    return platform_error_code(state);
+}
+
+Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t size, bool* eof_or_null)
+{
+    bool state = true;
+    bool eof = false;
+    if(file->is_open)
+    {
+        // BOOL ReadFile(
+        //     [in]                HANDLE       hFile,
+        //     [out]               LPVOID       lpBuffer,
+        //     [in]                DWORD        nNumberOfBytesToRead,
+        //     [out, optional]     LPDWORD      lpNumberOfBytesRead,
+        //     [in, out, optional] LPOVERLAPPED lpOverlapped
+        // );
+
+        for(int64_t total_read = 0; total_read < size;)
+        {
+            int64_t GB = 1 << 30;
+            int64_t to_read = size - total_read;
+            if(to_read > GB)
+                to_read = GB;
+
+            DWORD bytes_read = 0;
+            state = !!ReadFile((HANDLE) file->handle.windows, (unsigned char*) buffer + total_read, (DWORD) to_read, &bytes_read, NULL);
+            if(state && bytes_read <= 0)
+            {
+                eof = true;
+                break;
+            }
+
+            if(state == false)
+            {
+                state = false;
+                break;
+            }
+
+            total_read += bytes_read;
+        }
+    }
+
+    if(eof_or_null)
+        *eof_or_null = eof;
+
+    return platform_error_code(state);
+}
+
+Platform_Error platform_file_write(Platform_File* file, const void* buffer, int64_t size)
+{
+    bool state = true;
+    if(file->is_open)
+    {
+        // BOOL WriteFile(
+        //     [in]                HANDLE       hFile,
+        //     [in]                LPCVOID      lpBuffer,
+        //     [in]                DWORD        nNumberOfBytesToWrite,
+        //     [out, optional]     LPDWORD      lpNumberOfBytesWritten,
+        //     [in, out, optional] LPOVERLAPPED lpOverlapped
+        // );
+
+        for(int64_t total_written = 0; total_written < size;)
+        {
+            int64_t GB = 1 << 30;
+            int64_t to_write = size - total_written;
+            if(to_write > GB)
+                to_write = GB;
+
+            DWORD bytes_written = 0;
+            state = !!WriteFile((HANDLE) file->handle.windows, (unsigned char*) buffer + total_written, (DWORD) to_write, &bytes_written, NULL);
+            if(state == false || bytes_written <= 0)
+            {
+                state = false;
+                break;
+            }
+
+            total_written += bytes_written;
+        }
+    }
+
+    return platform_error_code(state);
+}
+
+Platform_Error _platform_file_seek_tell(Platform_File* file, int64_t offset, int64_t* new_offset, Platform_File_Seek from)
+{
+    // BOOL SetFilePointerEx(
+    //     [in]            HANDLE         hFile,
+    //     [in]            LARGE_INTEGER  liDistanceToMove,
+    //     [out, optional] PLARGE_INTEGER lpNewFilePointer,
+    //     [in]            DWORD          dwMoveMethod
+    // );
+
+    bool state = true;
+    PLARGE_INTEGER new_offset_win = {0}; 
+    if(file->is_open)
+    {
+        LARGE_INTEGER offset_win = {0};
+        offset_win.QuadPart = offset;
+        //@NOTE: Platform_File_Seek from has matching values to the windows API values
+        state = !!SetFilePointerEx((HANDLE) file->handle.windows, offset_win, &new_offset_win, (DWORD) from);
+    }
+
+    if(new_offset)
+        *new_offset = new_offset_win.QuadPart;
+
+    return platform_error_code(state);
+}
+
+Platform_Error platform_file_tell(Platform_File file, int64_t* offset)
+{
+    return _platform_file_seek_tell(file, 0, offset, PLATFORM_FILE_SEEK_FROM_CURRENT);
+}
+
+Platform_Error platform_file_seek(Platform_File* file, int64_t offset, Platform_File_Seek from)
+{
+    return _platform_file_seek_tell(file, offset, NULL, PLATFORM_FILE_SEEK_FROM_CURRENT);
+}
+
 Platform_Error platform_file_create(Platform_String file_path, bool* was_just_created)
 {
     bool state = true;
-
     const wchar_t* path = _ephemeral_path(file_path);
     HANDLE handle = CreateFileW(path, 0, 0, NULL, OPEN_ALWAYS, 0, NULL);
     state = handle != INVALID_HANDLE_VALUE;
@@ -601,8 +766,7 @@ Platform_Error platform_file_create(Platform_String file_path, bool* was_just_cr
     }
 
     CloseHandle(handle);
-
-    return _paltform_get_last_error_code_if(state);
+    return platform_error_code(state);
 }
 Platform_Error platform_file_remove(Platform_String file_path, bool* was_deleted_deleted)
 {
@@ -621,7 +785,7 @@ Platform_Error platform_file_remove(Platform_String file_path, bool* was_deleted
             *was_deleted_deleted = false;
     }
 
-    return _paltform_get_last_error_code_if(state);
+    return platform_error_code(state);
 }
 
 Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path)
@@ -630,7 +794,7 @@ Platform_Error platform_file_move(Platform_String new_path, Platform_String old_
     const wchar_t* old_path_norm = _ephemeral_path(old_path);
     bool state = !!MoveFileExW(old_path_norm, new_path_norm, MOVEFILE_COPY_ALLOWED);
     
-    return _paltform_get_last_error_code_if(state);
+    return platform_error_code(state);
 }
 
 Platform_Error platform_file_copy(Platform_String new_path, Platform_String old_path)
@@ -639,7 +803,7 @@ Platform_Error platform_file_copy(Platform_String new_path, Platform_String old_
     const wchar_t* old_path_norm = _ephemeral_path(old_path);
     bool state = !!CopyFileW(old_path_norm, new_path_norm, true);
     
-    return _paltform_get_last_error_code_if(state);
+    return platform_error_code(state);
 }
 
 void platform_file_memory_unmap(Platform_Memory_Mapping* mapping)
@@ -788,7 +952,7 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
     if(native_info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
         info.link_type = _get_link_type(path);
     if(!state)
-        return _paltform_get_last_error_code_if(state);
+        return platform_error_code(state);
             
     info.created_epoch_time = _filetime_to_epoch_time(native_info.ftCreationTime);
     info.last_access_epoch_time = _filetime_to_epoch_time(native_info.ftLastAccessTime);
@@ -802,7 +966,7 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
 
     if(info_or_null)
         *info_or_null = info;
-    return _paltform_get_last_error_code_if(state);
+    return platform_error_code(state);
 }
 
 BOOL _platform_directory_exists(const wchar_t* szPath)
@@ -829,7 +993,7 @@ Platform_Error platform_directory_create(Platform_String dir_path, bool* was_jus
     if(was_just_created_or_null)
         *was_just_created_or_null = was_created;
 
-    return _paltform_get_last_error_code_if(state);
+    return platform_error_code(state);
 }
     
 Platform_Error platform_directory_remove(Platform_String dir_path, bool* was_just_deleted_or_null)
@@ -848,7 +1012,7 @@ Platform_Error platform_directory_remove(Platform_String dir_path, bool* was_jus
     if(was_just_deleted_or_null)
         *was_just_deleted_or_null = was_deleted;
 
-    return _paltform_get_last_error_code_if(state);
+    return platform_error_code(state);
 }
 
 static char* _alloc_full_path(String_Buffer* buffer_or_null, const wchar_t* local_path, int normalize_flag)
@@ -943,7 +1107,7 @@ static Platform_Error _directory_list_contents_alloc(const wchar_t* directory_pa
     first.visitor = _directory_iterate_init(directory_path, WIO_FILE_MASK_ALL);
 
     if(_directory_iterate_has(&first.visitor) == false)
-        error = _paltform_get_last_error_code_if(false);
+        error = platform_error_code(false);
     else
     {
         buffer_append(&first.path, directory_path_str.data, directory_path_str.size); //TODO: no path copying!
@@ -1064,7 +1228,7 @@ Platform_Error platform_directory_set_current_working(Platform_String new_workin
 
     bool state = _wchdir(path) == 0;
     gp_state.current_working_generation += 1;
-    return _paltform_get_last_error_code_if(state);
+    return platform_error_code(state);
 }
 
 const char* platform_directory_get_current_working()
@@ -1128,7 +1292,7 @@ const char* platform_get_executable_path_process()
             }
         }
         
-        printf("%s\n", platform_translate_error(_paltform_get_last_error_code_if(false)));
+        printf("%s\n", platform_translate_error(platform_error_code(false)));
         assert(had_success);
         _alloc_full_path(&gp_state.directory_executable_cached, wide.data, IO_NORMALIZE_FILE);
         buffer_deinit(&wide);
@@ -1221,7 +1385,7 @@ Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_Str
         
         const wchar_t* path = _ephemeral_path(file_or_dir_path);
         watch_handle = FindFirstChangeNotificationW(path, watch_subtree, notify_filter);
-        error = _paltform_get_last_error_code_if(watch_handle != INVALID_HANDLE_VALUE);
+        error = platform_error_code(watch_handle != INVALID_HANDLE_VALUE);
 
         if(error == PLATFORM_ERROR_OK)
         {
