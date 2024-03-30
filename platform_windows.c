@@ -1165,9 +1165,7 @@ static Platform_Error _directory_list_contents_alloc(const wchar_t* directory_pa
                 entry.directory_depth = dir_context->depth;
                 buffer_push(entries, entry);
 
-
-                bool recursion = dir_context->depth + 1 < max_depth || max_depth <= 0;
-                if(info.type == PLATFORM_FILE_TYPE_DIRECTORY && recursion)
+                if(info.type == PLATFORM_FILE_TYPE_DIRECTORY && dir_context->depth + 1 < max_depth)
                 {
                     Dir_Context next = {0};
                     buffer_append(&next.path, built_path.data, built_path.size);

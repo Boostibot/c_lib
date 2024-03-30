@@ -928,6 +928,7 @@ const char* platform_exception_to_string(Platform_Exception error);
 #include <string.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <stdio.h>
 static bool _platform_test_report(Platform_Error error, bool is_error, const char* expression, const char* file, const char* funcion, int line, const char* format, ...);
 
 #ifndef _MSC_VER
@@ -1070,7 +1071,6 @@ static void platform_test_directory_list()
         //             temp_file1.txt
         //             temp_file2.txt
 
-
         {
             Platform_Directory_Entry* entries = NULL;
             int64_t entries_count = 0;
@@ -1096,7 +1096,6 @@ static void platform_test_directory_list()
             Platform_Directory_Entry* entries = NULL;
             int64_t entries_count = 0;
             PTEST_ERROR(platform_directory_list_contents_alloc(PSTRING(TEST_DIR_LIST_DIR), &entries, &entries_count, -1)); //All of the directories
-            PTEST(entries_count == 11);
 
             for(int i = 0; i < entries_count; i++)
             {
@@ -1107,8 +1106,10 @@ static void platform_test_directory_list()
                 #define PDATE_FMT "%04i/%02i/%02i %02i:%02i:%02i"
                 #define PDATE_PRINT(time) (time).tm_year + 1900, (time).tm_mon, (time).tm_mday, (time).tm_hour, (time).tm_min, (time).tm_sec
                 printf("'%s': created: " PDATE_FMT " write: " PDATE_FMT " access: " PDATE_FMT "\n", entries[i].path, PDATE_PRINT(created_time), PDATE_PRINT(write_time), PDATE_PRINT(access_time));
+                assert(entries[i].info.type != PLATFORM_FILE_TYPE_NOT_FOUND);
             }
 
+            PTEST(entries_count == 11);
             platform_test_dir_entry(entries, entries_count, temp_file1, PLATFORM_FILE_TYPE_FILE, 0);
             platform_test_dir_entry(entries, entries_count, temp_file2, PLATFORM_FILE_TYPE_FILE, 0);
             platform_test_dir_entry(entries, entries_count, temp_file3, PLATFORM_FILE_TYPE_FILE, 0);
@@ -1164,7 +1165,7 @@ static void platform_test_file_content_equality(Platform_String path, Platform_S
     PTEST(info.size == content.size);
     
     //Read the entire file and check content for equality
-    void* buffer = malloc(info.size + 10); 
+    void* buffer = malloc((size_t) info.size + 10); 
     PTEST(buffer);
 
     int64_t bytes_read = 0;
@@ -1172,7 +1173,7 @@ static void platform_test_file_content_equality(Platform_String path, Platform_S
     PTEST_ERROR(platform_file_open(&file, path, PLATFORM_FILE_MODE_READ));
     PTEST_ERROR(platform_file_read(&file, buffer, info.size, &bytes_read));
     PTEST(bytes_read == info.size);
-    PTEST(memcmp(buffer, content.data, content.size) == 0, "Content must match! Content: \n'%.*s' \nExpected: \n'%.*s'\n",
+    PTEST(memcmp(buffer, content.data, (size_t) content.size) == 0, "Content must match! Content: \n'%.*s' \nExpected: \n'%.*s'\n",
         (int) content.size, (char*) buffer, (int) content.size, content.data
     );
 
@@ -1185,20 +1186,24 @@ static void platform_test_file_content_equality(Platform_String path, Platform_S
 }
 static void platform_test_dir_entry(Platform_Directory_Entry* entries, int64_t entries_count, Platform_String entry_path, Platform_File_Type type, int64_t directory_depth)
 {
-    const char* cwd = platform_directory_get_current_working();
-    int64_t cwd_size = strlen(cwd);
-    int64_t concatenated_size = cwd_size + entry_path.size + 1;
-    char* concatenated = (char*) calloc(1, concatenated_size + 1);
-    PTEST(concatenated);
-    memcpy(concatenated, cwd, cwd_size);
-    concatenated[cwd_size] = '/';
-    memcpy(concatenated + cwd_size + 1, entry_path.data, entry_path.size);
+    int64_t concatenated_size = entry_path.size;
+    char* concatenated = (char*) calloc(1, (size_t) concatenated_size + 1);
+    memcpy(concatenated, entry_path.data, (size_t) entry_path.size);
+
+    // const char* cwd = platform_directory_get_current_working();
+    // int64_t cwd_size = (int64_t) strlen(cwd);
+    // int64_t concatenated_size = cwd_size + entry_path.size + 1;
+    // char* concatenated = (char*) calloc(1, (size_t) concatenated_size + 1);
+    // PTEST(concatenated);
+    // memcpy(concatenated, cwd, (size_t) cwd_size);
+    // concatenated[cwd_size] = '/';
+    // memcpy(concatenated + cwd_size + 1, entry_path.data, (size_t) entry_path.size);
 
     Platform_Directory_Entry* entry = NULL;
     for(int64_t i = 0; i < entries_count; i++)
     {
-        Platform_String curr_path = {entries[i].path, strlen(entries[i].path)};
-        if(curr_path.size == concatenated_size && memcmp(curr_path.data, concatenated, concatenated_size) == 0)
+        Platform_String curr_path = {entries[i].path, (int64_t) strlen(entries[i].path)};
+        if(curr_path.size == concatenated_size && memcmp(curr_path.data, concatenated, (size_t) concatenated_size) == 0)
         {
             entry = &entries[i];
             break;
@@ -1209,12 +1214,14 @@ static void platform_test_dir_entry(Platform_Directory_Entry* entries, int64_t e
         PTEST(entry == NULL, "Entry '%s' must not be found!", concatenated);
     else
     {
+        Platform_File_Info info = {0};
+        PTEST_ERROR(platform_file_info(entry_path, &info));
+
+
         PTEST(entry, "Entry '%s' must be found!", concatenated);
         PTEST(entry->directory_depth == directory_depth);
         PTEST(entry->info.type == type);
 
-        Platform_File_Info info = {0};
-        PTEST_ERROR(platform_file_info(entry_path, &info));
         //@NOTE: getting the info is an acess so we skip this.
         //PTEST(info.created_epoch_time == entry->info.created_epoch_time);
         //PTEST(info.last_write_epoch_time == entry->info.last_write_epoch_time);
@@ -1241,6 +1248,8 @@ static bool _platform_test_report(Platform_Error error, bool is_error, const cha
         
         if(error != 0)
             printf("Error: %s\n", platform_translate_error(error));
+
+        fflush(stdout);
     }
 
     return is_error; 

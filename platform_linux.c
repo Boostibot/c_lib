@@ -578,7 +578,7 @@ int64_t platform_epoch_time_from_time_t(time_t time)
 Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null)
 {
     struct stat buf = {0};
-    bool state = stat(platform_null_terminate(file_path), &buf) == 0;
+    bool state = fstatat(AT_FDCWD, platform_null_terminate(file_path), &buf, AT_SYMLINK_NOFOLLOW | AT_EMPTY_PATH) == 0;
     if(state && info_or_null != NULL)
     {
         memset(info_or_null, 0, sizeof *info_or_null);
@@ -662,13 +662,13 @@ Platform_Error platform_file_close(Platform_File* file)
 }
 
 
-Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t size, bool* eof_or_null)
+Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t size, int64_t* read_bytes_because_eof)
 {
     bool state = true;
-    bool eof = false;
+    int64_t total_read = 0;
     if(file->is_open)
     {
-        for(int64_t total_read = 0; total_read < size;)
+        for(; total_read < size;)
         {
             ssize_t bytes_read = read(file->handle.linux, (unsigned char*)buffer + total_read, (size_t) (size - total_read));
             if(bytes_read == -1)
@@ -677,18 +677,16 @@ Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t siz
                 break;
             }
 
+            //eof
             if(bytes_read == 0)
-            {
-                eof = true;
                 break;
-            }
 
             total_read += bytes_read;
         }
     }
 
-    if(eof_or_null)
-        *eof_or_null = eof;
+    if(read_bytes_because_eof)
+        *read_bytes_because_eof = total_read;
 
     return _platform_error_code(state);
 }
@@ -763,49 +761,27 @@ Platform_Error platform_file_flush(Platform_File* file)
     return _platform_error_code(state);
 }
 
-Platform_Error platform_file_create(Platform_String file_path, bool* was_just_created)
+Platform_Error platform_file_create(Platform_String file_path, bool fail_if_exists)
 {   
-    int fd = open(platform_null_terminate(file_path), O_RDWR | O_CREAT | O_EXCL | O_LARGEFILE, OPEN_FILE_PERMS);
-    bool was_just_created_ = true;
-    bool state = fd != -1;
+    int flags = O_WRONLY | O_CREAT | O_LARGEFILE;
+    if(fail_if_exists)
+        flags |= O_EXCL;
+        
+    int fd = open(platform_null_terminate(file_path), flags, OPEN_FILE_PERMS);
+    Platform_Error out = _platform_error_code(fd != -1);
 
-    if(state == false)
-    {
-        //if the failiure was because the file already exists it was no failiure at all!
-        //Only it must not have been created by this call...
-        if(errno == EEXIST)
-        {
-            state = true;
-            was_just_created_ = false;
-        }
-    }
-    else
-        close(fd);
+    if(fd != -1) close(fd);
 
-
-    if(was_just_created)
-        *was_just_created = was_just_created_ && state;
-
-    return _platform_error_code(state);
+    return out;
 }
 
-Platform_Error platform_file_remove(Platform_String file_path, bool* was_just_deleted)
+Platform_Error platform_file_remove(Platform_String file_path, bool fail_if_not_found)
 {
     bool state = unlink(platform_null_terminate(file_path)) == 0;
-    bool was_just_deleted_ = true;
-    if(state == false)
-    {
-        //if the failiure was because the file doesnt exist its sucess
-        //Only it must not have been deleted by this call...
-        if(errno == ENOENT)
-        {
-            state = true;
-            was_just_deleted_ = false;
-        }
-    }
-
-    if(was_just_deleted)
-        *was_just_deleted = was_just_deleted_ && state;
+    //if the failiure was because the file doesnt exist its sucess
+    //Only it must not have been deleted by this call...
+    if(state == false && errno == ENOENT && fail_if_not_found == false)
+        state = true;
 
     return _platform_error_code(state);
 }
@@ -813,18 +789,18 @@ Platform_Error platform_file_remove(Platform_String file_path, bool* was_just_de
 #include <sys/syscall.h>
 #include <linux/fs.h>
 
-Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path)
+Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path, bool replace_exiting)
 {
     const char* _new = platform_null_terminate(new_path);
     const char* _old = platform_null_terminate(old_path);
     
-    bool state = syscall(SYS_renameat2, AT_FDCWD, _old, AT_FDCWD, _new, RENAME_NOREPLACE)== 0;
+    bool state = syscall(SYS_renameat2, AT_FDCWD, _old, AT_FDCWD, _new, replace_exiting ? 0 : RENAME_NOREPLACE) == 0;
     // bool state = renameat2(AT_FDCWD, _old, AT_FDCWD, _new, RENAME_NOREPLACE) == 0;
     return _platform_error_code(state);
 }
 
 //Copies a file. If the file cannot be found or copy_to_path file that already exists, fails.
-Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String copy_from_path)
+Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String copy_from_path, bool replace_exiting)
 {
     const char* to = platform_null_terminate(copy_to_path);
     const char* from = platform_null_terminate(copy_from_path);
@@ -841,7 +817,11 @@ Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String 
 
     if(state)
     {
-        to_fd = open(to, O_WRONLY | O_CREAT | O_LARGEFILE, OPEN_FILE_PERMS);
+        int flags = O_WRONLY | O_CREAT | O_LARGEFILE;
+        if(replace_exiting == false)
+            flags |= O_EXCL;
+
+        to_fd = open(to, flags, OPEN_FILE_PERMS);
         state = to_fd != -1;
     }
 
@@ -855,25 +835,48 @@ Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String 
             break;
     }
 
-    return _platform_error_code(state); 
+    Platform_Error out = _platform_error_code(state); 
+    if(from_fd != -1) close(from_fd);
+    if(to_fd != -1) close(to_fd);
 
+    return out; 
 }
+
 //Resizes a file. The file must exist.
 Platform_Error platform_file_resize(Platform_String file_path, int64_t size)
 {
-    bool state = truncate64(platform_null_terminate(file_path), size);
-    return _platform_error_code(state);
+    //@NOTE: For some reason truncate64 does not see files that normal open does. 
+    //       I am very confused by this. I think it has something to do with relative files.
+    // bool state = truncate64(platform_null_terminate(file_path), size);
+    // return _platform_error_code(state);
+
+    int fd = open(platform_null_terminate(file_path), O_WRONLY | O_LARGEFILE, OPEN_FILE_PERMS);
+    bool state = fd != -1;
+    if(state)
+        state = ftruncate64(fd, size) == 0;
+
+    Platform_Error out = _platform_error_code(state);
+    if(fd != -1) close(fd);
+    return out;
 }
 
-Platform_Error platform_directory_create(Platform_String dir_path, bool* was_just_created_or_null)
+Platform_Error platform_directory_create(Platform_String dir_path, bool fail_if_exists)
 {
     bool state = mkdir(platform_null_terminate(dir_path), OPEN_FILE_PERMS) == 0;
+    //If failed because dir exists and we dont care about it then it didnt fail
+    if(state == false && errno == EEXIST && fail_if_exists == false)
+        state = true;
+
     return _platform_error_code(state);
 }
 
-Platform_Error platform_directory_remove(Platform_String dir_path, bool* was_just_deleted_or_null)
+Platform_Error platform_directory_remove(Platform_String dir_path, bool fail_if_not_found)
 {
     bool state = rmdir(platform_null_terminate(dir_path)) == 0;
+    //If failed because dir does not exists and we dont care about it then it didnt fail
+    if(state == false && errno == ENOENT && fail_if_not_found == false)
+        state = true;
+
     return _platform_error_code(state);
 }
 
@@ -950,6 +953,179 @@ const char* platform_get_executable_path()
     }
 
     return exe_path ? exe_path : "";
+}
+
+#include <dirent.h> 
+#include <stdio.h> 
+#include <string.h>
+
+void show_dir_content(char * path)
+{
+  
+}
+
+#include <stdarg.h>
+char* _vformat_malloc(const char* format, va_list args)
+{
+    if(format == NULL)
+        format = "";
+
+    //gcc modifies va_list on use! make sure to copy it!
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int count = vsnprintf(NULL, 0, format, args);
+    
+    char* out = (char*) malloc((size_t) count + 1);
+    if(out == NULL)
+        return NULL;
+
+    int new_count = vsnprintf(out, (size_t) count + 1, format, args_copy);
+    assert(new_count == count);
+    out[count] = '\0';
+    
+    return out;
+}
+
+char* _format_malloc(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    char* out = _vformat_malloc(format, args);
+    va_end(args);
+    return out;
+}
+
+Platform_Error platform_directory_list_contents_alloc(Platform_String directory_path, Platform_Directory_Entry** _entries, int64_t* _entries_count, int64_t max_depth)
+{
+    if(max_depth == -1)
+        max_depth = INT64_MAX;
+    if(max_depth <= 0)
+        return _platform_error_code(true);
+
+    typedef struct Dir_Iterator {   
+        DIR* dir;
+        int64_t index;
+        const char* filename; 
+        //filename points to one of the entries strings therefore is non owning.
+        //This is not really safe but its easier
+    } Dir_Iterator;
+
+    size_t dir_iterators_count = 0;
+    size_t dir_iterators_capacity = 4;
+    Dir_Iterator* dir_iterators = (Dir_Iterator*) malloc(dir_iterators_capacity * sizeof *dir_iterators);
+    assert(dir_iterators); //@TODO: proper null handling 
+
+    size_t entries_count = 0;
+    size_t entries_capacity = 16;
+    Platform_Directory_Entry* entries = (Platform_Directory_Entry*) malloc(entries_capacity * sizeof *entries);
+    assert(entries); //@TODO: proper null handling 
+
+    //Push first iterator
+    Dir_Iterator first_iterator = {0}; 
+    first_iterator.filename = platform_null_terminate(directory_path);
+    first_iterator.dir = opendir(first_iterator.filename);
+    dir_iterators[dir_iterators_count ++] = first_iterator;
+
+    Platform_Error error = _platform_error_code(first_iterator.dir != NULL);
+    while(dir_iterators_count > 0)
+    {
+        Dir_Iterator* it = &dir_iterators[dir_iterators_count - 1];
+        struct dirent * dir_entry = NULL;
+        if(it->dir)
+            dir_entry = readdir(it->dir);
+
+        //If opening the directory failed or something else happened 
+        // destroy the current iterator and pop it
+        if(dir_entry == NULL)
+        {
+            if(it->dir)
+                closedir(it->dir);
+
+            dir_iterators_count --;
+        }
+        //Do not push the "." and ".." files that can be found within every diretcory
+        else if(strcmp(dir_entry->d_name, ".") != 0 && strcmp(dir_entry->d_name, "..") != 0)
+        {
+            //grow entries if necessary
+            if(entries_count + 1 >= entries_capacity)
+            {
+                size_t new_cap = entries_capacity*3/2 + 4;
+                void* new_data = realloc(entries, new_cap * sizeof(Platform_Directory_Entry));
+                if(new_data != NULL)
+                {
+                    entries = (Platform_Directory_Entry*) new_data; 
+                    entries_capacity = new_cap;
+                }
+            }
+
+            Platform_Directory_Entry entry = {0};
+            entry.index_within_directory = it->index;
+            entry.directory_depth = (int64_t) dir_iterators_count - 1;
+            it->index += 1;
+
+            //If can push
+            if(entries_count < entries_capacity)
+            {
+                entry.path = _format_malloc("%s/%s", it->filename, dir_entry->d_name);
+
+                Platform_String path_str = {entry.path, (int64_t) strlen(entry.path)};
+                platform_file_info(path_str, &entry.info);
+
+                assert(entry.info.type != PLATFORM_FILE_TYPE_NOT_FOUND);
+                entries[entries_count++] = entry;
+                
+                if(entry.info.type == PLATFORM_FILE_TYPE_DIRECTORY && (int64_t) dir_iterators_count < max_depth)
+                {
+                    Dir_Iterator new_it = {0};
+                    new_it.filename = entry.path;
+                    new_it.dir = opendir(new_it.filename);
+                    if(dir_iterators_count >= dir_iterators_capacity)
+                    {
+                        size_t new_cap = dir_iterators_capacity*3/2 + 4;
+                        void* new_data = realloc(dir_iterators, new_cap * sizeof(Dir_Iterator));
+
+                        if(new_data != NULL)
+                        {
+                            dir_iterators = (Dir_Iterator*) new_data; 
+                            dir_iterators_capacity = new_cap;
+                        }
+                    }
+
+                    if(dir_iterators_count < dir_iterators_capacity)
+                        dir_iterators[dir_iterators_count ++] = new_it;
+                }
+            }
+        }
+    }    
+
+    //We use null termination to mark how much we used. See platform_directory_list_contents_free
+    assert(entries_count < entries_capacity);
+    Platform_Directory_Entry last_entry = {0};
+    entries[entries_count] = last_entry;
+
+    if(_entries) *_entries = entries;
+    if(_entries_count) *_entries_count = (int64_t) entries_count;
+
+    return error;
+}
+
+//Frees previously allocated file list
+void platform_directory_list_contents_free(Platform_Directory_Entry* entries)
+{
+    if(entries)
+    {
+        for(int i = 0; ;i++)
+        {
+            //If is null termination stop
+            Platform_Directory_Entry* entry = &entries[i];
+            if(entry->path == NULL && entry->directory_depth == 0 && entry->info.type == PLATFORM_FILE_TYPE_NOT_FOUND)
+                break;
+
+            free(entry->path);
+        }
+
+        free(entries);
+    }
 }
 
 //Memory maps the file pointed to by file_path and saves the adress and size of the mapped block into mapping. 

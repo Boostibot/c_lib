@@ -21,6 +21,26 @@
         "stdbool.h": "c",
         "limits.h": "c",
         "types.h": "c",
-        "stdlib.h": "c"
+        "stdlib.h": "c",
+        "locale": "c",
+        "__string": "c",
+        "ios": "c",
+        "dirent.h": "c",
+        "stdio.h": "c",
+        "chrono": "c",
+        "algorithm": "c",
+        "__bit_reference": "c",
+        "stdarg.h": "c",
+        "compare": "c",
+        "functional": "c",
+        "istream": "c",
+        "ostream": "c",
+        "ratio": "c",
+        "tuple": "c",
+        "type_traits": "c",
+        "__functional_base": "c",
+        "__functional_base_03": "c",
+        "__tuple": "c",
+        "limits": "c"
     }
 }
