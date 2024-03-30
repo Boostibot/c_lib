@@ -197,15 +197,6 @@ Platform_Error _platform_error_code(bool state)
     }
 }
 
-//typedef struct Platform_Thread {
-//    void* handle;
-//    int32_t id;
-//} Platform_Thread;
-//
-//typedef struct Platform_Mutex {
-//    void* handle;
-//} Platform_Mutex;
-
 int64_t         platform_thread_get_proccessor_count()
 {
     cpu_set_t cs;
@@ -213,10 +204,6 @@ int64_t         platform_thread_get_proccessor_count()
     sched_getaffinity(0, sizeof(cs), &cs);
     return CPU_COUNT(&cs);
 }
-
-//initializes a new thread and immedietely starts it with the func function.
-//The thread has stack_size_or_zero bytes of stack sizes rounded up to page size
-//If stack_size_or_zero is zero or lower uses system default stack size.
 
 typedef struct Platform_Pthread_State {
     pthread_t thread;
@@ -247,7 +234,6 @@ void* _platform_pthread_start_routine(void* arg)
     return NULL;
 }
 
-// #if 0
 Platform_Error platform_thread_launch(Platform_Thread* thread, void (*func)(void*), void* context, int64_t stack_size_or_zero)
 {
     bool state = true;
@@ -388,26 +374,17 @@ void platform_mutex_unlock(Platform_Mutex* mutex)
 //=========================================
 // Timings 
 //=========================================
-
-#define _SECOND_MILLISECONDS    ((int64_t) 1000LL)
-#define _SECOND_MICROSECS       ((int64_t) 1000000LL)
-#define _SECOND_NANOSECS        ((int64_t) 1000000000LL)
-#define _MINUTE_SECS            ((int64_t) 60)
-
-typedef long long lli;
-
 int64_t platform_perf_counter()
 {
     struct timespec ts = {0};
     (void) clock_gettime(CLOCK_MONOTONIC_RAW , &ts);
-    return (int64_t) ts.tv_nsec + ts.tv_sec * _SECOND_NANOSECS;
+    return (int64_t) ts.tv_nsec + ts.tv_sec * 1000000000LL;
 }
 
 int64_t platform_perf_counter_frequency()
 {
-	return _SECOND_NANOSECS;
+	return (int64_t) 1000000000LL;
 }
-
 
 static int64_t startup_perf_counter;
 static int64_t startup_epoch_time;
@@ -423,7 +400,7 @@ int64_t platform_epoch_time()
 {
     struct timespec ts = {0};
     (void) clock_gettime(CLOCK_REALTIME , &ts);
-    return (int64_t) ts.tv_nsec/1000 + ts.tv_sec * _SECOND_MICROSECS;
+    return (int64_t) ts.tv_nsec/1000 + ts.tv_sec*100000;
 }
 
 int64_t platform_epoch_time_startup()
@@ -434,7 +411,7 @@ int64_t platform_epoch_time_startup()
     return startup_epoch_time;
 }
 
-int64_t _platform_perf_counters_deinit()
+void _platform_perf_counters_deinit()
 {
     startup_perf_counter = 0;
     startup_epoch_time = 0;
@@ -443,11 +420,11 @@ int64_t _platform_perf_counters_deinit()
 // Filesystem
 //=========================================
 
-//@TODO: free allocated!
+//@TODO: Make a general ephemeral acquire
 #define PLATFORM_PRINT_OUT_OF_MEMORY(ammount) \
-    fprintf(stderr, "platform allocation failed while calling function %s! not enough memory! requested: %lli", (__FUNCTION__), (lli) (ammount))
+    fprintf(stderr, "platform allocation failed while calling function %s! not enough memory! requested: %lli", (__FUNCTION__), (long long) (ammount))
 
-const char* platform_null_terminate(Platform_String string)
+const char* _ephemeral_null_terminate(Platform_String string)
 {
     if(string.data == NULL || string.size <= 0)
         return "";
@@ -485,9 +462,9 @@ const char* platform_null_terminate(Platform_String string)
             return string.data;
     }
 
-    static char* strings[MAX_COPIED_SIMULATENOUS] = {0};
-    static int64_t string_sizes[MAX_COPIED_SIMULATENOUS] = {0};
-    static int64_t string_slot = 0;
+    static __thread char* strings[MAX_COPIED_SIMULATENOUS] = {0};
+    static __thread int64_t string_sizes[MAX_COPIED_SIMULATENOUS] = {0};
+    static __thread int64_t string_slot = 0;
 
     const char* out_string = "";
     char** curr_data = &strings[string_slot];
@@ -532,23 +509,17 @@ const char* platform_null_terminate(Platform_String string)
 #include <fcntl.h>
 #include <unistd.h>
 
-
-int64_t platform_epoch_time_from_time_t(time_t time)
-{
-    return (int64_t) time * _SECOND_MICROSECS;
-}
-
 Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null)
 {
     struct stat buf = {0};
-    bool state = fstatat(AT_FDCWD, platform_null_terminate(file_path), &buf, AT_SYMLINK_NOFOLLOW | AT_EMPTY_PATH) == 0;
+    bool state = fstatat(AT_FDCWD, _ephemeral_null_terminate(file_path), &buf, AT_SYMLINK_NOFOLLOW | AT_EMPTY_PATH) == 0;
     if(state && info_or_null != NULL)
     {
         memset(info_or_null, 0, sizeof *info_or_null);
         info_or_null->size = buf.st_size;
-        info_or_null->created_epoch_time = platform_epoch_time_from_time_t(buf.st_ctime);
-        info_or_null->last_write_epoch_time = platform_epoch_time_from_time_t(buf.st_mtime);
-        info_or_null->last_access_epoch_time = platform_epoch_time_from_time_t(buf.st_atime);
+        info_or_null->created_epoch_time = (int64_t) buf.st_ctime * 1000000;
+        info_or_null->last_write_epoch_time = (int64_t) buf.st_mtime * 1000000;
+        info_or_null->last_access_epoch_time = (int64_t) buf.st_atime * 1000000;
 
         if(S_ISREG(buf.st_mode))
             info_or_null->type = PLATFORM_FILE_TYPE_FILE;
@@ -603,7 +574,7 @@ Platform_Error platform_file_open(Platform_File* file, Platform_String path, int
     //     #define O_LARGEFILE 0
     // #endif
 
-    int fd = open(platform_null_terminate(path), mode | O_LARGEFILE, OPEN_FILE_PERMS);
+    int fd = open(_ephemeral_null_terminate(path), mode | O_LARGEFILE, OPEN_FILE_PERMS);
     bool state = fd != -1;
     if(state)
     {
@@ -730,7 +701,7 @@ Platform_Error platform_file_create(Platform_String file_path, bool fail_if_exis
     if(fail_if_exists)
         flags |= O_EXCL;
         
-    int fd = open(platform_null_terminate(file_path), flags, OPEN_FILE_PERMS);
+    int fd = open(_ephemeral_null_terminate(file_path), flags, OPEN_FILE_PERMS);
     Platform_Error out = _platform_error_code(fd != -1);
 
     if(fd != -1) close(fd);
@@ -740,7 +711,7 @@ Platform_Error platform_file_create(Platform_String file_path, bool fail_if_exis
 
 Platform_Error platform_file_remove(Platform_String file_path, bool fail_if_not_found)
 {
-    bool state = unlink(platform_null_terminate(file_path)) == 0;
+    bool state = unlink(_ephemeral_null_terminate(file_path)) == 0;
     //if the failiure was because the file doesnt exist its sucess
     //Only it must not have been deleted by this call...
     if(state == false && errno == ENOENT && fail_if_not_found == false)
@@ -754,8 +725,8 @@ Platform_Error platform_file_remove(Platform_String file_path, bool fail_if_not_
 
 Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path, bool replace_exiting)
 {
-    const char* _new = platform_null_terminate(new_path);
-    const char* _old = platform_null_terminate(old_path);
+    const char* _new = _ephemeral_null_terminate(new_path);
+    const char* _old = _ephemeral_null_terminate(old_path);
     
     bool state = syscall(SYS_renameat2, AT_FDCWD, _old, AT_FDCWD, _new, replace_exiting ? 0 : RENAME_NOREPLACE) == 0;
     // bool state = renameat2(AT_FDCWD, _old, AT_FDCWD, _new, RENAME_NOREPLACE) == 0;
@@ -765,8 +736,8 @@ Platform_Error platform_file_move(Platform_String new_path, Platform_String old_
 //Copies a file. If the file cannot be found or copy_to_path file that already exists, fails.
 Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String copy_from_path, bool replace_exiting)
 {
-    const char* to = platform_null_terminate(copy_to_path);
-    const char* from = platform_null_terminate(copy_from_path);
+    const char* to = _ephemeral_null_terminate(copy_to_path);
+    const char* from = _ephemeral_null_terminate(copy_from_path);
     size_t GB = 1 << (30);
 
     int to_fd = -1;
@@ -810,10 +781,10 @@ Platform_Error platform_file_resize(Platform_String file_path, int64_t size)
 {
     //@NOTE: For some reason truncate64 does not see files that normal open does. 
     //       I am very confused by this. I think it has something to do with relative files.
-    // bool state = truncate64(platform_null_terminate(file_path), size);
+    // bool state = truncate64(_ephemeral_null_terminate(file_path), size);
     // return _platform_error_code(state);
 
-    int fd = open(platform_null_terminate(file_path), O_WRONLY | O_LARGEFILE, OPEN_FILE_PERMS);
+    int fd = open(_ephemeral_null_terminate(file_path), O_WRONLY | O_LARGEFILE, OPEN_FILE_PERMS);
     bool state = fd != -1;
     if(state)
         state = ftruncate64(fd, size) == 0;
@@ -825,7 +796,7 @@ Platform_Error platform_file_resize(Platform_String file_path, int64_t size)
 
 Platform_Error platform_directory_create(Platform_String dir_path, bool fail_if_exists)
 {
-    bool state = mkdir(platform_null_terminate(dir_path), OPEN_FILE_PERMS) == 0;
+    bool state = mkdir(_ephemeral_null_terminate(dir_path), OPEN_FILE_PERMS) == 0;
     //If failed because dir exists and we dont care about it then it didnt fail
     if(state == false && errno == EEXIST && fail_if_exists == false)
         state = true;
@@ -835,7 +806,7 @@ Platform_Error platform_directory_create(Platform_String dir_path, bool fail_if_
 
 Platform_Error platform_directory_remove(Platform_String dir_path, bool fail_if_not_found)
 {
-    bool state = rmdir(platform_null_terminate(dir_path)) == 0;
+    bool state = rmdir(_ephemeral_null_terminate(dir_path)) == 0;
     //If failed because dir does not exists and we dont care about it then it didnt fail
     if(state == false && errno == ENOENT && fail_if_not_found == false)
         state = true;
@@ -845,7 +816,7 @@ Platform_Error platform_directory_remove(Platform_String dir_path, bool fail_if_
 
 Platform_Error platform_directory_set_current_working(Platform_String new_working_dir)
 {
-    bool state = chdir(platform_null_terminate(new_working_dir)) == 0;
+    bool state = chdir(_ephemeral_null_terminate(new_working_dir)) == 0;
     return _platform_error_code(state);
 }
 const char* platform_directory_get_current_working()
@@ -979,7 +950,7 @@ Platform_Error platform_directory_list_contents_alloc(Platform_String directory_
 
     //Push first iterator
     Dir_Iterator first_iterator = {0}; 
-    first_iterator.filename = platform_null_terminate(directory_path);
+    first_iterator.filename = _ephemeral_null_terminate(directory_path);
     first_iterator.dir = opendir(first_iterator.filename);
     dir_iterators[dir_iterators_count ++] = first_iterator;
 
@@ -1175,10 +1146,8 @@ void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align)
 //=========================================
 // Debug
 //=========================================
-
 #define PLATFORM_CALLSTACKS_MAX 256
 #define PLATFORM_CALLSTACK_LINE_LEN 64
-
 
 #define _GNU_SOURCE
 #include <dlfcn.h>
