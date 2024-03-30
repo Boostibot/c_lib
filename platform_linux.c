@@ -227,7 +227,7 @@ int64_t platform_page_size()
 #include <pthread.h>
 #include <unistd.h>
 
-Platform_Error platform_error_code(bool state)
+Platform_Error _platform_error_code(bool state)
 {
     if(state)
         return PLATFORM_ERROR_OK;
@@ -335,7 +335,7 @@ Platform_Error platform_thread_launch(Platform_Thread* thread, void (*func)(void
         thread->id = 0;
     }
 
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 void platform_thread_sleep(int64_t ms)
@@ -365,17 +365,17 @@ void platform_thread_detach(Platform_Thread thread)
     Platform_Pthread_State* thread_state = (Platform_Pthread_State*) thread.handle;
     bool state = pthread_detach(thread_state->thread) == 0;
     (void) state;
-    // return platform_error_code(state);
+    // return _platform_error_code(state);
 }
 
 void platform_thread_join(const Platform_Thread* threads, int64_t count) 
 {
-    Platform_Error last_error = platform_error_code(true);
+    Platform_Error last_error = _platform_error_code(true);
     for(int64_t i = 0; i < count; i++)
     {
         Platform_Pthread_State* thread_state = (Platform_Pthread_State*) threads[i].handle;
         if(pthread_join(thread_state->thread, NULL) != 0)
-            last_error = platform_error_code(false);
+            last_error = _platform_error_code(false);
     }
     (void) last_error;
     // return last_error;
@@ -391,7 +391,7 @@ Platform_Error platform_mutex_init(Platform_Mutex* mutex)
     if(state)
         state = pthread_mutex_init(&mutex_state->mutex, NULL) == 0;
 
-    Platform_Error error = platform_error_code(state);
+    Platform_Error error = _platform_error_code(state);
     mutex->handle = mutex_state;
     if(!state)
         platform_mutex_deinit(mutex);
@@ -417,7 +417,7 @@ void platform_mutex_lock(Platform_Mutex* mutex)
     if(mutex_state)
         state = pthread_mutex_lock(&mutex_state->mutex) == 0; 
     (void) state;
-    // return platform_error_code(state);
+    // return _platform_error_code(state);
 }
 
 void platform_mutex_unlock(Platform_Mutex* mutex)
@@ -427,7 +427,7 @@ void platform_mutex_unlock(Platform_Mutex* mutex)
     if(mutex_state)
         state = pthread_mutex_unlock(&mutex_state->mutex) == 0;
     (void) state;
-    // return platform_error_code(state);
+    // return _platform_error_code(state);
 }
 
 //=========================================
@@ -606,10 +606,10 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
             info_or_null->link_type = PLATFORM_LINK_TYPE_NOT_LINK;
     }
 
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
-#define OPEN_FULL_PERMS 0777
+#define OPEN_FILE_PERMS 0744
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -625,22 +625,22 @@ Platform_Error platform_file_open(Platform_File* file, Platform_String path, int
     else if(open_flags & PLATFORM_FILE_MODE_WRITE)
         mode |= O_WRONLY;
 
-    if(open_flags & PLATFORM_FILE_MODE_APPEND)
-        mode |= O_APPEND;
-
     if(open_flags & PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST)
-        mode |= O_CREAT | O_EXCL;
+        mode |= O_EXCL;
     else if(open_flags & PLATFORM_FILE_MODE_CREATE)
         mode |= O_CREAT;
 
+    if(open_flags & PLATFORM_FILE_MODE_REMOVE_CONTENT)
+        mode |= O_TRUNC;
+        
     if(open_flags & PLATFORM_FILE_MODE_TEMPORARY)
         mode |= O_TMPFILE;
 
-    #ifndef O_LARGEFILE
-        #define O_LARGEFILE 0
-    #endif
+    // #ifndef O_LARGEFILE
+    //     #define O_LARGEFILE 0
+    // #endif
 
-    int fd = open(platform_null_terminate(path), mode | O_LARGEFILE, OPEN_FULL_PERMS);
+    int fd = open(platform_null_terminate(path), mode | O_LARGEFILE, OPEN_FILE_PERMS);
     bool state = fd != -1;
     if(state)
     {
@@ -648,7 +648,7 @@ Platform_Error platform_file_open(Platform_File* file, Platform_String path, int
         file->is_open = true;
     }
 
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 Platform_Error platform_file_close(Platform_File* file)
@@ -658,7 +658,7 @@ Platform_Error platform_file_close(Platform_File* file)
         state = close(file->handle.linux) == 0;
 
     memset(file, 0, sizeof *file);
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 
@@ -690,7 +690,7 @@ Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t siz
     if(eof_or_null)
         *eof_or_null = eof;
 
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 Platform_Error platform_file_write(Platform_File* file, const void* buffer, int64_t size)
@@ -711,7 +711,7 @@ Platform_Error platform_file_write(Platform_File* file, const void* buffer, int6
         }
     }
 
-    return platform_error_code(state);
+    return _platform_error_code(state);
 
 }
 //Obtains the current offset from the start of the file and saves it into offset. Does not modify the file 
@@ -731,7 +731,7 @@ Platform_Error platform_file_tell(Platform_File file, int64_t* offset_ptr)
     if(offset_ptr) 
         *offset_ptr = offset;
 
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 //Offset the current file position relative to: start of the file (0 value), current possition, end of the file
 Platform_Error platform_file_seek(Platform_File* file, int64_t offset, Platform_File_Seek from)
@@ -751,12 +751,21 @@ Platform_Error platform_file_seek(Platform_File* file, int64_t offset, Platform_
 
         state = lseek64(file->handle.linux, (loff_t) offset, from_linux) != -1;
     }
-    return platform_error_code(state);
+    return _platform_error_code(state);
+}
+
+Platform_Error platform_file_flush(Platform_File* file)
+{
+    bool state = true;
+    if(file->is_open)
+        state = fsync(file->handle.linux) == 0;
+    
+    return _platform_error_code(state);
 }
 
 Platform_Error platform_file_create(Platform_String file_path, bool* was_just_created)
 {   
-    int fd = open(platform_null_terminate(file_path), O_RDWR | O_CREAT | O_EXCL | O_LARGEFILE, 0777);
+    int fd = open(platform_null_terminate(file_path), O_RDWR | O_CREAT | O_EXCL | O_LARGEFILE, OPEN_FILE_PERMS);
     bool was_just_created_ = true;
     bool state = fd != -1;
 
@@ -777,7 +786,7 @@ Platform_Error platform_file_create(Platform_String file_path, bool* was_just_cr
     if(was_just_created)
         *was_just_created = was_just_created_ && state;
 
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 Platform_Error platform_file_remove(Platform_String file_path, bool* was_just_deleted)
@@ -798,7 +807,7 @@ Platform_Error platform_file_remove(Platform_String file_path, bool* was_just_de
     if(was_just_deleted)
         *was_just_deleted = was_just_deleted_ && state;
 
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 #include <sys/syscall.h>
@@ -811,7 +820,7 @@ Platform_Error platform_file_move(Platform_String new_path, Platform_String old_
     
     bool state = syscall(SYS_renameat2, AT_FDCWD, _old, AT_FDCWD, _new, RENAME_NOREPLACE)== 0;
     // bool state = renameat2(AT_FDCWD, _old, AT_FDCWD, _new, RENAME_NOREPLACE) == 0;
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 //Copies a file. If the file cannot be found or copy_to_path file that already exists, fails.
@@ -826,13 +835,13 @@ Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String 
     bool state = true;
     if(state)
     {
-        from_fd = open(from, O_RDONLY | O_LARGEFILE, 0777);
+        from_fd = open(from, O_RDONLY | O_LARGEFILE, OPEN_FILE_PERMS);
         state = from_fd != -1;
     }
 
     if(state)
     {
-        to_fd = open(to, O_WRONLY | O_CREAT | O_LARGEFILE, 0777);
+        to_fd = open(to, O_WRONLY | O_CREAT | O_LARGEFILE, OPEN_FILE_PERMS);
         state = to_fd != -1;
     }
 
@@ -846,32 +855,32 @@ Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String 
             break;
     }
 
-    return platform_error_code(state); 
+    return _platform_error_code(state); 
 
 }
 //Resizes a file. The file must exist.
 Platform_Error platform_file_resize(Platform_String file_path, int64_t size)
 {
     bool state = truncate64(platform_null_terminate(file_path), size);
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 Platform_Error platform_directory_create(Platform_String dir_path, bool* was_just_created_or_null)
 {
-    bool state = mkdir(platform_null_terminate(dir_path), OPEN_FULL_PERMS) == 0;
-    return platform_error_code(state);
+    bool state = mkdir(platform_null_terminate(dir_path), OPEN_FILE_PERMS) == 0;
+    return _platform_error_code(state);
 }
 
 Platform_Error platform_directory_remove(Platform_String dir_path, bool* was_just_deleted_or_null)
 {
     bool state = rmdir(platform_null_terminate(dir_path)) == 0;
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 Platform_Error platform_directory_set_current_working(Platform_String new_working_dir)
 {
     bool state = chdir(platform_null_terminate(new_working_dir)) == 0;
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 const char* platform_directory_get_current_working()
 {

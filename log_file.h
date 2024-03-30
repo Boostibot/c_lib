@@ -313,7 +313,7 @@ EXPORT bool file_logger_flush(File_Logger* logger)
         {
             if(self->file == NULL)
             {
-                platform_directory_create(logger->file_directory_path.string, NULL);
+                platform_directory_create(logger->file_directory_path.string, false);
 
                 Posix_Date calendar = local_date_from_epoch_time(logger->init_epoch_time);
                 const char* filename = format_ephemeral("%s/%s%04d-%02d-%02d__%02d-%02d-%02d%s", 

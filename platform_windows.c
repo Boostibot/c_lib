@@ -1,3 +1,21 @@
+#define _CRT_SECURE_NO_WARNINGS
+
+#include "platform.h"
+
+#ifdef APIENTRY
+    #undef APIENTRY
+#endif
+
+#ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+#endif
+
+#ifndef UNICODE
+    #define UNICODE
+#endif 
+
+#pragma comment(lib, "dwmapi.lib")
+
 #include <locale.h>
 #include <assert.h>
 #include <windows.h>
@@ -12,78 +30,17 @@
 #include <direct.h>
 #include <dwmapi.h>
 
-#pragma comment(lib, "dwmapi.lib")
-#ifdef APIENTRY
-    #undef APIENTRY
-#endif
-
-#ifndef WIN32_LEAN_AND_MEAN
-    #define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef UNICODE
-    #define UNICODE
-#endif 
-
-#undef _CRT_SECURE_NO_WARNINGS
-#define _CRT_SECURE_NO_WARNINGS
-#pragma warning(disable:4702) //Dissable "unrelachable code"
-#pragma warning(disable:4820) //Dissable "Padding added to struct" 
 #pragma warning(disable:4255) //Dissable "no function prototype given: converting '()' to '(void)"  
 #pragma warning(disable:5045) //Dissable "Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified"  
 
-#include "platform.h"
-
 #undef near
 #undef far
-
-#define _TRANSLATED_ERRORS_SIMULATANEOUS 8
-#define _EPHEMERAL_STRING_SIMULTANEOUS 4
-
-typedef struct Platform_WString {
-    const wchar_t* data;
-    int64_t size;
-} Platform_WString;
-
-#define DEFINE_BUFFER_TYPE(T, Name) \
-    typedef struct Name { \
-        int32_t is_alloced; \
-        int64_t size; \
-        int64_t capacity; \
-        T* data; \
-    } Name; \
-
-DEFINE_BUFFER_TYPE(void,               Buffer_Base)
-DEFINE_BUFFER_TYPE(char,               String_Buffer)
-DEFINE_BUFFER_TYPE(wchar_t,            WString_Buffer)
-
-typedef struct Platform_State {
-    Platform_Allocator allocator;
-
-    int64_t startup_perf_counter;
-    int64_t perf_counter_freq;
-    int64_t startup_epoch_time;
-
-    WString_Buffer ephemeral_strings[_EPHEMERAL_STRING_SIMULTANEOUS];
-    int64_t ephemeral_strings_slot;
-
-    char* translated_errors[_TRANSLATED_ERRORS_SIMULATANEOUS];
-    int64_t translated_error_slot;
-
-    String_Buffer directory_current_working_cached;
-    String_Buffer directory_executable_cached;
-    int64_t current_working_cached_generation;
-    int64_t current_working_generation;
-
-} Platform_State;
-
-Platform_State gp_state = {0};
 
 //=========================================
 // Virtual memory
 //=========================================
 void* platform_virtual_reallocate(void* adress, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection)
 {
-    //CreateThread();
     if(action == PLATFORM_VIRTUAL_ALLOC_RELEASE)
     {
         (void) VirtualFree(adress, 0, MEM_RELEASE);  
@@ -142,7 +99,7 @@ int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
 }
 
 
-Platform_Error platform_error_code(bool state)
+Platform_Error _platform_error_code(bool state)
 {
     Platform_Error err = PLATFORM_ERROR_OK;
     if(!state)
@@ -244,7 +201,7 @@ Platform_Error platform_mutex_init(Platform_Mutex* mutex)
         InitializeCriticalSection(section);
 
     mutex->handle = section;
-    return platform_error_code(section != NULL);
+    return _platform_error_code(section != NULL);
 }
 
 void platform_mutex_deinit(Platform_Mutex* mutex)
@@ -277,6 +234,16 @@ bool platform_mutex_try_lock(Platform_Mutex* mutex)
 //=========================================
 // Timings
 //=========================================
+static int64_t startup_perf_counter = 0;
+static int64_t startup_epoch_time = 0;
+static int64_t perf_counter_freq = 0;
+void _platform_deinit_timings()
+{
+    startup_perf_counter = 0;
+    perf_counter_freq = 0;
+    startup_epoch_time = 0;
+}
+
 int64_t platform_perf_counter()
 {
     LARGE_INTEGER ticks;
@@ -287,31 +254,23 @@ int64_t platform_perf_counter()
 
 int64_t platform_perf_counter_startup()
 {
-    if(gp_state.startup_perf_counter == 0)
-        gp_state.startup_perf_counter = platform_perf_counter();
-    return gp_state.startup_perf_counter;
+    if(startup_perf_counter == 0)
+        startup_perf_counter = platform_perf_counter();
+    return startup_perf_counter;
 }
 
 int64_t platform_perf_counter_frequency()
 {
-    if(gp_state.perf_counter_freq == 0)
+    if(perf_counter_freq == 0)
     {
         LARGE_INTEGER ticks;
         ticks.QuadPart = 0;
         (void) QueryPerformanceFrequency(&ticks);
-        gp_state.perf_counter_freq = ticks.QuadPart;
+        perf_counter_freq = ticks.QuadPart;
     }
-    return gp_state.perf_counter_freq;
+    return perf_counter_freq;
 }
 
-//time -> filetime
-//(ts * 10000000LL) + 116444736000000000LL = t
-//(ts * 10LL) + 116444736000LL = tu = t/1 0000 000
-    
-//filetime -> time
-//ts = (t - 116444736000000000LL) / 10000000;
-//t / 10000000 - 11644473600LL = ts;
-//t / 10 - 11644473600 000 000LL = tu = ts*1 0000 000;
 static int64_t _filetime_to_epoch_time(FILETIME t)  
 {    
     ULARGE_INTEGER ull;    
@@ -319,24 +278,6 @@ static int64_t _filetime_to_epoch_time(FILETIME t)
     ull.HighPart = t.dwHighDateTime;
     int64_t tu = ull.QuadPart / 10 - 11644473600000000LL;
     return tu;
-}
-
-static FILETIME _epoch_time_to_filetime(int64_t tu)  
-{    
-    ULARGE_INTEGER time_value;
-    FILETIME time;
-    time_value.QuadPart = (tu + 11644473600000000LL)*10;
-
-    time.dwLowDateTime = time_value.LowPart;
-    time.dwHighDateTime = time_value.HighPart;
-    return time;
-}
-static time_t _filetime_to_time_t(FILETIME ft)  
-{    
-    ULARGE_INTEGER ull;    
-    ull.LowPart = ft.dwLowDateTime;    
-    ull.HighPart = ft.dwHighDateTime;    
-    return (time_t) (ull.QuadPart / 10000000ULL - 11644473600ULL);  
 }
 
 int64_t platform_epoch_time()
@@ -349,15 +290,31 @@ int64_t platform_epoch_time()
 
 int64_t platform_epoch_time_startup()
 {
-    if(gp_state.startup_epoch_time == 0)
-        gp_state.startup_epoch_time = platform_epoch_time();
+    if(startup_epoch_time == 0)
+        startup_epoch_time = platform_epoch_time();
 
-    return gp_state.startup_epoch_time;
+    return startup_epoch_time;
 }
 
 //=========================================
 // Filesystem
 //=========================================
+typedef struct Platform_WString {
+    const wchar_t* data;
+    int64_t size;
+} Platform_WString;
+
+#define DEFINE_BUFFER_TYPE(T, Name) \
+    typedef struct Name { \
+        int32_t is_alloced; \
+        int64_t size; \
+        int64_t capacity; \
+        T* data; \
+    } Name; \
+
+DEFINE_BUFFER_TYPE(void,               Buffer_Base)
+DEFINE_BUFFER_TYPE(char,               String_Buffer)
+DEFINE_BUFFER_TYPE(wchar_t,            WString_Buffer)
 
 #define IO_LOCAL_BUFFER_SIZE (MAX_PATH + 32)
 #define IO_NORMALIZE_LINUX 0
@@ -383,12 +340,21 @@ int64_t platform_epoch_time_startup()
     (buffer_reserve((buff), (buff)->size + 1), \
     (buff)->data[(buff)->size++] = (item))
 
+static Platform_Allocator _platform_allocator;
 void* _platform_internal_reallocate(int64_t new_size, void* old_ptr)
 {
-    if(gp_state.allocator.reallocate)
-        return gp_state.allocator.reallocate(gp_state.allocator.context, new_size, old_ptr);
+    void* out = NULL;
+    if(_platform_allocator.reallocate)
+        out = _platform_allocator.reallocate(_platform_allocator.context, new_size, old_ptr);
     else
-        return platform_heap_reallocate(new_size, old_ptr, sizeof(size_t));
+    {
+        if(new_size == 0)
+            free(old_ptr);
+        else
+            out = realloc(old_ptr, new_size);
+    }
+
+    return out;
 }
 
 static void _buffer_deinit(Buffer_Base* buffer)
@@ -470,12 +436,14 @@ static wchar_t* _utf8_to_utf16(WString_Buffer* append_to, Platform_String str)
     return append_to->data;
 }
 
-
+#define _EPHEMERAL_STRING_SIMULTANEOUS 4
+static _declspec(thread) WString_Buffer ephemeral_strings[_EPHEMERAL_STRING_SIMULTANEOUS];
+static _declspec(thread) int64_t ephemeral_strings_slot;
 const wchar_t* _ephemeral_wstring_convert(Platform_String path, bool normalize_path)
 {
     enum {RESET_EVERY = 8, MAX_SIZE = MAX_PATH*2, MIN_SIZE = MAX_PATH};
-    int64_t *slot = &gp_state.ephemeral_strings_slot;
-    WString_Buffer* curr = &gp_state.ephemeral_strings[*slot % _EPHEMERAL_STRING_SIMULTANEOUS];
+    int64_t *slot = &ephemeral_strings_slot;
+    WString_Buffer* curr = &ephemeral_strings[*slot % _EPHEMERAL_STRING_SIMULTANEOUS];
 
     //We periodacally shrink the strings so that we can use this
     //function regulary for small and big strings without fearing that we will
@@ -520,7 +488,7 @@ char* _convert_to_utf8_normalize_path(String_Buffer* append_to_or_null, Platform
 void _ephemeral_wstring_deinit_all()
 {
     for(int64_t i = 0; i < _EPHEMERAL_STRING_SIMULTANEOUS; i++)
-        buffer_deinit(&gp_state.ephemeral_strings[i]);
+        buffer_deinit(&ephemeral_strings[i]);
 }
 
 const wchar_t* _ephemeral_path(Platform_String path)
@@ -541,6 +509,10 @@ static void _w_concat(WString_Buffer* output, const wchar_t* a, const wchar_t* b
     memmove(output->data + a_size + b_size, c, sizeof(wchar_t) * c_size);
 }
 
+
+#define _TRANSLATED_ERRORS_SIMULATANEOUS 8
+static __declspec(thread) char* _translated_errors[_TRANSLATED_ERRORS_SIMULATANEOUS];
+static __declspec(thread) int64_t _translated_error_slot;
 const char* platform_translate_error(Platform_Error error)
 {
     if(error == PLATFORM_ERROR_OTHER)
@@ -558,9 +530,9 @@ const char* platform_translate_error(Platform_Error error)
         0, NULL );
     
     (void) length;
-    LocalFree(gp_state.translated_errors[gp_state.translated_error_slot]);
-    gp_state.translated_errors[gp_state.translated_error_slot] = trasnlated;
-    gp_state.translated_error_slot = (gp_state.translated_error_slot + 1) % _TRANSLATED_ERRORS_SIMULATANEOUS;
+    LocalFree(_translated_errors[_translated_error_slot]);
+    _translated_errors[_translated_error_slot] = trasnlated;
+    _translated_error_slot = (_translated_error_slot + 1) % _TRANSLATED_ERRORS_SIMULATANEOUS;
 
     //Strips annoying trailing whitespace
     for(int64_t i = length; i-- > 0; )
@@ -578,35 +550,44 @@ void _translated_deinit_all()
 {
     for(int64_t i = 0; i < _TRANSLATED_ERRORS_SIMULATANEOUS; i++)
     {
-        LocalFree((HLOCAL) gp_state.translated_errors[i]);
-        gp_state.translated_errors[i] = NULL;
+        LocalFree((HLOCAL) _translated_errors[i]);
+        _translated_errors[i] = NULL;
     }
 }
-
 
 //Opens the file in the specified combination of Platform_File_Open_Flags. 
 Platform_Error platform_file_open(Platform_File* file, Platform_String path, int open_flags)
 {
     platform_file_close(file);
 
-    bool state = true;
-    const wchar_t* _path = _ephemeral_path(file_path);
+    const wchar_t* _path = _ephemeral_path(path);
     
+    DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
     DWORD access = 0;
     if(open_flags & PLATFORM_FILE_MODE_READ)
         access |= GENERIC_READ;
     if(open_flags & PLATFORM_FILE_MODE_WRITE)
         access |= GENERIC_WRITE;
+    if(open_flags & PLATFORM_FILE_MODE_APPEND)
+        access |= FILE_APPEND_DATA;
 
-    DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
     LPSECURITY_ATTRIBUTES security = NULL;
 
-    DWORD creation = 0; 
-    if(open_flags & PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST)
-        creation |= OPEN_EXISTING;
-    else if(open_flags & PLATFORM_FILE_MODE_CREATE)
-        creation |= OPEN_ALWAYS;
-
+    DWORD creation = OPEN_EXISTING; 
+    if(open_flags & PLATFORM_FILE_MODE_REMOVE_CONTENT)
+    {
+        if(open_flags & PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST)
+            creation = CREATE_NEW;
+        else if(open_flags & PLATFORM_FILE_MODE_CREATE)
+            creation = CREATE_ALWAYS;
+    }
+    else
+    {
+        if(open_flags & PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST)
+            creation = CREATE_NEW;
+        else if(open_flags & PLATFORM_FILE_MODE_CREATE)
+            creation = OPEN_ALWAYS;
+    }
     
     DWORD flags = FILE_ATTRIBUTE_NORMAL;
     if(open_flags & PLATFORM_FILE_MODE_TEMPORARY)
@@ -621,7 +602,7 @@ Platform_Error platform_file_open(Platform_File* file, Platform_String path, int
         file->is_open = true;
     }
 
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 Platform_Error platform_file_close(Platform_File* file)
@@ -631,13 +612,13 @@ Platform_Error platform_file_close(Platform_File* file)
         state = !!CloseHandle((HANDLE) file->handle.windows);
 
     memset(file, 0, sizeof *file);
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
-Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t size, bool* eof_or_null)
+Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t size, int64_t* read_bytes_because_eof)
 {
     bool state = true;
-    bool eof = false;
+    int64_t total_read = 0;
     if(file->is_open)
     {
         // BOOL ReadFile(
@@ -647,8 +628,8 @@ Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t siz
         //     [out, optional]     LPDWORD      lpNumberOfBytesRead,
         //     [in, out, optional] LPOVERLAPPED lpOverlapped
         // );
-
-        for(int64_t total_read = 0; total_read < size;)
+        
+        for(; total_read < size;)
         {
             int64_t GB = 1 << 30;
             int64_t to_read = size - total_read;
@@ -657,26 +638,22 @@ Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t siz
 
             DWORD bytes_read = 0;
             state = !!ReadFile((HANDLE) file->handle.windows, (unsigned char*) buffer + total_read, (DWORD) to_read, &bytes_read, NULL);
+            //Eof found!
             if(state && bytes_read <= 0)
-            {
-                eof = true;
                 break;
-            }
 
+            //Error
             if(state == false)
-            {
-                state = false;
                 break;
-            }
 
             total_read += bytes_read;
         }
     }
 
-    if(eof_or_null)
-        *eof_or_null = eof;
+    if(read_bytes_because_eof)
+        *read_bytes_because_eof = total_read;
 
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 Platform_Error platform_file_write(Platform_File* file, const void* buffer, int64_t size)
@@ -711,7 +688,7 @@ Platform_Error platform_file_write(Platform_File* file, const void* buffer, int6
         }
     }
 
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 Platform_Error _platform_file_seek_tell(Platform_File* file, int64_t offset, int64_t* new_offset, Platform_File_Seek from)
@@ -724,7 +701,7 @@ Platform_Error _platform_file_seek_tell(Platform_File* file, int64_t offset, int
     // );
 
     bool state = true;
-    PLARGE_INTEGER new_offset_win = {0}; 
+    LARGE_INTEGER new_offset_win = {0}; 
     if(file->is_open)
     {
         LARGE_INTEGER offset_win = {0};
@@ -736,75 +713,116 @@ Platform_Error _platform_file_seek_tell(Platform_File* file, int64_t offset, int
     if(new_offset)
         *new_offset = new_offset_win.QuadPart;
 
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 Platform_Error platform_file_tell(Platform_File file, int64_t* offset)
 {
-    return _platform_file_seek_tell(file, 0, offset, PLATFORM_FILE_SEEK_FROM_CURRENT);
+    return _platform_file_seek_tell(&file, 0, offset, PLATFORM_FILE_SEEK_FROM_CURRENT);
 }
 
 Platform_Error platform_file_seek(Platform_File* file, int64_t offset, Platform_File_Seek from)
 {
-    return _platform_file_seek_tell(file, offset, NULL, PLATFORM_FILE_SEEK_FROM_CURRENT);
+    return _platform_file_seek_tell(file, offset, NULL, from);
 }
 
-Platform_Error platform_file_create(Platform_String file_path, bool* was_just_created)
+Platform_Error platform_file_flush(Platform_File* file)
 {
     bool state = true;
+    if(file->is_open)
+        state = !!FlushFileBuffers((HANDLE) file->handle.windows);
+    
+    return _platform_error_code(state);
+}
+
+Platform_Error platform_file_create(Platform_String file_path, bool fail_if_exists)
+{
     const wchar_t* path = _ephemeral_path(file_path);
     HANDLE handle = CreateFileW(path, 0, 0, NULL, OPEN_ALWAYS, 0, NULL);
-    state = handle != INVALID_HANDLE_VALUE;
+    bool state = handle != INVALID_HANDLE_VALUE;
 
-    if(was_just_created != NULL)
+    if(state == false && GetLastError() == ERROR_ALREADY_EXISTS)
     {
-        DWORD last_error = GetLastError();
-        if(last_error == ERROR_ALREADY_EXISTS)
-            *was_just_created = false;
-        else
-            *was_just_created = true;
+        if(fail_if_exists == false)
+            state = true;
     }
 
+    Platform_Error error = _platform_error_code(state);
     CloseHandle(handle);
-    return platform_error_code(state);
+    return error;
 }
-Platform_Error platform_file_remove(Platform_String file_path, bool* was_deleted_deleted)
+Platform_Error platform_file_remove(Platform_String file_path, bool fail_if_does_not_exist)
 {
     const wchar_t* path = _ephemeral_path(file_path);
     SetFileAttributesW(path, FILE_ATTRIBUTE_NORMAL);
     bool state = !!DeleteFileW(path);
-        
-    if(was_deleted_deleted != NULL)
-        *was_deleted_deleted = state;
 
-    DWORD last_error = GetLastError();
-    if(last_error == ERROR_FILE_NOT_FOUND)
+    if(state == false && GetLastError() == ERROR_FILE_NOT_FOUND)
     {
-        state = true;
-        if(was_deleted_deleted != NULL)
-            *was_deleted_deleted = false;
+        if(fail_if_does_not_exist == false)
+            state = true;
     }
 
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
-Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path)
+Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path, bool override_if_used)
 {       
     const wchar_t* new_path_norm = _ephemeral_path(new_path);
     const wchar_t* old_path_norm = _ephemeral_path(old_path);
-    bool state = !!MoveFileExW(old_path_norm, new_path_norm, MOVEFILE_COPY_ALLOWED);
+
+    DWORD flags = MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH;
+    if(override_if_used)
+        flags |= MOVEFILE_REPLACE_EXISTING;
+
+    bool state = !!MoveFileExW(old_path_norm, new_path_norm, flags);
     
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
-Platform_Error platform_file_copy(Platform_String new_path, Platform_String old_path)
+Platform_Error platform_file_copy(Platform_String new_path, Platform_String old_path, bool override_if_used)
 {
     const wchar_t* new_path_norm = _ephemeral_path(new_path);
     const wchar_t* old_path_norm = _ephemeral_path(old_path);
-    bool state = !!CopyFileW(old_path_norm, new_path_norm, true);
+    //BOOL CopyFileExA(
+    //    [in]           LPCSTR             lpExistingFileName,
+    //    [in]           LPCSTR             lpNewFileName,
+    //    [in, optional] LPPROGRESS_ROUTINE lpProgressRoutine,
+    //    [in, optional] LPVOID             lpData,
+    //    [in, optional] LPBOOL             pbCancel,
+    //    [in]           DWORD              dwCopyFlags
+    //);
+    DWORD flags = COPY_FILE_NO_BUFFERING;
+    if(override_if_used == false)
+        flags |= COPY_FILE_FAIL_IF_EXISTS;
+    bool state = !!CopyFileExW(old_path_norm, new_path_norm, NULL, NULL, FALSE, flags);
     
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
+
+Platform_Error platform_file_resize(Platform_String file_path, int64_t size)
+{
+    const wchar_t* _path = _ephemeral_path(file_path);
+    HANDLE handle = CreateFileW(_path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    bool state = handle != INVALID_HANDLE_VALUE; 
+    if(state)
+    { 
+        //@NOTE: In win7 new_offset_win argument is required else the function crashes
+        LARGE_INTEGER new_offset_win = {0}; 
+        LARGE_INTEGER offset_win = {0};
+        offset_win.QuadPart = size;
+        state = !!SetFilePointerEx(handle, offset_win, &new_offset_win, FILE_BEGIN);
+
+        if(state)
+            state = !!SetEndOfFile(handle);
+    }
+
+    Platform_Error error = _platform_error_code(state);
+    CloseHandle(handle);
+
+    return error;
+}
+
 
 void platform_file_memory_unmap(Platform_Memory_Mapping* mapping)
 {
@@ -952,7 +970,7 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
     if(native_info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
         info.link_type = _get_link_type(path);
     if(!state)
-        return platform_error_code(state);
+        return _platform_error_code(state);
             
     info.created_epoch_time = _filetime_to_epoch_time(native_info.ftCreationTime);
     info.last_access_epoch_time = _filetime_to_epoch_time(native_info.ftLastAccessTime);
@@ -960,13 +978,17 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
     info.size = ((int64_t) native_info.nFileSizeHigh << 32) | ((int64_t) native_info.nFileSizeLow);
         
     if(native_info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+    {
+        info.last_access_epoch_time = info.created_epoch_time;
+        info.last_write_epoch_time = info.created_epoch_time;
         info.type = PLATFORM_FILE_TYPE_DIRECTORY;
+    }
     else
         info.type = PLATFORM_FILE_TYPE_FILE;
 
     if(info_or_null)
         *info_or_null = info;
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 BOOL _platform_directory_exists(const wchar_t* szPath)
@@ -977,42 +999,30 @@ BOOL _platform_directory_exists(const wchar_t* szPath)
          (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 }
 
-Platform_Error platform_directory_create(Platform_String dir_path, bool* was_just_created_or_null)
+Platform_Error platform_directory_create(Platform_String dir_path, bool fail_if_already_existing)
 {
     const wchar_t* path = _ephemeral_path(dir_path);
-    bool state = true;
-    bool was_created = true;
-    if(_platform_directory_exists(path))
-        was_created = false;
-    else
+    bool state = !!CreateDirectoryW(path, NULL);
+    if(state == false && GetLastError() == ERROR_ALREADY_EXISTS)
     {
-        state = !!CreateDirectoryW(path, NULL);
-        was_created = state;
+        if(fail_if_already_existing == false)
+            state = true;
     }
 
-    if(was_just_created_or_null)
-        *was_just_created_or_null = was_created;
-
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
     
-Platform_Error platform_directory_remove(Platform_String dir_path, bool* was_just_deleted_or_null)
+Platform_Error platform_directory_remove(Platform_String dir_path, bool fail_if_not_found)
 {
     const wchar_t* path = _ephemeral_path(dir_path);
-    bool state = true;
-    bool was_deleted = true;
-    if(_platform_directory_exists(path) == false)
-        was_deleted = false;
-    else
+    bool state = !!RemoveDirectoryW(path);
+    if(state == false && GetLastError() == ERROR_PATH_NOT_FOUND)
     {
-        state = !!RemoveDirectoryW(path);
-        was_deleted = state;
+        if(fail_if_not_found == false)
+            state = true;
     }
 
-    if(was_just_deleted_or_null)
-        *was_just_deleted_or_null = was_deleted;
-
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 static char* _alloc_full_path(String_Buffer* buffer_or_null, const wchar_t* local_path, int normalize_flag)
@@ -1107,7 +1117,7 @@ static Platform_Error _directory_list_contents_alloc(const wchar_t* directory_pa
     first.visitor = _directory_iterate_init(directory_path, WIO_FILE_MASK_ALL);
 
     if(_directory_iterate_has(&first.visitor) == false)
-        error = platform_error_code(false);
+        error = _platform_error_code(false);
     else
     {
         buffer_append(&first.path, directory_path_str.data, directory_path_str.size); //TODO: no path copying!
@@ -1132,7 +1142,11 @@ static Platform_Error _directory_list_contents_alloc(const wchar_t* directory_pa
         
                 info.type = PLATFORM_FILE_TYPE_FILE;
                 if(visitor->current_entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                {
+                    info.last_access_epoch_time = info.created_epoch_time;
+                    info.last_write_epoch_time = info.created_epoch_time;
                     info.type = PLATFORM_FILE_TYPE_DIRECTORY;
+                }
                 else
                     info.type = PLATFORM_FILE_TYPE_FILE;
 
@@ -1150,6 +1164,7 @@ static Platform_Error _directory_list_contents_alloc(const wchar_t* directory_pa
                 entry.path = _alloc_full_path(NULL, built_path.data, flag);
                 entry.directory_depth = dir_context->depth;
                 buffer_push(entries, entry);
+
 
                 bool recursion = dir_context->depth + 1 < max_depth || max_depth <= 0;
                 if(info.type == PLATFORM_FILE_TYPE_DIRECTORY && recursion)
@@ -1193,8 +1208,14 @@ Platform_Error platform_directory_list_contents_alloc(Platform_String directory_
     assert(entries != NULL && entries_count != NULL);
     Platform_Directory_Entry_Buffer entries_stack = {0};
 
+    int64_t fixed_max_depth = max_depth;
+    if(fixed_max_depth == -1)
+        fixed_max_depth = INT64_MAX;
+    if(fixed_max_depth < 0)
+        fixed_max_depth = 0;
+
     const wchar_t* path = _ephemeral_path(directory_path);
-    Platform_Error error = _directory_list_contents_alloc(path, &entries_stack, max_depth);
+    Platform_Error error = _directory_list_contents_alloc(path, &entries_stack, fixed_max_depth);
 
     if(error == PLATFORM_ERROR_OK && entries)
         *entries = entries_stack.data;
@@ -1206,9 +1227,6 @@ Platform_Error platform_directory_list_contents_alloc(Platform_String directory_
 
     return error;
 }
-
-
-//#pragma comment(lib, "dwmapi.lib")
 
 void platform_directory_list_contents_free(Platform_Directory_Entry* entries)
 {
@@ -1222,33 +1240,35 @@ void platform_directory_list_contents_free(Platform_Directory_Entry* entries)
     _platform_internal_reallocate(0, entries);
 }
 
+//CWD madness
+static String_Buffer _cwd_cached = {0};
+static String_Buffer _exe_dir_cached = {0};
+static WString_Buffer _wcwd_cached = {0};
 Platform_Error platform_directory_set_current_working(Platform_String new_working_dir)
 {
     const wchar_t* path = _ephemeral_path(new_working_dir);
 
     bool state = _wchdir(path) == 0;
-    gp_state.current_working_generation += 1;
-    return platform_error_code(state);
+    return _platform_error_code(state);
 }
 
 const char* platform_directory_get_current_working()
 {
-    if(gp_state.current_working_cached_generation <= gp_state.current_working_generation)
+    wchar_t* current_working = _wgetcwd(NULL, 0);
+    if(current_working == NULL || _wcwd_cached.data == NULL || wcscmp(current_working, _wcwd_cached.data) != 0)
     {
-        wchar_t* current_working = _wgetcwd(NULL, 0);
-        _alloc_full_path(&gp_state.directory_current_working_cached, current_working, IO_NORMALIZE_DIRECTORY);
-        free(current_working);
-
-        gp_state.current_working_cached_generation = gp_state.current_working_generation + 1;
+        buffer_resize(&_wcwd_cached, 0);
+        buffer_append(&_wcwd_cached, current_working, current_working ? wcslen(current_working) : 0);
+        _alloc_full_path(&_cwd_cached, current_working, IO_NORMALIZE_DIRECTORY);
     }
     
-    assert(gp_state.directory_current_working_cached.data != NULL);
-    return gp_state.directory_current_working_cached.data;
+    assert(_cwd_cached.data != NULL);
+    return _cwd_cached.data;
 }
 
 const char* platform_get_executable_path()
 {
-    if(gp_state.directory_executable_cached.data == NULL)
+    if(_exe_dir_cached.data == NULL)
     {
         WString_Buffer wide = {0};
         buffer_init_backed(&wide, IO_LOCAL_BUFFER_SIZE);
@@ -1262,50 +1282,19 @@ const char* platform_get_executable_path()
                 break;
         }
         
-        _alloc_full_path(&gp_state.directory_executable_cached, wide.data, IO_NORMALIZE_FILE);
+        _alloc_full_path(&_exe_dir_cached, wide.data, IO_NORMALIZE_FILE);
         buffer_deinit(&wide);
     }
     
-    assert(gp_state.directory_executable_cached.data != NULL);
-    return gp_state.directory_executable_cached.data;
-}
-
-const char* platform_get_executable_path_process()
-{
-    if(gp_state.directory_executable_cached.data == NULL)
-    {
-        HANDLE process = GetCurrentProcess();
-        WString_Buffer wide = {0};
-        buffer_init_backed(&wide, IO_LOCAL_BUFFER_SIZE);
-        buffer_resize(&wide, MAX_PATH);
-
-        bool had_success = false;
-        for(int64_t i = 0; i < 16; i++)
-        {
-            DWORD size = (DWORD) wide.size;
-            buffer_resize(&wide, wide.size * 2);
-            if(QueryFullProcessImageNameW(process, 0, wide.data, &size))
-            {
-                buffer_resize(&wide, size);
-                had_success = true;
-                break;
-            }
-        }
-        
-        printf("%s\n", platform_translate_error(platform_error_code(false)));
-        assert(had_success);
-        _alloc_full_path(&gp_state.directory_executable_cached, wide.data, IO_NORMALIZE_FILE);
-        buffer_deinit(&wide);
-    }
-    
-    assert(gp_state.directory_executable_cached.data != NULL);
-    return gp_state.directory_executable_cached.data;
+    assert(_exe_dir_cached.data != NULL);
+    return _exe_dir_cached.data;
 }
 
 static void _platform_cached_directory_deinit()
 {
-    buffer_deinit(&gp_state.directory_executable_cached);
-    buffer_deinit(&gp_state.directory_current_working_cached);
+    buffer_deinit(&_cwd_cached);
+    buffer_deinit(&_wcwd_cached);
+    buffer_deinit(&_exe_dir_cached);
 }
 
 /*
@@ -1385,7 +1374,7 @@ Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_Str
         
         const wchar_t* path = _ephemeral_path(file_or_dir_path);
         watch_handle = FindFirstChangeNotificationW(path, watch_subtree, notify_filter);
-        error = platform_error_code(watch_handle != INVALID_HANDLE_VALUE);
+        error = _platform_error_code(watch_handle != INVALID_HANDLE_VALUE);
 
         if(error == PLATFORM_ERROR_OK)
         {
@@ -1494,8 +1483,9 @@ Platform_Window_Popup_Controls platform_window_make_popup(Platform_Window_Popup_
     }
 }
 
-//CALLSTACK
-
+//=========================================
+// CALLSTACK
+//=========================================
 #include <stdint.h>
 #include <stdbool.h>
 #include <windows.h>
@@ -1719,28 +1709,30 @@ static int64_t _platform_stack_trace_walk(CONTEXT context, HANDLE process, HANDL
     return i;
 }
 
-typedef void (*Sandbox_Error_Func)(void* error_context, Platform_Sandbox_Error error);
 
+//=========================================
+// SANDBOX
+//=========================================
 #define SANDBOX_MAX_STACK 256
 #define SANDBOX_JUMP_VALUE 123
 
 #include <setjmp.h>
 #include <signal.h>
 
-#pragma warning(disable:4324) //Dissable "structure was padded due to alignment specifier"
+#pragma warning(disable:4324) // 'Platform_Sandbox_State': structure was padded due to alignment specifier
 typedef struct Platform_Sandbox_State {
-    Platform_Exception exception;
     void* stack[SANDBOX_MAX_STACK];
     int64_t stack_size;
     int64_t epoch_time;
-
+    Platform_Exception exception;
     int32_t signal_handler_depth;
+
     jmp_buf jump_buffer;
     CONTEXT context;
 } Platform_Sandbox_State;
+#pragma warning(default:4324)
 
-__declspec(thread) Platform_Sandbox_State sandbox_state = {PLATFORM_EXCEPTION_NONE};
-
+__declspec(thread) Platform_Sandbox_State sandbox_state = {0};
 void _sandbox_abort_filter(int signal)
 {
     int64_t epoch_time = platform_epoch_time();
@@ -1992,7 +1984,8 @@ void _platform_set_console_utf8()
 void platform_init(Platform_Allocator* allocator)
 {
     if(allocator)
-        gp_state.allocator = *allocator;
+        _platform_allocator = *allocator;
+
     platform_deinit();
 
     platform_perf_counter();
@@ -2005,9 +1998,12 @@ void platform_init(Platform_Allocator* allocator)
 }
 void platform_deinit()
 {
+    Platform_Allocator nil_alloc = {0};
+    _platform_allocator = nil_alloc;
+
+    _platform_deinit_timings();
     _translated_deinit_all();
     _ephemeral_wstring_deinit_all();
     _platform_cached_directory_deinit();
     _platform_stack_trace_deinit();
-    memset(&gp_state, 0, sizeof(gp_state));
 }

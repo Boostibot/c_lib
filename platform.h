@@ -1,8 +1,5 @@
-#ifndef JOT_PLATFORM
+﻿#ifndef JOT_PLATFORM
 #define JOT_PLATFORM
-
-#undef _CRT_SECURE_NO_WARNINGS
-#define _CRT_SECURE_NO_WARNINGS /* ... i hate msvc */
 
 #include <stdint.h>
 #include <limits.h>
@@ -164,7 +161,7 @@ enum {
 };
 
 //Returns a translated error message. The returned pointer is not static and shall NOT be stored as further calls to this functions will invalidate it. 
-//Thus the returned string should be immedietelly printed or copied into a different buffer
+//The returned string should be immedietelly printed or copied into a different buffer
 const char* platform_translate_error(Platform_Error error);
 
 
@@ -340,7 +337,7 @@ typedef struct Platform_Memory_Mapping {
 #endif
 
 typedef struct Platform_File {
-    union U {
+    union {
         void* windows;
         int linux;
     } handle;
@@ -349,12 +346,17 @@ typedef struct Platform_File {
 } Platform_File;
 
 typedef enum Platform_File_Open_Flags {
-    PLATFORM_FILE_MODE_READ = 1,
-    PLATFORM_FILE_MODE_WRITE = 2,
-    PLATFORM_FILE_MODE_APPEND = 4,
-    PLATFORM_FILE_MODE_CREATE = 8,
-    PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST = 16, //When supplied alongside PLATFORM_FILE_MODE_CREATE overrides it.
-    PLATFORM_FILE_MODE_TEMPORARY = 32,
+    PLATFORM_FILE_MODE_READ = 1,                    //Read privilege
+    PLATFORM_FILE_MODE_WRITE = 2,                   //Write privilage
+    PLATFORM_FILE_MODE_APPEND = 4,                  //Append privileges (no effect on linux). 
+                                                    //Has no effect on the file write position unlike fopen(path, "a"). 
+                                                    //If you wish to start at the end of a file use platform_file_seek(file, 0, PLATFORM_FILE_SEEK_FROM_END)
+
+    PLATFORM_FILE_MODE_CREATE = 8,                  //Creates the file, if it already exists does nothing.
+    PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST = 16,  //Creates the file, if it already exists fails. When supplied alongside PLATFORM_FILE_MODE_CREATE overrides it.
+    PLATFORM_FILE_MODE_REMOVE_CONTENT = 32,         //If opening a file that has content, remove it.
+    PLATFORM_FILE_MODE_TEMPORARY = 64,              //The file is removed once all handles are closed.
+    PLATFORM_FILE_MODE_READ_WRITE_APPEND = PLATFORM_FILE_MODE_READ | PLATFORM_FILE_MODE_WRITE | PLATFORM_FILE_MODE_APPEND,
 } Platform_File_Open_Flags;
 
 typedef enum Platform_File_Seek {
@@ -367,9 +369,10 @@ typedef enum Platform_File_Seek {
 Platform_Error platform_file_open(Platform_File* file, Platform_String path, int open_flags);
 //Closes already opened file. If file was not open does nothing.
 Platform_Error platform_file_close(Platform_File* file);
-//Reads size bytes into the provided buffer. Sets eof_or_null to true if end of file is reached (and eof_or_null is not NULL).
-//Does nothing when file is not open/invalid state. Does not perform partial reads (the read either fails or succeeds nothing in between).
-Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t size, bool* eof_or_null);
+//Reads size bytes into the provided buffer. Sets read_bytes_because_eof to the number of bytes actually read.
+//Does nothing when file is not open/invalid state. Only performs partial reads when eof is encoutered. 
+//Specifcally this means: (*read_bytes_because_eof != size) <=> end of file reached
+Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t size, int64_t* read_bytes_because_eof);
 //Writes size bytes from the provided buffer, extending the file if necessary
 //Does nothing when file is not open/invalid state. Does not perform partial writes (the write either fails or succeeds nothing in between).
 Platform_Error platform_file_write(Platform_File* file, const void* buffer, int64_t size);
@@ -377,26 +380,30 @@ Platform_Error platform_file_write(Platform_File* file, const void* buffer, int6
 Platform_Error platform_file_tell(Platform_File file, int64_t* offset);
 //Offset the current file position relative to: start of the file (0 value), current possition, end of the file
 Platform_Error platform_file_seek(Platform_File* file, int64_t offset, Platform_File_Seek from);
+//Flushes all cached contents of the file to disk.
+Platform_Error platform_file_flush(Platform_File* file);
 
 //retrieves info about the specified file or directory
 Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null);
 //Creates an empty file at the specified path. Succeeds if the file exists after the call.
 //Saves to was_just_created_or_null wheter the file was just now created. If is null doesnt save anything.
-Platform_Error platform_file_create(Platform_String file_path, bool* was_just_created_or_null);
-//Removes a file at the specified path. Succeeds if the file exists after the call the file does not exist.
-//Saves to was_just_deleted_or_null wheter the file was just now deleted. If is null doesnt save anything.
-Platform_Error platform_file_remove(Platform_String file_path, bool* was_just_deleted_or_null);
+Platform_Error platform_file_create(Platform_String file_path, bool fail_if_already_existing);
+//Removes a file at the specified path. If fail_if_not_found is true succeeds only if the file was removed.
+// else succeeds if the file does not exists after the call.
+Platform_Error platform_file_remove(Platform_String file_path, bool fail_if_not_found);
 //Moves or renames a file. If the file cannot be found or renamed to file that already exists, fails.
-Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path);
+Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path, bool replace_existing);
 //Copies a file. If the file cannot be found or copy_to_path file that already exists, fails.
-Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String copy_from_path);
+Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String copy_from_path, bool replace_existing);
+//Sets the size of the file to given size. On extending the value of added bytes are undefined (though most often 0)
+Platform_Error platform_file_resize(Platform_String file_path, int64_t size);
 
 //Makes an empty directory
 //Saves to was_just_created_or_null wheter the file was just now created. If is null doesnt save anything.
-Platform_Error platform_directory_create(Platform_String dir_path, bool* was_just_created_or_null);
+Platform_Error platform_directory_create(Platform_String dir_path, bool fail_if_already_existing);
 //Removes an empty directory
 //Saves to was_just_deleted_or_null wheter the file was just now deleted. If is null doesnt save anything.
-Platform_Error platform_directory_remove(Platform_String dir_path, bool* was_just_deleted_or_null);
+Platform_Error platform_directory_remove(Platform_String dir_path, bool fail_if_not_found);
 
 //changes the current working directory to the new_working_dir.  
 Platform_Error platform_directory_set_current_working(Platform_String new_working_dir);    
@@ -406,7 +413,7 @@ const char* platform_directory_get_current_working();
 const char* platform_get_executable_path();    
 
 //Gathers and allocates list of files in the specified directory. Saves a pointer to array of entries to entries and its size to entries_count. 
-//Needs to be freed using directory_list_contents_free()
+//Needs to be freed using directory_list_contents_free(). If max_depth == -1 max depth is unlimited
 Platform_Error platform_directory_list_contents_alloc(Platform_String directory_path, Platform_Directory_Entry** entries, int64_t* entries_count, int64_t max_depth);
 //Frees previously allocated file list
 void platform_directory_list_contents_free(Platform_Directory_Entry* entries);
@@ -464,7 +471,6 @@ void platform_file_memory_unmap(Platform_Memory_Mapping* mapping);
 //=========================================
 // DLL management
 //=========================================
-
 typedef struct Platform_DLL {
     void* handle;
 } Platform_DLL;
@@ -499,7 +505,7 @@ typedef enum Platform_Window_Popup_Controls {
 } Platform_Window_Popup_Controls;
 
 //Makes default shell popup with a custom message and style
-Platform_Window_Popup_Controls  platform_window_make_popup(Platform_Window_Popup_Style desired_style, Platform_String message, Platform_String title);
+Platform_Window_Popup_Controls platform_window_make_popup(Platform_Window_Popup_Style desired_style, Platform_String message, Platform_String title);
 
 //=========================================
 // Debug
@@ -903,31 +909,26 @@ const char* platform_exception_to_string(Platform_Exception error);
 #endif
 
 
-#ifdef TEST_PLATFORM
+
+
+
+
+
+
+
+// ====================================================================================
+//                               UNIT TESTS 
+// ====================================================================================
+
+#define JOT_ALL_TEST
+#if (defined(JOT_ALL_TEST) || defined(JOT_PLATFORM_TEST)) && !defined(JOT_PLATFORM_HAS_TEST)
+#define JOT_PLATFORM_HAS_TEST
 
 #include <stdint.h>
 #include <string.h>
 #include <stdarg.h>
-static bool _platform_test_report(Platform_Error error, bool is_error, char* expression, const char* file, const char* funcion, int line, const char* format, ...)
-{
-    is_error = error != 0 || is_error;
-    if(is_error)
-    {
-        printf("TEST(%s) failed in %s %s:%i", expression, file, funcion, line);
-        if(format && strlen(format) > 0)
-        {
-            va_list args;               
-            va_start(args, format);     
-            vprintf(format, args);
-            va_end(args);   
-        }
-        
-        if(error != 0)
-            printf("Error: %s", platform_translate_error(error));
-    }
-
-    return is_error; 
-}
+#include <stdlib.h>
+static bool _platform_test_report(Platform_Error error, bool is_error, const char* expression, const char* file, const char* funcion, int line, const char* format, ...);
 
 #ifndef _MSC_VER
     #define __FUNCTION__ __func__
@@ -942,18 +943,306 @@ static bool _platform_test_report(Platform_Error error, bool is_error, char* exp
 
 #define PTEST(x, ...)           (_platform_test_report(0, !(x), #x, __FILE__, __FUNCTION__, __LINE__, "" __VA_ARGS__) ? abort() : (void) 0)
 #define PTEST_ERROR(error, ...) (_platform_test_report((error), 0, #error, __FILE__, __FUNCTION__, __LINE__, "" __VA_ARGS__) ? abort() : (void) 0)
-#define PSTRING(literal) PBRACE_INIT(Platform_String){"" literal, sizeof(literal) - 1}
+#define PSTRING(literal)        PBRACE_INIT(Platform_String){"" literal, sizeof(literal) - 1}
+
+//String containing few problematic sequences: BOM, non acii, non single UTF16 representable chars, \r\n and \n newlines.
+// It should still be read in and out exactly the same!
+#define PUTF8_BOM        "\xEF\xBB\xBF"
+#define PUGLY_STR        PUTF8_BOM "Hello world!\r\n ěščřžýáéň,\n Φφ,Χχ,Ψψ,Ωω,\r\n あいうえお"
+#define PUGLY_STRING     PSTRING(PUGLY_STR)
+
+static void platform_test_file_content_equality(Platform_String path, Platform_String content);
+
+static void platform_test_file_io() 
+{
+    #define TEST_DIR          "__platform_file_test_directory__"
+    PTEST_ERROR(platform_directory_create(PSTRING(TEST_DIR), false));
+    PTEST(platform_directory_create(PSTRING(TEST_DIR), true) != 0, "Creating already created directory should fail when fail_if_already_exists = true\n");
+    {
+        Platform_File_Info dir_info = {0};
+        PTEST_ERROR(platform_file_info(PSTRING(TEST_DIR), &dir_info));
+        PTEST(dir_info.type == PLATFORM_FILE_TYPE_DIRECTORY);
+        PTEST(dir_info.link_type == PLATFORM_LINK_TYPE_NOT_LINK);
+
+        Platform_String test_file_content = PSTRING(PUGLY_STR PUGLY_STR);
+        Platform_String write_file_path = PSTRING(TEST_DIR "/write_file.txt");
+        Platform_String read_file_path = PSTRING(TEST_DIR "/read_file.txt");
+        Platform_String move_file_path = PSTRING(TEST_DIR "/move_file.txt");
+        
+        //Cleanup any possibly remaining files from previous (failed) tests
+        PTEST_ERROR(platform_file_remove(write_file_path, false));
+        PTEST_ERROR(platform_file_remove(read_file_path, false));
+        PTEST_ERROR(platform_file_remove(move_file_path, false));
+
+        //Write two PUGLY_STRING's into the file and flush it (no closing though!)
+        Platform_File write_file = {0};
+        PTEST_ERROR(platform_file_open(&write_file, write_file_path, PLATFORM_FILE_MODE_WRITE | PLATFORM_FILE_MODE_CREATE | PLATFORM_FILE_MODE_REMOVE_CONTENT));
+        PTEST(write_file.is_open);
+        PTEST_ERROR(platform_file_write(&write_file, PUGLY_STRING.data, PUGLY_STRING.size));
+        PTEST_ERROR(platform_file_write(&write_file, PUGLY_STRING.data, PUGLY_STRING.size));
+        PTEST_ERROR(platform_file_flush(&write_file));
+        
+        platform_test_file_content_equality(write_file_path, test_file_content);
+
+        //Copy the file 
+        PTEST_ERROR(platform_file_copy(read_file_path, write_file_path, false));
+        platform_test_file_content_equality(read_file_path, test_file_content);
+        PTEST_ERROR(platform_file_close(&write_file));
+
+        //Move the file
+        PTEST_ERROR(platform_file_move(move_file_path, write_file_path, false));
+        PTEST(platform_file_info(write_file_path, NULL) != 0, "Opening of the moved from file should fail since its no longer there!\n");
+        platform_test_file_content_equality(move_file_path, test_file_content);
+
+        //Trim the file and 
+        PTEST_ERROR(platform_file_resize(move_file_path, PUGLY_STRING.size));
+        platform_test_file_content_equality(move_file_path, PUGLY_STRING);
+
+        //Cleanup the directory so it can be deleted.
+        PTEST_ERROR(platform_file_remove(write_file_path, false)); //Just in case
+        PTEST_ERROR(platform_file_remove(read_file_path, true));
+        PTEST_ERROR(platform_file_remove(move_file_path, true));
+    }
+    PTEST_ERROR(platform_directory_remove(PSTRING(TEST_DIR), true));
+    PTEST(platform_directory_remove(PSTRING(TEST_DIR), true) != 0, "removing a missing directory should fail when fail_if_not_found = true\n");
+}
+
+
+#pragma warning(disable:4996) //Dissable "This function or variable may be unsafe. Consider using localtime_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details."
+#include <time.h>
+typedef struct tm _PDate;
+static _PDate _date_from_epoch_time(int64_t epoch_time)
+{
+    time_t copy = (time_t) (epoch_time / 1000 / 1000);
+    return *localtime(&copy);
+}
+
+static void platform_test_dir_entry(Platform_Directory_Entry* entries, int64_t entries_count, Platform_String entry_path, Platform_File_Type type, int64_t directory_depth);
+
+static void platform_test_directory_list() 
+{
+    #define TEST_DIR_LIST_DIR       "__platform_dir_list_test_directory__"
+    #define TEST_DIR_DEEPER1        TEST_DIR_LIST_DIR "/deeper1"
+    #define TEST_DIR_DEEPER2        TEST_DIR_LIST_DIR "/deeper2"
+    #define TEST_DIR_DEEPER3        TEST_DIR_LIST_DIR "/deeper3"
+    #define TEST_DIR_DEEPER3_INNER  TEST_DIR_DEEPER3 "/inner"
+
+    PTEST_ERROR(platform_directory_create(PSTRING(TEST_DIR_LIST_DIR), false));
+    {
+        PTEST_ERROR(platform_directory_create(PSTRING(TEST_DIR_DEEPER1), false));
+        PTEST_ERROR(platform_directory_create(PSTRING(TEST_DIR_DEEPER2), false));
+        PTEST_ERROR(platform_directory_create(PSTRING(TEST_DIR_DEEPER3), false));
+        PTEST_ERROR(platform_directory_create(PSTRING(TEST_DIR_DEEPER3_INNER), false));
+
+        Platform_String temp_file1 = PSTRING(TEST_DIR_LIST_DIR "/temp_file1.txt");
+        Platform_String temp_file2 = PSTRING(TEST_DIR_LIST_DIR "/temp_file2.txt");
+        Platform_String temp_file3 = PSTRING(TEST_DIR_LIST_DIR "/temp_file3.txt");
+        Platform_String temp_file_deep1_1 = PSTRING(TEST_DIR_DEEPER1 "/temp_file1.txt");
+        Platform_String temp_file_deep1_2 = PSTRING(TEST_DIR_DEEPER1 "/temp_file2.txt");
+        Platform_String temp_file_deep3_1 = PSTRING(TEST_DIR_DEEPER3_INNER "/temp_file1.txt");
+        Platform_String temp_file_deep3_2 = PSTRING(TEST_DIR_DEEPER3_INNER "/temp_file2.txt");
+
+        Platform_File first = {0};
+        PTEST_ERROR(platform_file_open(&first, temp_file1, PLATFORM_FILE_MODE_WRITE | PLATFORM_FILE_MODE_CREATE | PLATFORM_FILE_MODE_REMOVE_CONTENT));
+        PTEST_ERROR(platform_file_write(&first, PUGLY_STRING.data, PUGLY_STRING.size));
+        PTEST_ERROR(platform_file_close(&first));
+
+        PTEST_ERROR(platform_file_copy(temp_file2, temp_file1, true));
+        PTEST_ERROR(platform_file_copy(temp_file3, temp_file1, true));
+
+        PTEST_ERROR(platform_file_copy(temp_file_deep1_1, temp_file1, true));
+        PTEST_ERROR(platform_file_copy(temp_file_deep1_2, temp_file1, true));
+            
+        PTEST_ERROR(platform_file_copy(temp_file_deep3_1, temp_file1, true));
+        PTEST_ERROR(platform_file_copy(temp_file_deep3_2, temp_file1, true));
+
+        //Now the dir should look like (inside TEST_DIR):
+        // TEST_DIR:
+        //    temp_file1.txt
+        //    temp_file2.txt
+        //    temp_file3.txt
+        //    deeper1:
+        //         temp_file1.txt
+        //         temp_file2.txt
+        //    deeper2:
+        //    deeper3:
+        //         inner:
+        //             temp_file1.txt
+        //             temp_file2.txt
+
+
+        {
+            Platform_Directory_Entry* entries = NULL;
+            int64_t entries_count = 0;
+            PTEST_ERROR(platform_directory_list_contents_alloc(PSTRING(TEST_DIR_LIST_DIR), &entries, &entries_count, 1)); //Only the immediate directory
+            PTEST(entries_count == 6);
+
+            platform_test_dir_entry(entries, entries_count, temp_file1, PLATFORM_FILE_TYPE_FILE, 0);
+            platform_test_dir_entry(entries, entries_count, temp_file2, PLATFORM_FILE_TYPE_FILE, 0);
+            platform_test_dir_entry(entries, entries_count, temp_file3, PLATFORM_FILE_TYPE_FILE, 0);
+
+            platform_test_dir_entry(entries, entries_count, temp_file_deep1_1, PLATFORM_FILE_TYPE_NOT_FOUND, 0);
+            platform_test_dir_entry(entries, entries_count, temp_file_deep3_2, PLATFORM_FILE_TYPE_NOT_FOUND, 0);
+
+            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER1), PLATFORM_FILE_TYPE_DIRECTORY, 0);
+            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER2), PLATFORM_FILE_TYPE_DIRECTORY, 0);
+            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER3), PLATFORM_FILE_TYPE_DIRECTORY, 0);
+            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER3_INNER), PLATFORM_FILE_TYPE_NOT_FOUND, 0);
+
+            platform_directory_list_contents_free(entries);
+        }
+        
+        {
+            Platform_Directory_Entry* entries = NULL;
+            int64_t entries_count = 0;
+            PTEST_ERROR(platform_directory_list_contents_alloc(PSTRING(TEST_DIR_LIST_DIR), &entries, &entries_count, -1)); //All of the directories
+            PTEST(entries_count == 11);
+
+            for(int i = 0; i < entries_count; i++)
+            {
+                _PDate created_time = _date_from_epoch_time(entries[i].info.created_epoch_time);
+                _PDate write_time = _date_from_epoch_time(entries[i].info.last_write_epoch_time);
+                _PDate access_time = _date_from_epoch_time(entries[i].info.last_access_epoch_time);
+
+                #define PDATE_FMT "%04i/%02i/%02i %02i:%02i:%02i"
+                #define PDATE_PRINT(time) (time).tm_year + 1900, (time).tm_mon, (time).tm_mday, (time).tm_hour, (time).tm_min, (time).tm_sec
+                printf("'%s': created: " PDATE_FMT " write: " PDATE_FMT " access: " PDATE_FMT "\n", entries[i].path, PDATE_PRINT(created_time), PDATE_PRINT(write_time), PDATE_PRINT(access_time));
+            }
+
+            platform_test_dir_entry(entries, entries_count, temp_file1, PLATFORM_FILE_TYPE_FILE, 0);
+            platform_test_dir_entry(entries, entries_count, temp_file2, PLATFORM_FILE_TYPE_FILE, 0);
+            platform_test_dir_entry(entries, entries_count, temp_file3, PLATFORM_FILE_TYPE_FILE, 0);
+
+            platform_test_dir_entry(entries, entries_count, temp_file_deep1_1, PLATFORM_FILE_TYPE_FILE, 1);
+            platform_test_dir_entry(entries, entries_count, temp_file_deep3_2, PLATFORM_FILE_TYPE_FILE, 2);
+
+            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER3_INNER), PLATFORM_FILE_TYPE_DIRECTORY, 1);
+            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER1), PLATFORM_FILE_TYPE_DIRECTORY, 0);
+            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER2), PLATFORM_FILE_TYPE_DIRECTORY, 0);
+            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER3), PLATFORM_FILE_TYPE_DIRECTORY, 0);
+
+            platform_directory_list_contents_free(entries);
+        }
+
+        PTEST_ERROR(platform_file_remove(temp_file1, true));
+        PTEST_ERROR(platform_file_remove(temp_file2, true));
+        PTEST_ERROR(platform_file_remove(temp_file3, true));
+
+        PTEST_ERROR(platform_file_remove(temp_file_deep1_1, true));
+        PTEST_ERROR(platform_file_remove(temp_file_deep1_2, true));
+            
+        PTEST_ERROR(platform_file_remove(temp_file_deep3_1, true));
+        PTEST_ERROR(platform_file_remove(temp_file_deep3_2, true));
+
+        PTEST_ERROR(platform_directory_remove(PSTRING(TEST_DIR_DEEPER3_INNER), true));
+        PTEST_ERROR(platform_directory_remove(PSTRING(TEST_DIR_DEEPER1), true));
+        PTEST_ERROR(platform_directory_remove(PSTRING(TEST_DIR_DEEPER2), true));
+        PTEST_ERROR(platform_directory_remove(PSTRING(TEST_DIR_DEEPER3), true));
+    }
+    PTEST_ERROR(platform_directory_remove(PSTRING(TEST_DIR_LIST_DIR), true));
+}
 
 static void platform_test_all() 
 {   
-    #define TEST_DIR "__platform_test_directory__"
-    #define TEST_FILE1 TEST_DIR "/file1.txt"
-    #define TEST_FILE2 TEST_DIR "/file2.txt"
-    #define TEST_FILE3 TEST_DIR "/file3"
+    printf("platform_test_all() running at directory: '%s'\n", platform_directory_get_current_working());
+    PTEST(strlen(platform_directory_get_current_working()) > 0);
+    PTEST(strlen(platform_get_executable_path()) > 0);
 
-    PTEST_ERROR(platform_directory_create(PSTRING(TEST_DIR), NULL));
-
-    PTEST_ERROR(platform_directory_remove(PSTRING(TEST_DIR), NULL));
+    platform_test_file_io();
+    platform_test_directory_list();
 }
 
+static void platform_test_file_content_equality(Platform_String path, Platform_String content)
+{
+    //Check file info for correctness
+    Platform_File_Info info = {0};
+
+    PTEST_ERROR(platform_file_info(path, &info)); 
+
+    PTEST(info.type == PLATFORM_FILE_TYPE_FILE);
+    PTEST(info.link_type == PLATFORM_LINK_TYPE_NOT_LINK);
+    PTEST(info.size == content.size);
+    
+    //Read the entire file and check content for equality
+    void* buffer = malloc(info.size + 10); 
+    PTEST(buffer);
+
+    int64_t bytes_read = 0;
+    Platform_File file = {0};
+    PTEST_ERROR(platform_file_open(&file, path, PLATFORM_FILE_MODE_READ));
+    PTEST_ERROR(platform_file_read(&file, buffer, info.size, &bytes_read));
+    PTEST(bytes_read == info.size);
+    PTEST(memcmp(buffer, content.data, content.size) == 0, "Content must match! Content: \n'%.*s' \nExpected: \n'%.*s'\n",
+        (int) content.size, (char*) buffer, (int) content.size, content.data
+    );
+
+    //Also verify there really is nothing more
+    PTEST_ERROR(platform_file_read(&file, buffer, 1, &bytes_read));
+    PTEST(bytes_read == 0, "Eof must be found!");
+    
+    PTEST_ERROR(platform_file_close(&file));
+    free(buffer);
+}
+static void platform_test_dir_entry(Platform_Directory_Entry* entries, int64_t entries_count, Platform_String entry_path, Platform_File_Type type, int64_t directory_depth)
+{
+    const char* cwd = platform_directory_get_current_working();
+    int64_t cwd_size = strlen(cwd);
+    int64_t concatenated_size = cwd_size + entry_path.size + 1;
+    char* concatenated = (char*) calloc(1, concatenated_size + 1);
+    PTEST(concatenated);
+    memcpy(concatenated, cwd, cwd_size);
+    concatenated[cwd_size] = '/';
+    memcpy(concatenated + cwd_size + 1, entry_path.data, entry_path.size);
+
+    Platform_Directory_Entry* entry = NULL;
+    for(int64_t i = 0; i < entries_count; i++)
+    {
+        Platform_String curr_path = {entries[i].path, strlen(entries[i].path)};
+        if(curr_path.size == concatenated_size && memcmp(curr_path.data, concatenated, concatenated_size) == 0)
+        {
+            entry = &entries[i];
+            break;
+        }
+    }
+
+    if(type == PLATFORM_FILE_TYPE_NOT_FOUND)
+        PTEST(entry == NULL, "Entry '%s' must not be found!", concatenated);
+    else
+    {
+        PTEST(entry, "Entry '%s' must be found!", concatenated);
+        PTEST(entry->directory_depth == directory_depth);
+        PTEST(entry->info.type == type);
+
+        Platform_File_Info info = {0};
+        PTEST_ERROR(platform_file_info(entry_path, &info));
+        //@NOTE: getting the info is an acess so we skip this.
+        //PTEST(info.created_epoch_time == entry->info.created_epoch_time);
+        //PTEST(info.last_write_epoch_time == entry->info.last_write_epoch_time);
+        //PTEST(info.last_access_epoch_time == entry->info.last_access_epoch_time); 
+        PTEST(info.link_type == entry->info.link_type);
+        PTEST(info.size == entry->info.size);
+        PTEST(info.type == entry->info.type);
+    }
+}
+
+static bool _platform_test_report(Platform_Error error, bool is_error, const char* expression, const char* file, const char* funcion, int line, const char* format, ...)
+{
+    is_error = error != 0 || is_error;
+    if(is_error)
+    {
+        printf("TEST(%s) failed in %s %s:%i\n", expression, file, funcion, line);
+        if(format && strlen(format) > 0)
+        {
+            va_list args;               
+            va_start(args, format);     
+            vprintf(format, args);
+            va_end(args);   
+        }
+        
+        if(error != 0)
+            printf("Error: %s\n", platform_translate_error(error));
+    }
+
+    return is_error; 
+}
 #endif
