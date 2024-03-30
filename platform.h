@@ -101,19 +101,10 @@
 //=========================================
 // Platform layer setup
 //=========================================
-// 
-//The semantics must be quivalent to:
-//   if(new_size == 0) {free(old_ptr); return NULL;}
-//   else              return realloc(old_ptr, new_size);
-//The value pointed to by context is not copied and needs to remain valid untill call to platform_deinit()!
-typedef struct Platform_Allocator {
-    void* (*reallocate)(void* context, int64_t new_size, void* old_ptr);
-    void* context;
-} Platform_Allocator;
 
 //Initializes the platform layer interface. 
 //Should be called before calling any other function.
-void platform_init(Platform_Allocator* allocator_or_null);
+void platform_init();
 
 //Deinitializes the platform layer, freeing all allocated resources back to os.
 //platform_init() should be called before using any other fucntion again!
@@ -1188,16 +1179,8 @@ static void platform_test_dir_entry(Platform_Directory_Entry* entries, int64_t e
 {
     int64_t concatenated_size = entry_path.size;
     char* concatenated = (char*) calloc(1, (size_t) concatenated_size + 1);
+    PTEST(concatenated);
     memcpy(concatenated, entry_path.data, (size_t) entry_path.size);
-
-    // const char* cwd = platform_directory_get_current_working();
-    // int64_t cwd_size = (int64_t) strlen(cwd);
-    // int64_t concatenated_size = cwd_size + entry_path.size + 1;
-    // char* concatenated = (char*) calloc(1, (size_t) concatenated_size + 1);
-    // PTEST(concatenated);
-    // memcpy(concatenated, cwd, (size_t) cwd_size);
-    // concatenated[cwd_size] = '/';
-    // memcpy(concatenated + cwd_size + 1, entry_path.data, (size_t) entry_path.size);
 
     Platform_Directory_Entry* entry = NULL;
     for(int64_t i = 0; i < entries_count; i++)
@@ -1216,7 +1199,6 @@ static void platform_test_dir_entry(Platform_Directory_Entry* entries, int64_t e
     {
         Platform_File_Info info = {0};
         PTEST_ERROR(platform_file_info(entry_path, &info));
-
 
         PTEST(entry, "Entry '%s' must be found!", concatenated);
         PTEST(entry->directory_depth == directory_depth);

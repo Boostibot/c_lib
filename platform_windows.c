@@ -113,8 +113,6 @@ Platform_Error _platform_error_code(bool state)
     return err;
 }
 
-void* _platform_internal_reallocate(int64_t new_size, void* old_ptr);
-
 //=========================================
 // Threading
 //=========================================
@@ -316,10 +314,10 @@ DEFINE_BUFFER_TYPE(void,               Buffer_Base)
 DEFINE_BUFFER_TYPE(char,               String_Buffer)
 DEFINE_BUFFER_TYPE(wchar_t,            WString_Buffer)
 
-#define IO_LOCAL_BUFFER_SIZE (MAX_PATH + 32)
-#define IO_NORMALIZE_LINUX 0
-#define IO_NORMALIZE_DIRECTORY 0
-#define IO_NORMALIZE_FILE 0
+#define _LOCAL_BUFFER_SIZE (MAX_PATH + 32)
+#define _NORMALIZE_LINUX 0
+#define _NORMALIZE_DIRECTORY 0
+#define _NORMALIZE_FILE 0
 
 #define buffer_init_backed(buff, backing_size) \
     _buffer_init_backed((Buffer_Base*) (void*) (buff), sizeof *(buff)->data, _malloca((backing_size) * sizeof *(buff)->data), (backing_size))
@@ -340,27 +338,10 @@ DEFINE_BUFFER_TYPE(wchar_t,            WString_Buffer)
     (buffer_reserve((buff), (buff)->size + 1), \
     (buff)->data[(buff)->size++] = (item))
 
-static Platform_Allocator _platform_allocator;
-void* _platform_internal_reallocate(int64_t new_size, void* old_ptr)
-{
-    void* out = NULL;
-    if(_platform_allocator.reallocate)
-        out = _platform_allocator.reallocate(_platform_allocator.context, new_size, old_ptr);
-    else
-    {
-        if(new_size == 0)
-            free(old_ptr);
-        else
-            out = realloc(old_ptr, new_size);
-    }
-
-    return out;
-}
-
 static void _buffer_deinit(Buffer_Base* buffer)
 {
     if(buffer->is_alloced)
-        (void) _platform_internal_reallocate(0, buffer->data);
+        (void) free(buffer->data);
     
     memset(buffer, 0, sizeof *buffer);
 }
@@ -389,10 +370,10 @@ static void _buffer_reserve(Buffer_Base* buffer, int64_t item_size, int64_t new_
 
         //If was allocated before just realloc. If is backed allocate and copy data over
         if(buffer->is_alloced)
-            new_data = _platform_internal_reallocate(new_capaity * item_size, buffer->data);
+            new_data = realloc(buffer->data, new_capaity * item_size);
         else
         {
-            new_data = _platform_internal_reallocate(new_capaity * item_size, 0);
+            new_data = malloc(new_capaity * item_size);
             memcpy(new_data, buffer->data, buffer->capacity*item_size);
         }
 
@@ -471,7 +452,7 @@ const wchar_t* _ephemeral_wstring_convert(Platform_String path, bool normalize_p
 
 char* _convert_to_utf8_normalize_path(String_Buffer* append_to_or_null, Platform_WString string, int normalize_flag)
 {
-    (normalize_flag);
+    (void) (normalize_flag);
     String_Buffer local = {0};
     String_Buffer* append_to = append_to_or_null ? append_to_or_null : &local;
 
@@ -495,20 +476,6 @@ const wchar_t* _ephemeral_path(Platform_String path)
 {
     return _ephemeral_wstring_convert(path, true);
 }
-
-static void _w_concat(WString_Buffer* output, const wchar_t* a, const wchar_t* b, const wchar_t* c)
-{
-    int64_t a_size = a ? wcslen(a) : 0;
-    int64_t b_size = b ? wcslen(b) : 0;
-    int64_t c_size = c ? wcslen(c) : 0;
-    int64_t composite_size = a_size + b_size + c_size;
-        
-    buffer_resize(output, composite_size);
-    memmove(output->data,                   a, sizeof(wchar_t) * a_size);
-    memmove(output->data + a_size,          b, sizeof(wchar_t) * b_size);
-    memmove(output->data + a_size + b_size, c, sizeof(wchar_t) * c_size);
-}
-
 
 #define _TRANSLATED_ERRORS_SIMULATANEOUS 8
 static __declspec(thread) char* _translated_errors[_TRANSLATED_ERRORS_SIMULATANEOUS];
@@ -824,6 +791,331 @@ Platform_Error platform_file_resize(Platform_String file_path, int64_t size)
 }
 
 
+static Platform_Link_Type _get_link_type(const wchar_t* directory_path)
+{
+    HANDLE file = CreateFileW(directory_path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                              NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    size_t requiredSize = GetFinalPathNameByHandleW(file, NULL, 0, FILE_NAME_NORMALIZED);
+    CloseHandle(file);
+
+    Platform_Link_Type link_type = PLATFORM_LINK_TYPE_NOT_LINK;
+    if(requiredSize == 0)
+        link_type = PLATFORM_LINK_TYPE_OTHER;
+    
+    return link_type;
+}
+
+Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null)
+{    
+    WIN32_FILE_ATTRIBUTE_DATA native_info = {0};
+    Platform_File_Info info = {0};
+    
+    const wchar_t* path = _ephemeral_path(file_path);
+    bool state = !!GetFileAttributesExW(path, GetFileExInfoStandard, &native_info);
+        
+    if(native_info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+        info.link_type = _get_link_type(path);
+    if(!state)
+        return _platform_error_code(state);
+            
+    info.created_epoch_time = _filetime_to_epoch_time(native_info.ftCreationTime);
+    info.last_access_epoch_time = _filetime_to_epoch_time(native_info.ftLastAccessTime);
+    info.last_write_epoch_time = _filetime_to_epoch_time(native_info.ftLastWriteTime);
+    info.size = ((int64_t) native_info.nFileSizeHigh << 32) | ((int64_t) native_info.nFileSizeLow);
+        
+    if(native_info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+    {
+        info.last_access_epoch_time = info.created_epoch_time;
+        info.last_write_epoch_time = info.created_epoch_time;
+        info.type = PLATFORM_FILE_TYPE_DIRECTORY;
+    }
+    else
+        info.type = PLATFORM_FILE_TYPE_FILE;
+
+    if(info_or_null)
+        *info_or_null = info;
+    return _platform_error_code(state);
+}
+
+BOOL _platform_directory_exists(const wchar_t* szPath)
+{
+  DWORD dwAttrib = GetFileAttributesW(szPath);
+
+  return (dwAttrib != INVALID_FILE_ATTRIBUTES && 
+         (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
+}
+
+Platform_Error platform_directory_create(Platform_String dir_path, bool fail_if_already_existing)
+{
+    const wchar_t* path = _ephemeral_path(dir_path);
+    bool state = !!CreateDirectoryW(path, NULL);
+    if(state == false && GetLastError() == ERROR_ALREADY_EXISTS)
+    {
+        if(fail_if_already_existing == false)
+            state = true;
+    }
+
+    return _platform_error_code(state);
+}
+    
+Platform_Error platform_directory_remove(Platform_String dir_path, bool fail_if_not_found)
+{
+    const wchar_t* path = _ephemeral_path(dir_path);
+    bool state = !!RemoveDirectoryW(path);
+    if(state == false && GetLastError() == ERROR_PATH_NOT_FOUND)
+    {
+        if(fail_if_not_found == false)
+            state = true;
+    }
+
+    return _platform_error_code(state);
+}
+
+static char* _alloc_full_path(String_Buffer* buffer_or_null, const wchar_t* local_path, int normalize_flag)
+{
+    (void) normalize_flag;
+    WString_Buffer full_path = {0};
+    buffer_init_backed(&full_path, _LOCAL_BUFFER_SIZE);
+
+    int64_t needed_size = GetFullPathNameW(local_path, 0, NULL, NULL);
+    if(needed_size > full_path.size)
+    {
+        buffer_resize(&full_path, needed_size);
+        needed_size = GetFullPathNameW(local_path, (DWORD) full_path.size, full_path.data, NULL);
+    }
+    
+    Platform_WString full_path_str = {full_path.data, full_path.size};
+    char* out = _convert_to_utf8_normalize_path(buffer_or_null, full_path_str, normalize_flag);
+    buffer_deinit(&full_path);
+    return out;
+}
+
+WString_Buffer _vwformat_malloc(WString_Buffer* into_or_null, const wchar_t* format, va_list args)
+{
+    if(format == NULL)
+        format = L"";
+
+    //gcc modifies va_list on use! make sure to copy it!
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int count = vswprintf(NULL, 0, format, args);
+
+    WString_Buffer backup = {0};
+    if(into_or_null == NULL)
+        into_or_null = &backup;
+
+    buffer_resize(into_or_null, count);
+    vswprintf(into_or_null->data, (size_t) count + 1, format, args_copy);
+    return *into_or_null;
+}
+
+WString_Buffer _wformat_malloc(WString_Buffer* into_or_null, const wchar_t* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    WString_Buffer out = _vwformat_malloc(into_or_null, format, args);
+    va_end(args);
+    return out;
+}
+
+Platform_Error platform_directory_list_contents_alloc(Platform_String path, Platform_Directory_Entry** _entries, int64_t* _entries_count, int64_t max_depth)
+{
+    if(max_depth == -1)
+        max_depth = INT64_MAX;
+    if(max_depth <= 0)
+        return _platform_error_code(true);
+
+    typedef struct Dir_Iterator {
+        WIN32_FIND_DATAW current_entry;
+        HANDLE first_found;
+        bool failed;
+        bool had_first;
+        bool _pad[6];
+        WString_Buffer path;    
+        int64_t index;  
+    } Dir_Iterator;
+
+    DEFINE_BUFFER_TYPE(Dir_Iterator, Dir_Iterator_Buffer);
+    DEFINE_BUFFER_TYPE(Platform_Directory_Entry, Platform_Directory_Entry_Buffer);
+    
+    Platform_Directory_Entry_Buffer entries = {0};
+    Dir_Iterator_Buffer dir_iterators = {0};
+    buffer_init_backed(&dir_iterators, 16);
+
+    {
+        Dir_Iterator first = {0};
+        first.path = _wformat_malloc(NULL, L"%s", _ephemeral_path(path));
+        buffer_push(&dir_iterators, first);
+    }
+    
+    WString_Buffer temp = {0};
+    buffer_init_backed(&temp, _LOCAL_BUFFER_SIZE);
+
+    Platform_Error error = PLATFORM_ERROR_OK;
+    while(dir_iterators.size > 0)
+    {
+        Dir_Iterator* it = &dir_iterators.data[dir_iterators.size - 1];
+
+        if(it->had_first)
+            it->failed = !FindNextFileW(it->first_found, &it->current_entry);
+        else
+        {
+            //int count = swprintf(NULL, 0, L"%s\\*.*", it->path.data);
+            _wformat_malloc(&temp, L"%s\\*.*", it->path.data);
+            it->first_found = FindFirstFileW(temp.data, &it->current_entry);
+            it->had_first = true;
+            if(it->first_found == INVALID_HANDLE_VALUE)
+            {
+                it->failed = true;
+                if(dir_iterators.size == 1)
+                    error = _platform_error_code(false);
+            }
+        }
+
+        if(it->failed)
+        {
+            if(it->first_found != INVALID_HANDLE_VALUE && it->first_found != NULL)
+                FindClose(it->first_found);
+
+            buffer_deinit(&it->path);
+            buffer_resize(&dir_iterators, dir_iterators.size - 1);
+        }
+        else if(wcscmp(it->current_entry.cFileName, L".") != 0 && wcscmp(it->current_entry.cFileName, L"..") != 0)
+        {
+            it->index += 1;
+            _wformat_malloc(&temp, L"%s\\%s", it->path.data, it->current_entry.cFileName);
+        
+            Platform_File_Info info = {0};
+            info.created_epoch_time = _filetime_to_epoch_time(it->current_entry.ftCreationTime);
+            info.last_access_epoch_time = _filetime_to_epoch_time(it->current_entry.ftLastAccessTime);
+            info.last_write_epoch_time = _filetime_to_epoch_time(it->current_entry.ftLastWriteTime);
+            info.size = ((int64_t) it->current_entry.nFileSizeHigh << 32) | ((int64_t) it->current_entry.nFileSizeLow);
+        
+            info.type = PLATFORM_FILE_TYPE_FILE;
+            if(it->current_entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            {
+                info.last_access_epoch_time = info.created_epoch_time;
+                info.last_write_epoch_time = info.created_epoch_time;
+                info.type = PLATFORM_FILE_TYPE_DIRECTORY;
+            }
+            else
+                info.type = PLATFORM_FILE_TYPE_FILE;
+
+            if(it->current_entry.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+                info.link_type = _get_link_type(temp.data);  
+
+            int flag = _NORMALIZE_LINUX;
+            if(info.type == PLATFORM_FILE_TYPE_DIRECTORY)
+                flag |= _NORMALIZE_DIRECTORY;
+            else
+                flag |= _NORMALIZE_FILE;
+            
+            Platform_WString path_str = {temp.data, temp.size};
+            Platform_Directory_Entry entry = {0};
+            entry.info = info;
+            entry.path = _convert_to_utf8_normalize_path(NULL, path_str, flag);
+            entry.directory_depth = dir_iterators.size - 1;
+            buffer_push(&entries, entry);
+
+            assert(dir_iterators.size < 10000 && "must not get stuck in an infinite loop");
+            if(info.type == PLATFORM_FILE_TYPE_DIRECTORY && dir_iterators.size < max_depth)
+            {
+                Dir_Iterator next = {0};
+                buffer_append(&next.path, temp.data, temp.size);
+                buffer_push(&dir_iterators, next);
+            }
+        }
+    }
+    
+    
+    if(error != 0)
+        buffer_deinit(&entries);
+    else
+    {
+        //Null terminate the entries
+        Platform_Directory_Entry terminator = {0};
+        buffer_push(&entries, terminator);
+        entries.size -= 1; //is not really a valid entry 
+    }
+
+    buffer_deinit(&temp);
+    buffer_deinit(&dir_iterators);
+    
+    if(_entries) *_entries = entries.data;
+    if(_entries_count) *_entries_count = entries.size;
+
+    return error;
+}
+
+void platform_directory_list_contents_free(Platform_Directory_Entry* entries)
+{
+    if(entries == NULL)
+        return;
+
+    int64_t i = 0;
+    for(; entries[i].path != NULL; i++)
+        free(entries[i].path);
+          
+    free(entries);
+}
+
+//CWD madness
+static String_Buffer _cwd_cached = {0};
+static String_Buffer _exe_dir_cached = {0};
+static WString_Buffer _wcwd_cached = {0};
+Platform_Error platform_directory_set_current_working(Platform_String new_working_dir)
+{
+    const wchar_t* path = _ephemeral_path(new_working_dir);
+
+    bool state = _wchdir(path) == 0;
+    return _platform_error_code(state);
+}
+
+const char* platform_directory_get_current_working()
+{
+    wchar_t* current_working = _wgetcwd(NULL, 0);
+    if(current_working == NULL || _wcwd_cached.data == NULL || wcscmp(current_working, _wcwd_cached.data) != 0)
+    {
+        buffer_resize(&_wcwd_cached, 0);
+        buffer_append(&_wcwd_cached, current_working, current_working ? wcslen(current_working) : 0);
+        _alloc_full_path(&_cwd_cached, current_working, _NORMALIZE_DIRECTORY);
+    }
+    
+    assert(_cwd_cached.data != NULL);
+    return _cwd_cached.data;
+}
+
+const char* platform_get_executable_path()
+{
+    if(_exe_dir_cached.data == NULL)
+    {
+        WString_Buffer wide = {0};
+        buffer_init_backed(&wide, _LOCAL_BUFFER_SIZE);
+        buffer_resize(&wide, MAX_PATH);
+
+        for(int64_t i = 0; i < 16; i++)
+        {
+            buffer_resize(&wide, wide.size * 2);
+            int64_t len = GetModuleFileNameW(NULL, wide.data, (DWORD) wide.size);
+            if(len < wide.size)
+                break;
+        }
+        
+        _alloc_full_path(&_exe_dir_cached, wide.data, _NORMALIZE_FILE);
+        buffer_deinit(&wide);
+    }
+    
+    assert(_exe_dir_cached.data != NULL);
+    return _exe_dir_cached.data;
+}
+
+static void _platform_cached_directory_deinit()
+{
+    buffer_deinit(&_cwd_cached);
+    buffer_deinit(&_wcwd_cached);
+    buffer_deinit(&_exe_dir_cached);
+}
+
 void platform_file_memory_unmap(Platform_Memory_Mapping* mapping)
 {
     if(mapping == NULL)
@@ -945,355 +1237,6 @@ Platform_Error platform_file_memory_map(Platform_String file_path, int64_t desir
     }
 }
 
-static Platform_Link_Type _get_link_type(const wchar_t* directory_path)
-{
-    HANDLE file = CreateFileW(directory_path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                              NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    size_t requiredSize = GetFinalPathNameByHandleW(file, NULL, 0, FILE_NAME_NORMALIZED);
-    CloseHandle(file);
-
-    Platform_Link_Type link_type = PLATFORM_LINK_TYPE_NOT_LINK;
-    if(requiredSize == 0)
-        link_type = PLATFORM_LINK_TYPE_OTHER;
-    
-    return link_type;
-}
-
-Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null)
-{    
-    WIN32_FILE_ATTRIBUTE_DATA native_info = {0};
-    Platform_File_Info info = {0};
-    
-    const wchar_t* path = _ephemeral_path(file_path);
-    bool state = !!GetFileAttributesExW(path, GetFileExInfoStandard, &native_info);
-        
-    if(native_info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
-        info.link_type = _get_link_type(path);
-    if(!state)
-        return _platform_error_code(state);
-            
-    info.created_epoch_time = _filetime_to_epoch_time(native_info.ftCreationTime);
-    info.last_access_epoch_time = _filetime_to_epoch_time(native_info.ftLastAccessTime);
-    info.last_write_epoch_time = _filetime_to_epoch_time(native_info.ftLastWriteTime);
-    info.size = ((int64_t) native_info.nFileSizeHigh << 32) | ((int64_t) native_info.nFileSizeLow);
-        
-    if(native_info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-    {
-        info.last_access_epoch_time = info.created_epoch_time;
-        info.last_write_epoch_time = info.created_epoch_time;
-        info.type = PLATFORM_FILE_TYPE_DIRECTORY;
-    }
-    else
-        info.type = PLATFORM_FILE_TYPE_FILE;
-
-    if(info_or_null)
-        *info_or_null = info;
-    return _platform_error_code(state);
-}
-
-BOOL _platform_directory_exists(const wchar_t* szPath)
-{
-  DWORD dwAttrib = GetFileAttributesW(szPath);
-
-  return (dwAttrib != INVALID_FILE_ATTRIBUTES && 
-         (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
-}
-
-Platform_Error platform_directory_create(Platform_String dir_path, bool fail_if_already_existing)
-{
-    const wchar_t* path = _ephemeral_path(dir_path);
-    bool state = !!CreateDirectoryW(path, NULL);
-    if(state == false && GetLastError() == ERROR_ALREADY_EXISTS)
-    {
-        if(fail_if_already_existing == false)
-            state = true;
-    }
-
-    return _platform_error_code(state);
-}
-    
-Platform_Error platform_directory_remove(Platform_String dir_path, bool fail_if_not_found)
-{
-    const wchar_t* path = _ephemeral_path(dir_path);
-    bool state = !!RemoveDirectoryW(path);
-    if(state == false && GetLastError() == ERROR_PATH_NOT_FOUND)
-    {
-        if(fail_if_not_found == false)
-            state = true;
-    }
-
-    return _platform_error_code(state);
-}
-
-static char* _alloc_full_path(String_Buffer* buffer_or_null, const wchar_t* local_path, int normalize_flag)
-{
-    (void) normalize_flag;
-    WString_Buffer full_path = {0};
-    buffer_init_backed(&full_path, IO_LOCAL_BUFFER_SIZE);
-
-    int64_t needed_size = GetFullPathNameW(local_path, 0, NULL, NULL);
-    if(needed_size > full_path.size)
-    {
-        buffer_resize(&full_path, needed_size);
-        needed_size = GetFullPathNameW(local_path, (DWORD) full_path.size, full_path.data, NULL);
-    }
-    
-    Platform_WString full_path_str = {full_path.data, full_path.size};
-    char* out = _convert_to_utf8_normalize_path(buffer_or_null, full_path_str, normalize_flag);
-    buffer_deinit(&full_path);
-    return out;
-}
-
-typedef struct Directory_Visitor
-{
-    WIN32_FIND_DATAW current_entry;
-    HANDLE first_found;
-    bool failed;
-} Directory_Visitor;
-
-#define WIO_FILE_MASK_ALL L"\\*.*"
-
-static Directory_Visitor _directory_iterate_init(const wchar_t* dir_path, const wchar_t* file_mask)
-{
-    WString_Buffer built_path = {0};
-    buffer_init_backed(&built_path, IO_LOCAL_BUFFER_SIZE);
-    _w_concat(&built_path, dir_path, file_mask, NULL);
-
-    Directory_Visitor visitor = {0};
-    assert(built_path.data != NULL);
-    visitor.first_found = FindFirstFileW(built_path.data, &visitor.current_entry);
-    while(visitor.failed == false && visitor.first_found != INVALID_HANDLE_VALUE)
-    {
-        if(wcscmp(visitor.current_entry.cFileName, L".") == 0
-            || wcscmp(visitor.current_entry.cFileName, L"..") == 0)
-            visitor.failed = !FindNextFileW(visitor.first_found, &visitor.current_entry);
-        else
-            break;
-    }
-
-    buffer_deinit(&built_path);
-    return visitor;
-}
-
-static Platform_Error _directory_iterate_has(const Directory_Visitor* visitor)
-{
-    return visitor->first_found != INVALID_HANDLE_VALUE && visitor->failed == false;
-}
-
-static void _directory_iterate_next(Directory_Visitor* visitor)
-{
-    visitor->failed = visitor->failed || !FindNextFileW(visitor->first_found, &visitor->current_entry);
-}
-
-static void _directory_iterate_deinit(Directory_Visitor* visitor)
-{
-    FindClose(visitor->first_found);
-}
-
-DEFINE_BUFFER_TYPE(Platform_Directory_Entry, Platform_Directory_Entry_Buffer);
-
-static Platform_Error _directory_list_contents_alloc(const wchar_t* directory_path, Platform_Directory_Entry_Buffer* entries, int64_t max_depth)
-{
-    typedef struct Dir_Context {
-        Directory_Visitor visitor;
-        WString_Buffer path;    
-        int64_t depth;          
-        int64_t index;          
-    } Dir_Context;
-
-    DEFINE_BUFFER_TYPE(Dir_Context, Dir_Context_Buffer);
-
-    Platform_Error error = PLATFORM_ERROR_OK;
-    Dir_Context_Buffer stack = {0};
-    WString_Buffer built_path = {0};
-    Platform_WString directory_path_str = {0};
-    directory_path_str.data = directory_path;
-    directory_path_str.size = directory_path ? wcslen(directory_path) : 0;
-
-    buffer_init_backed(&built_path, IO_LOCAL_BUFFER_SIZE);
-    buffer_init_backed(&stack, 16);
-
-    Dir_Context first = {0};
-    first.visitor = _directory_iterate_init(directory_path, WIO_FILE_MASK_ALL);
-
-    if(_directory_iterate_has(&first.visitor) == false)
-        error = _platform_error_code(false);
-    else
-    {
-        buffer_append(&first.path, directory_path_str.data, directory_path_str.size); //TODO: no path copying!
-        buffer_push(&stack, first);
-        const int64_t MAX_RECURSION = 10000;
-        for(int64_t reading_from = 0; reading_from < stack.size; reading_from++)
-        {
-            for(;;)
-            {
-                Dir_Context* dir_context = &stack.data[reading_from];
-                Directory_Visitor* visitor = &dir_context->visitor;
-                if(_directory_iterate_has(visitor) == false)
-                    break;
-
-                _w_concat(&built_path, dir_context->path.data, L"\\", visitor->current_entry.cFileName);
-        
-                Platform_File_Info info = {0};
-                info.created_epoch_time = _filetime_to_epoch_time(visitor->current_entry.ftCreationTime);
-                info.last_access_epoch_time = _filetime_to_epoch_time(visitor->current_entry.ftLastAccessTime);
-                info.last_write_epoch_time = _filetime_to_epoch_time(visitor->current_entry.ftLastWriteTime);
-                info.size = ((int64_t) visitor->current_entry.nFileSizeHigh << 32) | ((int64_t) visitor->current_entry.nFileSizeLow);
-        
-                info.type = PLATFORM_FILE_TYPE_FILE;
-                if(visitor->current_entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-                {
-                    info.last_access_epoch_time = info.created_epoch_time;
-                    info.last_write_epoch_time = info.created_epoch_time;
-                    info.type = PLATFORM_FILE_TYPE_DIRECTORY;
-                }
-                else
-                    info.type = PLATFORM_FILE_TYPE_FILE;
-
-                if(visitor->current_entry.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
-                    info.link_type = _get_link_type(built_path.data);  
-
-                int flag = IO_NORMALIZE_LINUX;
-                if(info.type == PLATFORM_FILE_TYPE_DIRECTORY)
-                    flag |= IO_NORMALIZE_DIRECTORY;
-                else
-                    flag |= IO_NORMALIZE_FILE;
-
-                Platform_Directory_Entry entry = {0};
-                entry.info = info;
-                entry.path = _alloc_full_path(NULL, built_path.data, flag);
-                entry.directory_depth = dir_context->depth;
-                buffer_push(entries, entry);
-
-                if(info.type == PLATFORM_FILE_TYPE_DIRECTORY && dir_context->depth + 1 < max_depth)
-                {
-                    Dir_Context next = {0};
-                    buffer_append(&next.path, built_path.data, built_path.size);
-                    next.depth = dir_context->depth + 1;
-                    next.visitor = _directory_iterate_init(next.path.data, WIO_FILE_MASK_ALL);
-
-                    assert(next.depth < MAX_RECURSION && "must not get stuck in an infinite loop");
-                    buffer_push(&stack, next);
-                }
-                
-                //In case we reallocated
-                dir_context = &stack.data[reading_from];
-                visitor = &dir_context->visitor;
-                _directory_iterate_next(visitor); 
-                dir_context->index++;
-            }
-        }
-        
-        //Null terminate the entries
-        Platform_Directory_Entry terminator = {0};
-        buffer_push(entries, terminator);
-    }
-
-    for(int64_t i = 0; i < stack.size; i++)
-    {
-        Dir_Context* dir_context = &stack.data[i];
-        buffer_deinit(&dir_context->path);
-        _directory_iterate_deinit(&dir_context->visitor);
-    }
-
-    buffer_deinit(&stack);
-    buffer_deinit(&built_path);
-    return error;
-}
-
-Platform_Error platform_directory_list_contents_alloc(Platform_String directory_path, Platform_Directory_Entry** entries, int64_t* entries_count, int64_t max_depth)
-{
-    assert(entries != NULL && entries_count != NULL);
-    Platform_Directory_Entry_Buffer entries_stack = {0};
-
-    int64_t fixed_max_depth = max_depth;
-    if(fixed_max_depth == -1)
-        fixed_max_depth = INT64_MAX;
-    if(fixed_max_depth < 0)
-        fixed_max_depth = 0;
-
-    const wchar_t* path = _ephemeral_path(directory_path);
-    Platform_Error error = _directory_list_contents_alloc(path, &entries_stack, fixed_max_depth);
-
-    if(error == PLATFORM_ERROR_OK && entries)
-        *entries = entries_stack.data;
-    else
-        buffer_deinit(&entries_stack);
-
-    if(entries_count)
-        *entries_count = entries_stack.size > 0 ? entries_stack.size - 1 : 0;
-
-    return error;
-}
-
-void platform_directory_list_contents_free(Platform_Directory_Entry* entries)
-{
-    if(entries == NULL)
-        return;
-
-    int64_t i = 0;
-    for(; entries[i].path != NULL; i++)
-        _platform_internal_reallocate(0, entries[i].path);
-          
-    _platform_internal_reallocate(0, entries);
-}
-
-//CWD madness
-static String_Buffer _cwd_cached = {0};
-static String_Buffer _exe_dir_cached = {0};
-static WString_Buffer _wcwd_cached = {0};
-Platform_Error platform_directory_set_current_working(Platform_String new_working_dir)
-{
-    const wchar_t* path = _ephemeral_path(new_working_dir);
-
-    bool state = _wchdir(path) == 0;
-    return _platform_error_code(state);
-}
-
-const char* platform_directory_get_current_working()
-{
-    wchar_t* current_working = _wgetcwd(NULL, 0);
-    if(current_working == NULL || _wcwd_cached.data == NULL || wcscmp(current_working, _wcwd_cached.data) != 0)
-    {
-        buffer_resize(&_wcwd_cached, 0);
-        buffer_append(&_wcwd_cached, current_working, current_working ? wcslen(current_working) : 0);
-        _alloc_full_path(&_cwd_cached, current_working, IO_NORMALIZE_DIRECTORY);
-    }
-    
-    assert(_cwd_cached.data != NULL);
-    return _cwd_cached.data;
-}
-
-const char* platform_get_executable_path()
-{
-    if(_exe_dir_cached.data == NULL)
-    {
-        WString_Buffer wide = {0};
-        buffer_init_backed(&wide, IO_LOCAL_BUFFER_SIZE);
-        buffer_resize(&wide, MAX_PATH);
-
-        for(int64_t i = 0; i < 16; i++)
-        {
-            buffer_resize(&wide, wide.size * 2);
-            int64_t len = GetModuleFileNameW(NULL, wide.data, (DWORD) wide.size);
-            if(len < wide.size)
-                break;
-        }
-        
-        _alloc_full_path(&_exe_dir_cached, wide.data, IO_NORMALIZE_FILE);
-        buffer_deinit(&wide);
-    }
-    
-    assert(_exe_dir_cached.data != NULL);
-    return _exe_dir_cached.data;
-}
-
-static void _platform_cached_directory_deinit()
-{
-    buffer_deinit(&_cwd_cached);
-    buffer_deinit(&_wcwd_cached);
-    buffer_deinit(&_exe_dir_cached);
-}
 
 /*
 typedef bool (*_File_Watch_Func)(void* context);
@@ -1347,7 +1290,7 @@ Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_Str
     assert(async_func != NULL);
     
     HANDLE watch_handle = INVALID_HANDLE_VALUE;
-    _Platform_File_Watch_Context* watch_context = (_Platform_File_Watch_Context*) _platform_internal_reallocate(sizeof *watch_context, NULL);
+    _Platform_File_Watch_Context* watch_context = (_Platform_File_Watch_Context*) malloc(sizeof *watch_context);
     file_watch->handle = watch_context;
     Platform_Error error = PLATFORM_ERROR_OK;
     if(watch_context != NULL)
@@ -1399,7 +1342,7 @@ void platform_file_unwatch(Platform_File_Watch* file_watch)
             //TerminateThread (file_watch->thread.handle, 0);
             FindCloseChangeNotification(watch_context->watch_handle);
         }
-        _platform_internal_reallocate(0, watch_context);
+        free(watch_context);
     }
     memset(file_watch, 0, sizeof *file_watch);
 }
@@ -1979,11 +1922,8 @@ void _platform_set_console_utf8()
     setlocale(LC_ALL, ".UTF-8");
 }
 
-void platform_init(Platform_Allocator* allocator)
+void platform_init()
 {
-    if(allocator)
-        _platform_allocator = *allocator;
-
     platform_deinit();
 
     platform_perf_counter();
@@ -1996,9 +1936,6 @@ void platform_init(Platform_Allocator* allocator)
 }
 void platform_deinit()
 {
-    Platform_Allocator nil_alloc = {0};
-    _platform_allocator = nil_alloc;
-
     _platform_deinit_timings();
     _translated_deinit_all();
     _ephemeral_wstring_deinit_all();

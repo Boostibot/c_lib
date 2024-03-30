@@ -18,51 +18,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-typedef struct Platform_State {
-    int64_t startup_perf_counter;
-    int64_t startup_epoch_time;
-} Platform_State;
-
-Platform_State gp_state = {0};
-
-static int64_t untested_stack_overflow_calendar_to_time_t(int64_t sec, int64_t min, int64_t hour, int64_t day, int64_t month, int64_t year);
-static int64_t platform_startup_local_epoch_time();
-
-void platform_init(Platform_Allocator* alloc_or_null)
-{
-    platform_perf_counter_startup();
-    platform_epoch_time_startup();
-    platform_perf_counter_startup();
-}
-
-void platform_deinit()
-{
-    memset(&gp_state, 0, sizeof gp_state);
-}
-
-void platform_set_internal_allocator(Platform_Allocator allocator)
-{
-    (void) allocator;
-}
-
-void* _platform_internal_reallocate(int64_t new_size, void* old_ptr)
-{
-    assert(new_size >= 0);
-    if(new_size == 0)
-    {
-        free(old_ptr);
-        return NULL;
-    }
-    else
-    {
-        void* out = realloc(old_ptr, (size_t) new_size);
-        if(out == NULL)
-            errno = ENOMEM;
-
-        return out;
-    }
-}
-
 //=========================================
 // Virtual memory
 //=========================================
@@ -147,7 +102,7 @@ void* _platform_internal_reallocate(int64_t new_size, void* old_ptr)
     X(EWOULDBLOCK) \
     X(EXDEV) \
 
-void print_errno(int errno_val)
+void _print_errno(int errno_val)
 {
     const char* name = "None";
     #define X(ERRNO_CODE) \
@@ -170,7 +125,7 @@ void* platform_virtual_reallocate(void* allocate_at, int64_t bytes, Platform_Vir
 
         if(out == MAP_FAILED)
         {
-            print_errno(errno);
+            _print_errno(errno);
             out = NULL;
         }
     }
@@ -277,7 +232,7 @@ void _pthread_cleanup_routine(void* arg)
 {
     assert(arg != NULL);
     Platform_Pthread_State* thread_state = (Platform_Pthread_State*) arg;
-    _platform_internal_reallocate(0, thread_state);
+    free(thread_state);
 }
 
 void* _platform_pthread_start_routine(void* arg)
@@ -288,7 +243,7 @@ void* _platform_pthread_start_routine(void* arg)
     // pthread_cleanup_push(_pthread_cleanup_routine, arg);
     Platform_Pthread_State* thread_state = (Platform_Pthread_State*) arg;
     thread_state->func(thread_state->context);
-    _platform_internal_reallocate(0, thread_state);
+    free(thread_state);
     return NULL;
 }
 
@@ -309,7 +264,7 @@ Platform_Error platform_thread_launch(Platform_Thread* thread, void (*func)(void
     
     if(state)
     {
-        thread_state = (Platform_Pthread_State*) _platform_internal_reallocate(sizeof(Platform_Pthread_State), NULL);
+        thread_state = (Platform_Pthread_State*) malloc(sizeof(Platform_Pthread_State));
         state = thread_state != NULL;
         if(state)
         {
@@ -320,7 +275,7 @@ Platform_Error platform_thread_launch(Platform_Thread* thread, void (*func)(void
             if(pthread_create(&thread_state->thread, attr_ptr, _platform_pthread_start_routine, thread_state) != 0)
             {
                 state = false;
-                _platform_internal_reallocate(0, thread_state);
+                free(thread_state);
             }
 
         }
@@ -385,7 +340,7 @@ Platform_Error platform_mutex_init(Platform_Mutex* mutex)
 {
     platform_mutex_deinit(mutex);
     bool state = true;
-    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) _platform_internal_reallocate(sizeof(Platform_Mutex_State), NULL);
+    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) malloc(sizeof(Platform_Mutex_State));
 
     state = mutex_state != NULL;
     if(state)
@@ -404,7 +359,7 @@ void platform_mutex_deinit(Platform_Mutex* mutex)
     if(mutex_state)
     {
         pthread_mutex_destroy(&mutex_state->mutex);
-        _platform_internal_reallocate(0, mutex_state);
+        free(mutex_state);
     }
 
     memset(mutex, 0, sizeof *mutex);
@@ -453,12 +408,15 @@ int64_t platform_perf_counter_frequency()
 	return _SECOND_NANOSECS;
 }
 
+
+static int64_t startup_perf_counter;
+static int64_t startup_epoch_time;
 int64_t platform_perf_counter_startup()
 {
-    if(gp_state.startup_perf_counter == 0)
-        gp_state.startup_perf_counter = platform_perf_counter();
+    if(startup_perf_counter == 0)
+        startup_perf_counter = platform_perf_counter();
 
-    return gp_state.startup_perf_counter;
+    return startup_perf_counter;
 }
 
 int64_t platform_epoch_time()
@@ -470,12 +428,17 @@ int64_t platform_epoch_time()
 
 int64_t platform_epoch_time_startup()
 {
-    if(gp_state.startup_epoch_time == 0)
-        gp_state.startup_epoch_time = platform_epoch_time();
+    if(startup_epoch_time == 0)
+        startup_epoch_time = platform_epoch_time();
 
-    return gp_state.startup_epoch_time;
+    return startup_epoch_time;
 }
 
+int64_t _platform_perf_counters_deinit()
+{
+    startup_perf_counter = 0;
+    startup_epoch_time = 0;
+}
 //=========================================
 // Filesystem
 //=========================================
@@ -958,12 +921,6 @@ const char* platform_get_executable_path()
 #include <dirent.h> 
 #include <stdio.h> 
 #include <string.h>
-
-void show_dir_content(char * path)
-{
-  
-}
-
 #include <stdarg.h>
 char* _vformat_malloc(const char* format, va_list args)
 {
@@ -1098,10 +1055,22 @@ Platform_Error platform_directory_list_contents_alloc(Platform_String directory_
         }
     }    
 
-    //We use null termination to mark how much we used. See platform_directory_list_contents_free
-    assert(entries_count < entries_capacity);
-    Platform_Directory_Entry last_entry = {0};
-    entries[entries_count] = last_entry;
+    free(dir_iterators);
+    dir_iterators = NULL;
+
+    if(error != 0)
+    {
+        free(entries);
+        entries = NULL;
+        entries_count = 0;
+    }
+    else
+    {
+        //We use null termination to mark how much we used. See platform_directory_list_contents_free
+        assert(entries_count < entries_capacity);
+        Platform_Directory_Entry last_entry = {0};
+        entries[entries_count] = last_entry;
+    }
 
     if(_entries) *_entries = entries;
     if(_entries_count) *_entries_count = (int64_t) entries_count;
@@ -1514,6 +1483,18 @@ const char* platform_exception_to_string(Platform_Exception error)
         default:
         case PLATFORM_EXCEPTION_OTHER: return "PLATFORM_EXCEPTION_OTHER";
     }
+}
+
+void platform_init()
+{
+    platform_perf_counter_startup();
+    platform_epoch_time_startup();
+    platform_perf_counter_startup();
+}
+
+void platform_deinit()
+{
+    _platform_perf_counters_deinit();
 }
 
 // #endif
