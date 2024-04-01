@@ -72,14 +72,12 @@ typedef struct Source_Info {
 //See below for implementation on each compiler.
 
 #if defined(_MSC_VER)
-    #define ASSUME_UNREACHABLE() __assume(0)
+    #define ASSUME_UNREACHABLE()                                    __assume(0)
     #define ATTRIBUTE_RESTRICT                                      __restrict
     #define ATTRIBUTE_INLINE_ALWAYS                                 __forceinline
     #define ATTRIBUTE_INLINE_NEVER                                  __declspec(noinline)
     #define ATTRIBUTE_THREAD_LOCAL                                  __declspec(thread)
     #define ATTRIBUTE_ALIGNED(bytes)                                __declspec(align(bytes))
-    #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index)     /* empty */
-    #define ATTRIBUTE_FORMAT_ARG                                    _Printf_format_string_ 
     #define ATTRIBUTE_NORETURN                                      __declspec(noreturn)
     #define ATTRIBUTE_ALLOCATOR(size_arg_index, align_arg_index)    __declspec(restrict)
 #elif defined(__GNUC__) || defined(__clang__)
@@ -89,8 +87,6 @@ typedef struct Source_Info {
     #define ATTRIBUTE_INLINE_NEVER                                  __attribute__((noinline))
     #define ATTRIBUTE_THREAD_LOCAL                                  __thread
     #define ATTRIBUTE_ALIGNED(bytes)                                __attribute__((aligned(bytes)))
-    #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index)     __attribute__((format_arg (printf, format_arg_index, 0)))
-    #define ATTRIBUTE_FORMAT_ARG                                    /* empty */    
     #define ATTRIBUTE_NORETURN                                      __attribute__((noreturn))
     #define ATTRIBUTE_ALLOCATOR(size_arg_index, align_arg_index)    __attribute__((malloc, alloc_size(size_arg_index), alloc_align(align_arg_index)))
 #else
@@ -100,8 +96,6 @@ typedef struct Source_Info {
     #define ATTRIBUTE_INLINE_NEVER                              /* Ensures function will not get inlined. Applied before function declartion. */
     #define ATTRIBUTE_THREAD_LOCAL                              /* Declares a variable thread local. Applied before variable declarition. */
     #define ATTRIBUTE_ALIGNED(align)                            /* Places a variable on the stack aligned to 'align' */
-    #define ATTRIBUTE_FORMAT_FUNC(format_arg, format_arg_index) /* Marks a function as formatting function. Applied before function declartion. See log.h for example */
-    #define ATTRIBUTE_FORMAT_ARG                                /* Marks a format argument. Applied before const char* format argument. See log.h for example */  
     #define ATTRIBUTE_NORETURN                                  /* Specifices that this function will not return (for example abort, exit ...) . Applied before function declartion. */
     #define ATTRIBUTE_ALLOCATOR(size_arg_index, align_arg_index)
 #endif

@@ -28,8 +28,8 @@ typedef struct String_Builder {
     };
 } String_Builder;
 
-DEFINE_ARRAY_TYPE(String, String_Array);
-DEFINE_ARRAY_TYPE(String_Builder, String_Builder_Array);
+typedef Array(String) String_Array;
+typedef Array(String_Builder) String_Builder_Array;
 
 //Constructs a String out of a string literal
 #define STRING(cstring) BRACE_INIT(String){cstring "", sizeof(cstring) - 1}

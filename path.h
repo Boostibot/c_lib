@@ -649,7 +649,7 @@ EXPORT bool path_builder_append(Path_Builder* into, Path path, int flags)
                             builder_push(&into->builder, slash);
                         }
                         else
-                            LOG_WARN("path", "Empty prefix' with PATH_ROOT_SERVER", string_escape_ephemeral(root_content));
+                            LOG_WARN("path", "Empty prefix '%s' with PATH_ROOT_SERVER", cstring_ephemeral(root_content));
                     } break;
 
                     case PATH_ROOT_WIN: {
@@ -657,7 +657,7 @@ EXPORT bool path_builder_append(Path_Builder* into, Path path, int flags)
                         if(root_content.size > 0 && char_is_alphabetic(root_content.data[0]))
                             c = root_content.data[0];
                         else
-                            LOG_WARN("path", "Strange prefix '%s' with PATH_ROOT_WIN", string_escape_ephemeral(root_content));
+                            LOG_WARN("path", "Strange prefix '%s' with PATH_ROOT_WIN", cstring_ephemeral(root_content));
 
                         //to uppercase
                         if('a' <= c && c <= 'z')

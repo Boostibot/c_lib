@@ -3,6 +3,7 @@
 
 #include "defines.h"
 #include <stdlib.h>
+#include <stdio.h>
 
 #if !defined(ASSERT_CUSTOM_SETTINGS) && !defined(NDEBUG)
     //Locally enables/disables asserts. If we wish to disable for part of
@@ -21,8 +22,8 @@
 #define STATIC_ASSERT(x) typedef char PP_CONCAT(__static_assertion__, __LINE__)[(x) ? 1 : -1]
 
 //If x evaluates to false executes assertion_report() with optional provided message
-#define TEST(x, ...)                            (!(x) ? (assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, " " __VA_ARGS__), abort()) : (void) 0)
-#define _DISSABLED_TEST(x, ...)                 TEST(sizeof(x) != 0, ##__VA_ARGS__)
+#define TEST(x, ...)                            (!(x) ? (assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, " " __VA_ARGS__), sizeof printf(" " __VA_ARGS__), abort()) : (void) 0)
+#define _DISSABLED_TEST(x, ...)                 sizeof(printf(" " __VA_ARGS__), (x))
 
 //In debug builds do the same as TEST() else do nothing
 #ifdef DO_ASSERTS
@@ -53,7 +54,7 @@
 //Gets called when assertion fails. 
 //Does not have to terminate process since that is done at call site by the assert macro itself.
 //if ASSERT_CUSTOM_REPORT is defined is left unimplemented
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 5) void assertion_report(const char* expression, int line, const char* file, const char* function, ATTRIBUTE_FORMAT_ARG const char* format, ...);
+EXPORT void assertion_report(const char* expression, int line, const char* file, const char* function, const char* format, ...);
 
 //Pre-Processor (PP) utils
 #define _PP_CONCAT(a, b)        a ## b

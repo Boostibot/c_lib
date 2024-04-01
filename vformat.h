@@ -5,15 +5,17 @@
 #include "profile.h"
 #include <stdarg.h>
 
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void vformat_append_into(String_Builder* append_to, ATTRIBUTE_FORMAT_ARG const char* format, va_list args);
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void vformat_into(String_Builder* into, ATTRIBUTE_FORMAT_ARG const char* format, va_list args);
+EXPORT void vformat_append_into(String_Builder* append_to, const char* format, va_list args);
+EXPORT void format_append_into_no_check(String_Builder* append_to, const char* format, ...);
+#define     format_append_into(append_to, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_append_into_no_check((append_to), (format), ##__VA_ARGS__))
 
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void format_append_into(String_Builder* append_to, ATTRIBUTE_FORMAT_ARG const char* format, ...);
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void format_into(String_Builder* into, ATTRIBUTE_FORMAT_ARG const char* format, ...);
+EXPORT void vformat_into(String_Builder* into, const char* format, va_list args);
+EXPORT void format_into_no_check(String_Builder* into, const char* format, ...);
+#define     format_into(into, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_append_into_no_check((into), (format), ##__VA_ARGS__))
 
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 1) String format_ephemeral(ATTRIBUTE_FORMAT_ARG const char* format, ...);
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 1) String vformat_ephemeral(ATTRIBUTE_FORMAT_ARG const char* format, va_list args);
-EXPORT const char* string_escape_ephemeral(String string);
+EXPORT String format_ephemeral(const char* format, ...);
+EXPORT String vformat_ephemeral(const char* format, va_list args);
+EXPORT const char* cstring_ephemeral(String string);
 
 #endif // !JOT_VFORMAT
 
@@ -21,7 +23,7 @@ EXPORT const char* string_escape_ephemeral(String string);
 #define JOT_VFORMAT_HAS_IMPL
     #include <stdio.h>
 
-    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void vformat_append_into(String_Builder* append_to, ATTRIBUTE_FORMAT_ARG const char* format, va_list args)
+    EXPORT void vformat_append_into(String_Builder* append_to, const char* format, va_list args)
     {
         PERF_COUNTER_START();
 
@@ -63,7 +65,7 @@ EXPORT const char* string_escape_ephemeral(String string);
         return;
     }
     
-    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void format_append_into(String_Builder* append_to, ATTRIBUTE_FORMAT_ARG const char* format, ...)
+    EXPORT void format_append_into_no_check(String_Builder* append_to, const char* format, ...)
     {
         va_list args;
         va_start(args, format);
@@ -71,13 +73,13 @@ EXPORT const char* string_escape_ephemeral(String string);
         va_end(args);
     }
     
-    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void vformat_into(String_Builder* into, ATTRIBUTE_FORMAT_ARG const char* format, va_list args)
+    EXPORT void vformat_into(String_Builder* into, const char* format, va_list args)
     {
         builder_clear(into);
         vformat_append_into(into, format, args);
     }
 
-    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 2) void format_into(String_Builder* into, ATTRIBUTE_FORMAT_ARG const char* format, ...)
+    EXPORT void format_into_no_check(String_Builder* into, const char* format, ...)
     {
         va_list args;
         va_start(args, format);
@@ -85,7 +87,7 @@ EXPORT const char* string_escape_ephemeral(String string);
         va_end(args);
     }
     
-    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 1) String vformat_ephemeral(ATTRIBUTE_FORMAT_ARG const char* format, va_list args)
+    EXPORT String vformat_ephemeral(const char* format, va_list args)
     {
         enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256};
 
@@ -110,7 +112,7 @@ EXPORT const char* string_escape_ephemeral(String string);
         return curr->string;
     }
 
-    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 1) String format_ephemeral(ATTRIBUTE_FORMAT_ARG const char* format, ...)
+    EXPORT String format_ephemeral(const char* format, ...)
     {
         va_list args;
         va_start(args, format);
@@ -120,7 +122,7 @@ EXPORT const char* string_escape_ephemeral(String string);
         return out;
     }
 
-    EXPORT const char* string_escape_ephemeral(String string)
+    EXPORT const char* cstring_ephemeral(String string)
     {
         PERF_COUNTER_START();
 

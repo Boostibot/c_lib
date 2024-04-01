@@ -125,7 +125,7 @@ EXPORT String path_get_full_ephemeral_from(String path, String base)
     file_global_state.full_path_used_count += 1;
 
     if(state == false)
-        LOG_ERROR("FILE", "Failed to get full path of file '%s'", string_escape_ephemeral(path));
+        LOG_ERROR("FILE", "Failed to get full path of file '%s'", cstring_ephemeral(path));
 
     return out_string;
 }
@@ -157,7 +157,7 @@ EXPORT bool file_read_entire_append_into(String file_path, String_Builder* appen
     isize size_before = append_into->size;
     isize read_bytes = 0;
 
-    const char* full_path = string_escape_ephemeral(file_path);
+    const char* full_path = cstring_ephemeral(file_path);
     FILE* file = fopen(full_path, "rb");
     bool had_eof = false;
     if(file != NULL)
@@ -183,7 +183,7 @@ EXPORT bool file_read_entire_append_into(String file_path, String_Builder* appen
 
     if (file == NULL || had_eof == false) 
     {
-        LOG_ERROR("file.h", "error reading file '%s': %s", string_escape_ephemeral(file_path), strerror(errno));
+        LOG_ERROR("file.h", "error reading file '%s': %s", cstring_ephemeral(file_path), strerror(errno));
         return false;
     }
     else    
@@ -198,7 +198,7 @@ EXPORT bool _file_write_entire_append_into(String file_path, String written, con
     enum {MAX_READ = 2097152};
     isize wrote_bytes = 0;
     
-    const char* full_path = string_escape_ephemeral(file_path);
+    const char* full_path = cstring_ephemeral(file_path);
     FILE* file = fopen(full_path, open_mode);
     if(file != NULL)
     {
@@ -235,7 +235,7 @@ EXPORT bool file_append_entire(String file_path, String contents)
     if(_file_write_entire_append_into(file_path, contents, "ab"))
         return true;
     
-    LOG_ERROR("file.h", "error appending to a file '%s': %s", string_escape_ephemeral(file_path), strerror(errno));
+    LOG_ERROR("file.h", "error appending to a file '%s': %s", cstring_ephemeral(file_path), strerror(errno));
     return false;
 }
 
@@ -244,7 +244,7 @@ EXPORT bool file_write_entire(String file_path, String contents)
     if(_file_write_entire_append_into(file_path, contents, "wb"))
         return true;
     
-    LOG_ERROR("file.h", "error writing file '%s': %s", string_escape_ephemeral(file_path), strerror(errno));
+    LOG_ERROR("file.h", "error writing file '%s': %s", cstring_ephemeral(file_path), strerror(errno));
     return false;
 }
 

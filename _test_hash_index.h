@@ -85,10 +85,7 @@ INTERNAL void test_hash_index_stress(f64 max_seconds)
 		Hash_Index other_table = {0};
 	
 
-		DEFINE_ARRAY_TYPE(Action, History);
-	
-		History history = {0};
-
+		Array(Action) history = {0};
 
 		//uint64_t random_seed = random_clock_seed();
 		uint64_t random_seed = 0x6b3979953b41cf7d;

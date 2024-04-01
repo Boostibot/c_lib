@@ -32,12 +32,11 @@ typedef void (*Test_Func_Custom)(void* user_data);
 
 EXPORT bool run_test(void* func, const char* name, Test_Func_Type type, f64 max_time, void* user_data);
 
-#define RUN_TEST(func)                  ((0 ? *(Test_Func*)0 = (func) : NULL),        run_test((void*) (func), #func, TEST_FUNC_TYPE_SIMPLE, 0, NULL))
-#define RUN_TEST_TIMED(func, time)      ((0 ? *(Test_Func_Timed*)0 = (func)  : NULL), run_test((void*) (func), #func, TEST_FUNC_TYPE_TIMED, (time), NULL))
-#define RUN_TEST_CUSTOM(func, context)  ((0 ? *(Test_Func_Custom*)0 = (func) : NULL), run_test((void*) (func), #func, TEST_FUNC_TYPE_CUSTOM, 0, context))
+#define RUN_TEST(func)                  (sizeof((Test_Func)0 == (func)),           run_test((void*) (func), #func, TEST_FUNC_TYPE_SIMPLE, 0, NULL))
+#define RUN_TEST_TIMED(func, time)      (sizeof((Test_Func_Timed)0 == (func)),     run_test((void*) (func), #func, TEST_FUNC_TYPE_TIMED, (time), NULL))
+#define RUN_TEST_CUSTOM(func, context)  (sizeof((Test_Func_Custom)0 == (func)),    run_test((void*) (func), #func, TEST_FUNC_TYPE_CUSTOM, 0, context))
 
-//@NOTE: The first part of these macros is a type check. The condition never gets executed but the expression is validated by the type system.
-
+//@NOTE: The first part of these macros is a type check. The comparison never gets executed but the expression goes though type checking.
 #endif
 
 
@@ -76,7 +75,7 @@ EXPORT void _run_test_recover(void* context, Platform_Sandbox_Error error)
     Test_Run_Context* c = (Test_Run_Context*) context;
     if(error.exception != PLATFORM_EXCEPTION_ABORT)
     {
-        LOG_ERROR("TEST", "Exception occured: %s", c->name, platform_exception_to_string(error.exception));
+        LOG_ERROR("TEST", "Exception occured in test '%s': %s", c->name, platform_exception_to_string(error.exception));
         log_captured_callstack(">TEST", LOG_TRACE, error.call_stack, error.call_stack_size);
     }
 }

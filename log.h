@@ -5,11 +5,11 @@
 // That is we attempt to give logs some structure but not too much (so that it is still convinient).
 // 
 // We use three primary pieces of information for our logs:
-//  1) Log module - a simple string indicating from where the log came from. 
+//  1) Log log_module - a simple string indicating from where the log came from. 
 //                  The user is free to give this location any meaning (function, file, etc.)
 //                  to group things however they please. 
 // 
-//  2) Log type - a number indicating what kind of log this is (info, warn, error, etc.).
+//  2) Log log_type - a number indicating what kind of log this is (info, warn, error, etc.).
 //                These numbers can range from 0-63 (some slots are already taken). This
 //                enables us to store the filter of allowed types as single 64 bit number
 //                which can in turn be used to silence certain logs really easily.
@@ -19,8 +19,8 @@
 //                   implementation also nests (as long as we remeber to call pop 
 //                   when we are done). 
 // 
-// Log module in combination with log type enables us to extremely easily locate desired properties
-// in the resulting log files. We grep for example for just LOG_ERROR from RENDER module. we can then 
+// Log log_module in combination with log log_type enables us to extremely easily locate desired properties
+// in the resulting log files. We grep for example for just LOG_ERROR from RENDER log_module. we can then 
 // reconstruct the call stack from indetation.
 // 
 // The choice to have Log_Filter which qualifies some basic log categories instead of the usual 
@@ -41,7 +41,7 @@ void log_example_nested();
 
 void log_example()
 {
-    //We have chose to call this 'module' EXAMPLES
+    //We have chose to call this 'log_module' EXAMPLES
     //Usually we choose modules based on logical units
     // instead of code units. So for example RENDER, IO, INPUT
     // instead of log_example or My_Class
@@ -114,7 +114,7 @@ typedef enum Log_Action {
 
 typedef struct Logger Logger;
 typedef struct Log Log;
-typedef void (*Log_Func)(Logger* logger, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args);
+typedef void (*Log_Func)(Logger* logger, i32 group_depth, int actions, const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* child, const char* format, va_list args);
 
 typedef struct Logger {
     Log_Func log;
@@ -125,7 +125,7 @@ typedef struct Log {
     //       This might seem scary but its not that much.
     //       In 10MB we are able to store 100,824 logs.
 
-    //@NOTE: Notice that module and subject are const char*
+    //@NOTE: Notice that log_module and subject are const char*
     //       and thus as static strings. This is to make 
     //       our lives easier because it almost always end
     //       yp being static stirngs
@@ -147,7 +147,7 @@ typedef struct Log {
 EXPORT Logger* log_get_logger(); //Returns the default used logger
 EXPORT Logger* log_set_logger(Logger* logger); //Sets the default used logger. Returns a pointer to the previous logger so it can be restored later.
 
-EXPORT Log_Filter log_get_filter(); //Returns the current global filter - For Log_Type type to be printed it must satissfy (filter & ((Log_Filter) 1 << type)) > 0
+EXPORT Log_Filter log_get_filter(); //Returns the current global filter - For Log_Type log_type to be printed it must satissfy (filter & ((Log_Filter) 1 << log_type)) > 0
 EXPORT Log_Filter log_set_filter(Log_Filter filter); //Sets the global filter. Returns previous value so it can be restored later.
 
 EXPORT void log_flush();    //Flushes the logger
@@ -156,13 +156,20 @@ EXPORT void log_ungroup();  //Decreases group depth (indentation) of subsequent 
 EXPORT i32* log_group_depth(); //Returns the current group depth
 EXPORT void log_captured(const Log* log_list);
 
-EXPORT const char* log_type_to_string(Log_Type type);
+EXPORT const char* log_type_to_string(Log_Type log_type);
 
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 6) void log_message(const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, ATTRIBUTE_FORMAT_ARG const char* format, ...);
-EXPORT void vlog_message(const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args);
 
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_callstack(const char* log_module, Log_Type log_type, isize skip, ATTRIBUTE_FORMAT_ARG const char* format, ...);
+EXPORT void log_message_no_check(const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* child, const char* format, ...);
+EXPORT void vlog_message(const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* child, const char* format, va_list args);
+
+EXPORT void log_callstack_no_check(const char* log_module, Log_Type log_type, isize skip, const char* format, ...);
 EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void* const* callstack, isize callstack_size);
+
+//A cute hack to typecheck printf arguments better and more portable than attribute annotations.
+//Simply use printf(format, args...) as well but dont actually evaluate it (using sizeof)
+#include <stdio.h>
+#define log_message(log_module, subject, log_type, source, child, format, ...) (sizeof printf((format), ##__VA_ARGS__), log_message_no_check((log_module), (subject), (log_type), (source), (child), (format), ##__VA_ARGS__))
+#define log_callstack(log_module, log_type, skip, format, ...)                 (sizeof printf((format), ##__VA_ARGS__), log_callstack_no_check((log_module), (log_type), (skip), (format), ##__VA_ARGS__))
 
 typedef struct Memory_Format {
     const char* unit;
@@ -177,20 +184,20 @@ EXPORT Memory_Format get_memory_format(isize bytes);
 EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator);
 
 //Logs a message. Does not get dissabled.
-#define LOG(module, log_type, format, ...)                         log_message(module, "", log_type, SOURCE_INFO(), NULL, format, ##__VA_ARGS__)
-#define LOG_CHILD(module, subject, log_type, child, format, ...)   log_message(module, subject, log_type, SOURCE_INFO(), child, format, ##__VA_ARGS__)
+#define LOG(log_module, log_type, format, ...)                         log_message(log_module, "", log_type, SOURCE_INFO(), NULL, format, ##__VA_ARGS__)
+#define LOG_CHILD(log_module, subject, log_type, child, format, ...)   log_message(log_module, subject, log_type, SOURCE_INFO(), child, format, ##__VA_ARGS__)
 
-//Logs a message type into the provided module cstring.
-#define LOG_INFO(module, format, ...)  LOG(module, LOG_INFO,  format, ##__VA_ARGS__)
-#define LOG_OKAY(module, format, ...)  LOG(module, LOG_OKAY,  format, ##__VA_ARGS__)
-#define LOG_WARN(module, format, ...)  LOG(module, LOG_WARN,  format, ##__VA_ARGS__)
-#define LOG_ERROR(module, format, ...) LOG(module, LOG_ERROR, format, ##__VA_ARGS__)
-#define LOG_FATAL(module, format, ...) LOG(module, LOG_FATAL, format, ##__VA_ARGS__)
-#define LOG_DEBUG(module, format, ...) LOG(module, LOG_DEBUG, format, ##__VA_ARGS__)
-#define LOG_TRACE(module, format, ...) LOG(module, LOG_TRACE, format, ##__VA_ARGS__)
+//Logs a message log_type into the provided log_module cstring.
+#define LOG_INFO(log_module, format, ...)  LOG(log_module, LOG_INFO,  format, ##__VA_ARGS__)
+#define LOG_OKAY(log_module, format, ...)  LOG(log_module, LOG_OKAY,  format, ##__VA_ARGS__)
+#define LOG_WARN(log_module, format, ...)  LOG(log_module, LOG_WARN,  format, ##__VA_ARGS__)
+#define LOG_ERROR(log_module, format, ...) LOG(log_module, LOG_ERROR, format, ##__VA_ARGS__)
+#define LOG_FATAL(log_module, format, ...) LOG(log_module, LOG_FATAL, format, ##__VA_ARGS__)
+#define LOG_DEBUG(log_module, format, ...) LOG(log_module, LOG_DEBUG, format, ##__VA_ARGS__)
+#define LOG_TRACE(log_module, format, ...) LOG(log_module, LOG_TRACE, format, ##__VA_ARGS__)
 
-#define LOG_ERROR_CHILD(module, subject, child, format, ...)        LOG_CHILD(module, subject, LOG_ERROR, child, format, ##__VA_ARGS__)
-#define LOG_FATAL_CHILD(module, subject, child, format, ...)        LOG_CHILD(module, subject, LOG_FATAL, child, format, ##__VA_ARGS__)
+#define LOG_ERROR_CHILD(log_module, subject, child, format, ...)        LOG_CHILD(log_module, subject, LOG_ERROR, child, format, ##__VA_ARGS__)
+#define LOG_FATAL_CHILD(log_module, subject, child, format, ...)        LOG_CHILD(log_module, subject, LOG_FATAL, child, format, ##__VA_ARGS__)
 
 #define STRING_FMT "%.*s"
 #define STRING_PRINT(string) (int) (string).size, (string).data
@@ -275,21 +282,21 @@ EXPORT Log_Filter log_set_filter(Log_Filter filter)
     return prev;
 }
 
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 6) void log_message(const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, ATTRIBUTE_FORMAT_ARG const char* format, ...)
+EXPORT void log_message_no_check(const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* child, const char* format, ...)
 {
     va_list args;               
     va_start(args, format);     
-    vlog_message(module, subject, type, source, child, format, args);                    
+    vlog_message(log_module, subject, log_type, source, child, format, args);                    
     va_end(args);            
 }
 
-EXPORT void vlog_message(const char* module, const char* subject, Log_Type type, Source_Info source, const Log* first_child, const char* format, va_list args)
+EXPORT void vlog_message(const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* first_child, const char* format, va_list args)
 {   
     Global_Log_State* state = &_global_log_state;
-    if(state->logger && (state->filter & ((Log_Filter) 1 << type)))
+    if(state->logger && (state->filter & ((Log_Filter) 1 << log_type)))
     {
         i32 extra_indentation = 0;
-        for(; module[extra_indentation] == '>'; extra_indentation++);
+        for(; log_module[extra_indentation] == '>'; extra_indentation++);
         
         int action = LOG_ACTION_LOG;
         if(first_child)
@@ -299,14 +306,14 @@ EXPORT void vlog_message(const char* module, const char* subject, Log_Type type,
         // when the logger fails to acquire a resource (memory) and that failiure logs 
         Logger* logger = state->logger;
         state->logger = NULL;
-        logger->log(logger, state->group_depth + extra_indentation, action, module + extra_indentation, subject, type, source, first_child, format, args);
+        logger->log(logger, state->group_depth + extra_indentation, action, log_module + extra_indentation, subject, log_type, source, first_child, format, args);
         state->logger = logger;
     }
 }
 
-EXPORT const char* log_type_to_string(Log_Type type)
+EXPORT const char* log_type_to_string(Log_Type log_type)
 {
-    switch(type)
+    switch(log_type)
     {
         case LOG_INFO: return "INFO"; break;
         case LOG_OKAY: return "SUCC"; break;
@@ -320,7 +327,7 @@ EXPORT const char* log_type_to_string(Log_Type type)
     }
 }
 
-EXPORT ATTRIBUTE_FORMAT_FUNC(format, 4) void log_callstack(const char* log_module, Log_Type log_type, isize skip, ATTRIBUTE_FORMAT_ARG const char* format, ...)
+EXPORT void log_callstack_no_check(const char* log_module, Log_Type log_type, isize skip, const char* format, ...)
 {
     bool has_msg = format != NULL && strlen(format) != 0;
     if(has_msg)
@@ -372,7 +379,7 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, co
 }
 
 #ifndef ASSERT_CUSTOM_REPORT
-    EXPORT ATTRIBUTE_FORMAT_FUNC(format, 5) void assertion_report(const char* expression, int line, const char* file, const char* function, ATTRIBUTE_FORMAT_ARG const char* format, ...)
+    EXPORT void assertion_report(const char* expression, int line, const char* file, const char* function, const char* format, ...)
     {
         Source_Info source = {line, file, function};
         log_message("assert", "", LOG_FATAL, source, NULL, "TEST(%s) TEST/ASSERT failed! %s:%i", expression, file, line);
@@ -395,7 +402,7 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
     {
         stats = allocator_get_stats(allocator);
         if(stats.type_name == NULL)
-            stats.type_name = "<no type name>";
+            stats.type_name = "<no log_type name>";
 
         if(stats.name == NULL)
             stats.name = "<no name>";
@@ -424,12 +431,12 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
             stats = allocator_get_stats(allocator);
         
         if(stats.type_name == NULL)
-            stats.type_name = "<no type name>";
+            stats.type_name = "<no log_type name>";
 
         if(stats.name == NULL)
             stats.name = "<no name>";
 
-        LOG_FATAL("memory", "Allocator %s %s reported out of memory! (%s : %lli)", stats.type_name, stats.name);
+        LOG_FATAL("memory", "Allocator %s %s reported out of memory!", stats.type_name, stats.name);
 
             LOG_INFO(">memory", "new_size:    " MEMORY_FMT, MEMORY_PRINT(new_size));
             LOG_INFO(">memory", "old_size:    " MEMORY_FMT, MEMORY_PRINT(old_size));

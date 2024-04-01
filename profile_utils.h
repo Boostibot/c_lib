@@ -56,11 +56,9 @@ EXPORT void log_perf_counters(const char* log_module, Log_Type log_type, Log_Per
 
 	EXPORT void log_perf_counters(const char* log_module, Log_Type log_type, Log_Perf_Sort_By sort_by)
 	{
-		DEFINE_ARRAY_TYPE(Global_Perf_Counter, Global_Perf_Counter_Array);
-
 		String common_prefix = {0};
 
-		Global_Perf_Counter_Array counters = {allocator_get_default()};
+		Array(Global_Perf_Counter) counters = {allocator_get_default()};
 		for(Global_Perf_Counter* counter = profile_get_counters(); counter != NULL; counter = counter->next)
 		{
 
