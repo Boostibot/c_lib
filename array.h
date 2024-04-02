@@ -21,19 +21,26 @@
 //
 // This file is also fully freestanding. To compile the function definitions #define JOT_ALL_IMPL and include it again in .c file. 
 
-#if !defined(JOT_INLINE_ALLOCATOR) && !defined(JOT_ALLOCATOR)
+#if !defined(JOT_INLINE_ALLOCATOR) && !defined(JOT_ALLOCATOR) && !defined(JOT_COUPLED)
     #define JOT_INLINE_ALLOCATOR
     #include <stdint.h>
     #include <stdlib.h>
     #include <assert.h>
+    #include <stdbool.h>
     
     #define EXPORT
+    #define INTERNAL static
     #define DEF_ALIGN sizeof(void*)
     #define ASSERT(x) assert(x)
 
+    typedef int64_t isize; //can also be usnigned if desired
     typedef struct Allocator Allocator;
-    static Allocator* allocator_get_default() { return NULL; }
-    static void* allocator_reallocate(Allocator* from_allocator, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align)
+    
+    static Allocator* allocator_get_default() 
+    { 
+        return NULL; 
+    }
+    static void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         if(new_size != 0)
             return realloc(old_ptr, new_size);
@@ -50,8 +57,8 @@
 typedef struct Generic_Array {        
     Allocator* allocator;                
     uint8_t* data;                      
-    int64_t size;                        
-    int64_t capacity;                    
+    isize size;                        
+    isize capacity;                    
 } Generic_Array;
 
 #define Array(Type) \
@@ -60,8 +67,8 @@ typedef struct Generic_Array {
         struct {                                 \
             Allocator* allocator;                \
             Type* data;                          \
-            int64_t size;                        \
-            int64_t capacity;                    \
+            isize size;                        \
+            isize capacity;                    \
         };                                       \
     }                                            \
 
@@ -82,13 +89,13 @@ typedef Array(void*)    ptr_Array;
 typedef i64_Array isize_Array;
 typedef u64_Array usize_Array;
 
-EXPORT void _array_init(Generic_Array* array, int64_t item_size, Allocator* allocator);
-EXPORT void _array_deinit(Generic_Array* array, int64_t item_size);
-EXPORT void _array_set_capacity(Generic_Array* array, int64_t item_size, int64_t capacity); 
-EXPORT int  _array_is_invariant(Generic_Array* array, int64_t item_size);
-EXPORT void _array_resize(Generic_Array* array, int64_t item_size, int64_t to_size, int zero_new);
-EXPORT void _array_reserve(Generic_Array* array, int64_t item_size, int64_t to_capacity);
-EXPORT void _array_append(Generic_Array* array, int64_t item_size, const void* data, int64_t data_count);
+EXPORT void _array_init(Generic_Array* array, isize item_size, Allocator* allocator);
+EXPORT void _array_deinit(Generic_Array* array, isize item_size);
+EXPORT void _array_set_capacity(Generic_Array* array, isize item_size, isize capacity); 
+EXPORT bool _array_is_invariant(Generic_Array* array, isize item_size);
+EXPORT void _array_resize(Generic_Array* array, isize item_size, isize to_size, bool zero_new);
+EXPORT void _array_reserve(Generic_Array* array, isize item_size, isize to_capacity);
+EXPORT void _array_append(Generic_Array* array, isize item_size, const void* data, isize data_count);
 
 #define array_set_capacity(array_ptr, capacity) \
     _array_set_capacity(&(array_ptr)->generic, sizeof *(array_ptr)->data, (capacity))
@@ -119,11 +126,11 @@ EXPORT void _array_append(Generic_Array* array, int64_t item_size, const void* d
 //If the to_size is smaller than current size simply dicards further items
 //If the to_size is greater than current size zero initializes the newly added items
 #define array_resize(array_ptr, to_size)              \
-    _array_resize(&(array_ptr)->generic, sizeof *(array_ptr)->data, (to_size), 1) 
+    _array_resize(&(array_ptr)->generic, sizeof *(array_ptr)->data, (to_size), true) 
    
 //Just like array_resize except doesnt zero initialized newly added region
 #define array_resize_for_overwrite(array_ptr, to_size)              \
-    _array_resize(&(array_ptr)->generic, sizeof *(array_ptr)->data, (to_size), 0) 
+    _array_resize(&(array_ptr)->generic, sizeof *(array_ptr)->data, (to_size), false) 
 
 //Sets the array size to 0. Does not deallocate the array
 #define array_clear(array_ptr) \
@@ -174,21 +181,21 @@ EXPORT void _array_append(Generic_Array* array, int64_t item_size, const void* d
 #define JOT_ARRAY_HAS_IMPL
 #include <string.h>
 
-EXPORT int _array_is_invariant(Generic_Array* array, int64_t item_size)
+EXPORT bool _array_is_invariant(Generic_Array* array, isize item_size)
 {
-    int is_capacity_correct = 0 <= array->capacity;
-    int is_size_correct = (0 <= array->size && array->size <= array->capacity);
+    bool is_capacity_correct = 0 <= array->capacity;
+    bool is_size_correct = (0 <= array->size && array->size <= array->capacity);
     if(array->capacity > 0)
         is_capacity_correct = is_capacity_correct && array->allocator != NULL;
 
-    int is_data_correct = (array->data == NULL) == (array->capacity == 0);
-    int item_size_correct = item_size > 0;
-    int result = is_capacity_correct && is_size_correct && is_data_correct && item_size_correct;
+    bool is_data_correct = (array->data == NULL) == (array->capacity == 0);
+    bool item_size_correct = item_size > 0;
+    bool result = is_capacity_correct && is_size_correct && is_data_correct && item_size_correct;
     ASSERT(result);
     return result;
 }
 
-EXPORT void _array_init(Generic_Array* array, int64_t item_size, Allocator* allocator)
+EXPORT void _array_init(Generic_Array* array, isize item_size, Allocator* allocator)
 {
     (void) item_size;
     _array_deinit(array, item_size);
@@ -198,7 +205,7 @@ EXPORT void _array_init(Generic_Array* array, int64_t item_size, Allocator* allo
         array->allocator = allocator_get_default();
 }
 
-EXPORT void _array_deinit(Generic_Array* array, int64_t item_size)
+EXPORT void _array_deinit(Generic_Array* array, isize item_size)
 {
     ASSERT(array != NULL);
     ASSERT(_array_is_invariant(array, item_size));
@@ -208,13 +215,13 @@ EXPORT void _array_deinit(Generic_Array* array, int64_t item_size)
     memset(array, 0, sizeof *array);
 }
 
-EXPORT void _array_set_capacity(Generic_Array* array, int64_t item_size, int64_t capacity)
+EXPORT void _array_set_capacity(Generic_Array* array, isize item_size, isize capacity)
 {
     ASSERT(_array_is_invariant(array, item_size));
     ASSERT(capacity >= 0);
 
-    int64_t old_byte_size = item_size * array->capacity;
-    int64_t new_byte_size = item_size * capacity;
+    isize old_byte_size = item_size * array->capacity;
+    isize new_byte_size = item_size * capacity;
     if(array->allocator == NULL)
         array->allocator = allocator_get_default();
 
@@ -228,7 +235,7 @@ EXPORT void _array_set_capacity(Generic_Array* array, int64_t item_size, int64_t
     ASSERT(_array_is_invariant(array, item_size));
 }
 
-EXPORT void _array_resize(Generic_Array* array, int64_t item_size, int64_t to_size, int zero_new)
+EXPORT void _array_resize(Generic_Array* array, isize item_size, isize to_size, bool zero_new)
 {
     _array_reserve(array, item_size, to_size);
     if(zero_new && to_size > array->size)
@@ -238,22 +245,22 @@ EXPORT void _array_resize(Generic_Array* array, int64_t item_size, int64_t to_si
     ASSERT(_array_is_invariant(array, item_size));
 }
 
-EXPORT void _array_reserve(Generic_Array* array, int64_t item_size, int64_t to_fit)
+EXPORT void _array_reserve(Generic_Array* array, isize item_size, isize to_fit)
 {
     ASSERT(_array_is_invariant(array, item_size));
     ASSERT(to_fit >= 0);
     if(array->capacity > to_fit)
         return;
         
-    int64_t new_capacity = to_fit;
-    int64_t growth_step = array->capacity * 3/2 + 8;
+    isize new_capacity = to_fit;
+    isize growth_step = array->capacity * 3/2 + 8;
     if(new_capacity < growth_step)
         new_capacity = growth_step;
 
     _array_set_capacity(array, item_size, new_capacity + 1);
 }
 
-EXPORT void _array_append(Generic_Array* array, int64_t item_size, const void* data, int64_t data_count)
+EXPORT void _array_append(Generic_Array* array, isize item_size, const void* data, isize data_count)
 {
     ASSERT(data_count >= 0 && item_size > 0);
     _array_reserve(array, item_size, array->size+data_count);

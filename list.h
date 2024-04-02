@@ -2,7 +2,7 @@
 #define JOT_LIST
 
 //An implementation of type generic intrusive linked list structures 
-// stolen from Ryan Fleury's codebase. 
+// stolen from Ryan Fleury's codebase. This file is self contained.
 // 
 // We define two variants: 
 //   list_push_nil variant allowing a specifiication of custom nil value and more control

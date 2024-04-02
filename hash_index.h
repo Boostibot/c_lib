@@ -1,9 +1,7 @@
 #ifndef JOT_HASH_INDEX
 #define JOT_HASH_INDEX
 
-#include "allocator.h"
-
-// A simple and flexible linear-probing-hash style hash index.
+// A simple and flexible linear-probing-hash style hash index. This file is self contained!
 // 
 // We use the term hash index as opposed to hash table because this structure
 // doesnt provide the usual hash table ineterface, it marely stores indeces or pointers
@@ -75,6 +73,40 @@
 // on 'dirty' hashes (where a lot of values are gravestones) however we can solve this by rehashing 
 // after heavy removals/inserts or just lower the load factor.
 
+#if !defined(JOT_INLINE_ALLOCATOR) && !defined(JOT_ALLOCATOR) && !defined(JOT_COUPLED)
+    #define JOT_INLINE_ALLOCATOR
+    #include <stdint.h>
+    #include <stdlib.h>
+    #include <assert.h>
+    #include <stdbool.h>
+    
+    #define EXPORT
+    #define INTERNAL static
+    #define DEF_ALIGN sizeof(void*)
+    #define ASSERT(x) assert(x)
+
+    typedef int64_t isize; //can also be usnigned if desired
+    typedef struct Allocator Allocator;
+    
+    static Allocator* allocator_get_default() 
+    { 
+        return NULL; 
+    }
+    static void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
+    {
+        (void) from_allocator; (void) old_size; (void) align;
+        if(new_size != 0)
+            return realloc(old_ptr, (size_t) new_size);
+        else
+        {
+            free(old_ptr);
+            return NULL;
+        }
+    }
+#else
+    #include "allocator.h"
+#endif
+
 #define HASH_INDEX_EMPTY        ((uint64_t) 0x2 << 62)
 #define HASH_INDEX_GRAVESTONE   ((uint64_t) 0x1 << 62)
 #define HASH_INDEX_VALUE_MAX    (~(HASH_INDEX_EMPTY | HASH_INDEX_GRAVESTONE)) //can be used as invalid value
@@ -132,10 +164,19 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         #endif
     #endif
 
+    #ifndef PERF_COUNTER_START
+        #define PERF_COUNTER_START(...)
+        #define PERF_COUNTER_END(...);
+    #endif
+
+    #ifndef ATTRIBUTE_INLINE_NEVER
+        #define ATTRIBUTE_INLINE_NEVER
+    #endif
+
     INTERNAL isize _hash_index_find_from(Hash_Index table, uint64_t hash, uint64_t start_from)
     {
         if(table.entries_count <= 0)
-            return -1;
+            return (isize) -1;
 
         ASSERT(table.size + table.gravestone_count < table.entries_count && "must not be completely full!");
         uint64_t mod = (uint64_t) table.entries_count - 1;
@@ -146,7 +187,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         {
             //if((table.entries[i].value & HASH_INDEX_EMPTY) != 0 || counter >= table.entries_count)
             if((table.entries[i].value & HASH_INDEX_EMPTY) != 0)
-                return -1;
+                return (isize) -1;
 
             if((table.entries[i].value & HASH_INDEX_GRAVESTONE) == 0 && table.entries[i].hash == hash)
                 return (isize) i;
@@ -262,7 +303,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
 
     EXPORT void hash_index_init(Hash_Index* table, Allocator* allocator)
     {
-        hash_index_init_load_factor(table, allocator, -1, -1);
+        hash_index_init_load_factor(table, allocator, (isize) -1, (isize) -1);
     }   
 
     INTERNAL void _hash_index_rehash_copy(Hash_Index* to_table, Hash_Index from_table, isize to_size, bool size_is_capacity)
@@ -301,6 +342,12 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         ASSERT(hash_index_is_invariant(*to_table, HASH_INDEX_DEBUG));
     }
     
+    INTERNAL bool _hash_is_power_of_two(isize num) 
+    {
+        uint64_t n = (uint64_t) num;
+        return ((n & (n-1)) == 0) && num > 0;
+    }
+
     EXPORT bool hash_index_is_invariant(Hash_Index table, bool slow_check)
     {
         bool ptr_size_inv = (table.entries == NULL) == (table.entries_count == 0);
@@ -319,7 +366,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
             allocator_inv = table.allocator != NULL;
             load_factor_inv = 0 < table.load_factor && table.load_factor <= 100;
             load_factor_gravestone_inv = 0 < table.load_factor_gravestone && table.load_factor_gravestone <= 100;
-            capacity_inv = is_power_of_two(table.entries_count);
+            capacity_inv = _hash_is_power_of_two(table.entries_count);
             fullness_inv = _hash_index_needs_rehash(table.entries_count, table.size, table.load_factor) == false;
         }
 
@@ -334,7 +381,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
                 Hash_Index_Entry* entry = &table.entries[i];
                 if(hash_index_is_entry_used(*entry))
                 {
-                    entries_find_inv = entries_find_inv && hash_index_find(table, entry->hash) != -1;
+                    entries_find_inv = entries_find_inv && hash_index_find(table, entry->hash) != (isize) -1;
                     ASSERT(entries_find_inv);
                     used_count += 1;
                 }
@@ -359,14 +406,14 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
     
     EXPORT isize hash_index_find_next(Hash_Index table, uint64_t hash, isize prev_found)
     {
-        CHECK_BOUNDS(prev_found, table.entries_count);
+        ASSERT(0 <= prev_found && prev_found < table.entries_count);
         return _hash_index_find_from(table, hash, (uint64_t) prev_found + 1);
     }
     
     EXPORT void hash_index_deinit(Hash_Index* table)
     {
         ASSERT(hash_index_is_invariant(*table, HASH_INDEX_DEBUG));
-        allocator_deallocate(table->allocator, table->entries, table->entries_count * (isize) sizeof *table->entries, DEF_ALIGN);
+        allocator_reallocate(table->allocator, 0, table->entries, table->entries_count * (isize) sizeof *table->entries, DEF_ALIGN);
         
         Hash_Index null = {0};
         *table = null;
@@ -381,14 +428,17 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
     {
         if(table->entries_count > 0)
         {
+            #ifdef JOT_ARENA
             Arena arena = scratch_arena_acquire();
             Hash_Index copy = *table;
-            copy.entries = arena_push_nonzero_inline(&arena, table->entries_count * isizeof(Hash_Index_Entry), __alignof(Hash_Index_Entry));
+            copy.entries = (Hash_Index_Entry*) arena_push_nonzero_inline(&arena, table->entries_count * isizeof(Hash_Index_Entry), __alignof(Hash_Index_Entry));
             memcpy(copy.entries, table->entries, (size_t) table->entries_count * sizeof(Hash_Index_Entry));
 
             _hash_index_rehash_copy(table, copy, table->entries_count, true);
             arena_release(&arena);
+            #endif
         }
+
     }
 
     EXPORT void _hash_index_rehash(Hash_Index* table, isize to_size, bool size_is_capacity)
@@ -420,9 +470,11 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         if(rehash_to < table->entries_count || (rehash_to == table->entries_count && table->gravestone_count * 100 >= table->entries_count*table->load_factor_gravestone) )
         {
             PERF_COUNTER_START(in_place);
+            #ifdef JOT_ARENA
             if(table->do_in_place_rehash)
                 hash_index_rehash_in_place(table);
             else
+            #endif
                 _hash_index_rehash(table, table->entries_count, true);
             PERF_COUNTER_END(in_place);
         }
@@ -463,7 +515,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         if(found >= 0)
         {
             ASSERT(table->size > 0);
-            CHECK_BOUNDS(found, table->entries_count);
+            ASSERT(found < table->entries_count);
             removed = table->entries[found];
             table->entries[found].value = HASH_INDEX_GRAVESTONE;
             table->size -= 1;

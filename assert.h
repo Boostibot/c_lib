@@ -1,9 +1,43 @@
 #ifndef JOT_ASSERT
 #define JOT_ASSERT
 
-#include "defines.h"
+//Declaration of convenient and easily debuggable asserts. This file is self contained.
+//Provides TEST(x) simply checks always, ASSERT and ASSERT_SLOW which get expanded only in debug builds.
+// All of which can be used as regular 
+//      ASSERT(val > 0) 
+// but also support 
+//      ASSERT(val > 0, "Val: %i needs to be greater than 5", val) 
+// All arguments are fully typechecked. 
+
 #include <stdlib.h>
 #include <stdio.h>
+#if !defined(JOT_INLINE_ASSERT) && !defined(JOT_DEFINES) && !defined(JOT_COUPLED)
+    #define JOT_INLINE_ASSERT
+    #include <string.h>
+    #include <stdarg.h>
+
+    #ifndef ASSUME_UNREACHABLE
+        #define ASSUME_UNREACHABLE() (*(int*)0 = 0)
+    #endif
+
+    #ifndef EXPORT 
+        #define EXPORT
+    #endif
+    EXPORT void assertion_report(const char* expression, int line, const char* file, const char* function, const char* format, ...)
+    {
+        printf("TEST(%s) or ASSERT failed in %s %s:%i\n", expression, function, file, line);
+        if(strlen(format) > 1)
+        {
+            va_list args;               
+            va_start(args, format);   
+            vprintf(format, args);
+            va_end(args);  
+        }
+    }
+#else
+    #include "defines.h"
+#endif
+
 
 #if !defined(ASSERT_CUSTOM_SETTINGS) && !defined(NDEBUG)
     //Locally enables/disables asserts. If we wish to disable for part of

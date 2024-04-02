@@ -126,6 +126,10 @@ EXPORT void	 random_state_bytes(Random_State* state, void* into, int64_t size);
 	#endif
 
 	
+	#ifndef INTERNAL
+		#define INTERNAL static
+	#endif
+	
 	EXPORT uint64_t random_splitmix(uint64_t* state) 
 	{
 		uint64_t z = (*state += 0x9e3779b97f4a7c15);
@@ -134,7 +138,7 @@ EXPORT void	 random_state_bytes(Random_State* state, void* into, int64_t size);
 		return z ^ (z >> 31);
 	}
 
-	static uint64_t _random_rotl(const uint64_t x, int k) {
+	INTERNAL uint64_t _random_rotl(const uint64_t x, int k) {
 		return (x << k) | (x >> (64 - k));
 	}
 
@@ -190,14 +194,14 @@ EXPORT void	 random_state_bytes(Random_State* state, void* into, int64_t size);
 		return out;
 	}
 
-	static double _make_f64(uint64_t sign, uint64_t expoment, uint64_t mantissa)
+	INTERNAL double _make_f64(uint64_t sign, uint64_t expoment, uint64_t mantissa)
 	{
 		uint64_t composite = (sign << 63) | (expoment << 52) | mantissa;
 		double out = *(double*) (void*) &composite;
 		return out;
 	}
 
-	static float _make_f32(uint32_t sign, uint32_t expoment, uint32_t mantissa)
+	INTERNAL float _make_f32(uint32_t sign, uint32_t expoment, uint32_t mantissa)
 	{
 		uint32_t composite = (sign << 31) | (expoment << 23) | mantissa;
 		float out = *(float*) (void*) &composite;
@@ -239,7 +243,7 @@ EXPORT void	 random_state_bytes(Random_State* state, void* into, int64_t size);
 		return random_u64;
 	}
 
-	static uint64_t _random_bounded(Random_State* state, uint64_t range) 
+	INTERNAL uint64_t _random_bounded(Random_State* state, uint64_t range) 
 	{
 		uint64_t mask = ~(uint64_t) 0;
 

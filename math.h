@@ -1,15 +1,15 @@
 #ifndef JOT_MATH
 #define JOT_MATH
 
+//A file defining basic linear algebra functions working with vectors, matrices and quaternions (TODO)
+// This file is self contained.
+
 #include <math.h>
 #include <stddef.h>
 #include <string.h>
 #include <stdint.h>
 #include <assert.h>
-
-#ifndef __cplusplus
 #include <stdbool.h>
-#endif
 
 #if !defined(ASSERT) && !defined(JOT_ASSERT)
 #define ASSERT(x) assert(x)

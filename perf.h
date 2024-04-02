@@ -1,9 +1,7 @@
 #ifndef JOT_PERF
 #define JOT_PERF
 
-#ifndef __cplusplus
 #include <stdbool.h>
-#endif
 #include <math.h>
 #include <stdint.h>
 
@@ -15,6 +13,8 @@
 #ifndef EXPORT
 	#define EXPORT 
 #endif
+
+typedef int64_t isize;
 
 typedef struct Perf_Counter {
 	int64_t counter;
@@ -55,7 +55,7 @@ typedef bool (*Benchamrk_Func)(isize iteration, void* context);
 // 'batch_size' should be set abover 1 for for very very short functions (typically non iterative math functions).
 //If the 'func' returns false discards this measurement. This is good for functions that dont know when they will need to prepare another sets of data.
 //'context' is passed into 'func'.
-Perf_Stats perf_benchmark(f64 warmup, f64 time, isize batch_size, Benchamrk_Func func, void* context);
+Perf_Stats perf_benchmark(double warmup, double time, isize batch_size, Benchamrk_Func func, void* context);
 
 //Needs implementation:
 int64_t platform_perf_counter();
@@ -247,6 +247,9 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 	
 	EXPORT void perf_do_not_optimize(const void* ptr) 
 	{ 
+		#if defined(__GNUC__) || defined(__clang__)
+			__asm__ __volatile__("" : "+r"(ptr))
+		#else
 		static volatile int __perf_always_zero = 0;
 		if(__perf_always_zero == 0x7FFFFFFF)
 		{
@@ -260,13 +263,15 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 			// __perf_always_zero = *vol_ptr;
 			__perf_always_zero = vol_ptr[*vol_ptr];
 		}
+		#endif
     }
 	
-	Perf_Stats perf_benchmark(f64 warmup, f64 time, isize batch_size, Benchamrk_Func func, void* context)
+	//@TODO: make into a block define
+	Perf_Stats perf_benchmark(double warmup, double time, isize batch_size, Benchamrk_Func func, void* context)
 	{
 		Perf_Counter counter = {0};
-		int64_t total_clocks = (int64_t) ((f64) platform_perf_counter_frequency() * time);
-		int64_t warmup_clocks = (int64_t) ((f64) platform_perf_counter_frequency() * warmup);
+		int64_t total_clocks = (int64_t) ((double) platform_perf_counter_frequency() * time);
+		int64_t warmup_clocks = (int64_t) ((double) platform_perf_counter_frequency() * warmup);
 
 		int64_t start = platform_perf_counter();
 		int64_t discard_time = 0;
@@ -296,5 +301,87 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
 
 		return perf_get_stats(counter, batch_size);
 	}
+
+	//@TODO: test!
+	#define _perf_benchamrk(stats_ptr, bench, warmup, time, batch_size, ...) do {							\
+		struct {																					\
+			isize iter;																				\
+			bool discard;																			\
+			bool _pad[7];																			\
+			int64_t now;																			\
+			int64_t freq;																			\
+			Perf_Counter counter;																	\
+		} bench = {0};																				\
+		bench.freq = platform_perf_counter_frequency();												\
+																									\
+		int64_t _total_clocks = (int64_t) ((double) bench.freq * (time));							\
+		int64_t _warmup_clocks = (int64_t) ((double) bench.freq * (warmup));						\
+																									\
+		int64_t _start = platform_perf_counter();													\
+		int64_t _discard_time = 0;																	\
+																									\
+		for(; ;bench.iter++)																		\
+		{																							\
+			int64_t _before = platform_perf_counter();												\
+			int64_t _passed_clocks = _before - _start;												\
+			if(_passed_clocks >= _total_clocks + _discard_time)										\
+				break;																				\
+																									\
+			bench.now = _before;																	\
+			bench.discard = false;																	\
+			{__VA_ARGS__}																			\
+			int64_t _after = platform_perf_counter();												\
+			int64_t _delta = _after - _before;														\
+																									\
+			/*If we discarded the result prolongue the test time by the time we have wasted.
+			//This is fairly imporant for benchmarks that require discarting for more complex setups.
+			//For example to benchmark hash map removal we need to every once in a while repopulate the
+			// hash map. We of course discard this setup time but if we didnt prolongue the time we 
+			// would often just exit without making a single measurement. */						\
+			if(bench.discard)																		\
+				_discard_time += _delta;															\
+																									\
+			if(bench.discard == false && _passed_clocks >= _warmup_clocks + _discard_time)			\
+				perf_end_delta(&bench.counter, _delta);												\
+		}																							\
+																									\
+		*(stats_ptr) = perf_get_stats(bench.counter, (batch_size));									\
+	} while(0)																						\
+
+	#define _perf_benchamrk_loop(stats_ptr, bench, warmup, time, batch_size)								\
+		struct {																					\
+			isize iter;																				\
+			bool discard;																			\
+			bool _pad[7];																			\
+			int64_t now;																			\
+			int64_t freq;																			\
+			Perf_Counter counter;																	\
+		} bench = {0};																				\
+		bench.freq = platform_perf_counter_frequency();												\
+																									\
+		int64_t _total_clocks = (int64_t) ((double) bench.freq * (time));							\
+		int64_t _warmup_clocks = (int64_t) ((double) bench.freq * (warmup));						\
+																									\
+        for(int once = 0; once < 1; once++, *(stats_ptr) = perf_get_stats(bench.counter, (batch_size)))	\
+		    for(												\
+                /*Init */										\
+                int64_t											\
+                _start = platform_perf_counter(),				\
+                _before = _start,								\
+                _after = _start,								\
+                _discard_time = 0,								\
+                _delta = 0,										\
+                _passed_clocks = _before - _start;				\
+																\
+                /*Check*/										\
+                _before = _after,								\
+                _passed_clocks < _total_clocks + _discard_time; \
+																\
+                /*Increment*/									\
+                _after = platform_perf_counter(),				\
+                _delta = _after - _before,						\
+                bench.discard ? _discard_time += _delta : 0,	\
+                !bench.discard && _passed_clocks >= _warmup_clocks + _discard_time ? perf_end_delta(&bench.counter, _delta) : (void) 0, \
+                bench.iter++) \
 
 #endif
