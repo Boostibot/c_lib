@@ -52,6 +52,7 @@
 #include "vformat.h"
 #include "time.h"
 #include "log.h"
+#include "arena.h"
 
 typedef bool(*File_Logger_Print)(const void* data, isize size, void* context); 
 

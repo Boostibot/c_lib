@@ -4,10 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <assert.h>
-
-#ifndef __cplusplus
 #include <stdbool.h>
-#endif
 
 typedef int64_t    isize;
 typedef uint64_t   usize;

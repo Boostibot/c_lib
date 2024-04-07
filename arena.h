@@ -1,7 +1,6 @@
 #ifndef JOT_ARENA
 #define JOT_ARENA
 
-
 // This is a 'safe' implementation of the arena concept. It maintains the stack like order of allocations 
 // on its own without the possibility of accidental invalidation of allocations from 'lower' levels. 
 // (Read more for proper explanations).
@@ -118,54 +117,14 @@
 // simple arena_push() case. The acquire and release functions are a tiny bit more expensive but those are not 
 // of primary concern.
 
-#include "defines.h"
-#include "assert.h"
-#include "platform.h"
+#include "allocator.h"
 #include "profile.h"
-#include <string.h>
-
-typedef struct Allocator        Allocator;
-typedef struct Allocator_Stats  Allocator_Stats;
-
-void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
-
-typedef void* (*Allocator_Allocate_Func)(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
-typedef Allocator_Stats (*Allocator_Get_Stats_Func)(Allocator* self);
-
-typedef struct Allocator {
-    Allocator_Allocate_Func allocate;
-    Allocator_Get_Stats_Func get_stats;
-} Allocator;
-
-typedef struct Allocator_Stats {
-    //The allocator used to obtain memory reisributed by this allocator.
-    //If is_top_level is set this should probably be NULL
-    Allocator* parent;
-    //Human readable name of the type 
-    const char* type_name;
-    //Optional human readable name of this specific allocator
-    const char* name;
-    //if doesnt use any other allocator to obtain its memory. For example malloc allocator or VM memory allocator have this set.
-    bool is_top_level; 
-	bool _padding[7];
-
-    //The number of bytes given out to the program by this allocator. (does NOT include book keeping bytes).
-    //Might not be totally accurate but is required to be localy stable - if we allocate 100B and then deallocate 100B this should not change.
-    //This can be used to accurately track memory leaks. (Note that if this field is simply not set and thus is 0 the above property is satisfied)
-    isize bytes_allocated;
-    isize max_bytes_allocated;  //maximum bytes_allocated during the enire lifetime of the allocator
-
-    isize allocation_count;     //The number of allocation requests (old_ptr == NULL). Does not include reallocs!
-    isize deallocation_count;   //The number of deallocation requests (new_size == 0). Does not include reallocs!
-    isize reallocation_count;   //The number of reallocation requests (*else*).
-} Allocator_Stats;
 
 typedef isize (*Arena_Stack_Commit_Func)(void* addr, isize size, isize reserved_size, bool commit);
 
-#define ARENA_DEF_STACK_SIZE   128
-#define ARENA_DEF_RESERVE_SIZE (isize) 64 * 1024*1024*1024 //GB
-#define ARENA_DEF_COMMIT_SIZE  (isize) 8 * 1024*1024 //MB
-
+#define ARENA_DEF_STACK_SIZE   256
+#define ARENA_DEF_RESERVE_SIZE 64 * GIBI_BYTE 
+#define ARENA_DEF_COMMIT_SIZE  8 * MEBI_BYTE 
 
 typedef struct Arena_Stack {
     //Info
@@ -193,42 +152,46 @@ typedef struct Arena {
     i32 _padding;
 } Arena;
 
-void arena_init(Arena_Stack* arena, isize reserve_size_or_zero, isize stack_max_depth_or_zero, const char* name_or_null);
-void arena_init_custom(Arena_Stack* arena, void* data, isize size, isize reserved_size, Arena_Stack_Commit_Func commit_or_null, isize stack_max_depth_or_zero);
-void arena_deinit(Arena_Stack* arena);
-void arena_release(Arena* arena);
+EXPORT void arena_init(Arena_Stack* arena, isize reserve_size_or_zero, isize stack_max_depth_or_zero, const char* name_or_null);
+EXPORT void arena_init_custom(Arena_Stack* arena, void* data, isize size, isize reserved_size, Arena_Stack_Commit_Func commit_or_null, isize stack_max_depth_or_zero);
+EXPORT void arena_deinit(Arena_Stack* arena);
+EXPORT void arena_release(Arena* arena);
 
-Arena arena_acquire(Arena_Stack* stack);
-void* arena_push(Arena* arena, isize size, isize align);
-void* arena_push_nonzero(Arena* arena, isize size, isize align);
+EXPORT Arena arena_acquire(Arena_Stack* stack);
+EXPORT void* arena_push(Arena* arena, isize size, isize align);
+EXPORT void* arena_push_nonzero(Arena* arena, isize size, isize align);
 static ATTRIBUTE_INLINE_ALWAYS void* arena_push_nonzero_inline(Arena* arena, isize size, isize align);
 
 #define ARENA_PUSH(arena_ptr, count, Type) ((Type*) arena_push((arena_ptr), (count) * sizeof(Type), __alignof(Type)))
 
-void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
-Allocator_Stats arena_get_allocatator_stats(Allocator* self);
+EXPORT void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
+EXPORT Allocator_Stats arena_get_allocatator_stats(Allocator* self);
+
+EXPORT Arena_Stack* scratch_arena_stack();
+EXPORT Arena scratch_arena_acquire();
 
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ARENA_IMPL)) && !defined(JOT_ARENA_HAS_IMPL)
 #define JOT_ARENA_HAS_IMPL
 
-#ifdef NDEBUG
-#define ARENA_DEBUG 0
-#else
-#define ARENA_DEBUG 1
+#ifndef ARENA_DEBUG
+    #ifdef NDEBUG
+        #define ARENA_DEBUG 0
+    #else
+        #define ARENA_DEBUG 1
+    #endif
 #endif
-#define ARENA_DEBUG_DATA_PATTERN 0x55
-#define ARENA_DEBUG_DATA_SIZE 64*2
+
+#define ARENA_DEBUG_DATA_SIZE     64*2
+#define ARENA_DEBUG_DATA_PATTERN  0x55
 #define ARENA_DEBUG_STACK_PATTERN 0x66
 
-void _arena_debug_check_invarinats(Arena_Stack* arena);
-void _arena_debug_fill_stack(Arena_Stack* arena);
-void _arena_debug_fill_data(Arena_Stack* arena, isize size);
-void* _align_backward(const void* data, isize align);
-void* _align_forward(const void* data, isize align);
+INTERNAL void _arena_debug_check_invarinats(Arena_Stack* arena);
+INTERNAL void _arena_debug_fill_stack(Arena_Stack* arena);
+INTERNAL void _arena_debug_fill_data(Arena_Stack* arena, isize size);
 
-void arena_deinit(Arena_Stack* arena)
+EXPORT void arena_deinit(Arena_Stack* arena)
 {
     _arena_debug_check_invarinats(arena);
     if(arena->commit && arena->data)
@@ -236,13 +199,13 @@ void arena_deinit(Arena_Stack* arena)
        
     memset(arena, 0, sizeof *arena);
 }
-void arena_init_custom(Arena_Stack* arena, void* data, isize size, isize reserved_size, Arena_Stack_Commit_Func commit_or_null, isize stack_max_depth_or_zero)
+EXPORT void arena_init_custom(Arena_Stack* arena, void* data, isize size, isize reserved_size, Arena_Stack_Commit_Func commit_or_null, isize stack_max_depth_or_zero)
 {
     arena_deinit(arena);
     isize stack_max_depth = stack_max_depth_or_zero;
 
     isize* stack = (isize*) data;
-    u8* aligned_data = (u8*) _align_forward(data, sizeof *stack);
+    u8* aligned_data = (u8*) align_forward(data, sizeof *stack);
     isize aligned_size = size - (aligned_data - (u8*) data);
     isize stack_max_depth_that_fits = aligned_size / isizeof *stack;
 
@@ -264,7 +227,7 @@ void arena_init_custom(Arena_Stack* arena, void* data, isize size, isize reserve
 }
 
 //TODO: remove needless generality
-isize arena_def_commit_func(void* addr, isize size, isize reserved_size, bool commit)
+EXPORT isize arena_def_commit_func(void* addr, isize size, isize reserved_size, bool commit)
 {
     isize commit_to = 0;
     if(commit == false)
@@ -281,7 +244,7 @@ isize arena_def_commit_func(void* addr, isize size, isize reserved_size, bool co
     return commit_to;
 }
 
-void arena_init(Arena_Stack* arena, isize reserve_size_or_zero, isize stack_max_depth_or_zero, const char* name_or_null)
+EXPORT void arena_init(Arena_Stack* arena, isize reserve_size_or_zero, isize stack_max_depth_or_zero, const char* name_or_null)
 {
     if(reserve_size_or_zero <= 0)
         reserve_size_or_zero = ARENA_DEF_RESERVE_SIZE;
@@ -309,7 +272,7 @@ ATTRIBUTE_INLINE_NEVER void* arena_unusual_push(Arena_Stack* arena, i32 depth, i
         _arena_debug_check_invarinats(arena);
     }
 
-    u8* data = (u8*) _align_forward(arena->data + arena->used_to, align);
+    u8* data = (u8*) align_forward(arena->data + arena->used_to, align);
     u8* data_end = data + size;
     if(data_end > arena->data + arena->size)
     {
@@ -350,7 +313,7 @@ static ATTRIBUTE_INLINE_ALWAYS void* arena_push_nonzero_inline(Arena* arena, isi
         data = arena_unusual_push(stack, arena->level, size, align);
     else
     {
-        data = (u8*) _align_forward(stack->data + stack->used_to, align);
+        data = (u8*) align_forward(stack->data + stack->used_to, align);
         stack->used_to = (isize) (data + size) - (isize) stack->data;
         ASSERT(stack->used_to <= stack->size);
     }
@@ -358,19 +321,19 @@ static ATTRIBUTE_INLINE_ALWAYS void* arena_push_nonzero_inline(Arena* arena, isi
     return data;
 }
 
-void* arena_push_nonzero(Arena* arena, isize size, isize align)
+EXPORT void* arena_push_nonzero(Arena* arena, isize size, isize align)
 {
     return arena_push_nonzero_inline(arena, size, align);
 }
 
-void* arena_push(Arena* arena, isize size, isize align)
+EXPORT void* arena_push(Arena* arena, isize size, isize align)
 {
     void* ptr = arena_push_nonzero(arena, size, align);
     memset(ptr, 0, (size_t) size);
     return ptr;
 }
 
-void arena_release(Arena* arena)
+EXPORT void arena_release(Arena* arena)
 {
     PERF_COUNTER_START();
 
@@ -405,15 +368,20 @@ void arena_release(Arena* arena)
 }
 
 //Compatibility function for the allocator interface
-void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
+EXPORT void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
 {
-    (void) old_ptr;
-    (void) old_size;
-    Arena* arena = (Arena*) (void*) self;
-    return arena_push(arena, new_size, align);
+    void* out = NULL;
+    if(new_size > old_size)
+    {
+        Arena* arena = (Arena*) (void*) self;
+        out = arena_push_nonzero_inline(arena, new_size, align);
+        memcpy(out, old_ptr, (size_t) old_size);
+    }
+
+    return out;
 }
 
-Allocator_Stats arena_get_allocatator_stats(Allocator* self)
+EXPORT Allocator_Stats arena_get_allocatator_stats(Allocator* self)
 {
     Arena* arena = (Arena*) (void*) self;
     Arena_Stack* stack = arena->stack;
@@ -433,7 +401,7 @@ Allocator_Stats arena_get_allocatator_stats(Allocator* self)
     return stats;
 }
 
-Arena arena_acquire(Arena_Stack* stack)
+EXPORT Arena arena_acquire(Arena_Stack* stack)
 {
     PERF_COUNTER_START();
 
@@ -458,7 +426,7 @@ Arena arena_acquire(Arena_Stack* stack)
     return out;
 }
 
-int memcmp_byte(const void* ptr, int byte, isize size)
+INTERNAL int memcmp_byte(const void* ptr, int byte, isize size)
 {
     isize i = 0;
     char* text = (char*) ptr;
@@ -481,7 +449,20 @@ int memcmp_byte(const void* ptr, int byte, isize size)
     return 0;
 }
 
-void _arena_debug_check_invarinats(Arena_Stack* arena)
+ATTRIBUTE_THREAD_LOCAL Arena_Stack _scratch_arena_stack;
+EXPORT Arena_Stack* scratch_arena_stack()
+{
+    return &_scratch_arena_stack;
+}
+EXPORT Arena scratch_arena_acquire()
+{
+    if(_scratch_arena_stack.data == NULL)
+        arena_init(&_scratch_arena_stack, 0, 0, "scratch arena stack");
+
+    return arena_acquire(&_scratch_arena_stack);
+}
+
+INTERNAL void _arena_debug_check_invarinats(Arena_Stack* arena)
 {
     if(ARENA_DEBUG)
     {
@@ -498,14 +479,14 @@ void _arena_debug_check_invarinats(Arena_Stack* arena)
     }
 }
 
-void _arena_debug_fill_stack(Arena_Stack* arena)
+INTERNAL void _arena_debug_fill_stack(Arena_Stack* arena)
 {
     isize* stack = (isize*) (void*) arena->data;
     if(ARENA_DEBUG)
         memset(stack + arena->stack_depht, ARENA_DEBUG_STACK_PATTERN, (size_t) (arena->stack_max_depth - arena->stack_depht) * sizeof *stack);
 }
 
-void _arena_debug_fill_data(Arena_Stack* arena, isize size)
+INTERNAL void _arena_debug_fill_data(Arena_Stack* arena, isize size)
 {
     if(ARENA_DEBUG)
     {
@@ -513,17 +494,5 @@ void _arena_debug_fill_data(Arena_Stack* arena, isize size)
         isize check_size = MIN(till_end, size);
         memset(arena->data + arena->used_to, ARENA_DEBUG_DATA_PATTERN, (size_t) check_size);
     }
-}
-
-void* _align_backward(const void* data, isize align)
-{
-    u64 mask = (u64) (align - 1);
-    u64 aligned = (u64) data & ~mask;
-    return (void*) aligned;
-}
-
-void* _align_forward(const void* data, isize align)
-{
-    return _align_backward((u8*) data + align - 1, align);
 }
 #endif

@@ -58,7 +58,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 			break;
 
 		i32 action = random_discrete(&dist);
-		TEST(_array_is_invariant(&arr->generic, sizeof *arr->data));
+		TEST(generic_array_is_invariant(array_make_generic(arr)));
 		
 		switch(action)
 		{
@@ -158,8 +158,8 @@ INTERNAL void test_array_stress(f64 max_seconds)
 
 		for(isize k = 0; k < arr->size; k++)
 			TEST(arr->data != NULL && is_power_of_two_or_zero(arr->data[k]));
-
-		TEST(_array_is_invariant(&arr->generic, sizeof *arr->data));
+			
+		TEST(generic_array_is_invariant(array_make_generic(arr)));
 	}
 	
 	random_discrete_deinit(&dist);

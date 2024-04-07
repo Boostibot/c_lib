@@ -4,6 +4,8 @@
 #include "profile.h"
 #include "array.h"
 #include "log.h"
+#include "string.h"
+#include "vformat.h"
 #include <stdlib.h>
 
 typedef enum Log_Perf_Sort_By{

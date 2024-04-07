@@ -1,8 +1,8 @@
 #ifndef JOT_ARRAY
 #define JOT_ARRAY
 
-// This freestanding file introduces a simple but powerful generic dynamic array concept.
-// It works by defining struct for each type and then using type generic macros to work
+// This freestanding file introduces a simple but powerful untyped dynamic array concept.
+// It works by defining struct for each type and then using type untyped macros to work
 // with these structs. 
 //
 // This approach was chosen because: 
@@ -54,23 +54,32 @@
     #include "allocator.h"
 #endif
 
-typedef struct Generic_Array {        
+typedef struct Untyped_Array {        
     Allocator* allocator;                
     uint8_t* data;                      
     isize size;                        
     isize capacity;                    
+} Untyped_Array;
+
+typedef struct Generic_Array {   
+    Untyped_Array* array;
+    uint32_t item_size;                        
+    uint32_t item_align;                    
 } Generic_Array;
 
-#define Array(Type) \
+#define Array_Aligned(Type, align) \
     union {             \
-        Generic_Array generic;                   \
+        Untyped_Array untyped;                   \
         struct {                                 \
             Allocator* allocator;                \
             Type* data;                          \
-            isize size;                        \
-            isize capacity;                    \
+            isize size;                          \
+            isize capacity;                      \
         };                                       \
+        uint8_t (*ALIGN)[align];       \
     }                                            \
+
+#define Array(Type) Array_Aligned(Type, __alignof(Type) > 0 ? __alignof(Type) : 8)
 
 typedef Array(uint8_t)  u8_Array;
 typedef Array(uint16_t) u16_Array;
@@ -89,22 +98,28 @@ typedef Array(void*)    ptr_Array;
 typedef i64_Array isize_Array;
 typedef u64_Array usize_Array;
 
-EXPORT void _array_init(Generic_Array* array, isize item_size, Allocator* allocator);
-EXPORT void _array_deinit(Generic_Array* array, isize item_size);
-EXPORT void _array_set_capacity(Generic_Array* array, isize item_size, isize capacity); 
-EXPORT bool _array_is_invariant(Generic_Array* array, isize item_size);
-EXPORT void _array_resize(Generic_Array* array, isize item_size, isize to_size, bool zero_new);
-EXPORT void _array_reserve(Generic_Array* array, isize item_size, isize to_capacity);
-EXPORT void _array_append(Generic_Array* array, isize item_size, const void* data, isize data_count);
+EXPORT void generic_array_init(Generic_Array gen, Allocator* allocator);
+EXPORT void generic_array_deinit(Generic_Array gen);
+EXPORT void generic_array_set_capacity(Generic_Array gen, isize capacity); 
+EXPORT bool generic_array_is_invariant(Generic_Array gen);
+EXPORT void generic_array_resize(Generic_Array gen, isize to_size, bool zero_new);
+EXPORT void generic_array_reserve(Generic_Array gen, isize to_capacity);
+EXPORT void generic_array_append(Generic_Array gen, const void* data, isize data_count);
+
+#ifdef __cplusplus
+    #define array_make_generic(array_ptr) Generic_Array{&(array_ptr)->untyped, sizeof *(array_ptr)->data, sizeof *(array_ptr)->ALIGN}
+#else
+    #define array_make_generic(array_ptr) (Generic_Array){&(array_ptr)->untyped, sizeof *(array_ptr)->data, sizeof *(array_ptr)->ALIGN}
+#endif 
 
 #define array_set_capacity(array_ptr, capacity) \
-    _array_set_capacity(&(array_ptr)->generic, sizeof *(array_ptr)->data, (capacity))
+    generic_array_set_capacity(array_make_generic(array_ptr), (capacity))
     
 //Initializes the array. If the array is already initialized deinitializes it first.
 //Thus expects a properly formed array. Suppling a non-zeroed memory will cause errors!
 //All data structers in this library need to be zero init to be valid!
 #define array_init(array_ptr, allocator) \
-    _array_init(&(array_ptr)->generic, sizeof *(array_ptr)->data, (allocator))
+    generic_array_init(array_make_generic(array_ptr), (allocator))
     
 //Initializes the array and preallocates it to the desired size
 #define array_init_with_capacity(array_ptr, allocator, capacity) (\
@@ -114,23 +129,23 @@ EXPORT void _array_append(Generic_Array* array, isize item_size, const void* dat
 
 //Deallocates and resets the array
 #define array_deinit(array_ptr) \
-    _array_deinit(&(array_ptr)->generic, sizeof *(array_ptr)->data)
+    generic_array_deinit(array_make_generic(array_ptr))
 
 //If the array capacity is lower than to_capacity sets the capacity to to_capacity. 
 //If setting of capacity is required and the new capcity is less then one geometric growth 
 // step away from current capacity grows instead.
 #define array_reserve(array_ptr, to_capacity) \
-    _array_reserve(&(array_ptr)->generic, sizeof *(array_ptr)->data, (to_capacity)) 
+    generic_array_reserve(array_make_generic(array_ptr), (to_capacity)) 
 
 //Sets the array size to the specied to_size. 
 //If the to_size is smaller than current size simply dicards further items
 //If the to_size is greater than current size zero initializes the newly added items
 #define array_resize(array_ptr, to_size)              \
-    _array_resize(&(array_ptr)->generic, sizeof *(array_ptr)->data, (to_size), true) 
+    generic_array_resize(array_make_generic(array_ptr), (to_size), true) 
    
 //Just like array_resize except doesnt zero initialized newly added region
 #define array_resize_for_overwrite(array_ptr, to_size)              \
-    _array_resize(&(array_ptr)->generic, sizeof *(array_ptr)->data, (to_size), false) 
+    generic_array_resize(array_make_generic(array_ptr), (to_size), false) 
 
 //Sets the array size to 0. Does not deallocate the array
 #define array_clear(array_ptr) \
@@ -141,7 +156,7 @@ EXPORT void _array_append(Generic_Array* array, isize item_size, const void* dat
         /* Here is a little hack to typecheck the items array.*/ \
         /* We do a comparison that emmits a warning on incompatible types but doesnt get executed */ \
         sizeof((array_ptr)->data == (items)), \
-        _array_append(&(array_ptr)->generic, sizeof *(array_ptr)->data, (items), (item_count)) \
+        generic_array_append(array_make_generic(array_ptr), (items), (item_count)) \
     ) \
     
 //Discards current items in the array and replaces them with the provided items
@@ -155,7 +170,7 @@ EXPORT void _array_append(Generic_Array* array, isize item_size, const void* dat
 
 //Appends a single item to the end of the array
 #define array_push(array_ptr, item_value) (           \
-        _array_reserve(&(array_ptr)->generic, sizeof *(array_ptr)->data, (array_ptr)->size + 1), \
+        generic_array_reserve(array_make_generic(array_ptr), (array_ptr)->size + 1), \
         (array_ptr)->data[(array_ptr)->size++] = (item_value) \
     ) \
 
@@ -181,91 +196,91 @@ EXPORT void _array_append(Generic_Array* array, isize item_size, const void* dat
 #define JOT_ARRAY_HAS_IMPL
 #include <string.h>
 
-EXPORT bool _array_is_invariant(Generic_Array* array, isize item_size)
+EXPORT bool generic_array_is_invariant(Generic_Array gen)
 {
-    bool is_capacity_correct = 0 <= array->capacity;
-    bool is_size_correct = (0 <= array->size && array->size <= array->capacity);
-    if(array->capacity > 0)
-        is_capacity_correct = is_capacity_correct && array->allocator != NULL;
+    bool is_capacity_correct = 0 <= gen.array->capacity;
+    bool is_size_correct = (0 <= gen.array->size && gen.array->size <= gen.array->capacity);
+    if(gen.array->capacity > 0)
+        is_capacity_correct = is_capacity_correct && gen.array->allocator != NULL;
 
-    bool is_data_correct = (array->data == NULL) == (array->capacity == 0);
-    bool item_size_correct = item_size > 0;
-    bool result = is_capacity_correct && is_size_correct && is_data_correct && item_size_correct;
+    bool is_data_correct = (gen.array->data == NULL) == (gen.array->capacity == 0);
+    bool item_size_correct = gen.item_size > 0;
+    bool alignment_correct = ((gen.item_align & (gen.item_align-1)) == 0) && gen.item_align > 0; //if is power of two and bigger than zero
+    bool result = is_capacity_correct && is_size_correct && is_data_correct && item_size_correct && alignment_correct;
     ASSERT(result);
     return result;
 }
 
-EXPORT void _array_init(Generic_Array* array, isize item_size, Allocator* allocator)
+EXPORT void generic_array_init(Generic_Array gen, Allocator* allocator)
 {
-    (void) item_size;
-    _array_deinit(array, item_size);
+    generic_array_deinit(gen);
 
-    array->allocator = allocator;
-    if(array->allocator == NULL)
-        array->allocator = allocator_get_default();
+    gen.array->allocator = allocator;
+    if(gen.array->allocator == NULL)
+        gen.array->allocator = allocator_get_default();
 }
 
-EXPORT void _array_deinit(Generic_Array* array, isize item_size)
+EXPORT void generic_array_deinit(Generic_Array gen)
 {
-    ASSERT(array != NULL);
-    ASSERT(_array_is_invariant(array, item_size));
-    if(array->capacity > 0)
-        allocator_reallocate(array->allocator, 0, array->data, array->capacity * item_size, DEF_ALIGN);
+    ASSERT(gen.array != NULL);
+    ASSERT(generic_array_is_invariant(gen));
+    if(gen.array->capacity > 0)
+        allocator_reallocate(gen.array->allocator, 0, gen.array->data, gen.array->capacity * gen.item_size, DEF_ALIGN);
     
-    memset(array, 0, sizeof *array);
+    memset(gen.array, 0, sizeof *gen.array);
 }
 
-EXPORT void _array_set_capacity(Generic_Array* array, isize item_size, isize capacity)
+EXPORT void generic_array_set_capacity(Generic_Array gen, isize capacity)
 {
-    ASSERT(_array_is_invariant(array, item_size));
+    ASSERT(generic_array_is_invariant(gen));
     ASSERT(capacity >= 0);
 
-    isize old_byte_size = item_size * array->capacity;
-    isize new_byte_size = item_size * capacity;
-    if(array->allocator == NULL)
-        array->allocator = allocator_get_default();
+    isize old_byte_size = gen.item_size * gen.array->capacity;
+    isize new_byte_size = gen.item_size * capacity;
+    if(gen.array->allocator == NULL)
+        gen.array->allocator = allocator_get_default();
 
-    array->data = (uint8_t*) allocator_reallocate(array->allocator, new_byte_size, array->data, old_byte_size, DEF_ALIGN);
+    gen.array->data = (uint8_t*) allocator_reallocate(gen.array->allocator, new_byte_size, gen.array->data, old_byte_size, DEF_ALIGN);
 
     //trim the size if too big
-    array->capacity = capacity;
-    if(array->size > array->capacity)
-        array->size = array->capacity;
+    gen.array->capacity = capacity;
+    if(gen.array->size > gen.array->capacity)
+        gen.array->size = gen.array->capacity;
         
-    ASSERT(_array_is_invariant(array, item_size));
+    ASSERT(generic_array_is_invariant(gen));
 }
 
-EXPORT void _array_resize(Generic_Array* array, isize item_size, isize to_size, bool zero_new)
+EXPORT void generic_array_resize(Generic_Array gen, isize to_size, bool zero_new)
 {
-    _array_reserve(array, item_size, to_size);
-    if(zero_new && to_size > array->size)
-        memset(array->data + array->size*item_size, 0, (size_t) ((to_size - array->size)*item_size));
+    generic_array_reserve(gen, to_size);
+    if(zero_new && to_size > gen.array->size)
+        memset(gen.array->data + gen.array->size*gen.item_size, 0, (size_t) ((to_size - gen.array->size)*gen.item_size));
         
-    array->size = to_size;
-    ASSERT(_array_is_invariant(array, item_size));
+    gen.array->size = to_size;
+    ASSERT(generic_array_is_invariant(gen));
 }
 
-EXPORT void _array_reserve(Generic_Array* array, isize item_size, isize to_fit)
+EXPORT void generic_array_reserve(Generic_Array gen, isize to_fit)
 {
-    ASSERT(_array_is_invariant(array, item_size));
+    ASSERT(generic_array_is_invariant(gen));
     ASSERT(to_fit >= 0);
-    if(array->capacity > to_fit)
+    if(gen.array->capacity > to_fit)
         return;
         
     isize new_capacity = to_fit;
-    isize growth_step = array->capacity * 3/2 + 8;
+    isize growth_step = gen.array->capacity * 3/2 + 8;
     if(new_capacity < growth_step)
         new_capacity = growth_step;
 
-    _array_set_capacity(array, item_size, new_capacity + 1);
+    generic_array_set_capacity(gen, new_capacity + 1);
 }
 
-EXPORT void _array_append(Generic_Array* array, isize item_size, const void* data, isize data_count)
+EXPORT void generic_array_append(Generic_Array gen, const void* data, isize data_count)
 {
-    ASSERT(data_count >= 0 && item_size > 0);
-    _array_reserve(array, item_size, array->size+data_count);
-    memcpy(array->data + item_size * array->size, data, (size_t) (item_size * data_count));
-    array->size += data_count;
-    ASSERT(_array_is_invariant(array, item_size));
+    ASSERT(data_count >= 0);
+    generic_array_reserve(gen, gen.array->size+data_count);
+    memcpy(gen.array->data + gen.item_size * gen.array->size, data, (size_t) (gen.item_size * data_count));
+    gen.array->size += data_count;
+    ASSERT(generic_array_is_invariant(gen));
 }
 #endif

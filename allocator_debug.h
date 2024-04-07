@@ -58,7 +58,7 @@ typedef struct Debug_Allocator          Debug_Allocator;
 typedef struct Debug_Allocation         Debug_Allocation;
 typedef struct Debug_Allocator_Options  Debug_Allocator_Options;
 
-typedef Array(Debug_Allocation) Debug_Allocation_Array;
+typedef Array_Aligned(Debug_Allocation, DEF_ALIGN) Debug_Allocation_Array;
 
 typedef enum Debug_Allocator_Panic_Reason {
     DEBUG_ALLOC_PANIC_NONE = 0, //no error

@@ -1,12 +1,6 @@
 #ifndef JOT_ALLOCATOR
 #define JOT_ALLOCATOR
 
-#include "defines.h"
-#include "assert.h"
-#include "arena.h"
-#include "profile.h"
-#include <string.h>
-
 // This module introduces a framework for dealing with memory and allocation used by every other system.
 // It makes very little assumptions about the use case making it very portable to other projects.
 //
@@ -33,6 +27,45 @@
 // are perfectly suited for fast allocation - deallocation pairs). This approach also stacks. In each function we can simply upon entry
 // instal the scratch allocator as the default allocator so that all internal functions will also comunicate to us using the fast scratch 
 // allocator.
+
+#include "defines.h"
+#include "assert.h"
+#include "platform.h"
+#include "profile.h"
+
+typedef struct Allocator        Allocator;
+typedef struct Allocator_Stats  Allocator_Stats;
+
+typedef void* (*Allocator_Allocate_Func)(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
+typedef Allocator_Stats (*Allocator_Get_Stats_Func)(Allocator* self);
+
+typedef struct Allocator {
+    Allocator_Allocate_Func allocate;
+    Allocator_Get_Stats_Func get_stats;
+} Allocator;
+
+typedef struct Allocator_Stats {
+    //The allocator used to obtain memory reisributed by this allocator.
+    //If is_top_level is set this should probably be NULL
+    Allocator* parent;
+    //Human readable name of the type 
+    const char* type_name;
+    //Optional human readable name of this specific allocator
+    const char* name;
+    //if doesnt use any other allocator to obtain its memory. For example malloc allocator or VM memory allocator have this set.
+    bool is_top_level; 
+	bool _padding[7];
+
+    //The number of bytes given out to the program by this allocator. (does NOT include book keeping bytes).
+    //Might not be totally accurate but is required to be localy stable - if we allocate 100B and then deallocate 100B this should not change.
+    //This can be used to accurately track memory leaks. (Note that if this field is simply not set and thus is 0 the above property is satisfied)
+    isize bytes_allocated;
+    isize max_bytes_allocated;  //maximum bytes_allocated during the enire lifetime of the allocator
+
+    isize allocation_count;     //The number of allocation requests (old_ptr == NULL). Does not include reallocs!
+    isize deallocation_count;   //The number of deallocation requests (new_size == 0). Does not include reallocs!
+    isize reallocation_count;   //The number of reallocation requests (*else*).
+} Allocator_Stats;
 
 typedef struct Allocator_Set {
     Allocator* allocator_default;
@@ -76,8 +109,7 @@ EXPORT Allocator* allocator_get_default(); //returns the default allocator used 
 EXPORT Allocator* allocator_get_scratch(); //returns the scracth allocator used for temp often stack order allocations inside a function
 EXPORT Allocator* allocator_get_static(); //returns the static allocator used for allocations with potentially unbound lifetime. This includes things that will never be deallocated.
 EXPORT Allocator* allocator_or_default(Allocator* allocator_or_null); //Returns the passed in allocator_or_null. If allocator_or_null is NULL returns the current set default allocator
-EXPORT Arena_Stack* allocator_get_scratch_arena_stack();
-EXPORT Arena scratch_arena_acquire();
+
 EXPORT bool allocator_is_arena(Allocator* allocator);
 
 //@NOTE: static is useful for example for static dyanmic lookup tables, caches inside functions, quick hacks that will not be deallocated for whatever reason.
@@ -120,8 +152,9 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         Allocator* default_allocator;
         Allocator* scratch_allocator;
         Allocator* static_allocator;
-        Arena_Stack scratch_arena_stack;
     } Global_Allocator_State;
+
+    void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
 
     INTERNAL ATTRIBUTE_THREAD_LOCAL Global_Allocator_State _allocator_state = {0};
     EXPORT ATTRIBUTE_ALLOCATOR(2, 5) 
@@ -133,14 +166,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         
         //If is arena use the arena function directly (inlined)
         if(allocator_is_arena(from_allocator))
-        {
-            if(new_size > old_size)
-            {
-                Arena* arena = (Arena*) (void*) from_allocator;
-                out = arena_push_nonzero_inline(arena, new_size, align);
-                memcpy(out, old_ptr, (size_t) old_size);
-            }
-        }
+            out = arena_reallocate(from_allocator, new_size, old_ptr, old_size, align);
         else 
         {
             //if is dealloc and old_ptr is NULL do nothing. 
@@ -187,12 +213,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     {
         return allocator != NULL && allocator->allocate == arena_reallocate;
     }
-
-    EXPORT Arena scratch_arena_acquire()
-    {
-        return arena_acquire(&_allocator_state.scratch_arena_stack);
-    }
-
+    
     EXPORT Allocator* allocator_get_default()
     {
         return _allocator_state.default_allocator;
@@ -204,10 +225,6 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     EXPORT Allocator* allocator_get_static()
     {
         return _allocator_state.static_allocator;
-    }
-    EXPORT Arena_Stack* allocator_get_scratch_arena_stack()
-    {
-        return &_allocator_state.scratch_arena_stack;
     }
     
     EXPORT Allocator* allocator_or_default(Allocator* allocator_or_null)

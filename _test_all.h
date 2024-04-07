@@ -19,6 +19,7 @@
 #include "_test_stable_array.h"
 #include "_test_lpf.h"
 #include "_test_image.h"
+#include "perf.h"
 
 #include "profile_utils.h"
 INTERNAL void test_all(f64 total_time)
@@ -28,7 +29,7 @@ INTERNAL void test_all(f64 total_time)
     int passed_count = 0;
 
     #define INCR total_count += 1, passed_count += (int)
-    
+
     INCR RUN_TEST(platform_test_all);
     INCR RUN_TEST(test_list);
     INCR RUN_TEST(test_image);
@@ -55,25 +56,6 @@ INTERNAL void test_all(f64 total_time)
     log_perf_counters("TEST", LOG_INFO, PERF_SORT_BY_NAME);
 }
 
-void benchmark_x()
-{
-    Hash_Index hash = {0};
-    hash_index_init(&hash, NULL);
-    hash_index_reserve(&hash, 1000);
- 
-    Perf_Stats stats = {0};																	
-
-    _perf_benchamrk(&stats, it, 0.3, 3, 1, {
-        hash_index_find(hash, it.iter);
-    });
-
-    _perf_benchamrk_loop(&stats, it, 0.3, 3, 1) {
-        it.discard = true;
-        hash_index_find(hash, it.iter);
-    }
-
-    hash_index_deinit(&hash);
-}
 
 #if defined(TEST_RUNNER)
 

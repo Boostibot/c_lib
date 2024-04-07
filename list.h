@@ -152,7 +152,8 @@
                 ((node)->next != NULL ? (node)->next->prev = (node)->prev : 0), \
                 ((node)->prev != NULL ? (node)->prev->next = (node)->next : 0)  \
             )                                                                   \
-    )                                                                           \
+    )                                                                          \
+    //,((node)->next = (node)->prev = NULL), (node)                                \
     
 #define bilist_push_back_nil(first, last, node, next, prev, NULL) bilist_insert_nil_cond((first),(last),(last),0,(node),next,prev,NULL)
 #define bilist_push_front_nil(first, last, node, next, prev, NULL) bilist_insert_nil_cond((first),(last),(last),1,(node),next,prev,NULL)

@@ -87,7 +87,7 @@
 #endif
 
 #ifndef PLATFORM_SIMD_ALIGN
-    #define PLATFORM_SIMD_ALIGN 8
+    #define PLATFORM_SIMD_ALIGN 32
 #endif
 //Can be used in files without including platform.h but still becomes
 // valid if platform.h is included
