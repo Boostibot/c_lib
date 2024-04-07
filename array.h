@@ -200,8 +200,10 @@ EXPORT bool generic_array_is_invariant(Generic_Array gen)
 {
     bool is_capacity_correct = 0 <= gen.array->capacity;
     bool is_size_correct = (0 <= gen.array->size && gen.array->size <= gen.array->capacity);
+    #ifndef JOT_INLINE_ALLOCATOR
     if(gen.array->capacity > 0)
         is_capacity_correct = is_capacity_correct && gen.array->allocator != NULL;
+    #endif
 
     bool is_data_correct = (gen.array->data == NULL) == (gen.array->capacity == 0);
     bool item_size_correct = gen.item_size > 0;
