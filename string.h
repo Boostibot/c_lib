@@ -82,6 +82,7 @@ EXPORT String_Builder builder_from_string(Allocator* allocator, String string); 
 EXPORT String_Builder string_concat(Allocator* allocator, String a, String b);
 EXPORT String_Builder string_concat3(Allocator* allocator, String a, String b, String c);
 
+EXPORT String_Builder* string_ephemeral_select(String_Builder* ephemerals, isize* slot, isize slot_count, isize min_size, isize max_size, isize reset_every);
 
 EXPORT void builder_init(String_Builder* builder, Allocator* alloc);
 EXPORT void builder_init_with_capacity(String_Builder* builder, Allocator* alloc, isize capacity_or_zero);
@@ -486,6 +487,23 @@ EXPORT bool char_is_id(char c);
         builder_append(&out, b);
         builder_append(&out, c);
         return out;
+    }
+    
+    EXPORT String_Builder* string_ephemeral_select(String_Builder* ephemerals, isize* slot, isize slot_count, isize min_size, isize max_size, isize reset_every)
+    {
+        String_Builder* curr = &ephemerals[*slot % slot_count];
+        
+        //We periodacally shrink the strinks so that we can use this
+        //function regulary for small and big strings without fearing that we will
+        //use too much memory
+        if(*slot % reset_every < slot_count)
+        {
+            if(curr->capacity == 0 || curr->capacity > max_size)
+                builder_init_with_capacity(curr, allocator_get_static(), min_size);
+        }
+        
+        *slot += 1;
+        return curr;
     }
 
     EXPORT void string_deallocate(Allocator* alloc, String* string)

@@ -8,145 +8,14 @@ EXPORT bool file_read_entire_append_into(String file_path, String_Builder* appen
 EXPORT bool file_read_entire(String file_path, String_Builder* data);
 EXPORT bool file_append_entire(String file_path, String data);
 EXPORT bool file_write_entire(String file_path, String data);
-
-EXPORT bool   path_get_full_from(String_Builder* into, String path, String base);
-EXPORT String path_get_full_ephemeral_from(String path, String base);
-EXPORT void   path_get_relative_from(String_Builder* into, String path, String base);
-EXPORT String path_get_relative_ephemeral_from(String path, String base);
-
-EXPORT bool   path_get_full(String_Builder* into, String path);
-EXPORT String path_get_full_ephemeral(String path);
-EXPORT void   path_get_relative(String_Builder* into, String path);
-EXPORT String path_get_relative_ephemeral(String path);
-
-EXPORT String path_get_name_from_path(String path);
-
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_FILE_IMPL)) && !defined(JOT_FILE_HAS_IMPL)
 #define JOT_FILE_HAS_IMPL
 
+#if 0
 #include "vformat.h"
 #include "string.h"
-
-EXPORT String path_get_name_from_path(String path)
-{
-    if(path.size == 0)
-        return STRING("");
-
-    isize dot_pos = string_find_last_char(path, '.');
-    if(dot_pos == -1)
-        dot_pos = path.size;
-
-    isize dir_pos = string_find_last_char_from(path, '/', dot_pos - 1);
-    String name = string_range(path, dir_pos + 1, dot_pos);
-    return name;
-}
-
-enum {FILE_EPHEMERAL_SLOT_COUNT = 4};
-
-typedef struct File_Global_State
-{
-    bool is_init;
-    bool _padding[7];
-    isize full_path_used_count;
-    isize relative_path_used_count;
-
-    Allocator* alloc; 
-    String_Builder full_paths[FILE_EPHEMERAL_SLOT_COUNT];
-    String_Builder relative_paths[FILE_EPHEMERAL_SLOT_COUNT];
-} File_Global_State;
-
-File_Global_State file_global_state = {0};
-
-INTERNAL void _file_init_global_state()
-{
-    if(file_global_state.is_init == false)
-    {
-        file_global_state.alloc = allocator_get_static();
-    
-        for(isize i = 0; i < FILE_EPHEMERAL_SLOT_COUNT; i++)
-            builder_init(&file_global_state.relative_paths[i], file_global_state.alloc);
-            
-        for(isize i = 0; i < FILE_EPHEMERAL_SLOT_COUNT; i++)
-            builder_init(&file_global_state.full_paths[i], file_global_state.alloc);
-
-        file_global_state.full_path_used_count = 0;
-        file_global_state.relative_path_used_count = 0;
-        file_global_state.is_init = true;
-    }
-}
-
-EXPORT bool path_get_full_from(String_Builder* into, String path, String base)
-{
-    //@TEMP: implement this in platform. Implement platform allocator support
-    builder_clear(into);
-    if(base.size > 0)
-    {
-        builder_append(into, base);
-        if(base.data[base.size - 1] != '/')
-            builder_push(into, '/');
-    }
-
-    builder_append(into, path);
-    return true;
-}
-
-EXPORT void path_get_relative_from(String_Builder* into, String path, String base)
-{
-    if(string_is_prefixed_with(path, base))
-    {
-        String relative = string_tail(path, base.size);
-        builder_assign(into, relative);
-    }
-    else
-        builder_assign(into, path);
-}
-
-EXPORT String path_get_relative_ephemeral_from(String path, String base)
-{
-    _file_init_global_state();
-
-    isize curr_index = file_global_state.relative_path_used_count % FILE_EPHEMERAL_SLOT_COUNT;
-    path_get_relative_from(&file_global_state.relative_paths[curr_index], path, base);
-    String out_string = file_global_state.relative_paths[curr_index].string;
-    file_global_state.relative_path_used_count += 1;
-
-    return out_string;
-}
-
-EXPORT String path_get_full_ephemeral_from(String path, String base)
-{
-    _file_init_global_state();
-
-    isize curr_index = file_global_state.full_path_used_count % FILE_EPHEMERAL_SLOT_COUNT;
-    bool state = path_get_full_from(&file_global_state.full_paths[curr_index], path, base);
-    String out_string = file_global_state.full_paths[curr_index].string;
-    file_global_state.full_path_used_count += 1;
-
-    if(state == false)
-        LOG_ERROR("FILE", "Failed to get full path of file '%s'", cstring_ephemeral(path));
-
-    return out_string;
-}
-
-
-EXPORT bool path_get_full(String_Builder* into, String path) 
-{ 
-    return path_get_full_from(into, path, string_make(platform_directory_get_current_working())); 
-}
-EXPORT String path_get_full_ephemeral(String path)
-{
-    return path_get_full_ephemeral_from(path, string_make(platform_directory_get_current_working())); 
-}
-EXPORT void path_get_relative(String_Builder* into, String path)
-{
-    path_get_relative_from(into, path, string_make(platform_directory_get_current_working())); 
-}
-EXPORT String path_get_relative_ephemeral(String path)
-{
-    return path_get_relative_ephemeral_from(path, string_make(platform_directory_get_current_working())); 
-}
 
 #include <stdio.h>
 #include <errno.h>
@@ -247,5 +116,70 @@ EXPORT bool file_write_entire(String file_path, String contents)
     LOG_ERROR("file.h", "error writing file '%s': %s", cstring_ephemeral(file_path), strerror(errno));
     return false;
 }
+
+#else
+
+EXPORT bool file_read_entire_append_into(String file_path, String_Builder* append_into)
+{
+    Platform_File_Info info = {0};
+    Platform_File file = {0};
+    Platform_Error error = platform_file_info(file_path, &info);
+    isize size_before = append_into->size;
+    
+    if(error == 0)
+        error = platform_file_open(&file, file_path, PLATFORM_FILE_MODE_READ);
+    if(error == 0)
+    {
+        isize read_bytes = 0;
+        builder_resize(append_into, append_into->size + info.size);
+        error = platform_file_read(&file, append_into->data + size_before, info.size, &read_bytes);
+    }
+
+    if(error != 0)
+    {
+        builder_resize(append_into, append_into->size);
+        LOG_ERROR("file.h", "error writing file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
+    }
+
+    platform_file_close(&file);
+    return error == 0;
+}
+
+EXPORT bool file_read_entire(String file_path, String_Builder* data)
+{
+    builder_clear(data);
+    return file_read_entire_append_into(file_path, data);
+}
+EXPORT bool file_append_entire(String file_path, String data)
+{
+    Platform_File file = {0};
+    Platform_Error error = platform_file_open(&file, file_path, PLATFORM_FILE_MODE_APPEND);
+    
+    if(error == 0)
+    {
+        platform_file_seek(&file, 0, PLATFORM_FILE_SEEK_FROM_END);
+        error = platform_file_write(&file, data.data, data.size);
+    }
+
+    if(error != 0)
+        LOG_ERROR("file.h", "error appending file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
+    platform_file_close(&file);
+    return error == 0;
+}
+EXPORT bool file_write_entire(String file_path, String data)
+{
+    Platform_File file = {0};
+    Platform_Error error = platform_file_open(&file, file_path, PLATFORM_FILE_MODE_WRITE);
+    
+    if(error == 0)
+        error = platform_file_write(&file, data.data, data.size);
+
+    if(error != 0)
+        LOG_ERROR("file.h", "error writing file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
+
+    platform_file_close(&file);
+    return error == 0;
+}
+#endif
 
 #endif

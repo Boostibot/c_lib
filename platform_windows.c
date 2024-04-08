@@ -401,19 +401,19 @@ static void _buffer_append(Buffer_Base* buffer, int64_t item_size, const void* d
     memset((char*) buffer->data + buffer->size*item_size, 0, item_size);
 }
 
-static char* _utf16_to_utf8(String_Buffer* append_to, Platform_WString str) 
+static char* _utf16_to_utf8(String_Buffer* append_to, const wchar_t* string, int64_t string_size) 
 {
-    int utf8len = WideCharToMultiByte(CP_UTF8, 0, str.data, (int) str.size, NULL, 0, NULL, NULL);
+    int utf8len = WideCharToMultiByte(CP_UTF8, 0, string, (int) string_size, NULL, 0, NULL, NULL);
     buffer_resize(append_to, utf8len);
-    WideCharToMultiByte(CP_UTF8, 0, str.data, (int) str.size, append_to->data, (int) utf8len, 0, 0);
+    WideCharToMultiByte(CP_UTF8, 0, string, (int) string_size, append_to->data, (int) utf8len, 0, 0);
     return append_to->data;
 }
 
-static wchar_t* _utf8_to_utf16(WString_Buffer* append_to, Platform_String str) 
+static wchar_t* _utf8_to_utf16(WString_Buffer* append_to, const char* string, int64_t string_size) 
 {
-    int utf16len = MultiByteToWideChar(CP_UTF8, 0, str.data, (int) str.size, NULL, 0);
+    int utf16len = MultiByteToWideChar(CP_UTF8, 0, string, (int) string_size, NULL, 0);
     buffer_resize(append_to, utf16len);
-    MultiByteToWideChar(CP_UTF8, 0, str.data, (int) str.size, append_to->data, (int) utf16len);
+    MultiByteToWideChar(CP_UTF8, 0, string, (int) string_size, append_to->data, (int) utf16len);
     return append_to->data;
 }
 
@@ -437,7 +437,7 @@ const wchar_t* _ephemeral_wstring_convert(Platform_String path, bool normalize_p
 
     buffer_reserve(curr, MIN_SIZE);
     *slot = (*slot + 1) % _EPHEMERAL_STRING_SIMULTANEOUS;
-    _utf8_to_utf16(curr, path);
+    _utf8_to_utf16(curr, path.data, path.size);
     if(normalize_path)
     {
         for(int64_t i = 0; i < curr->size; i++)
@@ -450,13 +450,13 @@ const wchar_t* _ephemeral_wstring_convert(Platform_String path, bool normalize_p
     return curr->data;
 }
 
-char* _convert_to_utf8_normalize_path(String_Buffer* append_to_or_null, Platform_WString string, int normalize_flag)
+char* _convert_to_utf8_normalize_path(String_Buffer* append_to_or_null, const wchar_t* string, int64_t string_size, int normalize_flag)
 {
     (void) (normalize_flag);
     String_Buffer local = {0};
     String_Buffer* append_to = append_to_or_null ? append_to_or_null : &local;
 
-    char* str = _utf16_to_utf8(append_to, string);
+    char* str = _utf16_to_utf8(append_to, string, string_size);
     for(int64_t i = 0; i < append_to->size; i++)
     {
         if(str[i] == '\\')
@@ -557,8 +557,6 @@ Platform_Error platform_file_open(Platform_File* file, Platform_String path, int
     }
     
     DWORD flags = FILE_ATTRIBUTE_NORMAL;
-    if(open_flags & PLATFORM_FILE_MODE_TEMPORARY)
-        flags |= FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE;
 
     HANDLE template_handle = NULL;
     HANDLE handle = CreateFileW(_path, access, share, security, creation, flags, template_handle);
@@ -884,8 +882,7 @@ static char* _alloc_full_path(String_Buffer* buffer_or_null, const wchar_t* loca
         needed_size = GetFullPathNameW(local_path, (DWORD) full_path.size, full_path.data, NULL);
     }
     
-    Platform_WString full_path_str = {full_path.data, full_path.size};
-    char* out = _convert_to_utf8_normalize_path(buffer_or_null, full_path_str, normalize_flag);
+    char* out = _convert_to_utf8_normalize_path(buffer_or_null, full_path.data, full_path.size, normalize_flag);
     buffer_deinit(&full_path);
     return out;
 }
@@ -1010,10 +1007,9 @@ Platform_Error platform_directory_list_contents_alloc(Platform_String path, Plat
             else
                 flag |= _NORMALIZE_FILE;
             
-            Platform_WString path_str = {temp.data, temp.size};
             Platform_Directory_Entry entry = {0};
             entry.info = info;
-            entry.path = _convert_to_utf8_normalize_path(NULL, path_str, flag);
+            entry.path = _convert_to_utf8_normalize_path(NULL, temp.data, temp.size, flag);
             entry.directory_depth = dir_iterators.size - 1;
             buffer_push(&entries, entry);
 
@@ -1238,115 +1234,293 @@ Platform_Error platform_file_memory_map(Platform_String file_path, int64_t desir
 }
 
 
-/*
-typedef bool (*_File_Watch_Func)(void* context);
+//=========================================
+// File watch
+//=========================================
+
+enum {
+    _FILE_WATCH_CHANGE_CALL = 1,
+    _FILE_WATCH_CHANGE_HAS_BUFFER = 2,
+};
 
 typedef struct _Platform_File_Watch_Context {
-    HANDLE watch_handle;
-    bool (*user_func)(void* context);
+    OVERLAPPED overlapped;
+    HANDLE directory;
+    HANDLE destroy_notification;
+    HANDLE thread;
+    DWORD win_flags;
+    BOOL win_watch_subdir;
+    Platform_Error error;
+    CRITICAL_SECTION mutex;
+
+    void (*user_func)(Platform_File_Watch watch, void* context);
     void* user_context;
-    bool thread_exited;
+
+    int32_t flags;
+
+    String_Buffer watched_path;
+    String_Buffer change_path;
+    String_Buffer change_old_path;
+
+    int32_t changes;
+    int32_t changes_calls;
+
+    uint8_t* buffer;
+    size_t buffer_size;
+    size_t buffer_offset;
 } _Platform_File_Watch_Context;
 
-void _file_watch_func(void* context)
+void _platform_file_watch_context_deinit(_Platform_File_Watch_Context* context)
 {
-    _Platform_File_Watch_Context* watch_context = (_Platform_File_Watch_Context*) context;
-    assert(watch_context && "badly called");
-
-    while(true)
+    if(context)
     {
-        DWORD wait_state = WaitForSingleObject(watch_context->watch_handle, INFINITE);
-        if(wait_state == WAIT_OBJECT_0)
-        {
-            bool user_state = watch_context->user_func(watch_context->user_context);
-            if(user_state == false)
-                break;
-        }
-        //something else happened. It shouldnt but it did. We exit the thread.
-        else
-        {
-            assert(wait_state != WAIT_ABANDONED && "only happens for mutexes");
-            assert(wait_state != WAIT_TIMEOUT && "we didnt set timeout");
-            break;
-        }
+        if(context->directory != INVALID_HANDLE_VALUE && context->directory != NULL)
+            CloseHandle(context->directory);
+        if(context->destroy_notification != INVALID_HANDLE_VALUE && context->destroy_notification != NULL)
+            CloseHandle(context->destroy_notification);
+        if(context->overlapped.hEvent != INVALID_HANDLE_VALUE && context->overlapped.hEvent != NULL)
+            CloseHandle(context->overlapped.hEvent);
 
-        if(FindNextChangeNotification(watch_context->watch_handle) == false)
-        {
-            //Some error occured
-            assert(false);
-            break;
-        }
+        DeleteCriticalSection(&context->mutex);
+        buffer_deinit(&context->watched_path);
+        buffer_deinit(&context->change_path);
+        buffer_deinit(&context->change_old_path);
+
+        free(context->buffer);
+            
+        context->directory = NULL;
+        context->destroy_notification = NULL;
+        context->overlapped.hEvent = NULL;
+        context->buffer = NULL;
     }
-
-    if(watch_context->watch_handle != INVALID_HANDLE_VALUE)
-        FindCloseChangeNotification(watch_context->watch_handle);
-
-    watch_context->thread_exited = true;
 }
 
-Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_String file_or_dir_path, int32_t file_wacht_flags, bool (*async_func)(void* context), void* context)
+void _platform_file_watch_function(void* _context)
 {
-    platform_file_unwatch(file_watch);
-    assert(async_func != NULL);
-    
-    HANDLE watch_handle = INVALID_HANDLE_VALUE;
-    _Platform_File_Watch_Context* watch_context = (_Platform_File_Watch_Context*) malloc(sizeof *watch_context);
-    file_watch->handle = watch_context;
-    Platform_Error error = PLATFORM_ERROR_OK;
-    if(watch_context != NULL)
+    _Platform_File_Watch_Context* context = (_Platform_File_Watch_Context*) _context;
+    while (context->error == 0) 
     {
-        BOOL watch_subtree = false;
-        DWORD notify_filter = 0;
+        HANDLE handles[2] = {context->overlapped.hEvent, context->destroy_notification};
+        DWORD result = WaitForMultipleObjects((DWORD) 2, handles, false, INFINITE);
+        
+        //If got file change
+        if (result == WAIT_OBJECT_0) {
 
-        if(file_wacht_flags & PLATFORM_FILE_WATCH_CHANGE)
-            notify_filter |= FILE_NOTIFY_CHANGE_LAST_WRITE;
-        
-        if(file_wacht_flags & PLATFORM_FILE_WATCH_DIR_NAME)
-            notify_filter |= FILE_NOTIFY_CHANGE_DIR_NAME;
-        
-        if(file_wacht_flags & PLATFORM_FILE_WATCH_FILE_NAME)
-            notify_filter |= FILE_NOTIFY_CHANGE_FILE_NAME;
-        
-        if(file_wacht_flags & PLATFORM_FILE_WATCH_ATTRIBUTES)
-            notify_filter |= FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_ATTRIBUTES;
-        
-        if(file_wacht_flags & PLATFORM_FILE_WATCH_RECURSIVE)
-            watch_subtree = true;
-        
-        const wchar_t* path = _ephemeral_path(file_or_dir_path);
-        watch_handle = FindFirstChangeNotificationW(path, watch_subtree, notify_filter);
-        error = _platform_error_code(watch_handle != INVALID_HANDLE_VALUE);
+            EnterCriticalSection(&context->mutex);
+            Platform_File_Watch watch = {_context};
+            if(context->user_func)
+                context->user_func(watch, context->user_context);
+            context->changes |= _FILE_WATCH_CHANGE_CALL;
+            context->changes_calls += 1;
+            LeaveCriticalSection(&context->mutex);
+        }
 
-        if(error == PLATFORM_ERROR_OK)
-        {
-            watch_context->user_context = context;
-            watch_context->user_func = async_func;
-            watch_context->watch_handle = watch_handle;
-            error = platform_thread_launch(&file_watch->thread, _file_watch_func, watch_context, 0);
+        //If got destroy request exit
+        if (result == WAIT_OBJECT_0 + 1) {
+            break;
         }
     }
 
-    if(error != PLATFORM_ERROR_OK)
-        platform_file_unwatch(file_watch);
+    EnterCriticalSection(&context->mutex);
+    context->thread = INVALID_HANDLE_VALUE;
+    _platform_file_watch_context_deinit(context);
+    free(context);
+    LeaveCriticalSection(&context->mutex);
+}
+
+Platform_Error platform_file_unwatch(Platform_File_Watch* file_watch_or_null)
+{
+    Platform_Error out = 0;
+    if(file_watch_or_null && file_watch_or_null->handle)
+    {
+        _Platform_File_Watch_Context* context = (_Platform_File_Watch_Context*) file_watch_or_null->handle;
+        out = context->error;
+        if(context->thread != INVALID_HANDLE_VALUE)
+            SetEvent(context->destroy_notification);
+
+        file_watch_or_null->handle = NULL;
+    }
+
+    return out;
+}
+
+Platform_Error platform_file_watch(Platform_File_Watch* file_watch_or_null, Platform_String file_path, int32_t file_watch_flags, void (*signal_func_or_null)(Platform_File_Watch watch, void* context), void* user_context)
+{
+    (void) file_watch_flags;
+    Platform_Error error = {0};
+    if(file_watch_or_null)
+        error = platform_file_unwatch(file_watch_or_null);
+
+    _Platform_File_Watch_Context context = {0};
+    _Platform_File_Watch_Context* context_alloced = NULL;
+    BOOL success = TRUE;
+    if(error != 0)
+        goto fail;
+
+    context.flags = file_watch_flags;
+    context.win_watch_subdir = !!(context.flags & PLATFORM_FILE_WATCH_SUBDIRECTORIES);
+    context.win_flags = 0;
+    if(file_watch_flags & PLATFORM_FILE_WATCH_CREATED)
+        context.win_flags |= FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_CREATION;
+    if(file_watch_flags & PLATFORM_FILE_WATCH_DELETED)
+        context.win_flags |= FILE_NOTIFY_CHANGE_FILE_NAME;
+    if(file_watch_flags & PLATFORM_FILE_WATCH_RENAMED)
+        context.win_flags |= FILE_NOTIFY_CHANGE_FILE_NAME;
+    if(file_watch_flags & PLATFORM_FILE_WATCH_MODIFIED)
+        context.win_flags |= FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_ATTRIBUTES;
+    if(file_watch_flags & PLATFORM_FILE_WATCH_DIRECTORY)
+        context.win_flags |= FILE_NOTIFY_CHANGE_DIR_NAME;
+
+    context.user_context = user_context;
+    context.user_func = signal_func_or_null;
+    context.overlapped.hEvent = CreateEventW(NULL, FALSE, 0, NULL);
+    context.destroy_notification = CreateEventW(NULL, FALSE, 0, NULL);
+    context.buffer_size = 10*1024;
+    context.buffer = (uint8_t*) malloc(context.buffer_size);
+    buffer_reserve(&context.change_path, _LOCAL_BUFFER_SIZE);
+    buffer_reserve(&context.change_old_path, _LOCAL_BUFFER_SIZE);
+    buffer_append(&context.watched_path, file_path.data, file_path.size);
+
+    context.directory = CreateFileW(_ephemeral_path(file_path),
+        FILE_LIST_DIRECTORY,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
+        NULL);
+
+    InitializeCriticalSection(&context.mutex);
+    if(error = _platform_error_code(context.directory != INVALID_HANDLE_VALUE && context.overlapped.hEvent != NULL && context.buffer), error != 0)
+        goto fail;
+        
+    context_alloced = (_Platform_File_Watch_Context*) malloc(sizeof *context_alloced);
+    success = ReadDirectoryChangesW(
+        context.directory, context.buffer, (DWORD) context.buffer_size, 
+        context.win_watch_subdir, context.win_flags, NULL, &context.overlapped, NULL);
+    if(error = _platform_error_code(success && context_alloced != NULL), error != 0)
+        goto fail;
+
+    *context_alloced = context;
+    context_alloced->thread = (HANDLE) _beginthread(_platform_file_watch_function, 0, context_alloced);
+    if(error = _platform_error_code(context_alloced->thread != (HANDLE) -1), error != 0)
+        goto fail;
+
+    fail:
+    if(error != 0)
+    {
+        _platform_file_watch_context_deinit(&context);
+        free(context_alloced);
+    }
+    else
+    {
+        if(file_watch_or_null)
+            file_watch_or_null->handle = context_alloced;
+    }
 
     return error;
 }
-void platform_file_unwatch(Platform_File_Watch* file_watch)
+
+const char* platform_file_watch_get_info(Platform_File_Watch file_watch, int32_t* flags_or_null)
 {
-    _Platform_File_Watch_Context* watch_context = (_Platform_File_Watch_Context*) file_watch->handle;
-    if(watch_context)
+    _Platform_File_Watch_Context* context = (_Platform_File_Watch_Context*) file_watch.handle;
+    const char* path = "";
+    if(context)
     {
-        if(watch_context->thread_exited == false)
-        {
-            //@TODO: inspect if this does what we want
-            //TerminateThread (file_watch->thread.handle, 0);
-            FindCloseChangeNotification(watch_context->watch_handle);
-        }
-        free(watch_context);
+        if(flags_or_null)  
+            *flags_or_null = context->flags;
+
+        path = context->watched_path.data;
     }
-    memset(file_watch, 0, sizeof *file_watch);
+
+    return path;
 }
-*/
+
+bool platform_file_watch_poll(Platform_File_Watch file_watch, Platform_File_Watch_Event* user_event)
+{   
+    bool ret = false;
+    (void) user_event;
+    _Platform_File_Watch_Context* context = (_Platform_File_Watch_Context*) file_watch.handle;
+    if(context)
+    {
+        int32_t changes = platform_atomic_load32(&context->changes);
+        if(changes != 0)
+        {
+            EnterCriticalSection(&context->mutex);
+            if((changes & _FILE_WATCH_CHANGE_CALL) && (changes & _FILE_WATCH_CHANGE_HAS_BUFFER) == 0)
+            {
+                DWORD bytes_transferred = 0;
+                GetOverlappedResult(context->directory, &context->overlapped, &bytes_transferred, FALSE);
+                
+                context->buffer_offset = 0;
+                context->changes_calls = 0;
+                context->changes = _FILE_WATCH_CHANGE_HAS_BUFFER;
+            }
+
+            int32_t modification = 0;
+            while((context->changes & _FILE_WATCH_CHANGE_HAS_BUFFER) && modification == 0)
+            {
+                FILE_NOTIFY_INFORMATION *event = NULL;
+                modification = 0;
+                buffer_resize(&context->change_old_path, 0);
+                buffer_resize(&context->change_path, 0);
+
+                do {
+                    event = (FILE_NOTIFY_INFORMATION*) (context->buffer + context->buffer_offset);
+                    
+                    //Fill out info and convert paths
+                    switch (event->Action) {
+                        case FILE_ACTION_ADDED: modification = PLATFORM_FILE_WATCH_CREATED; break;
+                        case FILE_ACTION_REMOVED: modification = PLATFORM_FILE_WATCH_DELETED; break;
+                        case FILE_ACTION_MODIFIED: modification = PLATFORM_FILE_WATCH_MODIFIED; break;
+                        case FILE_ACTION_RENAMED_OLD_NAME: modification = PLATFORM_FILE_WATCH_RENAMED; break;
+                        case FILE_ACTION_RENAMED_NEW_NAME: modification = PLATFORM_FILE_WATCH_RENAMED; break;
+                    }
+                    
+                    DWORD path_len = event->FileNameLength / sizeof(wchar_t);
+                    if(event->Action == FILE_ACTION_RENAMED_OLD_NAME)
+                        _convert_to_utf8_normalize_path(&context->change_old_path, event->FileName, path_len, 0);
+                    else
+                        _convert_to_utf8_normalize_path(&context->change_path, event->FileName, path_len, 0);
+
+                    //Prepare next entry
+                    if (event->NextEntryOffset) {
+                        context->buffer_offset += event->NextEntryOffset;
+                        context->changes |= _FILE_WATCH_CHANGE_HAS_BUFFER;
+                    } else {
+                        context->changes &= ~_FILE_WATCH_CHANGE_HAS_BUFFER;
+
+                        BOOL success = ReadDirectoryChangesW(
+                            context->directory, context->buffer, (DWORD) context->buffer_size, 
+                            context->win_watch_subdir, context->win_flags,
+                            NULL, &context->overlapped, NULL);
+
+                        context->error = _platform_error_code(!!success);
+                    }
+                } while(event->Action == FILE_ACTION_RENAMED_OLD_NAME && event->NextEntryOffset);
+
+
+                //If the flags dont align with what the user asked for iterate again
+                modification = modification & context->flags;
+            }
+
+            if(modification == 0)
+                ret = false;
+            else
+            {
+                ret = true;
+                user_event->action = (Platform_File_Watch_Flag) modification;
+                user_event->_padding = 0;
+                user_event->path = context->change_path.data;
+                user_event->old_path = context->change_old_path.data;
+                user_event->watched_path = context->watched_path.data;
+            }
+            
+            LeaveCriticalSection(&context->mutex);
+        }
+    }
+
+    return ret;
+}
 
 //=========================================
 // DLL management

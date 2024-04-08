@@ -156,6 +156,8 @@ enum {
     PATH_FLAG_NO_PREFIX = 256,              //Does not append prefix (for normalize this meens the result will not have prefix)
 };
 
+EXPORT void         path_builder_deinit(Path_Builder* builder);
+EXPORT void         path_builder_init(Path_Builder* builder, Allocator* alloc_or_null, isize initial_capacity_or_zero);
 EXPORT Path_Builder path_builder_make(Allocator* alloc_or_null, isize initial_capacity_or_zero);
 EXPORT bool         path_builder_append(Path_Builder* into, Path path, int flags);
 EXPORT void         path_builder_clear(Path_Builder* builder);
@@ -171,6 +173,9 @@ EXPORT Path_Builder path_make_absolute(Allocator* alloc, Path relative_to, Path 
 EXPORT Path path_get_executable();
 EXPORT Path path_get_executable_directory();
 EXPORT Path path_get_current_working_directory();
+
+EXPORT Path path_absolute_ephemeral(Path relative_to, Path path);
+EXPORT Path path_relative_ephemeral(Path relative_to, Path path);
 
 #endif
 
@@ -557,6 +562,17 @@ EXPORT bool path_segment_iterate_string(Path_Segement_Iterator* it, String path,
 EXPORT bool path_segment_iterate(Path_Segement_Iterator* it, Path path)
 {
     return path_segment_iterate_string(it, path.string, path.info.prefix_size + path.info.root_size);
+}
+
+EXPORT void path_builder_deinit(Path_Builder* builder)
+{
+    builder_deinit(&builder->builder);
+    memset(builder, 0, sizeof *builder);
+}
+EXPORT void path_builder_init(Path_Builder* builder, Allocator* alloc_or_null, isize initial_capacity_or_zero)
+{
+    builder_init_with_capacity(&builder->builder, alloc_or_null, initial_capacity_or_zero);
+    memset(&builder->info, 0, sizeof builder->info);
 }
 
 EXPORT Path_Builder path_builder_make(Allocator* alloc_or_null, isize initial_capacity_or_zero)
@@ -987,6 +1003,40 @@ EXPORT Path path_get_current_working_directory()
     }
 
     return cached.path;
+}
+
+INTERNAL Path_Builder* _path_ephemeral_builder()
+{
+    enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256};
+    static ATTRIBUTE_THREAD_LOCAL Path_Builder ephemeral_strings[EPHEMERAL_SLOTS] = {0};
+    static ATTRIBUTE_THREAD_LOCAL isize slot = 0;
+
+    Path_Builder* curr = &ephemeral_strings[slot % EPHEMERAL_SLOTS];
+        
+    //We periodacally shrink the strinks so that we can use this
+    //function regulary for small and big strings without fearing that we will
+    //use too much memory
+    if(slot % RESET_EVERY < EPHEMERAL_SLOTS)
+    {
+        if(curr->capacity == 0 || curr->capacity > KEPT_SIZE)
+             path_builder_init(curr, allocator_get_static(), KEPT_SIZE);
+    }
+        
+    slot += 1;
+    return curr;
+}
+
+EXPORT Path path_absolute_ephemeral(Path relative_to, Path path)
+{
+    Path_Builder* ephemeral = _path_ephemeral_builder();
+    path_make_absolute_into(ephemeral, relative_to, path);
+    return ephemeral->path;
+}
+EXPORT Path path_relative_ephemeral(Path relative_to, Path path)
+{
+    Path_Builder* ephemeral = _path_ephemeral_builder();
+    path_make_relative_into(ephemeral, relative_to, path);
+    return ephemeral->path;
 }
 
 #endif

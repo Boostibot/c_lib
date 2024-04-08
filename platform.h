@@ -346,7 +346,6 @@ typedef enum Platform_File_Open_Flags {
     PLATFORM_FILE_MODE_CREATE = 8,                  //Creates the file, if it already exists does nothing.
     PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST = 16,  //Creates the file, if it already exists fails. When supplied alongside PLATFORM_FILE_MODE_CREATE overrides it.
     PLATFORM_FILE_MODE_REMOVE_CONTENT = 32,         //If opening a file that has content, remove it.
-    PLATFORM_FILE_MODE_TEMPORARY = 64,              //The file is removed once all handles are closed.
     PLATFORM_FILE_MODE_READ_WRITE_APPEND = PLATFORM_FILE_MODE_READ | PLATFORM_FILE_MODE_WRITE | PLATFORM_FILE_MODE_APPEND,
 } Platform_File_Open_Flags;
 
@@ -409,43 +408,6 @@ Platform_Error platform_directory_list_contents_alloc(Platform_String directory_
 //Frees previously allocated file list
 void platform_directory_list_contents_free(Platform_Directory_Entry* entries);
 
-typedef struct Platform_File_Watch {
-    void* handle;
-} Platform_File_Watch;
-
-typedef enum Platform_File_Watch_Flag {
-    PLATFORM_FILE_WATCH_CREATED     = 1,
-    PLATFORM_FILE_WATCH_DELETED     = 2,
-    PLATFORM_FILE_WATCH_MODIFIED    = 4,
-    PLATFORM_FILE_WATCH_RENAMED     = 8,
-    PLATFORM_FILE_WATCH_DIRECTORY   = 1 << 30,
-} Platform_File_Watch_Flag;
- 
-typedef struct Platform_File_Watch_Event {
-    Platform_File_Watch_Flag flag;
-    int32_t _padding;
-    Platform_File_Watch handle;
-    Platform_String path;
-    Platform_String old_path; //only used in case of PLATFORM_FILE_WATCH_RENAMED to store the previous path.
-} Platform_File_Watch_Event;
-
-//Creates a watch of a directory or a single file. 
-//file_watch_flags is a bitwise combination of members of Platform_File_Watch_Flag specifying which events we to be reported.
-//If file file_watch_or_null is present saves to it a handle to unwatch this watch else doesnt save anything.
-//If PLATFORM_FILE_WATCH_DIRECTORY flags is set interprets file_path as directory path and watches it.
-//Returns Platform_Error indicating wheter the operation was successfull. 
-//Note that the directory in which the watched file resides (or the watched directory itself) must exist else returns error.
-Platform_Error platform_file_watch(Platform_File_Watch* file_watch_or_null, Platform_String file_path, int32_t file_watch_flags);
-//Deinits a give watch represetn by file_watch_or_null. If file_watch_or_null is null uses file_path to remove specified watch instead.
-//Note that if using file_path to unwatch and there are multiple watches watching the same file removes all of them.
-Platform_Error platform_file_unwatch(Platform_File_Watch* file_watch_or_null, Platform_String file_path);
-//Polls watch events from the given file watch. 
-//Returns true if event was polled and false if there are no events in the qeuue.
-//If `file_watch_or_null` is null polls from all watches.
-//Note that once event is polled it is removed from the queue.
-//Note that this functions is implemented efficiently and in case of no events is practically free.
-bool platform_file_watch_poll(Platform_File_Watch* file_watch_or_null, Platform_File_Watch_Event* event);
-
 //Memory maps the file pointed to by file_path and saves the adress and size of the mapped block into mapping. 
 //If the desired_size_or_zero == 0 maps the entire file. 
 //  if the file doesnt exist the function fails.
@@ -458,6 +420,57 @@ bool platform_file_watch_poll(Platform_File_Watch* file_watch_or_null, Platform_
 Platform_Error platform_file_memory_map(Platform_String file_path, int64_t desired_size_or_zero, Platform_Memory_Mapping* mapping);
 //Unmpas the previously mapped file. If mapping is a result of failed platform_file_memory_map does nothing.
 void platform_file_memory_unmap(Platform_Memory_Mapping* mapping);
+
+//=========================================
+// File Watch
+//=========================================
+typedef enum Platform_File_Watch_Flag {
+    PLATFORM_FILE_WATCH_CREATED      = 1,
+    PLATFORM_FILE_WATCH_DELETED      = 2,
+    PLATFORM_FILE_WATCH_MODIFIED     = 4,
+    PLATFORM_FILE_WATCH_RENAMED      = 8,
+    PLATFORM_FILE_WATCH_DIRECTORY    = 16,
+    PLATFORM_FILE_WATCH_SUBDIRECTORIES = 32,
+
+    PLATFORM_FILE_WATCH_ALL_FILES = PLATFORM_FILE_WATCH_CREATED 
+        | PLATFORM_FILE_WATCH_DELETED 
+        | PLATFORM_FILE_WATCH_MODIFIED 
+        | PLATFORM_FILE_WATCH_RENAMED,
+
+    PLATFORM_FILE_WATCH_ALL = PLATFORM_FILE_WATCH_ALL_FILES
+        | PLATFORM_FILE_WATCH_DIRECTORY,
+} Platform_File_Watch_Flag;
+ 
+typedef struct Platform_File_Watch {
+    void* handle;
+} Platform_File_Watch;
+
+typedef struct Platform_File_Watch_Event {
+    Platform_File_Watch_Flag action;
+    int32_t _padding;
+    const char* watched_path;
+    const char* path;
+    const char* old_path; //only used in case of PLATFORM_FILE_WATCH_RENAMED to store the previous path.
+} Platform_File_Watch_Event;
+
+//Creates a watch of changes on a directory or a single file. These changes can be polled with platform_file_watch_poll. 
+//Returns Platform_Error indicating wheter the operation was successfull. 
+//file_watch_flags is a bitwise combination of members of Platform_File_Watch_Flag specifying which events we to be reported.
+// 
+//If file file_watch is not null, saves this watch to the given pointer.
+//If signal_func_or_null is not null, calls it immediately after a change has occured. This can be used to give some more general signals about which watches have events.
+//
+//Note that the directory in which the watched file resides (or the watched directory itself) must exist else returns error.
+Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_String file_path, int32_t file_watch_flags, void (*signal_func_or_null)(Platform_File_Watch watch, void* context), void* context);
+//Deinits a given watch represented by file_watch_or_null. 
+Platform_Error platform_file_unwatch(Platform_File_Watch* file_watch);
+//Polls watch events from the given file watch. 
+//Returns true if event was polled and false if there are no events in the qeuue.
+//Note that once event is polled it is removed from the queue.
+//Note that this functions is implemented efficiently and in case of no events is practically free.
+bool platform_file_watch_poll(Platform_File_Watch file_watch, Platform_File_Watch_Event* event);
+//Returns the watched path from give filewatch. Also saves the used flags if to flags_or_null if not null.
+const char* platform_file_watch_get_info(Platform_File_Watch file_watch, int32_t* flags_or_null);
 
 //=========================================
 // DLL management
