@@ -1044,7 +1044,7 @@ EXPORT Path path_relative_ephemeral(Path relative_to, Path path)
 #if (defined(JOT_ALL_TEST) || defined(JOT_PATH_TEST)) && !defined(JOT_PATH_HAS_TEST)
 #define JOT_PATH_HAS_TEST
 
-#define TEST_STRING_EQ(str1, str2) TEST(string_is_equal(str1, str2), "\"" STRING_FMT "\" == \"" STRING_FMT "\"", STRING_PRINT(str1), STRING_PRINT(str2))
+#define TEST_STRING_EQ(str1, str2) TEST(string_is_equal((str1), (str2)), "'%.*s' == '%.*s'", STRING_PRINT(str1), STRING_PRINT(str2))
 
 enum {
     TEST_PATH_IS_DIR = 1,

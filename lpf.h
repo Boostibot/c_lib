@@ -165,8 +165,7 @@ EXPORT String lpf_string_duplicate(Arena* arena, String string)
     char* str = (char*) arena_push_nonzero(arena, string.size + 1, 1);
     memcpy(str, string.data, (size_t) string.size);
     str[string.size] = '\0';
-    String duped = {str, string.size};
-    return duped;
+    return string_make(str, string.size);
 }
 
 INTERNAL void _lpf_commit_entry(Lpf_Entry_Array* entries_stack, Lpf_Entry* queued, String_Builder* queued_value, Arena* arena)

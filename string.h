@@ -47,9 +47,11 @@ EXPORT isize safe_strlen(const char* string, isize max_size_or_minus_one);
 //If pattern_size == 0 field is filled with zeros instead.
 EXPORT void memset_pattern(void *field, isize field_size, const void* pattern, isize pattern_size);
 
-//Returns a String contained within string builder. The data portion of the string MIGHT be null and in that case its size == 0
-//EXPORT String string_from_builder(String_Builder builder); 
-EXPORT String string_make(const char* cstring); //converts a null terminated cstring into a String
+#define _string_make_internal(string, size, ...) (BRACE_INIT(String){(string), (size)})
+//Makes a string. Either call like string_make("hello world") in which case strlen of the passed in string is used or 
+// string_make(my_data, my_size) in which case the passed in 'my_size' size is used
+#define string_make(string, ...) _string_make_internal((string), ##__VA_ARGS__, (isize) strlen(string)) 
+
 EXPORT String string_head(String string, isize to); //keeps only charcters to to ( [0, to) interval )
 EXPORT String string_tail(String string, isize from); //keeps only charcters from from ( [from, string.size) interval )
 EXPORT String string_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
@@ -152,12 +154,6 @@ EXPORT bool char_is_id(char c);
         isize escaped_from = CLAMP(from, 0, string.size);
         isize escaped_to = CLAMP(to, 0, string.size);
         return string_range(string, escaped_from, escaped_to);
-    }
-
-    EXPORT String string_make(const char* cstring)
-    {
-        String out = {cstring, safe_strlen(cstring, -1)};
-        return out;
     }
 
     EXPORT isize string_find_first(String in_str, String search_for, isize from)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "_test.h"
+#include "base64.h"
 #include "vformat.h"
 
 typedef enum Base64_Encode_State{
@@ -90,15 +91,14 @@ INTERNAL void test_base64_encode(Base64_Encode_State encode_state, Base64_Encodi
 {
     String input_ = string_make(input);
     String expected_ = string_make(expected);
-    String_Builder encoded_buffer = {0};
-    array_init_with_capacity(&encoded_buffer, allocator_get_default(), 512);
+    String_Builder encoded_buffer = builder_make(NULL, 512);
 
     base64_encode_into(&encoded_buffer, input_.data, input_.size, encoding);
     String ecnoded_result = encoded_buffer.string;
 
     TEST(string_is_equal(ecnoded_result, expected_) == (encode_state == BASE64_ENCODE_EQ));
     
-    array_deinit(&encoded_buffer);
+    builder_deinit(&encoded_buffer);
 }
 
 
@@ -106,8 +106,7 @@ INTERNAL void test_base64_decode(Base64_Decode_State decode_state, Base64_Decodi
 {
     String input_ = string_make(input);
     String expected_ = string_make(expected);
-    String_Builder decoded_buffer = {0};
-    array_init_with_capacity(&decoded_buffer, allocator_get_default(), 512);
+    String_Builder decoded_buffer = builder_make(NULL, 512);
 
     bool decode_ok = base64_decode_into(&decoded_buffer, input_.data, input_.size, decoding);
     String decoded_result = decoded_buffer.string;
@@ -118,7 +117,7 @@ INTERNAL void test_base64_decode(Base64_Decode_State decode_state, Base64_Decodi
         TEST(string_is_equal(decoded_result, expected_) == (decode_state == BASE64_DECODE_EQ));
     }
     
-    array_deinit(&decoded_buffer);
+    builder_deinit(&decoded_buffer);
 }
 
 INTERNAL void test_base64_stress(f64 max_seconds, Base64_Encoding encoding, Base64_Decoding decoding)
@@ -130,16 +129,11 @@ INTERNAL void test_base64_stress(f64 max_seconds, Base64_Encoding encoding, Base
         MIN_ITERS = 10,
     };
 
-    String_Builder random_data = {0};
-    String_Builder encoded = {0};
-    String_Builder decoded = {0};
-    String_Builder decoded_block = {0};
-    
     //Try to guess enough space so we never have to reallocate
-    array_reserve(&random_data, MAX_SIZE*MAX_BLOCKS);
-    array_reserve(&encoded, base64_encode_max_output_length(random_data.capacity) + MAX_BLOCKS*10);
-    array_reserve(&decoded, base64_decode_max_output_length(encoded.capacity));
-    array_reserve(&decoded_block, base64_decode_max_output_length(encoded.capacity) / MAX_BLOCKS);
+    String_Builder random_data = builder_make(NULL, MAX_SIZE*MAX_BLOCKS);
+    String_Builder encoded = builder_make(NULL, base64_encode_max_output_length(random_data.capacity) + MAX_BLOCKS*10);
+    String_Builder decoded = builder_make(NULL, base64_decode_max_output_length(encoded.capacity));
+    String_Builder decoded_block = builder_make(NULL, base64_decode_max_output_length(encoded.capacity) / MAX_BLOCKS);
     
 	f64 start = clock_s();
 	for(isize i = 0; i < MAX_ITERS; i++)
@@ -147,8 +141,8 @@ INTERNAL void test_base64_stress(f64 max_seconds, Base64_Encoding encoding, Base
 		if(clock_s() - start >= max_seconds && i >= MIN_ITERS)
 			break;
 
-        array_clear(&random_data);
-        array_clear(&encoded);
+        builder_clear(&random_data);
+        builder_clear(&encoded);
         isize num_blocks = 1;
 
         //If we do_pad we also test decodaing up to MAX_BLOCKS concatenated blocks
@@ -161,7 +155,7 @@ INTERNAL void test_base64_stress(f64 max_seconds, Base64_Encoding encoding, Base
             //Fill the random data block
             isize random_data_prev_size = random_data.size;
             isize block_size = random_range(0, MAX_SIZE + 1);
-            array_resize(&random_data, random_data_prev_size + block_size);
+            builder_resize(&random_data, random_data_prev_size + block_size);
 
             random_bytes(random_data.data + random_data_prev_size, block_size);
 
@@ -186,8 +180,8 @@ INTERNAL void test_base64_stress(f64 max_seconds, Base64_Encoding encoding, Base
         }
     }
     
-    array_deinit(&random_data);
-    array_deinit(&encoded);
-    array_deinit(&decoded);
-    array_deinit(&decoded_block);
+    builder_deinit(&random_data);
+    builder_deinit(&encoded);
+    builder_deinit(&decoded);
+    builder_deinit(&decoded_block);
 }
