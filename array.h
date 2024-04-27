@@ -1,23 +1,24 @@
 #ifndef JOT_ARRAY
 #define JOT_ARRAY
 
-// This freestanding file introduces a simple but powerful untyped dynamic array concept.
+// This freestanding file introduces a simple but powerful typed dynamic array concept.
 // It works by defining struct for each type and then using type untyped macros to work
 // with these structs. 
 //
 // This approach was chosen because: 
 // 1) we need type safety! Array of int should be distinct type from Array of char
-//    This discvalified the one Array struct for all types holding the size of the type currently used)
+//    This discqualified the one Array struct for all types holding the type info supplied at runtime.
 // 
 // 2) we need to be able to work with empty arrays easily and safely. 
-//    Empty arrays are the most common arrays there are so having them as a special and error prone case
+//    Empty arrays are the most common arrays so having them as a special and error prone case
 //    is less than ideal. This discvalifies the typed pointer to allocated array prefixed with header holding
-//    the meta data. (See how stb library implements "stretchy buffers" and images).
-//    This approach introduces a lot of ifs, makes the emta data adress unstable and requires more memory lookups.
+//    the meta data. See how stb library implements "stretchy buffers".
+//    This approach also introduces a lot of ifs, makes the meta data adress unstable thus requiring more memory lookups.
 // 
-// 3) we need to hold info about allocators used for the array.
-//    It also must be fully explicit ie there should never be the case where we return an array from a function and we dont know
-//    how to deallocate it. This is another reason why the typed approach from 2) is bad - we dont even know we need to allocate it!
+// 3) we need to hold info about allocators used for the array. We should know how to deallocate any array using its allocator.
+//
+// 4) the array type must be fully explicit. There should never be the case where we return an array from a function and we dont know
+//    what kind of array it is/if it even is a dynamic array. This is another issue with the stb style.
 //
 // This file is also fully freestanding. To compile the function definitions #define JOT_ALL_IMPL and include it again in .c file. 
 
