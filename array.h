@@ -68,8 +68,8 @@ typedef struct Generic_Array {
     uint32_t item_align;                    
 } Generic_Array;
 
-#define Array_Aligned(Type, align) \
-    union {             \
+#define Array_Aligned(Type, align)               \
+    union {                                      \
         Untyped_Array untyped;                   \
         struct {                                 \
             Allocator* allocator;                \
@@ -77,7 +77,7 @@ typedef struct Generic_Array {
             isize size;                          \
             isize capacity;                      \
         };                                       \
-        uint8_t (*ALIGN)[align];       \
+        uint8_t (*ALIGN)[align];                 \
     }                                            \
 
 #define Array(Type) Array_Aligned(Type, __alignof(Type) > 0 ? __alignof(Type) : 8)
@@ -108,9 +108,9 @@ EXPORT void generic_array_reserve(Generic_Array gen, isize to_capacity);
 EXPORT void generic_array_append(Generic_Array gen, const void* data, isize data_count);
 
 #ifdef __cplusplus
-    #define array_make_generic(array_ptr) Generic_Array{&(array_ptr)->untyped, sizeof *(array_ptr)->data, sizeof *(array_ptr)->ALIGN}
+    #define array_make_generic(array_ptr) (Generic_Array{&(array_ptr)->untyped, sizeof *(array_ptr)->data, sizeof *(array_ptr)->ALIGN})
 #else
-    #define array_make_generic(array_ptr) (Generic_Array){&(array_ptr)->untyped, sizeof *(array_ptr)->data, sizeof *(array_ptr)->ALIGN}
+    #define array_make_generic(array_ptr) ((Generic_Array){&(array_ptr)->untyped, sizeof *(array_ptr)->data, sizeof *(array_ptr)->ALIGN})
 #endif 
 
 #define array_set_capacity(array_ptr, capacity) \
