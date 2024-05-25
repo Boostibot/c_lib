@@ -14,8 +14,6 @@
 	#define EXPORT 
 #endif
 
-typedef int64_t isize;
-
 typedef struct Perf_Counter {
 	int64_t counter;
 	int64_t runs;
@@ -39,15 +37,14 @@ typedef struct Perf_Stats {
 } Perf_Stats;
 
 typedef struct Perf_Benchmark {
-	isize iter;			
+	int64_t iter;			
 	int64_t start_time;
 	int64_t now;																			
 	int64_t freq;																			
 	Perf_Counter counter;																		
 	bool discard;																			
-	bool _pad[7];	
+	bool _padding[7];	
 } Perf_Benchmark;
-
 
 EXPORT int64_t		perf_start();
 EXPORT void			perf_end(Perf_Counter* counter, int64_t measure);
@@ -80,8 +77,8 @@ inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t va
     for(Perf_Benchmark bench = {0}; \
 		bench.freq = platform_perf_counter_frequency(), \
 		bench.start_time = platform_perf_counter(), \
-		bench._pad[0] == false;  \
-		bench._pad[0] = true, *(stats_ptr) = perf_get_stats(bench.counter, (batch_size)))	\
+		bench._padding[0] == false;  \
+		bench._padding[0] = true, *(stats_ptr) = perf_get_stats(bench.counter, (batch_size)))	\
 		for(												\
             /*Init */										\
             int64_t											\
@@ -125,7 +122,7 @@ static void perf_benchmark_example()
 	// items and then free each. Discard the expensive malloc op.
 	void* ptrs[100] = {0};
 	int count = 0;
-	perf_benchmark(&stats, it, 3) {
+	perf_benchmark(&stats, it, 3.5) {
 		if(count > 0)
 			free(ptrs[--count]);
 		else

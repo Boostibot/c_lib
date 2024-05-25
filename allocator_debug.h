@@ -506,7 +506,7 @@ EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_
         if(allocator.captured_callstack_size > 0)
         {
             log_group();
-            log_captured_callstack(log_module, log_type, (const void * const*) (void*) curr.allocation_trace, allocator.captured_callstack_size);
+            log_captured_callstack(log_module, log_type, curr.allocation_trace, allocator.captured_callstack_size);
             log_ungroup();
         }
     }

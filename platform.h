@@ -162,8 +162,6 @@ const char* platform_translate_error(Platform_Error error);
 
 typedef struct Platform_Thread {
     void* handle;
-    int32_t id;
-    int32_t _padding;
 } Platform_Thread;
 
 //A handle to fast (ie non kernel code) recursive mutex. (pthread_mutex_t on linux, CRITICAL_SECTION win32)
@@ -189,7 +187,6 @@ typedef struct Platform_Mutex {
 //The thread has stack_size_or_zero bytes of stack sizes rounded up to page size
 //If stack_size_or_zero is zero or lower uses system default stack size.
 //The thread automatically cleans itself up upon completion or termination.
-//All threads 
 Platform_Error  platform_thread_launch(Platform_Thread* thread, void (*func)(void*), void* context, int64_t stack_size_or_zero); 
 
 int64_t         platform_thread_get_proccessor_count();
@@ -567,11 +564,10 @@ typedef enum Platform_Exception {
 typedef struct Platform_Sandbox_Error {
     //The exception that occured
     Platform_Exception exception;
-    uint8_t _padding[sizeof(void*) - sizeof(Platform_Exception)];
     
     //A translated stack trace and its size
-    const void* const* call_stack; 
-    int64_t call_stack_size;
+    int32_t call_stack_size;
+    void** call_stack; 
 
     //Platform specific data containing the cpu state and its size (so that it can be copied and saved)
     const void* execution_context;

@@ -1,4 +1,4 @@
-#ifndef JOT_LOG
+﻿#ifndef JOT_LOG
 #define JOT_LOG
 
 // This file is focused on as-simpel-as-possible structured logging.
@@ -158,12 +158,11 @@ EXPORT void log_captured(const Log* log_list);
 
 EXPORT const char* log_type_to_string(Log_Type log_type);
 
-
 EXPORT void log_message_no_check(const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* child, const char* format, ...);
 EXPORT void vlog_message(const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* child, const char* format, va_list args);
 
 EXPORT void log_callstack_no_check(const char* log_module, Log_Type log_type, isize skip, const char* format, ...);
-EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void* const* callstack, isize callstack_size);
+EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, void** callstack, isize callstack_size);
 
 //A cute hack to typecheck printf arguments better and more portable than attribute annotations.
 //Simply use printf(format, args...) as well but dont actually evaluate it (using sizeof)
@@ -171,16 +170,25 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, co
 #define log_message(log_module, subject, log_type, source, child, format, ...) (sizeof printf((format), ##__VA_ARGS__), log_message_no_check((log_module), (subject), (log_type), (source), (child), (format), ##__VA_ARGS__))
 #define log_callstack(log_module, log_type, skip, format, ...)                 (sizeof printf((format), ##__VA_ARGS__), log_callstack_no_check((log_module), (log_type), (skip), (format), ##__VA_ARGS__))
 
-typedef struct Memory_Format {
-    const char* unit;
-    isize unit_value;
-    f64 fraction;
+typedef struct String_Buffer_16 {
+    char data[16];
+} String_Buffer_16;
 
-    i32 whole;
-    i32 remainder;
-} Memory_Format;
+typedef struct String_Buffer_64 {
+    char data[64];
+} String_Buffer_64;
 
-EXPORT Memory_Format get_memory_format(isize bytes);
+String_Buffer_16 format_ptr(void* ptr); //returns "0x00000ff76344ae64"
+String_Buffer_16 format_bytes(int64_t bytes); //returns "39B" "64KB", "10.3MB", "5.3GB", "7.531TB" etc.
+String_Buffer_16 format_seconds(double seconds); //retunrns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
+String_Buffer_16 format_nanoseconds(int64_t ns); //retunrns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
+
+#define fmt_ptr(ptr) format_ptr(ptr).data
+#define fmt_bytes(bytes) format_bytes(bytes).data
+#define fmt_sec(seconds) format_seconds(seconds).data
+#define fmt_nanosec(nanoseconds) format_nanoseconds(nanoseconds).data
+#define STRING_PRINT(string) (int) (string).size, (string).data
+
 EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator);
 
 //Logs a message. Does not get dissabled.
@@ -199,14 +207,6 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
 #define LOG_ERROR_CHILD(log_module, subject, child, format, ...)        LOG_CHILD(log_module, subject, LOG_ERROR, child, format, ##__VA_ARGS__)
 #define LOG_FATAL_CHILD(log_module, subject, child, format, ...)        LOG_CHILD(log_module, subject, LOG_FATAL, child, format, ##__VA_ARGS__)
 
-#define STRING_FMT "%.*s"
-#define STRING_PRINT(string) (int) (string).size, (string).data
-
-#define MEMORY_FMT "%.2lf%s"
-#define MEMORY_PRINT(bytes) get_memory_format((bytes)).fraction, get_memory_format((bytes)).unit //@NOTE We call the fucntion twice. Its not optimal however I dont think its going to be used in perf critical situations
-
-#define PTR_FMT "0x%08llx"
-#define PTR_PRINT(ptr) (lli) ptr
 
 #endif
 
@@ -342,13 +342,13 @@ EXPORT void log_callstack_no_check(const char* log_module, Log_Type log_type, is
     
     void* stack[256] = {0};
     isize size = platform_capture_call_stack(stack, 256, skip + 1);
-    log_captured_callstack(log_module, log_type, (const void**) stack, size);
+    log_captured_callstack(log_module, log_type, stack, size);
 
     if(has_msg)
         log_ungroup();
 }
 
-EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, const void* const* callstack, isize callstack_size)
+EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, void** callstack, isize callstack_size)
 {
     if(callstack_size < 0 || callstack == NULL)
         callstack_size = 0;
@@ -410,8 +410,8 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
         LOG(log_module, log_type, "type_name:           %s", stats.type_name);
         LOG(log_module, log_type, "name:                %s", stats.name);
 
-        LOG(log_module, log_type, "bytes_allocated:     " MEMORY_FMT, MEMORY_PRINT(stats.bytes_allocated));
-        LOG(log_module, log_type, "max_bytes_allocated: " MEMORY_FMT, MEMORY_PRINT(stats.max_bytes_allocated));
+        LOG(log_module, log_type, "bytes_allocated:     %s", fmt_bytes(stats.bytes_allocated));
+        LOG(log_module, log_type, "max_bytes_allocated: %s", fmt_bytes(stats.max_bytes_allocated));
 
         LOG(log_module, log_type, "allocation_count:    %lli", stats.allocation_count);
         LOG(log_module, log_type, "deallocation_count:  %lli", stats.deallocation_count);
@@ -438,68 +438,79 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
 
         LOG_FATAL("memory", "Allocator %s %s reported out of memory!", stats.type_name, stats.name);
 
-            LOG_INFO(">memory", "new_size:    " MEMORY_FMT, MEMORY_PRINT(new_size));
-            LOG_INFO(">memory", "old_size:    " MEMORY_FMT, MEMORY_PRINT(old_size));
-            LOG_INFO(">memory", "old_ptr:     " PTR_FMT,    PTR_PRINT(old_ptr));
-            LOG_INFO(">memory", "align:       %lli", (lli) align);
+        LOG_INFO(">memory", "new_size:    %s", fmt_bytes(new_size));
+        LOG_INFO(">memory", "old_size:    %s", fmt_bytes(old_size));
+        LOG_INFO(">memory", "old_ptr:     %s", fmt_ptr(old_ptr));
+        LOG_INFO(">memory", "align:       %lli", (lli) align);
 
-            LOG_INFO(">memory", "Allocator_Stats:");
-            LOG_INFO(">>memory", "bytes_allocated:     " MEMORY_FMT, MEMORY_PRINT(stats.bytes_allocated));
-            LOG_INFO(">>memory", "max_bytes_allocated: " MEMORY_FMT, MEMORY_PRINT(stats.max_bytes_allocated));
+        LOG_INFO(">memory", "Allocator_Stats:");
+        LOG_INFO(">>memory", "bytes_allocated:     %s", fmt_bytes(stats.bytes_allocated));
+        LOG_INFO(">>memory", "max_bytes_allocated: %s", fmt_bytes(stats.max_bytes_allocated));
 
-            LOG_INFO(">>memory", "allocation_count:    %lli", (lli) stats.allocation_count);
-            LOG_INFO(">>memory", "deallocation_count:  %lli", (lli) stats.deallocation_count);
-            LOG_INFO(">>memory", "reallocation_count:  %lli", (lli) stats.reallocation_count);
+        LOG_INFO(">>memory", "allocation_count:    %lli", (lli) stats.allocation_count);
+        LOG_INFO(">>memory", "deallocation_count:  %lli", (lli) stats.deallocation_count);
+        LOG_INFO(">>memory", "reallocation_count:  %lli", (lli) stats.reallocation_count);
     
-            log_callstack(">memory", LOG_TRACE, 1, "callstack:");
+        log_callstack(">memory", LOG_INFO, 1, "callstack:");
 
         log_flush();
-        platform_debug_break(); 
         abort();
     }
 #endif
     
-    EXPORT Memory_Format get_memory_format(isize bytes)
+    EXPORT String_Buffer_16 format_ptr(void* ptr)
     {
-        isize TB = TEBI_BYTE;
-        isize GB = GIBI_BYTE;
-        isize MB = MEBI_BYTE;
-        isize KB = KIBI_BYTE;
-        isize B = (isize) 1;
+        String_Buffer_16 out = {0};
+        snprintf(out.data, sizeof out.data, "0x%08llx", (long long) ptr);
+        return out;
+    }
 
-        Memory_Format out = {0};
-        out.unit = "";
-        out.unit_value = 1;
-        if(bytes >= TB)
-        {
-            out.unit = "TB";
-            out.unit_value = TB;
-        }
-        else if(bytes >= GB)
-        {
-            out.unit = "GB";
-            out.unit_value = GB;
-        }
-        else if(bytes >= MB)
-        {
-            out.unit = "MB";
-            out.unit_value = MB;
-        }
-        else if(bytes >= KB)
-        {
-            out.unit = "KB";
-            out.unit_value = KB;
-        }
+    EXPORT String_Buffer_16 format_bytes(int64_t bytes)
+    {
+        int64_t TB = (int64_t) 1024*1024*1024*1024;
+        int64_t GB = (int64_t) 1024*1024*1024;
+        int64_t MB = (int64_t) 1024*1024;
+        int64_t KB = (int64_t) 1024;
+
+        int64_t abs = bytes > 0 ? bytes : -bytes;
+        String_Buffer_16 out = {0};
+        if(abs >= TB)
+            snprintf(out.data, sizeof out.data, "%.3lfTB", (double) bytes / (double) TB);
+        else if(abs >= GB)
+            snprintf(out.data, sizeof out.data, "%.2lfGB", (double) bytes / (double) GB);
+        else if(abs >= MB)
+            snprintf(out.data, sizeof out.data, "%.2lfMB", (double) bytes / (double) MB);
+        else if(abs >= KB)
+            snprintf(out.data, sizeof out.data, "%.1lfKB", (double) bytes / (double) KB);
         else
-        {
-            out.unit = "B";
-            out.unit_value = B;
-        }
-
-        out.fraction = (f64) bytes / (f64) out.unit_value;
-        out.whole = (i32) (bytes / out.unit_value);
-        out.remainder = (i32) (bytes / out.unit_value);
+            snprintf(out.data, sizeof out.data, "%lliB", (long long) bytes);
 
         return out;
     }
+
+    EXPORT String_Buffer_16 format_nanoseconds(int64_t ns)
+    {
+        int64_t sec = (int64_t) 1000*1000*1000;
+        int64_t milli = (int64_t) 1000*1000;
+        int64_t micro = (int64_t) 1000;
+
+        int64_t abs = ns > 0 ? ns : -ns;
+        String_Buffer_16 out = {0};
+        if(abs >= sec)
+            snprintf(out.data, sizeof out.data, "%.2lfs", (double) ns / (double) sec);
+        else if(abs >= milli)
+            snprintf(out.data, sizeof out.data, "%.2lfms", (double) ns / (double) milli);
+        else if(abs >= micro)
+            snprintf(out.data, sizeof out.data, "%lliμs", (long long) (ns / micro));
+        else
+            snprintf(out.data, sizeof out.data, "%llins", (long long) ns);
+
+        return out;
+    }
+
+    EXPORT String_Buffer_16 format_seconds(double seconds)
+    {
+        return format_nanoseconds((int64_t) (seconds * 1000*1000*1000));
+    }
+    
 #endif

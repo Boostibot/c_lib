@@ -1,4 +1,4 @@
-#ifndef JOT_VFORMAT
+﻿#ifndef JOT_VFORMAT
 #define JOT_VFORMAT
 
 #include "string.h"

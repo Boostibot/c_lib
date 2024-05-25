@@ -117,7 +117,6 @@ Platform_Error _platform_error_code(bool state)
 // Threading
 //=========================================
 #include  	<process.h>
-
 int64_t platform_thread_get_proccessor_count()
 {
     return GetCurrentProcessorNumber();
@@ -129,8 +128,6 @@ Platform_Error  platform_thread_launch(Platform_Thread* thread, void (*func)(voi
     if(stack_size_or_zero <= 0)
         stack_size_or_zero = 0;
     thread->handle = (void*) _beginthread(func, (unsigned int) stack_size_or_zero, context);
-    if(thread->handle)
-        thread->id = GetThreadId(thread->handle);
 
     if(thread->handle)
         return PLATFORM_ERROR_OK;
@@ -141,7 +138,6 @@ Platform_Error  platform_thread_launch(Platform_Thread* thread, void (*func)(voi
 Platform_Thread platform_thread_get_current()
 {
     Platform_Thread out = {0};
-    out.id = GetCurrentThreadId();
     out.handle = GetCurrentThread();
     return out;
 }
@@ -2013,7 +2009,7 @@ Platform_Exception platform_exception_sandbox(
 
         Platform_Sandbox_Error error = {exception};
         error.call_stack = error_state.stack;
-        error.call_stack_size = error_state.stack_size;
+        error.call_stack_size = (int32_t) error_state.stack_size;
         error.execution_context = &error_state.context;
         error.execution_context_size = (int64_t) sizeof error_state.context;
         error.epoch_time = error_state.epoch_time;

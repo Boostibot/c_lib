@@ -38,11 +38,6 @@ static void test_stable_array()
             i32* at = stable_array_at(&stable, index);
             TEST(*at == index);
         STABLE_ARRAY_FOR_EACH_END
-        
-        STABLE_ARRAY_FOR_EACH_BEGIN2(stable, i32*, ptr, isize, index)
-            i32* at = stable_array_at(&stable, index);
-            TEST(*at == index);
-        STABLE_ARRAY_FOR_EACH_END2
 
         for(isize i = 0; i < INSERT_COUNT; i++)
         {

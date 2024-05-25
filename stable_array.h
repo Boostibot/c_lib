@@ -84,39 +84,31 @@ EXPORT isize stable_array_insert(Stable_Array* stable, void** out);
 EXPORT bool  stable_array_remove(Stable_Array* stable, isize index);
 EXPORT void  stable_array_reserve(Stable_Array* stable, isize to);
 
-#define STABLE_ARRAY_FOR_EACH_BEGIN(stable, Ptr_Type, ptr_name, Index_Type, index)                    \
-    for(isize _block_i = 0; _block_i < (stable).blocks_size; _block_i++)                        \
-    {                                                                                           \
-        Ptr_Type _dummy = NULL;                                                                 \
-        ASSERT((stable).item_size == isizeof(*_dummy), "wrong type submitted to ITERATE_STABLE_ARRAY_BEGIN"); \
-        Stable_Array_Block* _block = &(stable).blocks[_block_i];                                \
-        for(isize _item_i = 0; _item_i < STABLE_ARRAY_BLOCK_SIZE; _item_i++)                    \
-        {                                                                                       \
-            if(_block->filled_mask & ((u64) 1 << _item_i))                                      \
-            {                                                                                   \
+#define STABLE_ARRAY_FOR_EACH_BEGIN_UNTYPED(stable, Ptr_Type, ptr_name, Index_Type, index)                          \
+    for(isize _block_i = 0; _block_i < (stable).blocks_size; _block_i++)                                            \
+    {                                                                                                               \
+        bool _did_break = false;                                                                                     \
+        Stable_Array_Block* _block = &(stable).blocks[_block_i];                                                    \
+        for(isize _item_i = 0; _item_i < STABLE_ARRAY_BLOCK_SIZE; _item_i++)                                        \
+        {                                                                                                           \
+            if(_block->filled_mask & ((u64) 1 << _item_i))                                                          \
+            {                                                                                                       \
+                _did_break = true;                                                                                   \
                 Ptr_Type ptr_name = (Ptr_Type) ((u8*) _block->ptr + _item_i*(stable).item_size); (void) ptr_name;   \
-                Index_Type index = (Index_Type) (_item_i + _block_i * STABLE_ARRAY_BLOCK_SIZE); (void) index; \
+                Index_Type index = (Index_Type) (_item_i + _block_i * STABLE_ARRAY_BLOCK_SIZE); (void) index;       \
                 
-#define STABLE_ARRAY_FOR_EACH_END }}}   
 
+#define STABLE_ARRAY_FOR_EACH_END   \
+                _did_break = false; \
+             }                      \
+         }                          \
+         if(_did_break)             \
+            break;                  \
+     }                              \
 
-#define STABLE_ARRAY_FOR_EACH_BEGIN2(stable, Ptr_Type, ptr_name, Index_Type, index)             \
-    for(isize _block_i = 0, _item_i = 0; _block_i < (stable).blocks_size; _item_i++)            \
-    {                                                                                           \
-        if(_item_i > STABLE_ARRAY_BLOCK_SIZE)                                                   \
-        {                                                                                       \
-            _block_i += 1;                                                                      \
-            _item_i = 0;                                                                        \
-        }                                                                                       \
-        Ptr_Type _dummy = NULL;                                                                 \
-        ASSERT((stable).item_size == isizeof(*_dummy), "wrong type submitted to ITERATE_STABLE_ARRAY_BEGIN"); \
-        Stable_Array_Block* _block = &(stable).blocks[_block_i];                                \
-        if(_block->filled_mask & ((u64) 1 << _item_i))                                      \
-        {                                                                                   \
-            Ptr_Type ptr_name = (Ptr_Type) ((u8*) _block->ptr + _item_i*(stable).item_size); (void) ptr_name;   \
-            Index_Type index = (Index_Type) (_item_i + _block_i * STABLE_ARRAY_BLOCK_SIZE); (void) index; \
-                
-#define STABLE_ARRAY_FOR_EACH_END2 }} 
+#define STABLE_ARRAY_FOR_EACH_BEGIN(stable, Ptr_Type, ptr_name, Index_Type, index)                    \
+        ASSERT((stable).item_size == isizeof(*(Ptr_Type) NULL), "wrong type submitted to ITERATE_STABLE_ARRAY_BEGIN"); \
+        STABLE_ARRAY_FOR_EACH_BEGIN_UNTYPED(stable, Ptr_Type, ptr_name, Index_Type, index) \
 
 #endif
 
