@@ -79,7 +79,7 @@ static void bemchmark_find_first(isize max_size, u64 max_value, f64 discard, f64
             char find = (char) (random_u64() % max_value);
             isize from = random_range(0, str.size);
 
-            i64 running = perf_start();
+            i64 running = perf_now();
             for(isize i = 0; i < repeats; i++)
             {
                 if(test_case->func(str, find, from) != -1)
@@ -87,7 +87,7 @@ static void bemchmark_find_first(isize max_size, u64 max_value, f64 discard, f64
             }
 
             if(now >= start + discard)
-                perf_end(&test_case->counter, running);
+                perf_submit(&test_case->counter, perf_now() - running);
         }
 
         test_case->stats = perf_get_stats(test_case->counter, repeats);

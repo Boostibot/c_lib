@@ -383,7 +383,7 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, vo
     {
         Source_Info source = {line, file, function};
         log_message("assert", "", LOG_FATAL, source, NULL, "TEST(%s) TEST/ASSERT failed! %s:%i", expression, file, line);
-        if(format != NULL && strlen(format) != 0)
+        if(format != NULL && strlen(format) > 1)
         {
             va_list args;               
             va_start(args, format);     
@@ -391,7 +391,7 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, vo
             va_end(args);  
         }
 
-        log_callstack(">assert", LOG_TRACE, -1, "callstack:");
+        log_callstack(">assert", LOG_TRACE, -1, "");
     }
 #endif
     

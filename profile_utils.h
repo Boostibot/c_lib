@@ -55,6 +55,15 @@ EXPORT void log_perf_counters(const char* log_module, Log_Type log_type, Log_Per
 
 		return res;
 	}
+	
+	EXPORT void log_perf_stats_hdr(const char* log_module, Log_Type log_type, const char* label)
+	{
+		LOG(log_module, log_type, "%s     time |        runs |   σ/μ", label);
+	}
+	EXPORT void log_perf_stats_row(const char* log_module, Log_Type log_type, const char* label, Perf_Stats stats)
+	{
+		LOG(log_module, log_type, "%s%.2es | %11lli | %5.2lf", label, stats.average_s, stats.runs, stats.normalized_standard_deviation_s);
+	}
 
 	EXPORT void log_perf_counters(const char* log_module, Log_Type log_type, Log_Perf_Sort_By sort_by)
 	{

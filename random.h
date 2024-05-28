@@ -34,6 +34,9 @@ EXPORT uint64_t random_u64();
 EXPORT int64_t  random_i64();  
 //generates unbiased random integer in range [from, to)
 EXPORT int64_t  random_range(int64_t from, int64_t to); 
+
+EXPORT double   random_interval_f64(double from, double to); 
+EXPORT float    random_interval_f32(float from, float to); 
 //writes size bytes of random data into into
 EXPORT void     random_bytes(void* into, int64_t size);
 //Randomly shuffles the provided array
@@ -362,11 +365,26 @@ EXPORT void	 random_state_bytes(Random_State* state, void* into, int64_t size);
 	EXPORT uint64_t random_u64()  { return random_state_u64(random_state()); }  
 	EXPORT int64_t  random_i64()  { return random_state_i64(random_state()); }  
 
-	EXPORT int64_t  random_range(int64_t from, int64_t to) 
+	EXPORT int64_t random_range(int64_t from, int64_t to) 
 	{ 
 		return random_state_range(random_state(), from, to); 
 	}
-	EXPORT void     random_shuffle(void* elements, int64_t element_count, int64_t element_size) 
+	
+	EXPORT double random_interval_f64(double from, double to)
+	{
+		double range = to - from;
+		double random = random_f64();
+		return random*range + from;
+	}
+
+	EXPORT float random_interval_f32(float from, float to)
+	{
+		float range = to - from;
+		float random = random_f32();
+		return random*range + from;
+	}
+
+	EXPORT void random_shuffle(void* elements, int64_t element_count, int64_t element_size) 
 	{ 
 		random_state_shuffle(random_state(), elements, element_count, element_size); 
 	}

@@ -166,7 +166,7 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 	EXPORT Global_Perf_Counter_Running global_perf_counter_start(Global_Perf_Counter* my_counter, i32 line, const char* file, const char* function, const char* name)
 	{
 		Global_Perf_Counter_Running running = {0};
-		running.running = perf_start();
+		running.running = perf_now();
 		running.my_counter = my_counter;
 		running.line = line;
 		running.file = file;
@@ -184,8 +184,8 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 	INTERNAL void _perf_counter_end(Global_Perf_Counter_Running* running, bool is_detailed)
 	{
 		Global_Perf_Counter* counter = running->my_counter;
-		int64_t delta = platform_perf_counter() - running->running;
-		i64 runs = perf_end_atomic_delta(&counter->counter, delta, is_detailed);
+		int64_t delta = perf_now() - running->running;
+		i64 runs = perf_submit_atomic(&counter->counter, delta, is_detailed);
 		ASSERT(running->stopped == false, "Global_Perf_Counter_Running running counter stopped more than once!");
 
 		//only save the stats that dont need to be updated on the first run

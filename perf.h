@@ -37,28 +37,41 @@ typedef struct Perf_Stats {
 } Perf_Stats;
 
 typedef struct Perf_Benchmark {
-	int64_t iter;			
-	int64_t start_time;
-	int64_t now;																			
-	int64_t freq;																			
-	Perf_Counter counter;																		
-	bool discard;																			
-	bool _padding[7];	
+	Perf_Stats inline_stats;
+	Perf_Counter counter;
+
+	//Set only once. To reuse a benchmark struct (unusual)
+	// for multiple benchmarks these must be set to 0!
+	Perf_Stats* stats;
+	int64_t start;
+	int64_t time;
+	int64_t warmup;
+	int64_t batch_size;
+
+	//Chnages on every iteration!
+	int64_t iter;
+	int64_t iter_begin_time;
 } Perf_Benchmark;
 
-EXPORT int64_t		perf_start();
-EXPORT void			perf_end(Perf_Counter* counter, int64_t measure);
-EXPORT void			perf_end_delta(Perf_Counter* counter, int64_t measure);
-EXPORT void			perf_end_atomic(Perf_Counter* counter, int64_t measure);
-EXPORT int64_t		perf_end_atomic_delta(Perf_Counter* counter, int64_t measure, bool detailed);
+//Returns the current time in nanoseconds. The time is relative to an arbitrary point in time, thus only difference of two perf_now() makes sense.
+EXPORT int64_t		perf_now();
+EXPORT int64_t		perf_freq(); //returns the frequency of the perf counter
+EXPORT void			perf_submit(Perf_Counter* counter, int64_t measured);
+EXPORT int64_t		perf_submit_atomic(Perf_Counter* counter, int64_t measured, bool detailed);
 EXPORT Perf_Stats	perf_get_stats(Perf_Counter counter, int64_t batch_size);
+
+//Maintains a benchmark. See example below for how to use this.
+EXPORT bool perf_benchmark(Perf_Benchmark* bench, double time);
+
+//Maintains a benchmark requiring manual measurement. Allows to submit more settings. 
+// Measurements need to be added using perf_benchmark_submit() to register!
+EXPORT bool perf_benchmark_custom(Perf_Benchmark* bench, Perf_Stats* stats_or_null, double warmup, double time, int64_t batch_size);
+//Submits the measured time in nanoseconds to the benchmark. The measurement is discareded if warmup is still in progress. 
+EXPORT void perf_benchmark_submit(Perf_Benchmark* bench, int64_t measured);
+//#define PERF_AUTO_WARMUP -1.0
 
 //Prevents the compiler from otpimizing away the variable (and thus its value) pointed to by ptr.
 EXPORT void perf_do_not_optimize(const void* ptr) ;
-
-//benchmarks a block of code for time seconds and saves the result int `stats_ptr`. See the perf_benchmark_example() function below for an example
-#define perf_benchmark_batch(/* Perf_Stats* */ stats_ptr, /*identifier*/ bench_variable_name, /*double*/warmup, /*double*/ time, /*int*/ batch_size);
-#define perf_benchmark(/* Perf_Stats* */ stats_ptr, /*identifier*/ bench_variable_name, /*double*/ time);
 
 //Needs implementation:
 int64_t platform_perf_counter();
@@ -69,48 +82,19 @@ inline static int64_t platform_atomic_add64(volatile int64_t* target, int64_t va
 inline static int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value);
 inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value);
 
-//INLINE IMPLEMENTATION!
-#undef perf_benchmark_batch
-#undef perf_benchmark
-
-#define perf_benchmark_batch(stats_ptr, bench, warmup, time, batch_size)						\
-    for(Perf_Benchmark bench = {0}; \
-		bench.freq = platform_perf_counter_frequency(), \
-		bench.start_time = platform_perf_counter(), \
-		bench._padding[0] == false;  \
-		bench._padding[0] = true, *(stats_ptr) = perf_get_stats(bench.counter, (batch_size)))	\
-		for(												\
-            /*Init */										\
-            int64_t											\
-			_total_clocks = (int64_t) ((double) bench.freq * (time)),							\
-			_warmup_clocks = (int64_t) ((double) bench.freq * (warmup)),						\
-            _before = bench.start_time,								\
-            _after = bench.start_time,								\
-            _discard_time = 0,								\
-            _delta = 0,										\
-			_passed_clocks = 0;								\
-															\
-            /*Check*/										\
-            _before = platform_perf_counter(),				\
-            _passed_clocks = _before - bench.start_time,	\
-            _passed_clocks < _total_clocks + _discard_time; \
-															\
-            /*Increment*/									\
-            _after = platform_perf_counter(),				\
-            _delta = _after - _before,						\
-            bench.discard ? _discard_time += _delta : 0,	\
-            !bench.discard && _passed_clocks >= _warmup_clocks + _discard_time ? perf_end_delta(&bench.counter, _delta) : (void) 0, \
-            bench.iter++) \
-
-#define perf_benchmark(stats_ptr, bench, time) perf_benchmark_batch((stats_ptr), bench, (time) / 10, (time), 1)	
-
 #include <stdlib.h>
 static void perf_benchmark_example() 
 {	
-	Perf_Stats stats = {0};
-	perf_benchmark(&stats, it, 3) {
-		volatile double result = sqrt((double) it.iter); (void) result; //make sure the result is not optimized away
-	};
+	//For 3 seconds time the conctents of the loop and capture the resulting stats.
+	Perf_Benchmark bench1 = {0};
+	while(perf_benchmark(&bench1, 3)) {
+		//`bench1.iter` is index of the current every iteration
+		//`bench1.iter_begin_time` is the value of perf_now() at the start time of the current iteration 
+		volatile double result = sqrt((double) bench1.iter); (void) result; //make sure the result is not optimized away
+	}
+
+	//do something with stats ...
+	bench1.stats->average_s += 10; 
 
 	//Sometimes it is necessary to do contiguous setup in order to
 	// have data to benchmark with. In such a case every itration where the setup
@@ -119,30 +103,36 @@ static void perf_benchmark_example()
 
 	//We benchmark the free function. In order to have something to free we need
 	// to call malloc. But we dont care about malloc in this test => malloc 100
-	// items and then free each. Discard the expensive malloc op.
+	// items and then free each. We simply dont submit the malloc timings.
+	Perf_Stats stats = {0};
 	void* ptrs[100] = {0};
 	int count = 0;
-	perf_benchmark(&stats, it, 3.5) {
+
+	//Alternative way of doing benchmark loops, helpful to keep the `bench` variable scoped but the stats not 
+	// (which is useful for organization when doing several different benchmarks within a single function). 
+	//The `&stats` paramater is optional and when not specified the stats are stored inside the bench variable
+	for(Perf_Benchmark bench = {0}; perf_benchmark_custom(&bench, &stats, 0.5, 3.5, 1); ) {
 		if(count > 0)
+		{
+			int64_t before = perf_now();
 			free(ptrs[--count]);
+			perf_benchmark_submit(&bench, perf_now() - before);
+		}
 		else
 		{
 			count = 100;
 			for(int i = 0; i < 100; i++)
 				ptrs[i] = malloc(256);
-
-			it.discard = true;
 		}
 	};
 }
-
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PERF_IMPL)) && !defined(JOT_PERF_HAS_IMPL)
 #define JOT_PERF_HAS_IMPL
 
 	
-	EXPORT void perf_end_delta(Perf_Counter* counter, int64_t delta)
+	EXPORT void perf_submit(Perf_Counter* counter, int64_t delta)
 	{
 		ASSERT(counter != NULL && delta >= 0 && "invalid Global_Perf_Counter_Running submitted");
 
@@ -163,7 +153,7 @@ static void perf_benchmark_example()
 		counter->max_counter = MAX(counter->max_counter, delta);
 	}
 	
-	EXPORT int64_t perf_end_atomic_delta(Perf_Counter* counter, int64_t delta, bool detailed)
+	EXPORT int64_t perf_submit_atomic(Perf_Counter* counter, int64_t delta, bool detailed)
 	{
 		ASSERT(counter != NULL && delta >= 0 && "invalid Global_Perf_Counter_Running submitted");
 		int64_t runs = platform_atomic_add64(&counter->runs, 1); 
@@ -198,22 +188,16 @@ static void perf_benchmark_example()
 		return runs;
 	}
 	
-	EXPORT int64_t perf_start()
+	EXPORT int64_t perf_now()
 	{
 		return platform_perf_counter();
 	}
 
-	EXPORT void perf_end(Perf_Counter* counter, int64_t measure)
+	EXPORT int64_t perf_freq()
 	{
-		int64_t delta = platform_perf_counter() - measure;
-		perf_end_delta(counter, delta);
+		return platform_perf_counter_frequency();
 	}
 
-	EXPORT void perf_end_atomic(Perf_Counter* counter, int64_t measure)
-	{
-		int64_t delta = platform_perf_counter() - measure;
-		perf_end_atomic_delta(counter, delta, true);
-	}
 	EXPORT Perf_Stats perf_get_stats(Perf_Counter counter, int64_t batch_size)
 	{
 		if(batch_size <= 0)
@@ -336,5 +320,53 @@ static void perf_benchmark_example()
 		#endif
     }
 
+	EXPORT bool perf_benchmark_custom(Perf_Benchmark* bench, Perf_Stats* stats_or_null, double warmup, double time, int64_t batch_size)
+	{
+		int64_t now = perf_now();
+		if(bench->start == 0)
+		{
+			bench->counter.frquency = perf_freq();
+			bench->warmup = (int64_t) (warmup*bench->counter.frquency);
+			bench->time = (int64_t) (time*bench->counter.frquency);
+			bench->start = now;
+			bench->batch_size = batch_size;
+			bench->stats = stats_or_null;
+			if(bench->stats == NULL)
+				bench->stats = &bench->inline_stats;
+
+			//so that after += 1 is 0
+			bench->iter = -1;
+		}
+
+		bench->iter += 1;
+		bench->iter_begin_time = now;
+		int64_t ellpased = now - bench->start;
+		if(ellpased <= bench->time)
+			return true;
+		else
+		{
+			*bench->stats = perf_get_stats(bench->counter, bench->batch_size);
+			return false;
+		}
+	}
+
+	EXPORT bool perf_benchmark(Perf_Benchmark* bench, double time)
+	{
+		int64_t last = bench->iter_begin_time;
+		bool out = perf_benchmark_custom(bench, NULL, time/8, time, 1);
+
+		if(last > 0)
+			perf_benchmark_submit(bench, bench->iter_begin_time-last);
+
+		//One more perf_now() so that we best isolate the actual timed code.
+		bench->iter_begin_time = perf_now();
+		return out;
+	}
+
+	EXPORT void perf_benchmark_submit(Perf_Benchmark* bench, int64_t measurement)
+	{
+		if(bench->iter_begin_time - bench->start > bench->warmup)
+			perf_submit(&bench->counter, measurement);
+	}
 
 #endif

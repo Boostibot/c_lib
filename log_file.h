@@ -114,7 +114,7 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
 
     for(const Log* it = log; it != NULL; it = it->next)
     {
-        const isize module_field_size = 10;
+        const isize module_field_size = 8;
         String module = string_make(it->module);
         //String subject = string_make(it->subject);
 

@@ -197,7 +197,4 @@ static void test_math(double max_seconds)
 
         test_vec3_identities(a, b);
     }
-
-
-
 }
