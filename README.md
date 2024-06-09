@@ -24,12 +24,12 @@ The codebase is structured in the "stb" style, that is both `.h` and `.c` 'files
 
 Some files are marked as "freestanding". This means they can be compiled without including any other file from this repository. However even those files can have conditional integration with the rest of the codebase. Usually this is to use `malloc` when compiling separately but allow arbitrary allocators when compiling within the rest of the repository.
 
-Most files contain a large comment at the top giving a high level overview of: 
+Most files contain a large comment at the top giving a high level overview. This helps me explain my reasoning and invites others to understand and thus be able to help me improve the code. If you are not doing this style of commenting, please join me on this. The world could use more of this. It attempts to answer the following questions:
 1. What is this code actually doing
 2. What problems is it trying to solve
 3. Why has the implementation chosen to be like this and not some other way
 4. Specific tricky implementation details and oddities
-This helps me explain my reasoning and invites others to understand and thus be able to help me improve the code. If you are not doing this style of commenting, please join me on this. The world could use more of this.
+
 
 # Goals
 The main goal of this project is to develop a fully sufficient environment in which I can be productive. Additional goal is to be as transparent as possible and help others learn more. Essentially "what I would liked to have when I was figuring this out". The most important qualities are in order:
