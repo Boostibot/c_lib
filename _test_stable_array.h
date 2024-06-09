@@ -18,11 +18,11 @@ static void test_stable_array()
         TEST(val == val_get);
         *val = 32;
 
-        TEST(stable_array_at_if_alive(&stable, -2) == NULL);
-        TEST(stable_array_at_if_alive(&stable, -1) == NULL);
-        TEST(stable_array_at_if_alive(&stable, 0) != NULL);
-        TEST(stable_array_at_if_alive(&stable, 1) == NULL);
-        TEST(stable_array_at_if_alive(&stable, 2) == NULL);
+        TEST(stable_array_alive_at(&stable, -2, NULL) == NULL);
+        TEST(stable_array_alive_at(&stable, -1, NULL) == NULL);
+        TEST(stable_array_alive_at(&stable, 0, NULL) != NULL);
+        TEST(stable_array_alive_at(&stable, 1, NULL) == NULL);
+        TEST(stable_array_alive_at(&stable, 2, NULL) == NULL);
         TEST(stable_array_remove(&stable, 0));
 
         enum {INSERT_COUNT = 129};

@@ -28,6 +28,9 @@
 // instal the scratch allocator as the default allocator so that all internal functions will also comunicate to us using the fast scratch 
 // allocator.
 
+// @TODO: Get rid of default and scratch allocator since we need explicitness! If a function needs a general allocator for its internal use thats a scratch allocation and
+// it should ask for it or create it right there. If a function wants to allocate dsomething for the caller, the caller should really know where to find it (thus they should pass it as an argument).
+
 #include "defines.h"
 #include "assert.h"
 #include "platform.h"

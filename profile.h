@@ -109,8 +109,12 @@ typedef struct Global_Perf_Counter_Running
 	bool _padding[7];
 } Global_Perf_Counter_Running;
 
+//@TODO: rework these defines to make them simpler
 //@TODO: perf counter tick - add a macro that does not do any time tracking but only atomically increments a counter. 
 //       This can be used to track how many times an event occured within an individual function. 
+//       This can be used for many more things such as per frame resource tracking etc. To enable this we need to implement
+//       a concept of 'space'. The default space is global but one might want to for example log perf stats into a per frame space
+//       reset every frame.
 
 EXPORT Global_Perf_Counter_Running global_perf_counter_start(Global_Perf_Counter* my_counter, i32 line, const char* file, const char* function, const char* name);
 EXPORT void global_perf_counter_end(Global_Perf_Counter_Running* running);
