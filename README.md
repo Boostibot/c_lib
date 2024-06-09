@@ -6,6 +6,7 @@ This is a perpetually ongoing development C codebase I use for personal projects
 - `platform.h` **(freestanding)**: A fully fledged platform layer supporting windows and linux. Contains code for threading, intrinsics, virtual memory, filesystem (reading, writing, listing observing changes), debug facilities (callstack capturing, printing, sandboxing) and many more.  
 - `perf.h` **(freestanding)**: Small set of functions for timing/benchmarking code and evaluating results. Reports average times, standard deviation, min max times and more. Has additional atomic interface for measuring multithreaded code.
 - `random.h` **(freestanding)**: Convenient fast, non-cryptographic random number generation. Has both global state and local state interface.
+- `deprecated/unicode.h` **(freestanding)**: Conversion between UTF8, UTF16, UTF32 with proper error checking. Extensively tested.
 - `path.h`: Robust path parsing, normalization and mutation algorithms. Correctly parses linux and all kinds of strange windows paths.
 - `profile.h`: Very basic atomic global profiler. Does not require any initialization. Uses `perf.h`.
 - `stable_array.h`: O(1) Fast, memory efficient free-list like structure keeping stable pointers. Accessible through handles. Is suitable for storing large amounts of data or implementing SQL-like tables. 
