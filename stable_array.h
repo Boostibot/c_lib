@@ -95,10 +95,9 @@ EXPORT void  stable_array_deinit(Stable_Array* stable);
 
 EXPORT isize stable_array_capacity(const Stable_Array* stable);
 EXPORT void* stable_array_at(const Stable_Array* stable, isize index);
-EXPORT void* stable_array_at_safe(const Stable_Array* stable, isize index, void* if_not_found);
 EXPORT void* stable_array_alive_at(const Stable_Array* stable, isize index, void* if_not_found);
 EXPORT isize stable_array_insert(Stable_Array* stable, void** out_or_null);
-EXPORT bool  stable_array_remove(Stable_Array* stable, isize index);
+EXPORT void  stable_array_remove(Stable_Array* stable, isize index);
 EXPORT void  stable_array_reserve(Stable_Array* stable, isize to);
 
 EXPORT void stable_array_test_invariants(const Stable_Array* stable, bool slow_checks);
@@ -226,15 +225,11 @@ INTERNAL _Stable_Array_Lookup _stable_array_lookup(const Stable_Array* stable, i
 EXPORT void* stable_array_at(const Stable_Array* stable, isize index)
 {
     CHECK_BOUNDS(index, stable_array_capacity(stable));
-    return _stable_array_lookup(stable, index).item;
-}
+    _Stable_Array_Lookup lookup = _stable_array_lookup(stable, index);
+    u32 bit = (u32) 1 << lookup.item_i;
+    ASSERT(!!(lookup.block->filled_mask & bit));
 
-EXPORT void* stable_array_at_safe(const Stable_Array* stable, isize index, void* if_not_found)
-{
-    if(0 <= index && index <= stable_array_capacity(stable))
-        return _stable_array_lookup(stable, index).item;
-
-    return if_not_found;
+    return lookup.item;
 }
 
 EXPORT void* stable_array_alive_at(const Stable_Array* stable, isize index, void* if_not_found)
@@ -286,38 +281,29 @@ EXPORT isize stable_array_insert(Stable_Array* stable, void** out)
     return block_i*STABLE_ARRAY_BLOCK_SIZE + first_empty_index;
 }
 
-EXPORT bool stable_array_remove(Stable_Array* stable, isize index)
+EXPORT void stable_array_remove(Stable_Array* stable, isize index)
 {
     _stable_array_check_invariants(stable);
-    bool state = false;
-    if(0 <= index && index <= stable_array_capacity(stable))
+    CHECK_BOUNDS(index, stable_array_capacity(stable));
+
+    _Stable_Array_Lookup lookup = _stable_array_lookup(stable, index);
+    Stable_Array_Block* block = lookup.block;
+    u32 bit = (u32) 1 << lookup.item_i;
+    ASSERT(!!(block->filled_mask & bit));
+
+    //If was full before removal add to free list
+    if(block->filled_mask == STABLE_ARRAY_FILLED_MASK_FULL)
     {
-        _Stable_Array_Lookup lookup = _stable_array_lookup(stable, index);
-        Stable_Array_Block* block = lookup.block;
-        u32 bit = (u32) 1 << lookup.item_i;
-
-        //If was full before removal add to free list
-        if(block->filled_mask == STABLE_ARRAY_FILLED_MASK_FULL)
-        {
-            block->next_not_filled_i1 = stable->first_not_filled_i1;
-            stable->first_not_filled_i1 = (u32) lookup.block_i + 1;
-        }
-        
-        //If alive remove
-        if(!!(block->filled_mask & bit))
-        {
-            if(stable->fill_empty_with != STABLE_ARRAY_KEEP_DATA_FLAG)
-                memset(lookup.item, stable->fill_empty_with, (size_t) stable->item_size);
-
-            stable->size -= 1;
-            block->filled_mask = block->filled_mask & ~bit;
-            state = true;
-        }
-
-        _stable_array_check_invariants(stable);
+        block->next_not_filled_i1 = stable->first_not_filled_i1;
+        stable->first_not_filled_i1 = (u32) lookup.block_i + 1;
     }
+        
+    if(stable->fill_empty_with != STABLE_ARRAY_KEEP_DATA_FLAG)
+        memset(lookup.item, stable->fill_empty_with, (size_t) stable->item_size);
 
-    return state;
+    stable->size -= 1;
+    block->filled_mask = block->filled_mask & ~bit;
+    _stable_array_check_invariants(stable);
 }
 
 EXPORT void stable_array_reserve(Stable_Array* stable, isize to_size)

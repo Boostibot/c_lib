@@ -131,7 +131,7 @@ typedef enum Platform_Memory_Protection {
 } Platform_Memory_Protection;
 
 void* platform_virtual_reallocate(void* allocate_at, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection);
-int64_t platform_page_size();
+int64_t platform_page_size(); //@TODO: allocation granularity
 
 void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align);
 //Returns the size in bytes of an allocated block. 

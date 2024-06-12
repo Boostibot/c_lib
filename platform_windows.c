@@ -89,6 +89,18 @@ void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align)
     return data;
 }
 
+int64_t platform_page_size()
+{
+    static int64_t page_size = -1;
+    if(page_size == -1)
+    {
+        SYSTEM_INFO info = {0};
+        GetSystemInfo(&info);
+        page_size = info.dwAllocationGranularity;
+    }
+
+    return page_size;
+}
 
 int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
 {

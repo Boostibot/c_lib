@@ -132,24 +132,24 @@ typedef Array(Lpf_Entry) Lpf_Entry_Array;
 
 EXPORT Lpf_Write_Options lpf_default_write_options();
 EXPORT Lpf_Read_Options lpf_default_read_options();
-EXPORT String lpf_write(Arena* arena, const Lpf_Entry* top_level, isize top_level_count, const Lpf_Write_Options* options_or_null);
-EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_Options* options_or_null);
-EXPORT Lpf_Entry lpf_read(Arena* arena, String source, const Lpf_Read_Options* read_options_or_null);
+EXPORT String lpf_write(Arena_Frame* arena, const Lpf_Entry* top_level, isize top_level_count, const Lpf_Write_Options* options_or_null);
+EXPORT String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lpf_Write_Options* options_or_null);
+EXPORT Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Options* read_options_or_null);
 
 //@TODO: rework strings
-EXPORT String lpf_string_duplicate(Arena* arena, String string);
-EXPORT Lpf_Entry* lpf_entry_push_child(Arena* arena, Lpf_Entry* parent, Lpf_Entry child);
+EXPORT String lpf_string_duplicate(Arena_Frame* arena, String string);
+EXPORT Lpf_Entry* lpf_entry_push_child(Arena_Frame* arena, Lpf_Entry* parent, Lpf_Entry child);
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_LPF_IMPL)) && !defined(JOT_LPF_HAS_IMPL)
 #define JOT_LPF_HAS_IMPL
 
-EXPORT Lpf_Entry* lpf_entry_push_child(Arena* arena, Lpf_Entry* parent, Lpf_Entry child)
+EXPORT Lpf_Entry* lpf_entry_push_child(Arena_Frame* arena, Lpf_Entry* parent, Lpf_Entry child)
 {
     if(parent->children_count >= parent->children_capacity)
     {
         i32 new_capacity = parent->children_capacity * 3/2 + 2;
-        Lpf_Entry* new_children = (Lpf_Entry*) arena_push(arena, new_capacity*isizeof(Lpf_Entry), 8);
+        Lpf_Entry* new_children = (Lpf_Entry*) arena_frame_push(arena, new_capacity*isizeof(Lpf_Entry), 8);
         memcpy(new_children, parent->children, (size_t) parent->children_count * sizeof(Lpf_Entry));
 
         parent->children_capacity = new_capacity;
@@ -160,15 +160,15 @@ EXPORT Lpf_Entry* lpf_entry_push_child(Arena* arena, Lpf_Entry* parent, Lpf_Entr
     return parent->children + parent->children_count - 1;
 }
 
-EXPORT String lpf_string_duplicate(Arena* arena, String string)
+EXPORT String lpf_string_duplicate(Arena_Frame* arena, String string)
 {
-    char* str = (char*) arena_push_nonzero(arena, string.size + 1, 1);
+    char* str = (char*) arena_frame_push_nonzero(arena, string.size + 1, 1);
     memcpy(str, string.data, (size_t) string.size);
     str[string.size] = '\0';
     return string_make(str, string.size);
 }
 
-INTERNAL void _lpf_commit_entry(Lpf_Entry_Array* entries_stack, Lpf_Entry* queued, String_Builder* queued_value, Arena* arena)
+INTERNAL void _lpf_commit_entry(Lpf_Entry_Array* entries_stack, Lpf_Entry* queued, String_Builder* queued_value, Arena_Frame* arena)
 {
     Lpf_Entry new_entry = *queued;
     new_entry.value = lpf_string_duplicate(arena, queued_value->string);
@@ -179,7 +179,7 @@ INTERNAL void _lpf_commit_entry(Lpf_Entry_Array* entries_stack, Lpf_Entry* queue
     memset(queued, 0, sizeof *queued);
 }
 
-INTERNAL void _lpf_commit_collection(Lpf_Entry_Array* entries_stack, i32_Array* collections_from, Arena* arena)
+INTERNAL void _lpf_commit_collection(Lpf_Entry_Array* entries_stack, i32_Array* collections_from, Arena_Frame* arena)
 {
     
     isize collection_from = *array_last(*collections_from);
@@ -188,7 +188,7 @@ INTERNAL void _lpf_commit_collection(Lpf_Entry_Array* entries_stack, i32_Array* 
     Lpf_Entry* parent = &entries_stack->data[collection_from - 1];
     parent->children_count = (i32) (entries_stack->size - collection_from);
     parent->children_capacity = parent->children_count;
-    parent->children = (Lpf_Entry*) arena_push_nonzero(arena, parent->children_count*isizeof(Lpf_Entry), 8);
+    parent->children = (Lpf_Entry*) arena_frame_push_nonzero(arena, parent->children_count*isizeof(Lpf_Entry), 8);
     memcpy(parent->children, entries_stack->data + collection_from, (size_t) parent->children_count*sizeof(Lpf_Entry));
 
     array_resize(entries_stack, collection_from);
@@ -206,7 +206,7 @@ EXPORT Lpf_Read_Options lpf_default_read_options()
     return out;
 }
 
-EXPORT Lpf_Entry lpf_read(Arena* arena, String source, const Lpf_Read_Options* read_options_or_null)
+EXPORT Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Options* read_options_or_null)
 {
     typedef enum {
         BLANK,
@@ -237,7 +237,7 @@ EXPORT Lpf_Entry lpf_read(Arena* arena, String source, const Lpf_Read_Options* r
     Lpf_Entry root = {0};
     root.kind = LPF_COLLECTION;
     
-    Arena scratch = scratch_arena_acquire();
+    Arena_Frame scratch = scratch_arena_acquire();
     {
         typedef Array(Lpf_Token) Lpf_Token_Array;
 
@@ -475,7 +475,7 @@ EXPORT Lpf_Entry lpf_read(Arena* arena, String source, const Lpf_Read_Options* r
         ASSERT(entries_stack.size == 1);
         root = entries_stack.data[0];
 
-        arena_release(&scratch);
+        arena_frame_release(&scratch);
     }
     return root;
 }
@@ -494,7 +494,7 @@ EXPORT Lpf_Write_Options lpf_default_write_options()
     return options;
 }
 
-EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_Options* options_or_null)
+EXPORT String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lpf_Write_Options* options_or_null)
 {
     //Writing is reverse process from reading so we first rpdouce an array of tokens and then serialize them all in a small forloop.
     typedef enum {
@@ -531,7 +531,7 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
         options.max_line_width = INT64_MAX;
 
     enum {ALIGN_INDENT_EVERY = 10};
-    Arena scratch = scratch_arena_acquire();
+    Arena_Frame scratch = scratch_arena_acquire();
     {
         typedef struct Iterator {
             Lpf_Entry* parent;
@@ -802,11 +802,11 @@ EXPORT String lpf_write_from_root(Arena* arena, Lpf_Entry root, const Lpf_Write_
 
         return_string = lpf_string_duplicate(arena, out.string);
     }
-    arena_release(&scratch);
+    arena_frame_release(&scratch);
     return return_string;
 }
 
-EXPORT String lpf_write(Arena* arena, const Lpf_Entry* top_level, isize top_level_count, const Lpf_Write_Options* options_or_null)
+EXPORT String lpf_write(Arena_Frame* arena, const Lpf_Entry* top_level, isize top_level_count, const Lpf_Write_Options* options_or_null)
 {
     Lpf_Entry root = {0};
     root.kind = LPF_COLLECTION;

@@ -98,7 +98,7 @@ static void test_lpf_print_compariosn(String left, String right)
 static void test_lpf()
 {
     {
-        Arena scratch = scratch_arena_acquire();
+        Arena_Frame scratch = scratch_arena_acquire();
 
         Lpf_Entry root = lpf_read(&scratch, STRING(
             "\n first \t: value "
@@ -122,11 +122,11 @@ static void test_lpf()
         test_lpf_entry_full(&root.children[2], LPF_ENTRY,     "third*", "value escaped",          6, 2, 8);
         test_lpf_entry_full(&root.children[3], LPF_COMMENT,   "", "comment\n with continuation",  1, 0, 10);
 
-        arena_release(&scratch);
+        arena_frame_release(&scratch);
     }
 
     {
-        Arena scratch = scratch_arena_acquire();
+        Arena_Frame scratch = scratch_arena_acquire();
 
         Lpf_Entry root = lpf_read(&scratch, STRING(
             "\n out: value "
@@ -172,11 +172,11 @@ static void test_lpf()
         test_lpf_entry(&col2->children[0], LPF_ENTRY, "key", "value");
         
         
-        arena_release(&scratch);
+        arena_frame_release(&scratch);
     }
 
     {
-        Arena scratch = scratch_arena_acquire();
+        Arena_Frame scratch = scratch_arena_acquire();
 
         Lpf_Entry root = lpf_read(&scratch, STRING(
             "\n out :value"
@@ -230,6 +230,6 @@ static void test_lpf()
         String formatted_roundtrip = lpf_write_from_root(&scratch, root_roundtrip, &options);
         TEST(string_is_equal(formatted, formatted_roundtrip));
         
-        arena_release(&scratch);
+        arena_frame_release(&scratch);
     }
 }

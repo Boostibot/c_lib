@@ -157,7 +157,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         Allocator* static_allocator;
     } Global_Allocator_State;
 
-    void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
+    void* arena_frame_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
 
     INTERNAL ATTRIBUTE_THREAD_LOCAL Global_Allocator_State _allocator_state = {0};
     EXPORT ATTRIBUTE_ALLOCATOR(2, 5) 
@@ -169,7 +169,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         
         //If is arena use the arena function directly (inlined)
         if(allocator_is_arena(from_allocator))
-            out = arena_reallocate(from_allocator, new_size, old_ptr, old_size, align);
+            out = arena_frame_reallocate(from_allocator, new_size, old_ptr, old_size, align);
         else 
         {
             //if is dealloc and old_ptr is NULL do nothing. 
@@ -214,7 +214,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     
     EXPORT bool allocator_is_arena(Allocator* allocator)
     {
-        return allocator != NULL && allocator->allocate == arena_reallocate;
+        return allocator != NULL && allocator->allocate == arena_frame_reallocate;
     }
     
     EXPORT Allocator* allocator_get_default()

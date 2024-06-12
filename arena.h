@@ -5,7 +5,7 @@
 // on its own without the possibility of accidental invalidation of allocations from 'lower' levels. 
 // (Read more for proper explanations).
 // 
-// Arena is a allocator used to coglomerate individual allocations to a continuous buffer, which allows for
+// Arena_Frame is a allocator used to coglomerate individual allocations to a continuous buffer, which allows for
 // extremely quick free-all/reset operation (just move the index back). It cannot be implemented on top of
 // the allocator interface (see allocator.h or below) because it does not know its maximum size up front.
 // (ie. we couldnt reserve and had to hard allocate 64GB of space). 
@@ -18,14 +18,14 @@
 // 
 // This implementation views two concepts: 
 // 1) Arena_Stack - which holds the actual reserved memory and allocates individual Arenas
-// 2) Arena - which allocates the user memory
+// 2) Arena_Frame - which allocates the user memory
 // 
-// The user memory acquired from Arena does NOT need to be freed because it gets recycled when the Arena
-// does get freed, as such both Arena and Arena_Stack do NEED to be freed.
+// The user memory acquired from Arena_Frame does NOT need to be freed because it gets recycled when the Arena_Frame
+// does get freed, as such both Arena_Frame and Arena_Stack do NEED to be freed.
 //
-// We make this Arena_Stack/Arena distinction because it allows us to reason about the coglomerated lifetimes
+// We make this Arena_Stack/Arena_Frame distinction because it allows us to reason about the coglomerated lifetimes
 // and provide the stack order guarantees. The problem at hand is deciding to what furtherst point we are able to
-// to rewind inside Arena_Stack on each release of Arena. If we did the usual rewing to hard set index we would 
+// to rewind inside Arena_Stack on each release of Arena_Frame. If we did the usual rewing to hard set index we would 
 // invalidate the stack order. Consider the following scenario (using the names of the functions defined below):
 // 
 // 
@@ -34,22 +34,22 @@
 // arena_stack_init(&stack, ...);
 // 
 // //saves restore point as arena1.restore_to = stack.used_to = 0 
-// Arena arena1 = arena_acquire(&stack);
-// void* alloc1 = arena_push(&arena1, 256, 8); //allocate 256B aligend to 8B boundary
+// Arena_Frame arena1 = arena_frame_acquire(&stack);
+// void* alloc1 = arena_frame_push(&arena1, 256, 8); //allocate 256B aligend to 8B boundary
 // 
 // //saves restore point as arena2.restore_to = stack.used_to = 256
-// Arena arena2 = arena_acquire(&stack);
-// void* alloc2 = arena_push(&arena2, 256, 8); //another allocation
+// Arena_Frame arena2 = arena_frame_acquire(&stack);
+// void* alloc2 = arena_frame_push(&arena2, 256, 8); //another allocation
 // 
-// arena_release(&arena1); //Release arena1 thus setting stack.used_to = arena1.restore_to = 0 
+// arena_frame_release(&arena1); //Release arena1 thus setting stack.used_to = arena1.restore_to = 0 
 // 
 // //Now alloc2 is past the used to index, meaning it can be overriden by subsequent allocation!
-// Arena arena3 = arena_acquire(&stack);
-// void* alloc3 = arena_push(&arena3, 512, 8);
+// Arena_Frame arena3 = arena_frame_acquire(&stack);
+// void* alloc3 = arena_frame_push(&arena3, 512, 8);
 // 
 // //alloc3 shares the same emmory as alloc2! 
 // 
-// arena_release(alloc3);
+// arena_frame_release(alloc3);
 // 
 // 
 // Note that this situation does occur indeed occur in practice, typically while implicitly passing arena across 
@@ -63,8 +63,8 @@
 // below but the examples trivially extend to N arenas.
 // 
 // To illustrate the point we will need to start talking about *levels*.
-// Level is a positive number starting at 1 that gets incremented every time we acquire Arena from Arena_Stack
-// and decremeted whenever we release the acquired Arena. This coresponds to a depth in a stack.
+// Level is a positive number starting at 1 that gets incremented every time we acquire Arena_Frame from Arena_Stack
+// and decremeted whenever we release the acquired Arena_Frame. This coresponds to a depth in a stack.
 //
 // The diagrams show level on the Y axis along with the memory region A, B where the level resides in. The X axis
 // shows the order of allocations. ### is symbol marking the alive region of an allocation. It is preceeded by a 
@@ -86,9 +86,9 @@
 // A | 1###
 //   +--------------------------> time
 // 
-// One potential fix is to enforce the stack like nesting by flattening out the arena_acquire()/arena_release() 
+// One potential fix is to enforce the stack like nesting by flattening out the arena_frame_acquire()/arena_frame_release() 
 // on problematic allocations 'from below' ([1]). We dont actually have to do anything besides ignoring calls 
-// to arena_release of levels 2 and 3 (somehow). In diagram form:
+// to arena_frame_release of levels 2 and 3 (somehow). In diagram form:
 // 
 //   ^
 // A |         3### 
@@ -114,66 +114,188 @@
 // 'from bellow' arises we set these restore indeces to values so that they will not result in error. In practice
 // this results in only one extra if with branch thats almost never taken. We further stop the compielr from 
 // inlining the unusual case code thus having extremely low impact on the resulting speed of the arena for the
-// simple arena_push() case. The acquire and release functions are a tiny bit more expensive but those are not 
+// simple arena_frame_push() case. The acquire and release functions are a tiny bit more expensive but those are not 
 // of primary concern.
 
 #include "allocator.h"
 #include "profile.h"
 
-typedef isize (*Arena_Stack_Commit_Func)(void* addr, isize size, isize reserved_size, bool commit);
-
 #define ARENA_DEF_STACK_SIZE   256
 #define ARENA_DEF_RESERVE_SIZE 64 * GIBI_BYTE 
 #define ARENA_DEF_COMMIT_SIZE  8 * MEBI_BYTE 
 
-typedef struct Arena_Stack {
-    //Info
-    const char* name;
-    isize max_release_from_size;
-    isize acquasition_count;
-    isize release_count;
-
-    //Actually useful data
-    i32 stack_depht;
-    i32 stack_max_depth;
-    isize used_to;
-
+//Contiguous chunk of virtual memory.
+typedef struct Arena {
     u8* data;
     isize size;
+    isize commit;
+    isize reserved;
+    isize commit_granularity;
+} Arena;
 
-    isize reserved_size;
-    Arena_Stack_Commit_Func commit;
+EXPORT bool arena_init(Arena* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero);
+EXPORT void arena_deinit(Arena* arena);
+EXPORT void* arena_push_nonzero_unaligned(Arena* arena, isize size);
+EXPORT void* arena_push_nonzero(Arena* arena, isize size, isize align);
+EXPORT void* arena_push(Arena* arena, isize size, isize align);
+EXPORT void arena_reset(Arena* arena, isize position);
+
+typedef struct Arena_Stack Arena_Stack; 
+
+typedef bool (*Arena_Stack_On_Bad_Push)(Arena_Stack* stack, i32 bad_depth, isize size, isize align);
+
+//An "Allocator allocator". Wraps around Arena and is used to 
+// acquire Arena_Frame from which individual allocations are made.
+//This allows us to catch & prevent certain bugs associated with Arena reseting
+typedef struct Arena_Stack {
+    Arena arena;
+    i32 stack_depth;
+    i32 stack_max_depth;
+
+    const char* name;
+    isize max_size;
+    isize acquasition_count;
+    isize release_count;
+    isize bad_pushes;
+
+    //If is not null gets called when bad push is detected. Can be used to log or assert. 
+    //If returns false aborts at call site.
+    Arena_Stack_On_Bad_Push on_bad_push;
 } Arena_Stack;
 
-typedef struct Arena {
+//Models a single lifetime of allocations done from an arena. 
+// Also can be though of as representing a ScratchBegin()/ScratchEnd() pair.
+typedef struct Arena_Frame {
     Allocator allocator;
     Arena_Stack* stack;
     i32 level;
     i32 _padding;
-} Arena;
+} Arena_Frame;
 
-EXPORT void arena_init(Arena_Stack* arena, isize reserve_size_or_zero, isize stack_max_depth_or_zero, const char* name_or_null);
-EXPORT void arena_init_custom(Arena_Stack* arena, void* data, isize size, isize reserved_size, Arena_Stack_Commit_Func commit_or_null, isize stack_max_depth_or_zero);
-EXPORT void arena_deinit(Arena_Stack* arena);
-EXPORT void arena_release(Arena* arena);
+EXPORT bool arena_stack_init(Arena_Stack* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero, isize stack_max_depth_or_zero, Arena_Stack_On_Bad_Push on_bad_push_or_null, const char* name_or_null);
+EXPORT void arena_stack_deinit(Arena_Stack* arena);
 
-EXPORT Arena arena_acquire(Arena_Stack* stack);
-EXPORT void* arena_push(Arena* arena, isize size, isize align);
-EXPORT void* arena_push_nonzero(Arena* arena, isize size, isize align);
-static ATTRIBUTE_INLINE_ALWAYS void* arena_push_nonzero_inline(Arena* arena, isize size, isize align);
+EXPORT void arena_frame_release(Arena_Frame* arena);
+EXPORT Arena_Frame arena_frame_acquire(Arena_Stack* stack);
+EXPORT void* arena_frame_push(Arena_Frame* arena, isize size, isize align);
+EXPORT void* arena_frame_push_nonzero(Arena_Frame* arena, isize size, isize align);
 
 #define ARENA_PUSH(arena_ptr, count, Type) ((Type*) arena_push((arena_ptr), (count) * sizeof(Type), __alignof(Type)))
+#define ARENA_FRAME_PUSH(arena_ptr, count, Type) ((Type*) arena_frame_push((arena_ptr), (count) * sizeof(Type), __alignof(Type)))
 
-EXPORT void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
-EXPORT Allocator_Stats arena_get_allocatator_stats(Allocator* self);
+EXPORT void* arena_frame_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
+EXPORT Allocator_Stats arena_frame_get_allocatator_stats(Allocator* self);
 
 EXPORT Arena_Stack* scratch_arena_stack();
-EXPORT Arena scratch_arena_acquire();
+EXPORT Arena_Frame scratch_arena_acquire();
+
+//An allocator capable of storing only a **SINGLE** allocation at a time. 
+// Allows the allocation to be reallocated up or down within the arena.
+//Can be used to make certain data structures stable in memory without any change.
+// An example of this includes Array, Hash_Index, String_Builder, Path... 
+typedef struct Arena_Single_Allocator {
+    Allocator allocator;
+    Arena arena;
+    
+    const char* name;
+    isize max_size;
+} Arena_Single_Allocator;
+
+EXPORT void* arena_single_allocator_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
+EXPORT Allocator_Stats arena_single_allocator_get_allocatator_stats(Allocator* self);
+EXPORT bool arena_single_allocator_init(Arena_Single_Allocator* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero, const char* name);
+EXPORT void arena_single_allocator_deinit(Arena_Single_Allocator* arena);
 
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ARENA_IMPL)) && !defined(JOT_ARENA_HAS_IMPL)
 #define JOT_ARENA_HAS_IMPL
+
+EXPORT bool arena_init(Arena* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero)
+{
+    arena_deinit(arena);
+
+    isize page_size = platform_page_size();
+    
+    ASSERT(reserve_size_or_zero >= 0);
+    ASSERT(commit_granularity_or_zero >= 0);
+    ASSERT(page_size >= 0);
+
+    isize reserve_size = reserve_size_or_zero > 0 ? reserve_size_or_zero : ARENA_DEF_RESERVE_SIZE;
+    isize commit_granularity = commit_granularity_or_zero > 0 ? commit_granularity_or_zero : ARENA_DEF_COMMIT_SIZE;
+
+    reserve_size = DIV_CEIL(reserve_size, page_size)*page_size;
+    commit_granularity = DIV_CEIL(commit_granularity, page_size)*page_size;
+
+    u8* data = (u8*) platform_virtual_reallocate(NULL, reserve_size, PLATFORM_VIRTUAL_ALLOC_RESERVE, PLATFORM_MEMORY_PROT_NO_ACCESS);
+    if(data == NULL)
+        return false;
+
+    arena->data = data;
+    arena->size = 0;
+    arena->commit = 0;
+    arena->reserved = reserve_size;
+    arena->commit_granularity = commit_granularity;
+    return true;
+}
+
+EXPORT void arena_deinit(Arena* arena)
+{
+    if(arena->data)
+        platform_virtual_reallocate(arena->data, arena->reserved, PLATFORM_VIRTUAL_ALLOC_RELEASE, PLATFORM_MEMORY_PROT_NO_ACCESS);
+
+    memset(arena, 0, sizeof *arena);
+}
+
+EXPORT void arena_commit(Arena* arena, isize size)
+{
+    if(size > arena->commit)
+    {
+        isize commit_new = DIV_CEIL(size, arena->commit_granularity)*arena->commit_granularity;
+        if(commit_new > arena->reserved)
+            abort(); //@TODO: something more proper but still keeping things fast
+            
+        PERF_COUNTER_START(commit);
+        void* state = platform_virtual_reallocate(arena->data + arena->commit, commit_new - arena->commit, PLATFORM_VIRTUAL_ALLOC_COMMIT, PLATFORM_MEMORY_PROT_READ_WRITE);
+        PERF_COUNTER_END(commit);
+        if(state == NULL)
+            abort();
+
+        arena->commit = commit_new;
+    }
+}
+EXPORT void* arena_push_nonzero_unaligned(Arena* arena, isize size)
+{
+    arena_commit(arena, arena->size + size);
+    void* out = arena->data + arena->size;
+    arena->size += size;
+    return out;
+}
+
+EXPORT void* arena_push_nonzero(Arena* arena, isize size, isize align)
+{
+    //We just kinda refuse to handle the case where we overflow. 
+    //We should really make that into abort or something.
+    u8* curr = arena->data + arena->size;
+    u8* out = (u8*) align_forward(curr, align);
+    isize needed_size = out - curr + size;
+    arena_push_nonzero_unaligned(arena, needed_size);
+    return out;
+}
+
+EXPORT void* arena_push(Arena* arena, isize size, isize align)
+{
+    void* out = arena_push_nonzero(arena, size, align);
+    memset(out, 0, size);
+    return out;
+}
+
+EXPORT void arena_reset(Arena* arena, isize position)
+{
+    arena->size = position;
+}
+
+//Arena stack things....
 
 #ifndef ARENA_DEBUG
     #ifdef NDEBUG
@@ -187,180 +309,127 @@ EXPORT Arena scratch_arena_acquire();
 #define ARENA_DEBUG_DATA_PATTERN  0x55
 #define ARENA_DEBUG_STACK_PATTERN 0x66
 
-INTERNAL void _arena_debug_check_invarinats(Arena_Stack* arena);
+INTERNAL void _arena_debug_check_invariants(Arena_Stack* arena);
 INTERNAL void _arena_debug_fill_stack(Arena_Stack* arena);
 INTERNAL void _arena_debug_fill_data(Arena_Stack* arena, isize size);
 
-EXPORT void arena_deinit(Arena_Stack* arena)
+EXPORT void arena_stack_deinit(Arena_Stack* arena)
 {
-    _arena_debug_check_invarinats(arena);
-    if(arena->commit && arena->data)
-       arena->commit(arena->data, arena->size, arena->reserved_size, false);
-       
+    _arena_debug_check_invariants(arena);
+    arena_deinit(&arena->arena);
     memset(arena, 0, sizeof *arena);
 }
-EXPORT void arena_init_custom(Arena_Stack* arena, void* data, isize size, isize reserved_size, Arena_Stack_Commit_Func commit_or_null, isize stack_max_depth_or_zero)
-{
-    arena_deinit(arena);
-    isize stack_max_depth = stack_max_depth_or_zero;
 
-    isize* stack = (isize*) data;
-    u8* aligned_data = (u8*) align_forward(data, sizeof *stack);
-    isize aligned_size = size - (aligned_data - (u8*) data);
-    isize stack_max_depth_that_fits = aligned_size / isizeof *stack;
+EXPORT bool arena_stack_init(Arena_Stack* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero, isize stack_max_depth_or_zero, Arena_Stack_On_Bad_Push on_bad_push_or_null, const char* name_or_null)
+{
+    arena_stack_deinit(arena);
+    if(arena_init(&arena->arena, reserve_size_or_zero, commit_granularity_or_zero) == false)
+        return false;
+
+    isize stack_max_depth = stack_max_depth_or_zero;
+    isize stack_max_depth_that_fits = arena->arena.reserved / isizeof(isize);
 
     if(stack_max_depth <= 0)
         stack_max_depth = ARENA_DEF_STACK_SIZE;
     if(stack_max_depth > stack_max_depth_that_fits)
         stack_max_depth = stack_max_depth_that_fits;
 
-    arena->used_to = stack_max_depth * isizeof *stack;
-    arena->data = aligned_data;
-    arena->size = aligned_size;
+    arena_push_nonzero(&arena->arena, stack_max_depth*isizeof(isize), isizeof(isize)); 
+    arena->on_bad_push = on_bad_push_or_null;
+    arena->name = name_or_null;
     arena->stack_max_depth = (i32) stack_max_depth;
-    arena->commit = commit_or_null;
-    arena->reserved_size = reserved_size;
-
+    arena->stack_depth = 0;
+    
     _arena_debug_fill_stack(arena);
     _arena_debug_fill_data(arena, INT64_MAX);
-    _arena_debug_check_invarinats(arena);
+    _arena_debug_check_invariants(arena);
+    return true;
 }
 
-//TODO: remove needless generality
-EXPORT isize arena_def_commit_func(void* addr, isize size, isize reserved_size, bool commit)
-{
-    isize commit_to = 0;
-    if(commit == false)
-    {
-        platform_virtual_reallocate((u8*) addr, reserved_size, PLATFORM_VIRTUAL_ALLOC_RELEASE, PLATFORM_MEMORY_PROT_READ_WRITE);
-    }
-    else
-    {
-        commit_to = MIN(size + ARENA_DEF_COMMIT_SIZE, reserved_size);
-        if(commit_to - size > 0)
-            platform_virtual_reallocate((u8*) addr + size, commit_to - size, PLATFORM_VIRTUAL_ALLOC_COMMIT, PLATFORM_MEMORY_PROT_READ_WRITE);
-
-    }
-    return commit_to;
-}
-
-EXPORT void arena_init(Arena_Stack* arena, isize reserve_size_or_zero, isize stack_max_depth_or_zero, const char* name_or_null)
-{
-    if(reserve_size_or_zero <= 0)
-        reserve_size_or_zero = ARENA_DEF_RESERVE_SIZE;
-
-    void* data = platform_virtual_reallocate(NULL, reserve_size_or_zero, PLATFORM_VIRTUAL_ALLOC_RESERVE, PLATFORM_MEMORY_PROT_READ_WRITE);
-    isize size = arena_def_commit_func(data, 0, reserve_size_or_zero, true);
-    arena_init_custom(arena, data, size, reserve_size_or_zero, arena_def_commit_func, stack_max_depth_or_zero);
-    arena->name = name_or_null;
-}
-
-ATTRIBUTE_INLINE_NEVER void* arena_unusual_push(Arena_Stack* arena, i32 depth, isize size, isize align)
+ATTRIBUTE_INLINE_NEVER void _arena_handle_unusual_push(Arena_Stack* stack, i32 depth, isize size, isize align)
 {
     PERF_COUNTER_START();
-    if(arena->stack_depht != depth)
+    _arena_debug_check_invariants(stack);
+    if(stack->stack_depth > depth)
     {
-        ASSERT(arena->stack_depht < arena->stack_max_depth);
-
-        i32 to_depth = MIN(depth, arena->stack_max_depth);
-        isize* stack = (isize*) (void*) arena->data;
-        for(i32 i = arena->stack_depht; i < to_depth; i++)
-            stack[i] = arena->used_to;
-
-        arena->stack_depht = to_depth;
-        _arena_debug_fill_stack(arena);
-        _arena_debug_check_invarinats(arena);
+        stack->bad_pushes += 1;
+        if(stack->on_bad_push && stack->on_bad_push(stack, depth, size, align) == false)
+            abort();
     }
+    ASSERT(stack->stack_depth < stack->stack_max_depth);
 
-    u8* data = (u8*) align_forward(arena->data + arena->used_to, align);
-    u8* data_end = data + size;
-    if(data_end > arena->data + arena->size)
-    {
-        data = NULL;
-        if(arena->commit)
-        {
-            PERF_COUNTER_START(commit);
-            isize new_size = arena->commit(arena->data, arena->size, arena->reserved_size, true);
-            PERF_COUNTER_END(commit);
-            if(new_size > arena->size)
-            {
-                _arena_debug_fill_data(arena, new_size - arena->size);
-                arena->size = new_size;
-                ASSERT(new_size < arena->reserved_size);
-                data = arena_unusual_push(arena, depth, size, align);
-            }
-        }
-    }
-    else
-    {
-        arena->used_to = (isize) data_end - (isize) arena->data;
-        _arena_debug_check_invarinats(arena);
-    }
-    
+    i32 to_depth = MIN(depth, stack->stack_max_depth);
+    isize* levels = (isize*) (void*) stack->arena.data;
+    for(i32 i = stack->stack_depth; i < to_depth; i++)
+        levels[i] = stack->arena.size;
+
+    stack->stack_depth = to_depth;
+    arena_commit(&stack->arena, stack->arena.size + size + align);
+    _arena_debug_fill_data(stack, INT64_MAX);
+    _arena_debug_fill_stack(stack);
+    _arena_debug_check_invariants(stack);
+
     PERF_COUNTER_END();
-    return data;
 }
 
-static ATTRIBUTE_INLINE_ALWAYS void* arena_push_nonzero_inline(Arena* arena, isize size, isize align)
+INTERNAL ATTRIBUTE_INLINE_ALWAYS void* _arena_frame_push_nonzero_inline(Arena_Frame* arena, isize size, isize align)
 {
     PERF_COUNTER_START();
     ASSERT(arena->stack && arena->level > 0);
     Arena_Stack* stack = arena->stack;
-    _arena_debug_check_invarinats(stack);
+    _arena_debug_check_invariants(stack);
 
-    u8* data = NULL;
-    if(stack->stack_depht != arena->level || stack->used_to + size + align > stack->size)
-        data = arena_unusual_push(stack, arena->level, size, align);
-    else
-    {
-        data = (u8*) align_forward(stack->data + stack->used_to, align);
-        stack->used_to = (isize) (data + size) - (isize) stack->data;
-        ASSERT(stack->used_to <= stack->size);
-    }
+    if(stack->stack_depth != arena->level || stack->arena.size + size > stack->arena.commit)
+        _arena_handle_unusual_push(stack, arena->level, size, align);
+
+    u8* out = (u8*) align_forward(stack->arena.data + stack->arena.size, align);
+    stack->arena.size = out - stack->arena.data + size;
+
+    _arena_debug_check_invariants(stack);
     PERF_COUNTER_END();
-    return data;
+    return out;
 }
 
-EXPORT void* arena_push_nonzero(Arena* arena, isize size, isize align)
+EXPORT void* arena_frame_push_nonzero(Arena_Frame* arena, isize size, isize align)
 {
-    return arena_push_nonzero_inline(arena, size, align);
+    return _arena_frame_push_nonzero_inline(arena, size, align);
 }
 
-EXPORT void* arena_push(Arena* arena, isize size, isize align)
+EXPORT void* arena_frame_push(Arena_Frame* arena, isize size, isize align)
 {
-    void* ptr = arena_push_nonzero(arena, size, align);
+    void* ptr = arena_frame_push_nonzero(arena, size, align);
     memset(ptr, 0, (size_t) size);
     return ptr;
 }
 
-EXPORT void arena_release(Arena* arena)
+EXPORT void arena_frame_release(Arena_Frame* arena)
 {
     PERF_COUNTER_START();
 
     Arena_Stack* stack = arena->stack;
     ASSERT(arena->stack && arena->level > 0);
-    _arena_debug_check_invarinats(stack);
-    if(arena->level > 0 && stack->stack_depht >= arena->level)
+    _arena_debug_check_invariants(stack);
+    if(arena->level > 0 && stack->stack_depth >= arena->level)
     {
-        isize* levels = (isize*) (void*) stack->data;
+        isize* levels = (isize*) (void*) stack->arena.data;
         isize new_used_to = levels[arena->level - 1];
-        isize old_used_to = stack->used_to;
+        isize old_used_to = stack->arena.size;
 
         isize stack_bytes = stack->stack_max_depth * isizeof *levels;
-        ASSERT(stack_bytes <= new_used_to && new_used_to <= stack->used_to);
+        ASSERT(stack_bytes <= new_used_to && new_used_to <= stack->arena.size);
 
-        if(stack->max_release_from_size < stack->used_to)
-            stack->max_release_from_size = stack->used_to;
+        if(stack->max_size < stack->arena.size)
+            stack->max_size = stack->arena.size;
 
-        stack->used_to = new_used_to;
-        stack->stack_depht = arena->level - 1;
+        stack->arena.size = new_used_to;
+        stack->stack_depth = arena->level - 1;
         stack->release_count += 1;
 
         //@TODO: we have memory corruption in file logger somewhere as this check
         //keeps firing but only for it. FIX THIS!
-        //_arena_debug_fill_data(stack, old_used_to - new_used_to);
-        _arena_debug_fill_data(stack, old_used_to - new_used_to + ARENA_DEBUG_DATA_SIZE);
-        _arena_debug_check_invarinats(stack);
+        _arena_debug_fill_data(stack, old_used_to - new_used_to);
+        //_arena_debug_fill_data(stack, old_used_to - new_used_to + ARENA_DEBUG_DATA_SIZE);
+        _arena_debug_check_invariants(stack);
         memset(arena, 0, sizeof* arena);
     }
 
@@ -368,57 +437,57 @@ EXPORT void arena_release(Arena* arena)
 }
 
 //Compatibility function for the allocator interface
-EXPORT void* arena_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
+EXPORT void* arena_frame_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
 {
     void* out = NULL;
     if(new_size > old_size)
     {
-        Arena* arena = (Arena*) (void*) self;
-        out = arena_push_nonzero_inline(arena, new_size, align);
+        Arena_Frame* arena = (Arena_Frame*) (void*) self;
+        out = _arena_frame_push_nonzero_inline(arena, new_size, align);
         memcpy(out, old_ptr, (size_t) old_size);
     }
 
     return out;
 }
 
-EXPORT Allocator_Stats arena_get_allocatator_stats(Allocator* self)
+EXPORT Allocator_Stats arena_frame_get_allocatator_stats(Allocator* self)
 {
-    Arena* arena = (Arena*) (void*) self;
+    Arena_Frame* arena = (Arena_Frame*) (void*) self;
     Arena_Stack* stack = arena->stack;
 
-    isize max_used_to = MAX(stack->used_to, stack->max_release_from_size);
+    isize max_size = MAX(stack->arena.size, stack->max_size);
     isize stack_to = stack->stack_max_depth * isizeof(isize);
 
     Allocator_Stats stats = {0};
-    stats.type_name = "Arena";
+    stats.type_name = "Arena_Frame";
     stats.name = stack->name;
     stats.is_top_level = true;
-    stats.bytes_allocated = stack->used_to - stack_to;
-    stats.max_bytes_allocated = max_used_to - stack_to;
+    stats.bytes_allocated = stack->arena.size - stack_to;
+    stats.max_bytes_allocated = max_size - stack_to;
     stats.allocation_count = stack->acquasition_count;
     stats.deallocation_count = stack->release_count;
 
     return stats;
 }
 
-EXPORT Arena arena_acquire(Arena_Stack* stack)
+EXPORT Arena_Frame arena_frame_acquire(Arena_Stack* stack)
 {
     PERF_COUNTER_START();
 
-    _arena_debug_check_invarinats(stack);
-    i32 new_depth = stack->stack_depht + 1;
-    isize* levels = (isize*) (void*) stack->data;
+    _arena_debug_check_invariants(stack);
+    i32 new_depth = stack->stack_depth + 1;
+    isize* levels = (isize*) (void*) stack->arena.data;
     if(new_depth <= stack->stack_max_depth)
     {
-        levels[new_depth - 1] = stack->used_to;
-        stack->stack_depht = new_depth;
+        levels[new_depth - 1] = stack->arena.size;
+        stack->stack_depth = new_depth;
     }
 
     stack->acquasition_count += 1;
 
-    Arena out = {0};
-    out.allocator.allocate = arena_reallocate;
-    out.allocator.get_stats = arena_get_allocatator_stats;
+    Arena_Frame out = {0};
+    out.allocator.allocate = arena_frame_reallocate;
+    out.allocator.get_stats = arena_frame_get_allocatator_stats;
     out.level = new_depth;
     out.stack = stack;
 
@@ -454,45 +523,89 @@ EXPORT Arena_Stack* scratch_arena_stack()
 {
     return &_scratch_arena_stack;
 }
-EXPORT Arena scratch_arena_acquire()
+EXPORT Arena_Frame scratch_arena_acquire()
 {
-    if(_scratch_arena_stack.data == NULL)
-        arena_init(&_scratch_arena_stack, 0, 0, "scratch arena stack");
+    if(_scratch_arena_stack.arena.data == NULL)
+        arena_stack_init(&_scratch_arena_stack, 0, 0, 0, NULL, "scratch arena stack");
 
-    return arena_acquire(&_scratch_arena_stack);
+    return arena_frame_acquire(&_scratch_arena_stack);
 }
 
-INTERNAL void _arena_debug_check_invarinats(Arena_Stack* arena)
+INTERNAL void _arena_debug_check_invariants(Arena_Stack* stack)
 {
     if(ARENA_DEBUG)
     {
-        isize* stack = (isize*) (void*) arena->data;
-        ASSERT(arena->stack_max_depth * (isize)sizeof *stack <= arena->used_to && arena->used_to <= arena->size, "used_to needs to be within [0, size]");
-        ASSERT(0 <= arena->stack_depht && arena->stack_depht <= arena->stack_max_depth, "used_to stack_depht to be within [0, stack_max_depth]");
+        isize* levels = (isize*) (void*) stack->arena.data;
+        ASSERT(stack->stack_max_depth * (isize)sizeof *levels <= stack->arena.size && stack->arena.size <= stack->arena.commit, "used_to needs to be within [0, size]");
+        ASSERT(0 <= stack->stack_depth && stack->stack_depth <= stack->stack_max_depth, "used_to stack_depth to be within [0, stack_max_depth]");
 
-        ASSERT((arena->data == NULL) == (arena->size == 0), "only permitted to be NULL when zero sized");
+        if(stack->arena.data == NULL)
+            ASSERT(stack->arena.commit == 0, "only permitted to be NULL when zero sized");
 
-        isize till_end = arena->size - arena->used_to;
+        isize till_end = stack->arena.commit - stack->arena.size;
         isize check_size = MIN(till_end, ARENA_DEBUG_DATA_SIZE);
-        ASSERT(memcmp_byte(arena->data + arena->used_to, ARENA_DEBUG_DATA_PATTERN, check_size) == 0, "The memory after the arena needs not be corrupted!");
-        ASSERT(memcmp_byte(stack + arena->stack_depht, ARENA_DEBUG_STACK_PATTERN, (arena->stack_max_depth - arena->stack_depht) * isizeof *stack) == 0, "The memory after stack needs to be valid");
+        ASSERT(memcmp_byte(stack->arena.data + stack->arena.size, ARENA_DEBUG_DATA_PATTERN, check_size) == 0, "The memory after the arena needs not be corrupted!");
+        ASSERT(memcmp_byte(levels + stack->stack_depth, ARENA_DEBUG_STACK_PATTERN, (stack->stack_max_depth - stack->stack_depth) * isizeof *levels) == 0, "The memory after stack needs to be valid");
     }
 }
 
-INTERNAL void _arena_debug_fill_stack(Arena_Stack* arena)
+INTERNAL void _arena_debug_fill_stack(Arena_Stack* stack)
 {
-    isize* stack = (isize*) (void*) arena->data;
+    isize* levels = (isize*) (void*) stack->arena.data;
     if(ARENA_DEBUG)
-        memset(stack + arena->stack_depht, ARENA_DEBUG_STACK_PATTERN, (size_t) (arena->stack_max_depth - arena->stack_depht) * sizeof *stack);
+        memset(levels + stack->stack_depth, ARENA_DEBUG_STACK_PATTERN, (size_t) (stack->stack_max_depth - stack->stack_depth) * sizeof *levels);
 }
 
-INTERNAL void _arena_debug_fill_data(Arena_Stack* arena, isize size)
+INTERNAL void _arena_debug_fill_data(Arena_Stack* stack, isize size)
 {
     if(ARENA_DEBUG)
     {
-        isize till_end = arena->size - arena->used_to;
+        isize till_end = stack->arena.commit - stack->arena.size;
         isize check_size = MIN(till_end, size);
-        memset(arena->data + arena->used_to, ARENA_DEBUG_DATA_PATTERN, (size_t) check_size);
+        memset(stack->arena.data + stack->arena.size, ARENA_DEBUG_DATA_PATTERN, (size_t) check_size);
     }
+}
+
+EXPORT void* arena_single_allocator_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
+{
+    Arena_Single_Allocator* alloc = (Arena_Single_Allocator*) (void*) self;
+    ASSERT(old_ptr == alloc->arena.data);
+    ASSERT(old_size == alloc->arena.size);
+    ASSERT(alloc->arena.size <= alloc->max_size);
+    ASSERT(is_power_of_two(align));
+
+    arena_reset(&alloc->arena, 0);
+    void* out = arena_push_nonzero_unaligned(&alloc->arena, new_size);
+    alloc->max_size = MAX(alloc->max_size, new_size);
+
+    return out;
+}
+
+EXPORT Allocator_Stats arena_single_allocator_get_allocatator_stats(Allocator* self)
+{
+    Arena_Single_Allocator* alloc = (Arena_Single_Allocator*) (void*) self;
+    Allocator_Stats out = {0};
+    out.is_top_level = true;
+    out.type_name = "Arena_Single_Allocator";
+    out.name = alloc->name;
+    out.max_bytes_allocated = alloc->max_size;
+
+    return out;
+}
+EXPORT bool arena_single_allocator_init(Arena_Single_Allocator* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero, const char* name)
+{
+    if(arena_init(&arena->arena, reserve_size_or_zero, commit_granularity_or_zero) == false)
+        return false;
+
+    arena->allocator.allocate = arena_single_allocator_reallocate;
+    arena->allocator.get_stats = arena_single_allocator_get_allocatator_stats;
+    arena->max_size = 0;
+    arena->name = name;
+    return true;
+}
+EXPORT void arena_single_allocator_deinit(Arena_Single_Allocator* arena)
+{
+    arena_deinit(&arena->arena);
+    memset(arena, 0, sizeof *arena);
 }
 #endif

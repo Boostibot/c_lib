@@ -432,7 +432,7 @@ bool benchmark_hash_index_fifo_bench(isize iter, void* _context)
         }
 
         hash_index_deinit(index);
-        arena_release(&context->arena);
+        arena_frame_release(&context->arena);
         context->arena = scratch_arena_acquire();
 
         hash_index_init_load_factor(index, context->arena, context->load_factor, context->load_factor);

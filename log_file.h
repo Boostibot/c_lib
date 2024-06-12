@@ -122,13 +122,14 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
         String group_separator = STRING("    ");
         String message = it->message;
     
-        String_Builder formatted_module = {scratch};
+        String_Builder formatted_module = builder_make(scratch, 0);
 
         //formats module: "module name" -> "MODULE_NAME    "
         //                                 <--------------->
         //                                 module_field_size
         builder_resize(&formatted_module, MAX(module.size, module_field_size));
         {
+
             isize written = 0;
             for(isize i = 0; i < module_field_size - module.size; i++)
                 formatted_module.data[written++] = ' ';
@@ -140,6 +141,7 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
                 if('a' <= c && c <= 'z')
                     c = c - 'a' + 'A';
 
+                CHECK_BOUNDS(written, formatted_module.size);
                 if(c == '\n' || c == ' ' || c == '\f' || c == '\t' || c == '\r' || c == '\v')
                     formatted_module.data[written++] = '_'; 
                 else
@@ -379,7 +381,7 @@ EXPORT void file_logger_log(Logger* logger_, i32 group_depth, int actions, const
 
     if(actions & (LOG_ACTION_LOG | LOG_ACTION_CHILD))
     {
-        Arena arena = scratch_arena_acquire();
+        Arena_Frame arena = scratch_arena_acquire();
         {
             String_Builder formatted_log = builder_make(&arena.allocator, 1024);
             file_logger_log_append_into(&arena.allocator, &formatted_log, group_depth, &log_list);
@@ -415,7 +417,7 @@ EXPORT void file_logger_log(Logger* logger_, i32 group_depth, int actions, const
                 did_flush = true;
             }
         }
-        arena_release(&arena);
+        arena_frame_release(&arena);
     }
     
     if((actions & LOG_ACTION_FLUSH) && did_flush == false)

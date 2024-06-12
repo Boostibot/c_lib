@@ -429,13 +429,13 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         if(table->entries_count > 0)
         {
             #ifdef JOT_ARENA
-            Arena arena = scratch_arena_acquire();
+            Arena_Frame arena = scratch_arena_acquire();
             Hash_Index copy = *table;
             copy.entries = (Hash_Index_Entry*) arena_push_nonzero_inline(&arena, table->entries_count * isizeof(Hash_Index_Entry), __alignof(Hash_Index_Entry));
             memcpy(copy.entries, table->entries, (size_t) table->entries_count * sizeof(Hash_Index_Entry));
 
             _hash_index_rehash_copy(table, copy, table->entries_count, true);
-            arena_release(&arena);
+            arena_frame_release(&arena);
             #endif
         }
 
