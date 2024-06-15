@@ -279,7 +279,8 @@ EXPORT void* arena_push_nonzero(Arena* arena, isize size, isize align)
     u8* curr = arena->data + arena->size;
     u8* out = (u8*) align_forward(curr, align);
     isize needed_size = out - curr + size;
-    arena_push_nonzero_unaligned(arena, needed_size);
+    arena_commit(arena, arena->size + needed_size);
+    arena->size += needed_size;
     return out;
 }
 

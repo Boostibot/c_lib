@@ -116,6 +116,7 @@
     #include <string.h>
     #include <assert.h>
     #include <stdbool.h>
+    #include <stdlib.h>
     
     #define EXPORT
     #define INTERNAL static
@@ -142,7 +143,7 @@
 #define POOL_ALLOC_CHECK_BIN        ((uint32_t) 1 << 4)
 
 #ifndef NDEBUG
-    #define POOL_ALLOC_DEBUG            //Enables basic safery checks on passed in nodes. Helps to find overwrites
+    //#define POOL_ALLOC_DEBUG            //Enables basic safery checks on passed in nodes. Helps to find overwrites
     //#define POOL_ALLOC_DEBUG_SLOW       //Enebles extensive checks on nodes. Also fills data to garavge on alloc/free.
     //#define POOL_ALLOC_DEBUG_SLOW_SLOW  //Checks all nodes on every entry and before return of every function. Is extremely slow and should only be used when testing this allocator
 #endif
@@ -180,8 +181,6 @@ EXPORT void pool_alloc_free_all(Pool_Allocator* allocator);
 EXPORT void pool_alloc_check_invariants_always(Pool_Allocator* allocator, uint32_t flags);
 
 #endif
-
-
 
 
 
@@ -451,6 +450,9 @@ EXPORT void pool_alloc_check_invariants_always(Pool_Allocator* allocator, uint32
 
 INTERNAL void _pool_alloc_check_node(Pool_Allocator* allocator, Pool_Allocator_Node* node_ptr, uint32_t flags)
 {
+    (void) allocator;
+    (void) node_ptr;
+    (void) flags;
     #ifdef POOL_ALLOC_DEBUG
         #ifdef POOL_ALLOC_DEBUG_SLOW
             flags |= POOL_ALLOC_CHECK_DETAILED;
@@ -464,6 +466,7 @@ INTERNAL void _pool_alloc_check_node(Pool_Allocator* allocator, Pool_Allocator_N
 
 INTERNAL void _pool_alloc_check_invariants(Pool_Allocator* allocator)
 {
+    (void) allocator;
     #ifdef POOL_ALLOC_DEBUG
         uint32_t flags = 0;
         #ifdef POOL_ALLOC_DEBUG_SLOW
@@ -1106,8 +1109,10 @@ void test_pool_alloc(double seconds)
 
     void benchmark_pool_alloc(double seconds)
     {
-        benchmark_pool_alloc_single(seconds/2, 1024, 8, 64, 0, 4);
-        benchmark_pool_alloc_single(seconds/2, 128, 64, 512, 0, 4);
+        benchmark_pool_alloc_single(seconds/4, 4096, 8, 64, 0, 4);
+        benchmark_pool_alloc_single(seconds/4, 1024, 64, 512, 0, 4);
+        benchmark_pool_alloc_single(seconds/4, 1024, 8, 64, 0, 4);
+        benchmark_pool_alloc_single(seconds/4, 128, 64, 512, 0, 4);
     }
     #endif
 #endif
