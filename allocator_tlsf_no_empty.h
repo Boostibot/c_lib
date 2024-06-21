@@ -4,122 +4,171 @@
 #ifndef JOT_TLSFATOR
 #define JOT_TLSFATOR
 
-// An implementation of TLSF style allocator (see: "An algorithm with constant execution time for dynamic storage allocation.")
+// An implementation of TLSF style allocator.
 // See https://ieeexplore.ieee.org/document/528746/ [T. Ogasawara, "An algorithm with constant execution time for dynamic storage allocation,"] for a paper introducing this type of allocator.
-// See https://github.com/sebbbi/OffsetAllocator/tree/main for a similar and simpler implementation (thus maybe easier to understand).
+// See https://github.com/sebbbi/OffsetAllocator/tree/main for a similar and simpler implementation (thus probably easier to understand).
 // 
-// The allocation algorhitm can be summarised as follows:
-//  0. Obtain requested size and alignment as parameters
-//  1. Use size to efficiently calculate a bin into which to place the allocation.
-//     Each bin contains a linked list of nodes which the at least the bins size free space.
-//  2. The bin index obtained is the smallest bin into which the allocation fists. 
-//     We store a bitmask of which bins have at least one avalible node.
-//     Using the index mask off too small bins from the bitmask, then find first set
-//     bit to get the smallest elegible bin.
-//  3. Select the first node from the selected bin's list. We refer to this node as `next`. 
-//  4. We keep a doubly linked list of nodes, order by the adresses of their allocations. 
-//     We refer to this list as "in memory order". Obtain `next`s previous node `prev` in memory order.
-//  5. We keep a freelist of free node slots. These are not in any other list 
-//  3. Place the allocation in memory before the first node from the selected bin's list.
-//     This shrinks the free space of the node in the bins list thus we may have to relink it
-//     to a new bin that matches its current size.
-//     
-//  4. If the node used is bigger then the requetsed size and there is 
-//     sufficient ammount of space left, create a new node with filling
-//     this space. Add it to the appropriate bins free list.
-//     Additionally there is a (circular bidirectional) linked list of 
-//     adress space neigbouring nodes used for splitting and merging of nodes.
-//     Add the created node between the used node its neiigbour. 
-//     Mark the added node as not used.
-//  5. Align the allocation to the specified alignment. Place a header 
-//     containing the offset to the used node. Mark it as used.
+// The premise is: We have a contiguous block of memory and we want to place allocations into it while wastings as little space as possible.
+// This arises in many situations most of which are some sort of caching system. We have N dynamically sized items in a cache, 
+// upon addition of a new item we pick the *least recently used*, deallocate it and allocate a new item. Because of the least recently used replacement
+// policy the deallocated item is essentially chosen at random. This means simple linear allocators are not suffiecient anymore. On the other hand
+// malloc might not be ideal as we are now unsure of where the data for each item resides, and if the allocation will succeed. With this style of allocator
+// we own the memory, can move it around, know the maximum size we are allowed to use and recompact it or grow it should we need to. It gives more control.
+// 
+// One additional important aspect of this allocator is that it does not need to touch the memory from which we are allocating. This means we can specify just
+// the size of the backing memory blockk but do not give a pointer to it. This can be used to allocate from different memory such as GPU buffers.
+// In fact there are two interface to this allocator:
+//  1. tlsf_allocate() / tlsf_deallocate() ment for allocating in foreign (GPU) memory.
+//  2. tlsf_malloc() / tlsf_free() ment for allocationg in user memory. These require a memory block to be given.
 //
-// The deallocation algorhitm can be summarised as follows:
-//  0. Obtain a pointer to an allocated region.
-//  1. Read the header before the pointer and use the specified offset to
-//     lookup the node itself.
-//  2. Lookup its two neighboring nodes and check if they are used. 
-//     If a neighbour (does not matter which one, can merge both at once) 
-//     is not used it can be merged with the deallocated node. Unlink the 
-//     neighbour from its bins freelist and remove it from the adjecent list, 
-//     thus merging it with the deallocated node. Increase the deallocated 
-//     node's size by the merged neigbours size. 
-//  3. Obtain the deallocated node's bin index and place it inside its freelist.
-//     Mark it as not used.
+// The allocation algorhitm:
+//     We keep an array of nodes each capable of representing a single allocation. 
+//     The currently uneeded nodes form a freelist.
+//     Used nodes contain offset of the allocation in the memory blcok and its size. 
+//     They also (implicitly) contain how much free memory is in this node. 
+//     Additonaly we keep a doubly linked list of used nodes "in memory order" which is sorted 
+//     by the allocation's adress. Lastly we keep an array of "bins" where each bin holds 
+//     doubly linked list of nodes with ammount of free memory in the bins size range. 
+//     The size ranges of bins are roughly exponentially distributed. 
+//     The bins can be empty (there is no node with free memory in the bins range).
+//     We track which bins are empty  with a series of "bin masks" (bitfields).
+// 
+//  0. Obtain requested size and alignment as parameters.
+//  1. Use size to efficiently calculate the minimum bin index into which to the allocation fits.
+//  2. Scan the bin masks starting from the minimum bin index to find bin into which to place the allocation.
+//     If no such bin exists then there is no space left and we return error.
+//  3. Select the first node from the selected bin's linked list. We refer to this node as `next`. 
+//  4. Obtain `next`s previous node `prev` in memory order. Get unused `node` from the node freelist.
+//  5. Link `prev` <-> `node` <-> `next`.
+//  6. Set `node`s offset to be right after `prev`s used size. Set nodes size to the requested size.
+//  7. Shrink the ammount of free memory in the `next` node. This might involve relinking it to 
+//     a different bin if the new free size does not match the bins range.
+//  8. Return the `node` and its offset 
 //
-// The resulting implementation is only about 25% faster than malloc and it provides 
-// more control. The whole tlsf can be trivially deallocated at once 
-// (by forgetting about it and reseting the allocator). A resizing of the memory reagion can 
-// be added without too much work by putting this allocator on top of growing arena.
+// The deallocation algorhitm:
+//  0. Obtain a `node` (via its index in the nodes array)
+//  1. Obtains `node`s previous node `prev` and next node `next` in memory order.
+//  2. Unlink `node` from memory order list. Thus `prev` <-> `next` 
+//  3. If `node` has free space remove it from its bins linked list.
+//  4. Increase the ammount of free memory in the `next` node. This might involve relinking it to 
+//     a different bin if the new free size does not match the bins range.
 // 
 // All of the steps otulined above are constant time thus both operations are O(1). 
 // The only step which might not be is the search for appropriate sized bucket, however
-// its implemented using the ffs (find first set bit) instruction to do this in (very fast)
-// cosntant time. We use 64 bins because that is the biggest commonly supported size for ffs.
+// it is implemented using the ffs (find first set bit) instruction to do this in (very fast)
+// cosntant time. We use 256 bins which can be tracked by 4 64-bit masks. This means we need to do
+// at maximum 4 ffs operations, but usally just one 
+// (ffs has throughput of 1 and latency in range [8,3] cycles - very fast).  
 // 
+//
 // How to assign bin to a size? ======================================================
 // 
-// We want to efficiently map a size to 64 bins so that we minimize wasted memory 
-// (that is we dont want to use 16KB block for 16B allocation). We would like the max proportional 
-// error for bin error := max{(max{bin} - size)/max{bin} | size in bin} to be as small as possible. 
+// We want to efficiently map a size [1, 2^32-1] to the 256 bins so that we minimize wasted memory. 
+// We would like the max proportional error for the given bin 
+//    `error := max{(max{bin} - size)/max{bin} | size in bin}` to be as small as possible. 
 // We also want the max error to be the same regardless of the bin size. This necessitates the bin sizes to be 
 // exponentially distributed ie max{bin_n} = beta^n. Thus we can calculate which bucket a 
-// given size belongs to by bin_index := floor(log_beta(size)) = floor(log2(size)/log2(beta)).
+// given size belongs to by bin_index(size) := floor(log_beta(size)) = floor(log2(size)/log2(beta)).
 // 
-// How to choose beta? Remember that we want 64 bins thus MAX_SIZE = max{bin_64} = beta^64, 
-// which perscribes the beta for the given MAX_SIZE by beta = pow(MAX_SIZE, 1/64). 
-// Now we choose MAX_SIZE so that beta is some nice number. If we choose 2^64 beta is 2. 
-// This is okay but the max error is then (2^64 - 1)/2^64 approx 100%. Generally we can say
-// max error is approximately beta - 1. Also supporting all  numbers is a bit wasteful if 
-// the adress range after all is only 2^48 and realistically we will not use this allocator 
-// for anything more than lets say 4GB of total space. A next  nice MAX_SIZE is 2^32. 
-// This means beta is sqrt(2), thus 
-// bin_index = floor(log2(size)/log2(sqrt(2))) = floor(log2(size)/0.5) = floor(2*log2(size)).
-// This can be quite nicely calculate using a single fls (find last set) isntruction to 
-// obtain floor(log2(size)) and then simple check to obtain the correct answer. (see implementation). 
-// The only problem is that now MAX_SIZE is only 4GB, which we solve by introducing MIN_SIZE. 
-// Simply instead of talking about individual bytes we will only refer to multiples of MIN_SIZE bytes. 
-// Thus we convert size to ceil(size/MIN_SIZE), calculate the bin for that and rememeber to multiply 
-// the resulting size by MIN_SIZE before presenting to the user. We choose MIN_SIZE = 8 thus 
-// MAX_SIZE = 32GB. The max error is sqrt(2) - 1 = 42% thus the average error is 21%. Good enough. 
-// 
+// Now we want to choose beta so that 
+//     256 = bin_index(2^32) = floor(log2(2^32)/log2(beta)) = floor(32/log2(beta))
+// This implies beta = 2^(1/8). Now the expression becomes 
+//    bin_index(size) = floor(log2(size)/(1/8)) = floor(8*log2(size)) = floor(log2(size^8))
+// This is the best answer that minimizes the error. However its very expensive to calculate. 
+// Thus we need to choose a simpler approach that keeps some of the properties of the original.
+// Clearly we want to keep the exponential nature to at least some level. 
+// We take advantage of the fact that floor(log2(size)) == fls(size) where fls() is the 
+// "find last set bit" instruction.
+// Doing just this however produces error for given bin up to 100%. We solve this by linearly 
+// deviding the space between log2 sized bins. We split this space into 8 meaning the error 
+// for the log2 sized bin shrinks to mere 12.5%. This mapping is exactly floating point representation
+// of number with 5 bits of exponent and 3 bits of mantissa. 
+// For the implementation see tlsf_bin_index_from_size below. 
+//
+//
 // Some other implementation notes ======================================================
+//
+// - The implementation is a bit different to the one in https://github.com/sebbbi/OffsetAllocator/tree/main 
+//   and presumably other TLSF allocators. These implementations have three possible states a node can be:
+//   1) fully used 2) fully unused (representing to be filled space) and 3) part of the node free list.
+//   This formulation achieves a similar runtime performance but it has a few problems compared to our implementation.
+//   Below is a series of diagrams showing deallocation of a node in that implementation.
+//   
+//   [____] means empty node
+//   [####] means used node
+//    <-->  means link in memory order
+//     |    means link in some bins free list
 // 
-// - The actual assignemnet to bins using the ffs/fls is very very fast and entirely covered 
-//   by memory latency. One could essentially for free set n=128, thus requiring two ffs ops to 
-//   find a bin (this would mean beta = 2^(1/4)). This would decrease the max error to 
-//   2^(1/4) - 1 = 19% and average of just 10%. This is better then the approach used by sebbbi 
-//   in the link above.
-//   We would also need two times as many bins thus the allocator struct would become also 
-//   twice as big, though I am unsure how much of an impact on perfomance that has. 
+//               [___]                       [___]
+//                 |                           |
+//   [####] <--> [___] <--> [# freed #] <--> [___] <---> [####]
+//                 |                           |
+//               [___]                       [___]
+//                              |
+//                              | unlink neigbouring free nodes from the bins free list
+//                              V
+//                                            
+//   [####] <--> [___] <--> [# freed #] <--> [___] <---> [####]
+//                                            
+//                               | merge neighbouring unused nodes
+//                               V
+//
+//   [####] <--> [____________freee_______________] <---> [####]
+//
+//                              |
+//                              | link the resulting merged node into a new bin list 
+//                              V
+
+//               [________________________________]
+//                              |             
+//   [####] <--> [____________freee_______________] <---> [####]
+//                              |             
+//               [________________________________]
 // 
-// - I used somewhat unusual (at least for me) circular linked lists as they eliminate most ifs
-//   in the algorhitm. Its surprising how much nicer everything becomes for circular vs normal 
-//   doubly linked lists. 
+//   There are several things to note about this. First is that in the worst case (the one depicted) we have
+//   to touch a total number of 11 nodes. Thats a lot of random memory acesses. Second is that after enough 
+//   allocations and deallocations the resulting nodes will tend to be in similar position as the `freed` node.
+//   That is surrounded on both sides by fully free nodes. If we assume N used nodes all of which are surrounded
+//   by free nodes we get that there are N+1 free nodes in the system. That means that about 50% of the total node
+//   capacity is wasted on free nodes.
+//   
+//   Now compare it with the diagram of the equivalent deallocation procedure in our implementation.
+//   here [___########] means a node with some free space. The free space is proportional to the number of `_` 
+//   and the filled space to the number of `#`. Again horizontal `<->` links mean in memory order linked list
+//   and vertical `|` mean in bin linked list.
+//
+//                     [_____#########]            [________####]
+//                              |                          |
+//   [___########] <-> [_____##### freed ####] <-> [________############]
+//                              |                          |
+//                     [______################]    [_________#####]                              
+//                              
+//                              |  unlink from bin lists
+//                              V
+//
+//   [___########] <-> [_____##### freed ####] <-> [________############]
 // 
-// - All numbers which are actually scalled by MIN_SIZE are labeled [thing]. The conversion 
-//   to and from  is super fast as MIN_SIZE is compile time known power of 2. Even if it werent
-//   the impact would be hidden by memory latency.
-// 
-// - As mentioned few times memory latency is the biggest bottleneck. This is best seen by going over the 
-//   summary of the algorithms above and realizing what the steps entail. Each linking/unlinking requires 
-//   visiting of neigboring nodes. This is esentially a random memory lookup. For the free alogrithm there is
-//   1 lookup for the deallocated node
-//   2 lookups to visit neighbours
-//   (lets suppose we merge jsut one neighbour)
-//      2 lookups to unlink neighbour from bucket free list
-//      1 lookup to unlink it from the neighbours list
-//   2 lookups to link to the free list
-//   This is incredibly inefficient. I am wondering how to go about reducing this. Clearly we need to colocate
-//   the adjecent nodes in storage somehow. Its unclear how to go about this.
-// 
-// - A big chunk of the code is dedicated to checking/asserting invariants. There are two functions
-//   _tlsf_check_[thing]_always() which are kept around always and two wrappers _tlsf_check_[thing]()
-//   which are removed in release builds. Only the removed variant is used for asserts within the functions
-//   themselves. The [thing]_always variants are used during stress testing. An operation is performed and then
-//   invariants are checked. This is incredibly powerful and convenient way of making sure a datstructure/algorithm 
-//   is correct - setup as many invariants as one can come up with and then check them as often as possible 
-//   (so that when unexpected state occurs we learn about it).
+//                              | merge
+//                              V
+//   [___########] <-> [___________________________________############]
+//
+//                              | link to bin free list
+//                              V
+//                     [_________________________________######]
+//                                     |
+//   [___########] <-> [___________________________________############]
+//                                     |
+//                     [___________________________________##########]
+//
+//   We only end up touching 9 nodes (which is still alot but its better) and we do not waste any memory on empty nodes
+//   instead the empty spaces are represented implicitly by calculating the distance between neighbouring nodes in memory
+//   order.
+//
+// - A big chunk of the code is dedicated to checking/asserting invariants. There are two kinds of such functions
+//   one tlsf_test_[thing]_invariants() which when called test wheter the structure is correct and if it is not aborts.
+//   This "test" variant is availible in even release builds but is not called internally. 
+//   The other kind is _tlsf_check_[thing]_invariants() which is a simple wrapper around the test variant. 
+//   This wrapper is used internally upon entry/exit of each function and gets turned into a noop in release builds.
 
 #if !defined(JOT_ALLOCATOR) && !defined(JOT_COUPLED)
     #include <stdint.h>
@@ -134,7 +183,6 @@
     #define TEST(x, ...)  (!(x) ? abort() : (void) 0)
 
     typedef int64_t isize; //I have not tested it with unsigned... might require some changes
-
     typedef struct Allocator { int64_t dummy; } Allocator;
 #endif
 
@@ -218,17 +266,31 @@ typedef struct Tlsf_Allocator {
     void* on_full_context;
 } Tlsf_Allocator;
 
+//Initializes the allocator. `memory_or_null` can be NULL in which case the allocator can only be used with the tlsf_allocate/tlsf_deallocate
+// interface. Calling tlsf_malloc/tlsf_free will result in assertion.
 EXPORT bool     tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize memory_size, void* node_memory, isize node_memory_size);
-EXPORT void     tlsf_deallocate(Tlsf_Allocator* allocator, uint32_t node);
-EXPORT isize    tlsf_allocate(Tlsf_Allocator* allocator, isize size, isize align, uint32_t* node);
+//Resets the allocator thus essentially 'freeing' all allocations.
 EXPORT void     tlsf_reset(Tlsf_Allocator* allocator);
 
-EXPORT isize    tlsf_node_size(Tlsf_Allocator* allocator, uint32_t node_i);
-EXPORT uint32_t tlsf_get_node(Tlsf_Allocator* allocator, void* ptr); 
+//Allocates a `size` bytes of the potentially non local memory and returns an offset into the memory block. 
+//Aligns the offset to `align` bytes relative to the start of the memory block. 
+//Saves the allocated node handle into `node`. If fails to allocate returns 0 and saves 0 into `node`.
+EXPORT isize    tlsf_allocate(Tlsf_Allocator* allocator, isize size, isize align, uint32_t* node);
+//Deallocates a node obtained from tlsf_allocate or tlsf_malloc. If node is 0 does not do anything.
+EXPORT void     tlsf_deallocate(Tlsf_Allocator* allocator, uint32_t node);
+
+//Allocates a `size` bytes in the local memory and returns a pointer to it. 
+//The returned pointer is aligned to `align` bytes. If fails to allocate returns NULL.
 EXPORT void*    tlsf_malloc(Tlsf_Allocator* allocator, isize size, isize align);
+//Frees an allocation represented by a `ptr` obtained from tlsf_malloc. if `ptr` is NULL does not do anything.
 EXPORT void     tlsf_free(Tlsf_Allocator* allocator, void* ptr);
 
-//EXPORT int32_t  tlsf_bin_index_from_size(isize size, bool round_up);
+//Returns the size of the given node. If the `node_i` is invalid returns 0. If the `node_i` was freed returns 0xFFFFFFFF.
+EXPORT isize    tlsf_node_size(Tlsf_Allocator* allocator, uint32_t node_i);
+//Returns a node of the allocation done by calling tlsf_malloc. If `ptr` is NULL returns 0. 
+EXPORT uint32_t tlsf_get_node(Tlsf_Allocator* allocator, void* ptr); 
+
+EXPORT int32_t  tlsf_bin_index_from_size(isize size, bool round_up);
 EXPORT isize    tlsf_size_from_bin_index(int32_t bin_index);
 
 //Checks wheter the allocator is in valid state. If is not aborts.
@@ -244,7 +306,7 @@ EXPORT void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node_i
 
 #if defined(_MSC_VER)
     #include <intrin.h>
-    inline static int32_t _tlsf_find_last_set_bit64(uint64_t num)
+    INTERNAL int32_t _tlsf_find_last_set_bit64(uint64_t num)
     {
         ASSERT(num != 0);
         unsigned long out = 0;
@@ -252,7 +314,7 @@ EXPORT void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node_i
         return (int32_t) out;
     }
     
-    inline static int32_t _tlsf_find_first_set_bit64(uint64_t num)
+    INTERNAL int32_t _tlsf_find_first_set_bit64(uint64_t num)
     {
         ASSERT(num != 0);
         unsigned long out = 0;
@@ -262,13 +324,13 @@ EXPORT void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node_i
     
     #define TLSF_INLINE_NEVER  __declspec(noinline)
 #elif defined(__GNUC__) || defined(__clang__)
-    inline static int32_t _tlsf_find_last_set_bit64(uint64_t num)
+    INTERNAL int32_t _tlsf_find_last_set_bit64(uint64_t num)
     {
         ASSERT(num != 0);
         return 64 - __builtin_ctzll((unsigned long long) num) - 1;
     }
     
-    inline static int32_t _tlsf_find_first_set_bit64(uint64_t num)
+    INTERNAL int32_t _tlsf_find_first_set_bit64(uint64_t num)
     {
         ASSERT(num != 0);
         return __builtin_ffsll((long long) num) - 1;
@@ -583,7 +645,14 @@ TLSF_INLINE_NEVER INTERNAL isize _tlsf_on_full(Tlsf_Allocator* allocator, isize 
         allocator->memory_size = end->offset*TLSF_MIN_SIZE;
         allocator->node_capacity = (uint32_t) new_node_capacity;
         _tlsf_check_invariants(allocator);
-        return _tlsf_allocate(allocator, size, out_node);
+
+        //Set on_full_context to specific value to stop infinite recursion
+        void* on_full_context = allocator->on_full_context;
+        allocator->on_full_context = &stop_recursion;
+        isize out = _tlsf_allocate(allocator, size, out_node);
+        allocator->on_full_context = on_full_context;
+
+        return out;
     }
 
     *out_node = 0;
@@ -689,8 +758,10 @@ EXPORT bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize mem
 EXPORT void tlsf_reset(Tlsf_Allocator* allocator)
 {
     void (*on_full)(struct Tlsf_Allocator* self, isize requested_size, isize* new_memory_size, isize* new_node_capacity, void* context) = allocator->on_full;
+    void* on_full_context = allocator->on_full_context;
     tlsf_init(allocator, allocator->memory, allocator->memory_size, allocator->nodes, allocator->node_capacity);
     allocator->on_full = on_full;
+    allocator->on_full_context = on_full_context;
 }
 
 EXPORT isize tlsf_allocate(Tlsf_Allocator* allocator, isize size, isize align, uint32_t* node)
