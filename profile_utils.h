@@ -113,7 +113,7 @@ EXPORT void log_perf_counters(const char* log_module, Log_Type log_type, Log_Per
 				if(safe_strlen(counter.name, -1) > 1)
 					name = format_ephemeral("'%s'", counter.name).data;
 
-				LOG(log_module, log_type, "%13.4lf %11.4lf %8lli %7.2lf [%9.4lf %9.2lf] %25s %-4lli %s %s", 
+				LOG(log_module, log_type, "%13.4lf %.3e %8lli %7.2lf [%9.4lf %9.2lf] %25s %-4lli %s %s", 
 					stats.total_s*1000,
 					stats.average_s*1000,
 					(lli) stats.runs,

@@ -1,0 +1,1345 @@
+#define JOT_ALL_IMPL
+#define JOT_ALL_TEST
+
+#ifndef JOT_TLSFATOR
+#define JOT_TLSFATOR
+
+// An implementation of TLSF style allocator (see: "An algorithm with constant execution time for dynamic storage allocation.")
+// See https://ieeexplore.ieee.org/document/528746/ [T. Ogasawara, "An algorithm with constant execution time for dynamic storage allocation,"] for a paper introducing this type of allocator.
+// See https://github.com/sebbbi/OffsetAllocator/tree/main for a similar and simpler implementation (thus maybe easier to understand).
+// 
+// The allocation algorhitm can be summarised as follows:
+//  0. Obtain requested size and alignment as parameters
+//  1. Use size to efficiently calculate a bin into which to place the allocation.
+//     Each bin contains a linked list of nodes which the at least the bins size free space.
+//  2. The bin index obtained is the smallest bin into which the allocation fists. 
+//     We store a bitmask of which bins have at least one avalible node.
+//     Using the index mask off too small bins from the bitmask, then find first set
+//     bit to get the smallest elegible bin.
+//  3. Select the first node from the selected bin's list. We refer to this node as `next`. 
+//  4. We keep a doubly linked list of nodes, order by the adresses of their allocations. 
+//     We refer to this list as "in memory order". Obtain `next`s previous node `prev` in memory order.
+//  5. We keep a freelist of free node slots. These are not in any other list 
+//  3. Place the allocation in memory before the first node from the selected bin's list.
+//     This shrinks the free space of the node in the bins list thus we may have to relink it
+//     to a new bin that matches its current size.
+//     
+//  4. If the node used is bigger then the requetsed size and there is 
+//     sufficient ammount of space left, create a new node with filling
+//     this space. Add it to the appropriate bins free list.
+//     Additionally there is a (circular bidirectional) linked list of 
+//     adress space neigbouring nodes used for splitting and merging of nodes.
+//     Add the created node between the used node its neiigbour. 
+//     Mark the added node as not used.
+//  5. Align the allocation to the specified alignment. Place a header 
+//     containing the offset to the used node. Mark it as used.
+//
+// The deallocation algorhitm can be summarised as follows:
+//  0. Obtain a pointer to an allocated region.
+//  1. Read the header before the pointer and use the specified offset to
+//     lookup the node itself.
+//  2. Lookup its two neighboring nodes and check if they are used. 
+//     If a neighbour (does not matter which one, can merge both at once) 
+//     is not used it can be merged with the deallocated node. Unlink the 
+//     neighbour from its bins freelist and remove it from the adjecent list, 
+//     thus merging it with the deallocated node. Increase the deallocated 
+//     node's size by the merged neigbours size. 
+//  3. Obtain the deallocated node's bin index and place it inside its freelist.
+//     Mark it as not used.
+//
+// The resulting implementation is only about 25% faster than malloc and it provides 
+// more control. The whole tlsf can be trivially deallocated at once 
+// (by forgetting about it and reseting the allocator). A resizing of the memory reagion can 
+// be added without too much work by putting this allocator on top of growing arena.
+// 
+// All of the steps otulined above are constant time thus both operations are O(1). 
+// The only step which might not be is the search for appropriate sized bucket, however
+// its implemented using the ffs (find first set bit) instruction to do this in (very fast)
+// cosntant time. We use 64 bins because that is the biggest commonly supported size for ffs.
+// 
+// How to assign bin to a size? ======================================================
+// 
+// We want to efficiently map a size to 64 bins so that we minimize wasted memory 
+// (that is we dont want to use 16KB block for 16B allocation). We would like the max proportional 
+// error for bin error := max{(max{bin} - size)/max{bin} | size in bin} to be as small as possible. 
+// We also want the max error to be the same regardless of the bin size. This necessitates the bin sizes to be 
+// exponentially distributed ie max{bin_n} = beta^n. Thus we can calculate which bucket a 
+// given size belongs to by bin_index := floor(log_beta(size)) = floor(log2(size)/log2(beta)).
+// 
+// How to choose beta? Remember that we want 64 bins thus MAX_SIZE = max{bin_64} = beta^64, 
+// which perscribes the beta for the given MAX_SIZE by beta = pow(MAX_SIZE, 1/64). 
+// Now we choose MAX_SIZE so that beta is some nice number. If we choose 2^64 beta is 2. 
+// This is okay but the max error is then (2^64 - 1)/2^64 approx 100%. Generally we can say
+// max error is approximately beta - 1. Also supporting all  numbers is a bit wasteful if 
+// the adress range after all is only 2^48 and realistically we will not use this allocator 
+// for anything more than lets say 4GB of total space. A next  nice MAX_SIZE is 2^32. 
+// This means beta is sqrt(2), thus 
+// bin_index = floor(log2(size)/log2(sqrt(2))) = floor(log2(size)/0.5) = floor(2*log2(size)).
+// This can be quite nicely calculate using a single fls (find last set) isntruction to 
+// obtain floor(log2(size)) and then simple check to obtain the correct answer. (see implementation). 
+// The only problem is that now MAX_SIZE is only 4GB, which we solve by introducing MIN_SIZE. 
+// Simply instead of talking about individual bytes we will only refer to multiples of MIN_SIZE bytes. 
+// Thus we convert size to ceil(size/MIN_SIZE), calculate the bin for that and rememeber to multiply 
+// the resulting size by MIN_SIZE before presenting to the user. We choose MIN_SIZE = 8 thus 
+// MAX_SIZE = 32GB. The max error is sqrt(2) - 1 = 42% thus the average error is 21%. Good enough. 
+// 
+// Some other implementation notes ======================================================
+// 
+// - The actual assignemnet to bins using the ffs/fls is very very fast and entirely covered 
+//   by memory latency. One could essentially for free set n=128, thus requiring two ffs ops to 
+//   find a bin (this would mean beta = 2^(1/4)). This would decrease the max error to 
+//   2^(1/4) - 1 = 19% and average of just 10%. This is better then the approach used by sebbbi 
+//   in the link above.
+//   We would also need two times as many bins thus the allocator struct would become also 
+//   twice as big, though I am unsure how much of an impact on perfomance that has. 
+// 
+// - I used somewhat unusual (at least for me) circular linked lists as they eliminate most ifs
+//   in the algorhitm. Its surprising how much nicer everything becomes for circular vs normal 
+//   doubly linked lists. 
+// 
+// - All numbers which are actually scalled by MIN_SIZE are labeled [thing]. The conversion 
+//   to and from  is super fast as MIN_SIZE is compile time known power of 2. Even if it werent
+//   the impact would be hidden by memory latency.
+// 
+// - As mentioned few times memory latency is the biggest bottleneck. This is best seen by going over the 
+//   summary of the algorithms above and realizing what the steps entail. Each linking/unlinking requires 
+//   visiting of neigboring nodes. This is esentially a random memory lookup. For the free alogrithm there is
+//   1 lookup for the deallocated node
+//   2 lookups to visit neighbours
+//   (lets suppose we merge jsut one neighbour)
+//      2 lookups to unlink neighbour from bucket free list
+//      1 lookup to unlink it from the neighbours list
+//   2 lookups to link to the free list
+//   This is incredibly inefficient. I am wondering how to go about reducing this. Clearly we need to colocate
+//   the adjecent nodes in storage somehow. Its unclear how to go about this.
+// 
+// - A big chunk of the code is dedicated to checking/asserting invariants. There are two functions
+//   _tlsf_check_[thing]_always() which are kept around always and two wrappers _tlsf_check_[thing]()
+//   which are removed in release builds. Only the removed variant is used for asserts within the functions
+//   themselves. The [thing]_always variants are used during stress testing. An operation is performed and then
+//   invariants are checked. This is incredibly powerful and convenient way of making sure a datstructure/algorithm 
+//   is correct - setup as many invariants as one can come up with and then check them as often as possible 
+//   (so that when unexpected state occurs we learn about it).
+
+#if !defined(JOT_ALLOCATOR) && !defined(JOT_COUPLED)
+    #include <stdint.h>
+    #include <string.h>
+    #include <assert.h>
+    #include <stdbool.h>
+    #include <stdlib.h>
+    
+    #define EXPORT
+    #define INTERNAL static
+    #define ASSERT(x, ...) assert(x)
+    #define TEST(x, ...)  (!(x) ? abort() : (void) 0)
+
+    typedef int64_t isize; //I have not tested it with unsigned... might require some changes
+
+    typedef struct Allocator { int64_t dummy; } Allocator;
+#endif
+
+//The type used for offsets. 64 bit allows for full adress space allocations 
+// (which might be used to track virtual memory) but introduces extra 8B of needed storage
+// per allocation.
+// Can be set to 64 bit by defining TLSF_64_BIT.
+#ifndef TLSF_64_BIT
+    typedef uint32_t Tlsf_Size;
+#else
+    typedef int64_t Tlsf_Size;
+#endif
+
+#define TLSF_MIN_SIZE       8 //Minimum allowed size of allocation. Introduces internal fragmentation but helps to keep small leftover free spaced from polluting bins which makes the allocator faster
+#define TLSF_BINS           (sizeof(Tlsf_Size) <= 4 ? 256 : 384)
+#define TLSF_BIN_MASKS      ((TLSF_BINS + 63) / 64)
+#define TLSF_MAX_ALIGN      4096 //One page 
+#define TLSF_FIRST_NODE     0 //Special first node. Also serves the role of NIL value for user returns.
+#define TLSF_LAST_NODE      1 //Special last node.
+#define TLSF_INVALID        0xFFFFFFFF //used internally to signal missing. As user you never have to think about this.
+#define TLSF_MAGIC          0x46534C54 //"TLSF" in ascii little endian. Placed before malloc blocks in debug builds to detect overflows.
+
+#define TLSF_BIN_MANTISSA_LOG2  3
+#define TLSF_BIN_MANTISSA_SIZE  ((uint32_t) 1 << TLSF_BIN_MANTISSA_LOG2)
+#define TLSF_BIN_MANTISSA_MASK  (TLSF_BIN_MANTISSA_SIZE - 1)
+
+#define TLSF_CHECK_USED       ((uint32_t) 1 << 0)
+#define TLSF_CHECK_FREELIST   ((uint32_t) 1 << 1)
+#define TLSF_CHECK_BIN        ((uint32_t) 1 << 2)
+#define TLSF_CHECK_DETAILED   ((uint32_t) 1 << 3)
+#define TLSF_CHECK_ALL_NODES  ((uint32_t) 1 << 4)
+
+#ifndef NDEBUG
+    #define TLSF_DEBUG                      //Enables basic safery checks on passed in nodes. Adds padding to help find overwrites
+    #define TLSF_DEBUG_CHECK_DETAILED       //Enebles extensive checks on nodes. 
+    #define TLSF_DEBUG_CHECK_ALL_NODES      //Checks all nodes on every entry and before return of every function. Is extremely slow and should only be used when testing this allocator
+#endif
+
+typedef struct Tlsf_Node {
+    Tlsf_Size offset; //offset of the memory owned by this node. Is TLSF_INVALID when in free list. 
+    Tlsf_Size size; //Size of the user requested memory of this node. This stays the same for the entire life of this node. TLSF_INVALID when in free list
+
+    uint32_t next;  //next in order or next in free list
+    uint32_t prev;  //prev in order or TLSF_INVALID when in free list
+
+    uint32_t next_in_bin; //next in bin of this size or TLSF_INVALID when is the last node in the list or is in free list
+    uint32_t prev_in_bin; //prev in bin of this size or TLSF_INVALID when is the first node in the list or is in free list
+} Tlsf_Node;
+
+typedef struct Tlsf_Allocator {
+    //Allocator "virtual" interface. 
+    //Just for compatibility with the rest of the lib dont worry. 
+    Allocator allocator; 
+
+    uint8_t* memory;
+    isize memory_size;
+
+    //We keep some basic stats. These are just for info.
+    isize allocation_count;
+    isize deallocation_count;
+    isize bytes_allocated;
+    isize max_bytes_allocated;
+    uint32_t max_concurent_allocations;
+
+    uint32_t node_first_free;
+    uint32_t node_capacity;
+    uint32_t node_count;
+    Tlsf_Node* nodes;
+
+    //The masks and first free lists for each bin. 
+    // Note that based on TLSF_MIN_SIZE the first few bins might be
+    // unused (about 8 of them)
+    uint64_t bin_masks[TLSF_BIN_MASKS];
+    uint32_t bin_first_free[TLSF_BINS];
+    
+    //Gets called if the allocator runs out of space because of lack of space
+    // or lack of nodes. Can freely reallocate `memory` and `nodes`. 
+    // Should return via parameters the new memory size and node capacity. 
+    // You can use this to implement panicking or growing if you are into that thing.
+    void (*on_full)(struct Tlsf_Allocator* self, isize requested_size, isize* new_memory_size, isize* new_node_capacity, void* on_full_context); 
+    void* on_full_context;
+} Tlsf_Allocator;
+
+EXPORT bool     tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize memory_size, void* node_memory, isize node_memory_size);
+EXPORT void     tlsf_deallocate(Tlsf_Allocator* allocator, uint32_t node);
+EXPORT isize    tlsf_allocate(Tlsf_Allocator* allocator, isize size, isize align, uint32_t* node);
+EXPORT void     tlsf_reset(Tlsf_Allocator* allocator);
+
+EXPORT isize    tlsf_node_size(Tlsf_Allocator* allocator, uint32_t node_i);
+EXPORT uint32_t tlsf_get_node(Tlsf_Allocator* allocator, void* ptr); 
+EXPORT void*    tlsf_malloc(Tlsf_Allocator* allocator, isize size, isize align);
+EXPORT void     tlsf_free(Tlsf_Allocator* allocator, void* ptr);
+
+//EXPORT int32_t  tlsf_bin_index_from_size(isize size, bool round_up);
+EXPORT isize    tlsf_size_from_bin_index(int32_t bin_index);
+
+//Checks wheter the allocator is in valid state. If is not aborts.
+// Flags can be TLSF_CHECK_DETAILED and TLSF_CHECK_ALL_NODES.
+EXPORT void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags);
+EXPORT void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags_or_zero, uint32_t bin_or_zero);
+
+#endif
+
+//=========================  IMPLEMENTATION BELOW ==================================================
+#if (defined(JOT_ALL_IMPL) || defined(JOT_TLSFATOR_IMPL)) && !defined(JOT_TLSFATOR_HAS_IMPL)
+#define JOT_TLSFATOR_IMPL
+
+#if defined(_MSC_VER)
+    #include <intrin.h>
+    inline static int32_t _tlsf_find_last_set_bit64(uint64_t num)
+    {
+        ASSERT(num != 0);
+        unsigned long out = 0;
+        _BitScanReverse64(&out, (unsigned long long) num);
+        return (int32_t) out;
+    }
+    
+    inline static int32_t _tlsf_find_first_set_bit64(uint64_t num)
+    {
+        ASSERT(num != 0);
+        unsigned long out = 0;
+        _BitScanForward64(&out, (unsigned long long) num);
+        return (int32_t) out;
+    }
+    
+    #define TLSF_INLINE_NEVER  __declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+    inline static int32_t _tlsf_find_last_set_bit64(uint64_t num)
+    {
+        ASSERT(num != 0);
+        return 64 - __builtin_ctzll((unsigned long long) num) - 1;
+    }
+    
+    inline static int32_t _tlsf_find_first_set_bit64(uint64_t num)
+    {
+        ASSERT(num != 0);
+        return __builtin_ffsll((long long) num) - 1;
+    }
+
+    #define TLSF_INLINE_NEVER   __attribute__((noinline))
+#else
+    #error unsupported compiler!
+#endif
+
+
+INTERNAL bool _tlsf_is_pow2_or_zero(isize val)
+{
+    uint64_t uval = (uint64_t) val;
+    return (uval & (uval-1)) == 0;
+}
+
+INTERNAL void* _tlsf_align_forward(void* ptr, isize align_to)
+{
+    ASSERT(_tlsf_is_pow2_or_zero(align_to) && align_to > 0);
+    isize ptr_num = (isize) ptr;
+    ptr_num += (-ptr_num) & (align_to - 1);
+    return (void*) ptr_num;
+}
+EXPORT int32_t tlsf_bin_index_from_size(isize size, bool round_up)
+{
+    ASSERT(size >= 0);
+    if(size < TLSF_BIN_MANTISSA_SIZE)
+        return (int32_t) size;
+
+    uint64_t usize = (uint64_t) size; 
+    int32_t lower_bound_log2 = _tlsf_find_last_set_bit64(usize);
+    uint32_t low_bits = (uint32_t) (usize >> (lower_bound_log2 - TLSF_BIN_MANTISSA_LOG2));
+    uint32_t res = ((lower_bound_log2 - TLSF_BIN_MANTISSA_LOG2 + 1) << TLSF_BIN_MANTISSA_LOG2) | (low_bits & TLSF_BIN_MANTISSA_MASK);
+    
+    if(round_up)
+    {
+        uint32_t reconstructed = low_bits << (lower_bound_log2 - TLSF_BIN_MANTISSA_LOG2);
+        res += (uint32_t) (reconstructed < usize);
+    }
+
+    return (int32_t) res;
+}
+
+EXPORT isize tlsf_size_from_bin_index(int32_t bin_index)
+{
+    uint32_t exp = (uint32_t) bin_index >> TLSF_BIN_MANTISSA_LOG2;
+    uint32_t mantissa = (uint32_t) bin_index & TLSF_BIN_MANTISSA_MASK;
+    isize size = mantissa;
+    if(exp > 0)
+        size = (isize) ((uint64_t) (TLSF_BIN_MANTISSA_SIZE | mantissa) << (exp - 1));
+
+    return size;
+}
+
+INTERNAL void _tlsf_check_invariants(Tlsf_Allocator* allocator);
+INTERNAL void _tlsf_check_node(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags);
+INTERNAL void _tlsf_unlink_node_in_bin(Tlsf_Allocator* allocator, uint32_t node_i, int32_t bin_i);
+INTERNAL void _tlsf_link_node_in_bin(Tlsf_Allocator* allocator, uint32_t node_i, int32_t bin_i);
+TLSF_INLINE_NEVER INTERNAL isize _tlsf_on_full(Tlsf_Allocator* allocator, isize size, uint32_t* out_node);
+
+INTERNAL isize _tlsf_allocate(Tlsf_Allocator* allocator, isize size, uint32_t* out_node)
+{
+    const isize max_size = tlsf_size_from_bin_index(TLSF_BINS - 1);
+    if(size > max_size)
+        return _tlsf_on_full(allocator, size, out_node);
+
+    if(size < TLSF_MIN_SIZE)
+        size = TLSF_MIN_SIZE;
+
+    ASSERT(allocator);
+    ASSERT(out_node > 0);
+    _tlsf_check_invariants(allocator);
+
+    int32_t bin_from = tlsf_bin_index_from_size((uint32_t) size, true);
+    int32_t bin_i = TLSF_INVALID;
+    {
+        uint32_t chunk = (uint32_t) bin_from/64;
+        uint32_t offset = (uint32_t) bin_from%64;
+        uint64_t first_overlay = ((uint64_t) 1 << offset) - 1;
+        uint64_t first_mask = allocator->bin_masks[chunk] & ~first_overlay;
+        if(first_mask)
+        {
+            int32_t found_offset = _tlsf_find_first_set_bit64(first_mask);
+            bin_i = chunk*64 + found_offset;
+        }
+        else
+        {
+            for(chunk++; chunk < TLSF_BIN_MASKS;chunk++)
+            {
+                if(allocator->bin_masks[chunk])
+                {
+                    bin_i = chunk*64 + _tlsf_find_first_set_bit64(allocator->bin_masks[chunk]);
+                    break;
+                }
+            }
+        }
+    }
+
+    if(bin_i == TLSF_INVALID || allocator->node_first_free == TLSF_INVALID)
+        return _tlsf_on_full(allocator, size, out_node);
+
+    uint32_t next_i = allocator->bin_first_free[bin_i];
+    _tlsf_check_node(allocator, next_i, TLSF_CHECK_USED);
+
+    Tlsf_Node* __restrict next = &allocator->nodes[next_i]; 
+    Tlsf_Node* __restrict node = &allocator->nodes[allocator->node_first_free];
+    Tlsf_Node* __restrict prev = &allocator->nodes[next->prev];
+    
+    uint32_t prev_i = next->prev;
+    uint32_t node_i = allocator->node_first_free;
+    
+    ASSERT(prev_i != node_i && node_i != next_i && next_i != prev_i);
+
+    allocator->node_first_free = node->next;
+    node->offset = prev->offset + prev->size;
+    node->size = (Tlsf_Size) size;
+    node->next_in_bin = TLSF_INVALID; 
+    node->prev_in_bin = TLSF_INVALID;
+    node->next = next_i;
+    node->prev = prev_i;
+
+    next->prev = node_i;
+    prev->next = node_i;
+
+    Tlsf_Size old_next_unused = next->offset - (prev->offset + prev->size); (void) old_next_unused;
+    Tlsf_Size new_next_unused = next->offset - (node->offset + node->size);
+    ASSERT(next->offset >= node->offset + node->size);
+    
+    _tlsf_unlink_node_in_bin(allocator, next_i, bin_i);
+    next->next_in_bin = TLSF_INVALID;
+    next->prev_in_bin = TLSF_INVALID;
+
+    if(new_next_unused >= TLSF_MIN_SIZE)
+    {
+        int32_t new_next_bin = tlsf_bin_index_from_size(new_next_unused, false);
+        _tlsf_link_node_in_bin(allocator, next_i, new_next_bin);
+    }
+    
+    allocator->node_count += 1;
+    allocator->allocation_count += 1;
+    if(allocator->max_concurent_allocations < allocator->allocation_count - allocator->deallocation_count)
+        allocator->max_concurent_allocations = (uint32_t) (allocator->allocation_count - allocator->deallocation_count);
+
+    allocator->bytes_allocated += size;
+    if(allocator->max_bytes_allocated < allocator->bytes_allocated)
+        allocator->max_bytes_allocated = allocator->bytes_allocated;
+
+    _tlsf_check_invariants(allocator);
+        
+    *out_node = node_i;
+    return node->offset;
+}
+
+EXPORT void tlsf_deallocate(Tlsf_Allocator* allocator, uint32_t node_i)
+{
+    ASSERT(allocator);
+    _tlsf_check_invariants(allocator);
+    if(node_i == 0)
+        return;
+        
+    ASSERT(allocator->node_count > 0);
+    ASSERT(allocator->allocation_count > allocator->deallocation_count);
+    _tlsf_check_node(allocator, node_i, TLSF_CHECK_USED);
+    Tlsf_Node* __restrict node = &allocator->nodes[node_i]; 
+
+    uint32_t next_i = node->next;
+    uint32_t prev_i = node->prev;
+    
+    Tlsf_Node* __restrict next = &allocator->nodes[next_i];
+    Tlsf_Node* __restrict prev = &allocator->nodes[prev_i];
+    
+    Tlsf_Size node_unused = node->offset - (prev->offset + prev->size);
+    if(node_unused >= TLSF_MIN_SIZE)
+    {
+        int32_t node_bin_i = tlsf_bin_index_from_size(node_unused, false); 
+        _tlsf_unlink_node_in_bin(allocator, node_i, node_bin_i);
+    }
+    
+    ASSERT(next->offset > prev->offset + prev->size);
+    Tlsf_Size old_next_unused = next->offset - (node->offset + node->size);
+    Tlsf_Size new_next_unused = next->offset - (prev->offset + prev->size);
+    
+    if(old_next_unused >= TLSF_MIN_SIZE)
+    {
+        int32_t old_next_bin = tlsf_bin_index_from_size(old_next_unused, false);
+        _tlsf_unlink_node_in_bin(allocator, next_i, old_next_bin);
+    }
+    if(new_next_unused >= TLSF_MIN_SIZE)
+    {
+        int32_t new_next_bin = tlsf_bin_index_from_size(new_next_unused, false); 
+        _tlsf_link_node_in_bin(allocator, next_i, new_next_bin);
+    }
+
+    node->next = allocator->node_first_free;
+    allocator->node_first_free = node_i;
+    next->prev = prev_i;
+    prev->next = next_i;
+    
+    allocator->node_count -= 1;
+    ASSERT(allocator->bytes_allocated >= node->size);
+    allocator->deallocation_count += 1;
+    allocator->bytes_allocated -= node->size;
+    
+    node->offset = TLSF_INVALID;
+    #ifdef TLSF_DEBUG
+        node->prev = TLSF_INVALID;
+        node->size = TLSF_INVALID;
+        node->prev_in_bin = TLSF_INVALID;
+        node->next_in_bin = TLSF_INVALID;
+    #endif
+    
+    _tlsf_check_invariants(allocator);
+}
+
+INTERNAL void _tlsf_unlink_node_in_bin(Tlsf_Allocator* allocator, uint32_t node_i, int32_t bin_i)
+{
+    ASSERT(bin_i < TLSF_BINS);
+    ASSERT(node_i < allocator->node_capacity);
+
+    Tlsf_Node* node = &allocator->nodes[node_i];
+    if(node->prev_in_bin == TLSF_INVALID)
+    {
+        uint32_t* first_free = &allocator->bin_first_free[bin_i];
+        ASSERT(node_i == *first_free);
+
+        *first_free = node->next_in_bin;
+        if(*first_free == TLSF_INVALID)
+            allocator->bin_masks[bin_i/64] &= ~((uint64_t) 1 << (bin_i%64)); 
+    }
+    else
+    {
+        Tlsf_Node* prev_in_bin = &allocator->nodes[node->prev_in_bin];
+        prev_in_bin->next_in_bin = node->next_in_bin;
+    }
+    
+    if(node->next_in_bin != TLSF_INVALID)
+    {
+        Tlsf_Node* next_in_bin = &allocator->nodes[node->next_in_bin];
+        next_in_bin->prev_in_bin = node->prev_in_bin;
+    }
+}
+
+INTERNAL void _tlsf_link_node_in_bin(Tlsf_Allocator* allocator, uint32_t node_i, int32_t bin_i)
+{
+    ASSERT(bin_i < TLSF_BINS);
+    ASSERT(node_i < allocator->node_capacity);
+
+    Tlsf_Node* node = &allocator->nodes[node_i];
+    uint32_t* first_free = &allocator->bin_first_free[bin_i];
+    node->next_in_bin = *first_free;
+    node->prev_in_bin = TLSF_INVALID;
+
+    if(*first_free != TLSF_INVALID)
+    {
+        Tlsf_Node* next = &allocator->nodes[*first_free];
+        next->prev_in_bin = node_i;
+    }
+    
+    *first_free = node_i;
+    allocator->bin_masks[bin_i/64] |= (uint64_t) 1 << (bin_i%64); 
+}
+
+TLSF_INLINE_NEVER INTERNAL isize _tlsf_on_full(Tlsf_Allocator* allocator, isize size, uint32_t* out_node)
+{
+    static int stop_recursion = 0;
+    if(allocator->on_full && allocator->on_full_context != &stop_recursion)
+    {
+        isize new_memory_size = 0;
+        isize new_node_capacity = 0;
+        allocator->on_full(allocator, size, &new_memory_size, &new_node_capacity, allocator->on_full_context);
+        ASSERT(new_memory_size >= allocator->memory_size);
+        ASSERT(new_node_capacity >= allocator->node_capacity);
+
+        //Relink the end node to account for added space
+        Tlsf_Node* __restrict end = &allocator->nodes[TLSF_LAST_NODE]; 
+        Tlsf_Node* __restrict prev = &allocator->nodes[end->prev];
+
+        Tlsf_Size old_end_unused = end->offset - (prev->offset + prev->size);
+        if(old_end_unused >= TLSF_MIN_SIZE)
+        {
+            int32_t end_bin_i = tlsf_bin_index_from_size(old_end_unused, false); 
+            _tlsf_unlink_node_in_bin(allocator, TLSF_LAST_NODE, end_bin_i);
+        }
+
+        end->prev_in_bin = TLSF_INVALID;
+        end->next_in_bin = TLSF_INVALID;
+        end->offset = (Tlsf_Size) (new_memory_size/TLSF_MIN_SIZE);
+
+        Tlsf_Size new_end_unused = end->offset - (prev->offset + prev->size);
+        if(new_end_unused >= TLSF_MIN_SIZE)
+        {
+            int32_t end_bin_i = tlsf_bin_index_from_size(new_end_unused, false); 
+            _tlsf_link_node_in_bin(allocator, TLSF_LAST_NODE, end_bin_i);
+        }
+
+        //Add the added nodes to freelist
+        for(uint32_t i = (uint32_t) new_node_capacity; i-- > allocator->node_capacity;)
+        {
+            Tlsf_Node* node = &allocator->nodes[i]; 
+            node->next = allocator->node_first_free;
+            allocator->node_first_free = i;
+
+            node->prev = TLSF_INVALID;
+            node->next_in_bin = TLSF_INVALID;
+            node->prev_in_bin = TLSF_INVALID;
+            node->size = TLSF_INVALID;
+            node->offset = TLSF_INVALID;
+        }
+
+        //Set the new sizes
+        allocator->memory_size = end->offset*TLSF_MIN_SIZE;
+        allocator->node_capacity = (uint32_t) new_node_capacity;
+        _tlsf_check_invariants(allocator);
+        return _tlsf_allocate(allocator, size, out_node);
+    }
+
+    *out_node = 0;
+    return 0;
+}
+
+#ifdef JOT_ALLOCATOR
+    INTERNAL void* _tlsf_allocator_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
+    {
+        Tlsf_Allocator* allocator = (Tlsf_Allocator*) (void*) self;
+        void* new_ptr = tlsf_malloc(allocator, new_size, align);
+        if(new_ptr && old_ptr)
+            memcpy(new_ptr, old_ptr, old_size < new_size ? old_size : new_size);
+
+        if(old_ptr)
+            tlsf_free(allocator, old_ptr);
+        
+        return new_ptr;
+    }
+
+    INTERNAL Allocator_Stats _tlsf_allocator_get_stats(Allocator* self)
+    {
+        Tlsf_Allocator* allocator = (Tlsf_Allocator*) (void*) self;
+        Allocator_Stats stats = {0};
+        stats.type_name = "Tlsf_Allocator";
+        stats.is_top_level = false;
+        stats.allocation_count = allocator->allocation_count;
+        stats.deallocation_count = allocator->deallocation_count;
+        stats.bytes_allocated = allocator->bytes_allocated;
+        stats.max_bytes_allocated = allocator->max_bytes_allocated;
+        stats.max_concurent_allocations = allocator->max_concurent_allocations;
+        return stats;
+    }   
+#endif
+
+EXPORT bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize memory_size, void* node_memory, isize node_memory_size)
+{
+    ASSERT(allocator);
+    ASSERT(memory_size >= 0);
+    memset(allocator, 0, sizeof *allocator);   
+
+    isize node_capacity = node_memory_size / sizeof(Tlsf_Node);
+    if(memory_size <= 2*TLSF_MIN_SIZE || node_memory == 0 || node_capacity <= 2)
+        return false;
+        
+    allocator->nodes = (Tlsf_Node*) node_memory;
+    allocator->memory = (uint8_t*) memory_or_null;
+    allocator->memory_size = memory_size;
+    allocator->node_capacity = (uint32_t) node_capacity;
+    allocator->node_count = 0;
+    
+    #ifdef JOT_ALLOCATOR
+        allocator->allocator.allocate = _tlsf_allocator_reallocate;
+        allocator->allocator.get_stats = _tlsf_allocator_get_stats;
+    #endif
+    
+    memset(allocator->nodes, TLSF_INVALID, (size_t) node_capacity*sizeof(Tlsf_Node));
+    memset(allocator->bin_first_free, TLSF_INVALID, sizeof allocator->bin_first_free);
+
+    allocator->node_first_free = TLSF_INVALID;
+    for(uint32_t i = allocator->node_capacity; i-- > 0;)
+    {
+        Tlsf_Node* node = &allocator->nodes[i]; 
+        node->next = allocator->node_first_free;
+        allocator->node_first_free = i;
+    }
+
+    //Push START and END nodes
+    uint32_t start_i = allocator->node_first_free;
+    Tlsf_Node* start = &allocator->nodes[start_i]; 
+    allocator->node_first_free = start->next;
+    
+    uint32_t end_i = allocator->node_first_free;
+    Tlsf_Node* end = &allocator->nodes[end_i]; 
+    allocator->node_first_free = end->next;
+    
+    //Push first node
+    ASSERT(start_i == TLSF_FIRST_NODE);
+    ASSERT(end_i == TLSF_LAST_NODE);
+
+    start->prev = TLSF_INVALID;
+    start->next = TLSF_LAST_NODE;
+    start->next_in_bin = TLSF_INVALID;
+    start->prev_in_bin = TLSF_INVALID;
+    start->offset = 0;
+    start->size = 0;
+    
+    end->prev = TLSF_FIRST_NODE;
+    end->next = TLSF_INVALID;
+    end->next_in_bin = TLSF_INVALID;
+    end->prev_in_bin = TLSF_INVALID;
+    end->offset = (Tlsf_Size) allocator->memory_size;
+    end->size = 0;
+
+    int32_t end_bin_i = tlsf_bin_index_from_size(end->offset, false);
+    _tlsf_link_node_in_bin(allocator, TLSF_LAST_NODE, end_bin_i);
+    allocator->node_count = 2;
+    
+    _tlsf_check_invariants(allocator);
+    return true;
+}
+
+EXPORT void tlsf_reset(Tlsf_Allocator* allocator)
+{
+    void (*on_full)(struct Tlsf_Allocator* self, isize requested_size, isize* new_memory_size, isize* new_node_capacity, void* context) = allocator->on_full;
+    tlsf_init(allocator, allocator->memory, allocator->memory_size, allocator->nodes, allocator->node_capacity);
+    allocator->on_full = on_full;
+}
+
+EXPORT isize tlsf_allocate(Tlsf_Allocator* allocator, isize size, isize align, uint32_t* node)
+{
+    ASSERT(allocator);
+    ASSERT(size >= 0);
+    ASSERT(node > 0);
+    ASSERT(_tlsf_is_pow2_or_zero(align) && align > 0);
+
+    if(size == 0)
+    {
+        *node = 0;
+        return 0;
+    }
+
+    isize offset = _tlsf_allocate(allocator, size + align, node);
+    offset = (isize) _tlsf_align_forward((void*) offset, align);
+
+    return offset;
+}
+
+EXPORT void* tlsf_malloc(Tlsf_Allocator* allocator, isize size, isize align)
+{
+    ASSERT(allocator);
+    ASSERT(_tlsf_is_pow2_or_zero(align) && align > 0);
+    ASSERT(allocator->memory);
+    uint8_t* ptr = NULL;
+    if(size > 0)
+    {
+        #ifdef TLSF_DEBUG
+            uint32_t magic = TLSF_MAGIC;
+            uint32_t node = 0;
+            isize total_size = size + 3*sizeof(uint32_t) + align;
+            isize offset = _tlsf_allocate(allocator, total_size, &node);
+            if(node != 0)
+            {
+                ptr = (uint8_t*) _tlsf_align_forward(allocator->memory + offset + 2*sizeof(uint32_t), align);
+
+                memset(allocator->memory + offset, 0x55, total_size);
+                memcpy(ptr - 2*sizeof(uint32_t), &node,  sizeof(uint32_t));
+                memcpy(ptr - sizeof(uint32_t),   &magic, sizeof(uint32_t));
+                memcpy(allocator->memory + offset + total_size - sizeof(uint32_t), &magic, sizeof(uint32_t));
+            }
+        #else
+            uint32_t node = 0;
+            isize offset = _tlsf_allocate(allocator, size + sizeof(uint32_t) + align, &node);
+            if(node != 0)
+            {
+                ptr = (uint8_t*) _tlsf_align_forward(allocator->memory + offset + sizeof(uint32_t), align);
+                memcpy(ptr - sizeof(uint32_t), &node,  sizeof(uint32_t));
+            }
+        #endif
+    }
+    return ptr;
+}
+
+EXPORT uint32_t tlsf_get_node(Tlsf_Allocator* allocator, void* ptr)
+{
+    if(ptr == NULL)
+        return 0;
+        
+    //If Crash occured here it most likely means you have buffer overwrite somewhere!
+    uint32_t node_i = 0;
+    #ifdef TLSF_DEBUG
+        uint32_t magic_before = 0;
+        uint32_t magic_after = 0;
+        memcpy(&node_i, (uint8_t*) ptr - 2*sizeof(uint32_t), sizeof(uint32_t));
+        memcpy(&magic_before, (uint8_t*) ptr - sizeof(uint32_t), sizeof(uint32_t));
+
+        ASSERT(magic_before == TLSF_MAGIC);
+        Tlsf_Node* node = &allocator->nodes[node_i];
+        ASSERT((TLSF_LAST_NODE < node_i && node_i < allocator->node_capacity));
+        ASSERT(node->offset <= allocator->memory_size);
+
+        memcpy(&magic_after, allocator->memory + node->offset + node->size - sizeof(uint32_t), sizeof(uint32_t));
+        ASSERT(magic_after == TLSF_MAGIC);
+    #else
+        (void) allocator;
+        memcpy(&node_i, (uint8_t*) ptr - sizeof(uint32_t), sizeof(uint32_t));
+    #endif
+    return node_i;
+}
+
+EXPORT void tlsf_free(Tlsf_Allocator* allocator, void* ptr)
+{
+    uint32_t node = tlsf_get_node(allocator, ptr);
+    tlsf_deallocate(allocator, node);
+}
+
+EXPORT isize tlsf_node_size(Tlsf_Allocator* allocator, uint32_t node_i)
+{
+    if(TLSF_LAST_NODE < node_i && node_i < allocator->node_capacity)
+    {
+        Tlsf_Node* node = &allocator->nodes[node_i];
+        ASSERT(node->offset <= allocator->memory_size);
+        return node->size;
+    }
+    else
+        return 0;
+}
+
+EXPORT void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags, uint32_t bin_i)
+{
+    TEST(0 <= node_i && node_i < allocator->node_capacity);
+    Tlsf_Node* node = &allocator->nodes[node_i];
+    
+    bool node_is_free = node->offset == TLSF_INVALID;
+    if(flags & TLSF_CHECK_USED)
+        TEST(node_is_free == false);
+    if(flags & TLSF_CHECK_FREELIST)
+        TEST(node_is_free);
+
+    if(node_is_free)
+    {
+        #ifdef TLSF_DEBUG
+            TEST(node->offset == TLSF_INVALID);
+            TEST(node->prev == TLSF_INVALID);
+            TEST(node->size == TLSF_INVALID);
+        #endif
+    }
+    else
+    {
+        TEST(node->offset <= allocator->memory_size);
+        TEST(node->prev < allocator->node_capacity || node_i == TLSF_FIRST_NODE);
+        TEST(node->next < allocator->node_capacity || node_i == TLSF_LAST_NODE);
+        TEST(node->size > 0 || node_i == TLSF_FIRST_NODE || node_i == TLSF_LAST_NODE);
+        TEST(node->next != node_i);
+        TEST(node->prev != node_i);
+        if(flags & TLSF_CHECK_DETAILED)
+        {
+            if(node->prev_in_bin != TLSF_INVALID)
+                TEST(allocator->nodes[node->prev_in_bin].next_in_bin == node_i);
+                
+            if(node->next_in_bin != TLSF_INVALID)
+                TEST(allocator->nodes[node->next_in_bin].prev_in_bin == node_i);
+            if(node_i != TLSF_LAST_NODE)
+            {
+                Tlsf_Node* next = &allocator->nodes[node->next];
+                TEST(next->prev == node_i);
+                TEST(node->offset <= next->offset);
+                int vs_debugger_stupid = 0; (void) vs_debugger_stupid;
+            }
+        
+            if(node_i != TLSF_FIRST_NODE)
+            {
+                Tlsf_Node* prev = &allocator->nodes[node->prev];
+                TEST(prev->next == node_i);
+                TEST(prev->offset <= node->offset);
+                Tlsf_Size node_portion = node->offset - (prev->offset + prev->size);
+                if(node_portion == 0)
+                {
+                    TEST(node->prev_in_bin == TLSF_INVALID);
+                    TEST(node->next_in_bin == TLSF_INVALID);
+                    int vs_debugger_stupid = 0; (void) vs_debugger_stupid;
+                }
+                
+                uint32_t calculated_bin = TLSF_INVALID;
+                if(node_portion >= TLSF_MIN_SIZE) 
+                {
+                    calculated_bin = tlsf_bin_index_from_size(node_portion, false);
+                    TEST(allocator->bin_first_free[calculated_bin] != TLSF_INVALID);
+                }
+
+                if(flags & TLSF_CHECK_BIN)
+                {
+                    TEST(bin_i == calculated_bin);
+                    int vs_debugger_stupid = 0; (void) vs_debugger_stupid;
+                }
+            }
+        }
+    }
+}
+
+EXPORT void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags)
+{
+    //Check fields
+    TEST(allocator->nodes != NULL);
+    TEST(allocator->node_count <= allocator->node_capacity);
+    TEST(allocator->deallocation_count <= allocator->allocation_count);
+    TEST(allocator->allocation_count - allocator->deallocation_count <= allocator->max_concurent_allocations);
+    TEST(allocator->bytes_allocated <= allocator->max_bytes_allocated);
+    
+    //Check START and END nodes.
+    Tlsf_Node* start = &allocator->nodes[TLSF_FIRST_NODE];
+    TEST(start->prev == TLSF_INVALID);
+    TEST(start->next_in_bin == TLSF_INVALID);
+    TEST(start->prev_in_bin == TLSF_INVALID);
+    TEST(start->offset == 0);
+    TEST(start->size == 0);
+    
+    Tlsf_Node* end = &allocator->nodes[TLSF_LAST_NODE];
+    TEST(end->next == TLSF_INVALID);
+    TEST(end->offset == (Tlsf_Size) allocator->memory_size);
+    TEST(end->size == 0);
+        
+    if(flags & TLSF_CHECK_ALL_NODES)
+    {
+        //Check if bin free lists match the mask
+        for(int32_t i = 0; i < TLSF_BINS; i++)
+        {
+            bool has_ith_bin = allocator->bin_first_free[i] != TLSF_INVALID;
+            uint64_t ith_bit = (uint64_t) 1 << (i%64);
+            TEST(!!(allocator->bin_masks[i/64] & ith_bit) == has_ith_bin);
+        }
+
+        //Check free list
+        uint32_t nodes_in_free_list = 0;
+        for(uint32_t node_i = allocator->node_first_free; node_i != TLSF_INVALID; nodes_in_free_list++)
+        {
+            tlsf_test_node_invariants(allocator, node_i, TLSF_CHECK_FREELIST | flags, 0);
+            Tlsf_Node* node = &allocator->nodes[node_i];
+            node_i = node->next;
+        }
+
+        //Go through all nodes in all bins and check them.
+        uint32_t nodes_in_bins = 0;
+        for(int32_t bin_i = 0; bin_i < TLSF_BINS; bin_i++)
+        {
+            uint32_t first_free = allocator->bin_first_free[bin_i];
+            uint32_t in_bin_count = 0;
+            for(uint32_t node_i = first_free; node_i != TLSF_INVALID; )
+            {
+                in_bin_count++;
+                TEST(in_bin_count < allocator->node_capacity);
+                tlsf_test_node_invariants(allocator, node_i, TLSF_CHECK_USED | TLSF_CHECK_BIN | flags, bin_i);
+                
+                Tlsf_Node* node = &allocator->nodes[node_i];
+                node_i = node->next_in_bin;
+            }
+
+            nodes_in_bins += in_bin_count;
+        }
+
+        //Go through all nodes in order
+        uint32_t nodes_counted = 0;
+        for(uint32_t node_i = TLSF_FIRST_NODE; node_i != TLSF_INVALID; nodes_counted++)
+        {
+            TEST(nodes_counted < allocator->node_capacity);
+
+            tlsf_test_node_invariants(allocator, node_i, flags, 0);
+
+            Tlsf_Node* node = &allocator->nodes[node_i];
+            node_i = node->next;
+        }
+        
+        TEST(allocator->node_count >= nodes_in_bins);
+        TEST(allocator->node_count == nodes_counted);
+        TEST(allocator->node_capacity == nodes_counted + nodes_in_free_list);
+        int vs_debugger_stupid = 0; (void) vs_debugger_stupid;
+    }
+}
+
+INTERNAL void _tlsf_check_node(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags)
+{
+    (void) allocator;
+    (void) node_i;
+    (void) flags;
+    #ifdef TLSF_DEBUG
+        #ifdef TLSF_DEBUG_CHECK_DETAILED
+            flags |= TLSF_CHECK_DETAILED;
+        #else
+            flags &= ~TLSF_CHECK_DETAILED;
+        #endif
+
+        tlsf_test_node_invariants(allocator, node_i, flags, 0);
+    #endif
+}
+
+
+INTERNAL void _tlsf_check_invariants(Tlsf_Allocator* allocator)
+{
+    (void) allocator;
+    #ifdef TLSF_DEBUG
+        uint32_t flags = 0;
+        #ifdef TLSF_DEBUG_CHECK_DETAILED
+            flags |= TLSF_CHECK_DETAILED;
+        #endif
+        
+        #ifdef TLSF_DEBUG_CHECK_ALL_NODES
+            flags |= TLSF_CHECK_ALL_NODES;
+        #endif
+
+        tlsf_test_invariants(allocator, flags);
+    #endif
+}
+
+#endif
+
+#if (defined(JOT_ALL_TEST) || defined(JOT_TLSFATOR_TEST)) && !defined(JOT_TLSFATOR_HAS_TEST)
+#define JOT_TLSFATOR_HAS_TEST
+
+#ifndef STATIC_ARRAY_SIZE
+    #define STATIC_ARRAY_SIZE(arr) (isize)(sizeof(arr)/sizeof((arr)[0]))
+#endif
+
+#include <time.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+void test_tlsf_alloc_unit()
+{
+    isize memory_size = 50*1024;
+    isize node_memory_size = 1024*sizeof(Tlsf_Node);
+    void* nodes = malloc(node_memory_size);
+
+    Tlsf_Allocator allocator = {0};
+    tlsf_init(&allocator, NULL, memory_size, nodes, node_memory_size);
+
+    struct {
+        uint32_t size;
+        uint32_t align;
+        uint32_t node;
+    } allocs[4] = {
+        {7, 8},
+        {16, 8},
+        {24, 4},
+        {35, 16},
+    };
+
+    for(isize i = 0; i < STATIC_ARRAY_SIZE(allocs); i++)
+    {
+        tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
+        tlsf_allocate(&allocator, allocs[i].size, allocs[i].align, &allocs[i].node);
+        tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
+    }
+        
+    for(isize i = 0; i < STATIC_ARRAY_SIZE(allocs); i++)
+    {
+        tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
+        tlsf_deallocate(&allocator, allocs[i].node);
+        tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
+    }
+
+    free(nodes);
+}
+
+//tests wheter the data is equal to the specified bit pattern
+bool memtest(const void* data, int val, isize size)
+{
+    uint8_t* udata = (uint8_t*) data;
+    uint8_t uval = (uint8_t)val;
+    for(isize i = 0; i < size; i++)
+        if(udata[i] != uval)
+            return false;
+
+    return true;
+}
+
+INTERNAL double _tlsf_clock_s()
+{
+    return (double) clock() / CLOCKS_PER_SEC;
+}
+
+INTERNAL isize _tlsf_random_range(isize from, isize to)
+{
+    if(from == to)
+        return from;
+
+    return rand()%(to - from) + from;
+}
+
+INTERNAL double _tlsf_random_interval(double from, double to)
+{
+    double random = (double) rand() / RAND_MAX;
+    return (to - from)*random + from;
+}
+
+void test_tlsf_alloc_stress(double seconds, isize at_once)
+{
+    enum {
+        MAX_SIZE_LOG2 = 17, //1/8 MB = 256 KB
+        MAX_ALIGN_LOG2 = 5,
+        MAX_AT_ONCE = 1024,
+    };
+    const double MAX_PERTURBATION = 0.2;
+    
+    ASSERT(at_once < MAX_AT_ONCE);
+    isize memory_size = 256*1024*1024;
+
+    Tlsf_Allocator allocator = {0};
+    isize node_memory_size = (at_once + 2)*sizeof(Tlsf_Node);
+    void* nodes = malloc(node_memory_size);
+    void* memory = malloc(memory_size);
+    tlsf_init(&allocator, memory, memory_size, nodes, node_memory_size);
+    
+    typedef struct {
+        uint32_t size;
+        uint32_t align;
+        uint32_t node;
+        uint32_t _padding;
+        void* ptr;
+    } Alloc;
+    Alloc allocs[MAX_AT_ONCE] = {0};
+
+    isize iter = 0;
+    for(double start = _tlsf_clock_s(); _tlsf_clock_s() - start < seconds;)
+    {
+        isize i = _tlsf_random_range(0, at_once);
+        if(iter < at_once)
+            i = iter;
+        else
+        {
+            Alloc a = allocs[i];
+            tlsf_free(&allocator, a.ptr);
+            tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
+        }
+        
+        double perturbation = 1 + _tlsf_random_interval(-MAX_PERTURBATION, MAX_PERTURBATION);
+        isize random_align_shift = _tlsf_random_range(0, MAX_ALIGN_LOG2);
+        isize random_size_shift = _tlsf_random_range(0, MAX_SIZE_LOG2);
+
+        //Random exponentially distributed sizes with small perturbances.
+        allocs[i].size = (int32_t)(((isize) 1 << random_size_shift) * perturbation);
+        allocs[i].align = (int32_t) ((isize) 1 << random_align_shift);
+        allocs[i].ptr = tlsf_malloc(&allocator, allocs[i].size, allocs[i].align);
+        allocs[i].node = tlsf_get_node(&allocator, allocs[i].ptr);
+        
+        TEST(allocs[i].ptr == _tlsf_align_forward(allocs[i].ptr, allocs[i].align));
+        tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
+
+        iter += 1;
+    }
+
+    free(nodes);
+    free(memory);
+}
+
+void test_tlsf_alloc(double seconds)
+{
+    printf("[TEST]: Tlsf allocator sizes below:\n");
+    for(int32_t i = 0; i < TLSF_BINS; i++)
+    {
+        if(i < 50)
+        {
+            uint32_t this_bin_size = (uint32_t) tlsf_size_from_bin_index(i);
+            uint32_t next_bin_size = (uint32_t) tlsf_size_from_bin_index(i+1);
+
+            for(uint32_t k = this_bin_size + 1; k < next_bin_size; k++)
+            {
+                int32_t should_be_i = tlsf_bin_index_from_size(k, false);
+                int32_t should_be_i_plus_one = tlsf_bin_index_from_size(k, true);
+                TEST(should_be_i == i);
+                TEST(should_be_i_plus_one == i + 1);
+                TEST(should_be_i_plus_one == i + 1);
+            }
+        }
+        printf("[TEST]: %3i -> %lli\n", i, tlsf_size_from_bin_index(i));
+    }
+
+    test_tlsf_alloc_unit();
+    test_tlsf_alloc_stress(seconds/4, 1);
+    test_tlsf_alloc_stress(seconds/4, 10);
+    test_tlsf_alloc_stress(seconds/4, 100);
+    test_tlsf_alloc_stress(seconds/4, 200);
+
+    printf("[TEST]: test_tlsf(%lf) success!\n", seconds);
+}
+
+//Include the benchmark only when being included alongside the rest of the codebase
+// since I cant be bothered to make it work without any additional includes
+#ifdef JOT_ALLOCATOR
+    #include "perf.h"
+    #include "random.h"
+    #include "log.h"
+    void benchmark_tlsf_alloc_single(double seconds, bool touch, isize at_once, isize min_size, isize max_size, isize min_align_log2, isize max_align_log2)
+    {
+        LOG_INFO("BENCH", "Running benchmarks for %s with touch:%s at_once:%lli size:[%lli, %lli) align_log:[%lli %lli)", 
+            format_seconds(seconds).data, touch ? "true" : "false", at_once, min_size, max_size, min_align_log2, max_align_log2);
+
+        enum {
+            CACHED_COUNT = 1024,
+            BATCH_SIZE = 1,
+        };
+        typedef struct Alloc {
+            void* ptr;
+            uint32_t node;
+            uint32_t _padding;
+        } Alloc;
+
+        typedef struct Cached_Random {
+            int32_t size;
+            int32_t align;
+            int32_t index;
+        } Cached_Random;
+
+        enum {
+            DO_ARENA,
+            DO_TLSF,
+            DO_MALLOC,
+        };
+    
+        Arena arena = {0};
+        TEST(arena_init(&arena, 0, 0));
+        isize memory_size = 1024*1024*1024;
+        arena_commit(&arena, memory_size);
+
+        Alloc* allocs = (Alloc*) malloc(at_once * sizeof(Alloc));
+        memset(allocs, -1, at_once * sizeof(Alloc));
+
+        Cached_Random* randoms = (Cached_Random*) malloc(CACHED_COUNT * sizeof(Cached_Random));
+
+        double warmup = seconds/10;
+
+        for(isize i = 0; i < CACHED_COUNT; i++)
+        {
+            Cached_Random cached = {0};
+            cached.size = (int32_t) random_range(min_size, max_size);
+            cached.align = (int32_t) ((isize) 1 << random_range(min_align_log2, max_align_log2));
+            cached.index = (int32_t) random_i64();
+
+            randoms[i] = cached;
+        }
+
+        Tlsf_Allocator tlsf = {0};
+        void* tlsf_memory = malloc(memory_size);
+        isize node_memory_size = (at_once + 2)*sizeof(Tlsf_Node);
+        void* tlsf_nodes = malloc(node_memory_size);
+        tlsf_init(&tlsf, tlsf_memory, memory_size, tlsf_nodes, node_memory_size);
+
+        Perf_Stats stats_tlsf = {0};
+        Perf_Stats stats_tlsf_free = {0};
+    
+        Perf_Stats stats_malloc_alloc = {0};
+        Perf_Stats stats_malloc_free = {0};
+        
+        Perf_Stats stats_arena_alloc = {0};
+        Perf_Stats stats_arena_free = {0};
+
+        for(isize j = 0; j < 3; j++)
+        {
+            Perf_Stats* stats_alloc = NULL;
+            Perf_Stats* stats_free = NULL;
+            if(j == DO_ARENA) {
+                stats_alloc = &stats_arena_alloc;
+                stats_free = &stats_arena_free;
+            }
+            
+            if(j == DO_TLSF) {
+                stats_alloc = &stats_tlsf;
+                stats_free = &stats_tlsf_free;
+            }
+            
+            if(j == DO_MALLOC) {
+                stats_alloc = &stats_malloc_alloc;
+                stats_free = &stats_malloc_free;
+            }
+
+            isize curr_batch = 0;
+            isize accumulated_alloc = 0;
+            isize accumulated_free = 0;
+            isize failed = 0;
+
+            isize active_allocs = 0;
+            for(Perf_Benchmark bench_alloc = {0}, bench_free = {0}; ;) 
+            {
+                bool continue1 = perf_benchmark_custom(&bench_alloc, stats_alloc, warmup, seconds, BATCH_SIZE);;
+                bool continue2 = perf_benchmark_custom(&bench_free, stats_free, warmup, seconds, BATCH_SIZE);;
+                if(continue1 == false || continue2 == false)
+                    break;
+                    
+                _tlsf_check_invariants(&tlsf);
+
+                isize iter = bench_alloc.iter;
+                Cached_Random random = randoms[iter % CACHED_COUNT];
+
+                isize i = (isize) ((uint64_t) random.index % at_once);
+                //At the start only alloc
+                if(active_allocs < at_once)
+                {
+                    i = active_allocs;
+                    active_allocs += 1;
+                }
+                else
+                {
+                    i64 before_free = perf_now();
+                    if(j == DO_MALLOC) 
+                        free(allocs[i].ptr);
+                    if(j == DO_TLSF) 
+                    {
+                        //tlsf_free(&tlsf, allocs[i].ptr);
+                        tlsf_deallocate(&tlsf, allocs[i].node);
+                    }
+                    if(j == DO_ARENA) 
+                    {
+                        arena_reset(&arena, 0);
+                        active_allocs = 0;
+                    }
+
+                    i64 after_free = perf_now();
+                    accumulated_free += after_free - before_free;
+                }  
+
+                i64 before_alloc = perf_now();
+                if(j == DO_MALLOC) 
+                    allocs[i].ptr = malloc(random.size);
+                if(j == DO_TLSF) 
+                {
+                    //allocs[i].ptr = tlsf_malloc(&tlsf, random.size, random.align);
+                    allocs[i].ptr = tlsf.memory + tlsf_allocate(&tlsf, random.size, random.align, &allocs[i].node);
+                }
+                if(j == DO_ARENA) 
+                    allocs[i].ptr = arena_push_nonzero(&arena, random.size, random.align);
+
+                if(allocs[i].ptr == NULL)
+                    failed += 1;
+                if(touch && allocs[i].ptr)
+                    memset(allocs[i].ptr, 0, random.size);
+                i64 after_alloc = perf_now();
+                
+                if(iter >= at_once)
+                    accumulated_alloc += after_alloc - before_alloc;
+
+                if(iter >= at_once && curr_batch % BATCH_SIZE == 0)
+                {
+                    perf_benchmark_submit(&bench_free, accumulated_free);
+                    perf_benchmark_submit(&bench_alloc, accumulated_alloc);
+                    accumulated_free = 0;
+                    accumulated_alloc = 0;
+                }
+                curr_batch += 1;
+            }
+
+            //printf("failed:%lli \n", failed);
+        }
+    
+        free(allocs);
+        free(randoms);
+        free(tlsf_memory);
+        free(tlsf_nodes);
+        arena_deinit(&arena);
+
+        log_perf_stats_hdr("BENCH", LOG_INFO, "ALLOC:        ");
+        log_perf_stats_row("BENCH", LOG_INFO, "arena         ", stats_arena_alloc);
+        log_perf_stats_row("BENCH", LOG_INFO, "tlsf          ", stats_tlsf);
+        log_perf_stats_row("BENCH", LOG_INFO, "malloc        ", stats_malloc_alloc);
+        
+        log_perf_stats_hdr("BENCH", LOG_INFO, "FREE:         ");
+        log_perf_stats_row("BENCH", LOG_INFO, "arena         ", stats_arena_free);
+        log_perf_stats_row("BENCH", LOG_INFO, "tlsf          ", stats_tlsf_free);
+        log_perf_stats_row("BENCH", LOG_INFO, "malloc        ", stats_malloc_free);
+    }
+
+    void benchmark_tlsf_alloc(bool touch, double seconds)
+    {
+        benchmark_tlsf_alloc_single(seconds, touch, 4096, 8, 64, 0, 4);
+        benchmark_tlsf_alloc_single(seconds, touch, 1024, 64, 512, 0, 4);
+        benchmark_tlsf_alloc_single(seconds, touch, 1024, 8, 64, 0, 4);
+        benchmark_tlsf_alloc_single(seconds, touch, 256, 64, 512, 0, 4);
+        benchmark_tlsf_alloc_single(seconds, touch, 1024, 4000, 8000, 0, 4);
+    }
+    #endif
+#endif

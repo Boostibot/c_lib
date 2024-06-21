@@ -65,6 +65,7 @@ typedef struct Allocator_Stats {
     isize bytes_allocated;
     isize max_bytes_allocated;  //maximum bytes_allocated during the enire lifetime of the allocator
 
+    isize max_concurent_allocations;
     isize allocation_count;     //The number of allocation requests (old_ptr == NULL). Does not include reallocs!
     isize deallocation_count;   //The number of deallocation requests (new_size == 0). Does not include reallocs!
     isize reallocation_count;   //The number of reallocation requests (*else*).
