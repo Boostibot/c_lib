@@ -3,115 +3,6 @@
 #include "_test.h"
 #include "vformat.h"
 
-static void test_find_first_single(String string, char c, isize from)
-{
-    isize truth = string_find_first_char_vanilla(string, c, from);
-    isize unsafe = string_find_first_char_unsafe(string, c, from);
-    isize sse = string_find_first_char_sse(string, c, from);
-
-    if(truth != sse || truth != unsafe || truth != sse)
-        TEST(false, "test_find_first_single failed! with string '%.*s' char '%c' and from: %lli", STRING_PRINT(string), c, (lli) from);
-}
-
-static isize string_find_first_char_strlen(String string, char c, isize from)
-{
-    return (isize) strlen(string.data + from); (void) c;
-}
-
-static void test_find_first(f64 time)
-{
-    test_find_first_single(STRING("hello world"), 'o', 1);
-    test_find_first_single(STRING("hello world"), ' ', 1);
-    test_find_first_single(STRING("hello world hello world"), 'x', 1);
-    test_find_first_single(STRING("hello world hello world"), 'h', 1);
-    test_find_first_single(STRING("hello world hello world hello world x"), 'x', 0);
-    test_find_first_single(STRING("hello world hello world hello world x"), 'x', 30);
-
-    String_Builder data = {0};
-    builder_resize(&data, 1024*1024);
-
-    for(isize i = 0; i < data.size; i++)
-        data.data[i] = (char) (random_u64() % 256);
-
-    String str = data.string;
-    for(f64 start = clock_s(), now = 0; (now = clock_s()) < start + time;)
-    {
-        char search_for = (char) (random_u64() % 256);
-        isize from = random_range(0, str.size);
-        test_find_first_single(str, search_for, from);
-    }
-
-    builder_deinit(&data);
-}
-
-static void bemchmark_find_first(isize max_size, u64 max_value, f64 discard, f64 time)
-{
-    String_Builder data = {0};
-    builder_resize(&data, max_size);
-
-    for(isize i = 0; i < data.size; i++)
-        data.data[i] = (char) (random_u64() % max_value);
-
-    String str = data.string;
-
-    typedef struct Test_Case {
-        isize (*func)(String string, char c, isize from);
-        const char* name;
-        isize num_found;
-        Perf_Counter counter;
-        Perf_Stats stats;
-    } Test_Case;
-
-    Test_Case cases[] = {
-        {string_find_first_char_vanilla, "vanilla"},
-        {string_find_first_char_unsafe, "unsafe"},
-        {string_find_first_char_sse, "sse"},
-        {string_find_first_char_strlen, "strlen"},
-    };
-    
-    isize repeats = 8;
-    for(isize case_i = 0; case_i < STATIC_ARRAY_SIZE(cases); case_i ++)
-    {
-        Test_Case* test_case = &cases[case_i];
-
-        for(f64 start = clock_s(), now = 0; (now = clock_s()) < start + time;)
-        {
-            char find = (char) (random_u64() % max_value);
-            isize from = random_range(0, str.size);
-
-            i64 running = perf_now();
-            for(isize i = 0; i < repeats; i++)
-            {
-                if(test_case->func(str, find, from) != -1)
-                    test_case->num_found += 1;
-            }
-
-            if(now >= start + discard)
-                perf_submit(&test_case->counter, perf_now() - running);
-        }
-
-        test_case->stats = perf_get_stats(test_case->counter, repeats);
-    }
-
-    LOG_INFO("TEST", "printing results for max_size: %lli max_value: %lli", (lli) max_size, (lli) max_value);
-        for(isize case_i = 0; case_i < STATIC_ARRAY_SIZE(cases); case_i ++)
-        {
-            Test_Case* test_case = &cases[case_i];
-            LOG_INFO(">TEST", "%20s total: %15.8lf avg: %12.8lf runs: %-8lli σ/μ %13.6lf [%13.6lf %13.6lf] (ms) found: %lli", 
-                    test_case->name,
-			        test_case->stats.total_s*1000,
-			        test_case->stats.average_s*1000,
-                    (lli) test_case->stats.runs,
-                    test_case->stats.normalized_standard_deviation_s,
-			        test_case->stats.min_s*1000,
-			        test_case->stats.max_s*1000,
-                    test_case->num_found
-		        );
-        }
-
-    builder_deinit(&data);
-}
-
 static void test_memset_pattern()
 {
     typedef struct  {
@@ -150,8 +41,37 @@ static void test_memset_pattern()
     }
 }
 
+
+static void test_string_find_single(const char* in_string_c, const char* search_for_c)
+{
+    String in_string = string_make(in_string_c);
+    String search_for = string_make(search_for_c);
+
+    for(isize from_i = 0; from_i <= in_string.size; from_i++)
+    {
+        char* std_found = strstr(in_string_c + from_i, search_for_c);
+        isize std_found_i = std_found ? std_found - in_string_c : -1;
+        isize our_found_i = string_find_first(in_string, search_for, from_i);
+        TEST(std_found_i == our_found_i);
+        TEST(std_found_i == our_found_i);
+    }
+}
+
+static void test_string_find()
+{
+    test_string_find_single("hello world", "hello");
+    test_string_find_single("hello world", "world");
+    test_string_find_single("hello world", "l");
+    test_string_find_single("hello world", "orldw");
+    test_string_find_single("hello world", "ll");
+    test_string_find_single("world", "world world");
+    test_string_find_single("wwwwwwww", "ww");
+    test_string_find_single("abababaaa", "ba");
+}
+
 static void test_string(f64 time)
 {
+    test_string_find();
     test_memset_pattern();
-    test_find_first(time);
+    (void) time;
 }
