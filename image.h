@@ -83,12 +83,10 @@ EXPORT i32 pixel_type_size(Pixel_Type pixel_type);
 EXPORT i32 pixel_type_size_or_zero(Pixel_Type pixel_type);
 EXPORT i32 pixel_channel_count(Pixel_Type pixel_type, isize pixel_size);
 
-EXPORT void image_init(Image* image, Allocator* alloc, isize channel_count, Pixel_Type type);
 EXPORT void image_init_unshaped(Image* image, Allocator* alloc);
-EXPORT void image_init_pixel_size(Image* image, Allocator* alloc, isize pixel_size, Pixel_Type type);
+EXPORT void image_init(Image* image, Allocator* alloc, isize pixel_size, Pixel_Type type);
 //Initializes image with the given shape. If dat_or_null is not NULL fills it with data, otherwise fills it with 0.
-EXPORT void image_init_sized(Image* image, Allocator* alloc, isize width, isize height, isize channel_count, Pixel_Type type, const void* data_or_null);
-EXPORT void image_init_pixel_sized(Image* image, Allocator* alloc, isize width, isize height, isize pixel_size, Pixel_Type type, const void* data_or_null);
+EXPORT void image_init_sized(Image* image, Allocator* alloc, isize width, isize height, isize pixel_size, Pixel_Type type, const void* data_or_null);
 EXPORT void image_deinit(Image* image);
 EXPORT void image_resize(Image* image, isize width, isize height);
 EXPORT void image_reserve(Image* image, isize capacity);
@@ -98,9 +96,7 @@ EXPORT void image_assign(Image* to_image, Subimage from_image);
 //Gives the image the specified shape with width, height, channel_count and type. If the new shape is too big reallocates.
 //Does not change the content within the image itself, likewise doesnt fill new size with 0 on size increase.
 //If data_or_null is not NULL also copies the data into image.
-EXPORT void image_reshape(Image* image, isize width, isize height, isize channel_count, Pixel_Type type, const void* data_or_null);
-EXPORT void image_reshape_pixel_size(Image* image, isize width, isize height, isize pixel_size, Pixel_Type type, const void* data_or_null);
-
+EXPORT void image_reshape(Image* image, isize width, isize height, isize pixel_size, Pixel_Type type, const void* data_or_null);
 
 EXPORT void* image_at(Image image, isize x, isize y);
 EXPORT Image image_from_image(Image to_copy, Allocator* alloc);
@@ -109,14 +105,13 @@ EXPORT Image image_from_subimage(Subimage to_copy, Allocator* alloc);
 EXPORT Subimage image_portion(Image image, isize from_x, isize from_y, isize width, isize height);
 EXPORT Subimage image_range(Image image, isize from_x, isize from_y, isize to_x, isize to_y);
 
-EXPORT i32 image_channel_count(Image image);
+EXPORT i32   image_channel_count(Image image);
 EXPORT isize image_pixel_count(Image image);
 EXPORT isize image_byte_stride(Image image);
 EXPORT isize image_byte_size(Image image);
 
-EXPORT Subimage subimage_make(Image image);
-EXPORT Subimage subimage_from_data_pixel_sized(void* pixels, isize width, isize height, isize pixel_size, Pixel_Type type);
-EXPORT Subimage subimage_from_data(void* pixels, isize width, isize height, isize channel_count, Pixel_Type type);
+EXPORT Subimage subimage_of(Image image);
+EXPORT Subimage subimage_make(void* pixels, isize width, isize height, isize pixel_size, Pixel_Type type);
 EXPORT bool subimage_is_contiguous(Subimage view); //returns true if the view is contiguous in memory
 EXPORT void* subimage_at(Subimage image, isize x, isize y);
 EXPORT i32 subimage_channel_count(Subimage image);
@@ -240,7 +235,7 @@ EXPORT void image_deinit(Image* image)
     memset(image, 0, sizeof *image);
 }
 
-EXPORT void image_init_pixel_size(Image* image, Allocator* alloc, isize pixel_size, Pixel_Type type)
+EXPORT void image_init(Image* image, Allocator* alloc, isize pixel_size, Pixel_Type type)
 {
     image_deinit(image);
     image->allocator = alloc;
@@ -254,27 +249,11 @@ EXPORT void image_init_unshaped(Image* image, Allocator* alloc)
     image->allocator = alloc;
 }
 
-EXPORT void image_init(Image* image, Allocator* alloc, isize channel_count, Pixel_Type type)
-{
-    image_init_unshaped(image, alloc);
-    isize type_size = pixel_type_size(type);
-    isize pixel_size = channel_count * type_size;
-    image->pixel_size = (i32) pixel_size;
-    image->type = (i32) type;
-}
-
-//EXPORT void image_init_pixel_sized(Image* image, Allocator* alloc, isize width, isize height, isize pixel_size, Pixel_Type type, const void* data_or_null);
-
-EXPORT void image_init_sized(Image* image, Allocator* alloc, isize width, isize height, isize channel_count, Pixel_Type type, const void* data_or_null)
-{
-    image_init_pixel_sized(image, alloc, width, height, pixel_type_size(type) * channel_count, type, data_or_null);
-}
-
-EXPORT void image_init_pixel_sized(Image* image, Allocator* alloc, isize width, isize height, isize pixel_size, Pixel_Type type, const void* data_or_null)
+EXPORT void image_init_sized(Image* image, Allocator* alloc, isize width, isize height, isize pixel_size, Pixel_Type type, const void* data_or_null)
 {
     image_deinit(image);
     image->allocator = alloc;
-    image_reshape_pixel_size(image, width, height, pixel_size, type, data_or_null);
+    image_reshape(image, width, height, pixel_size, type, data_or_null);
     if(data_or_null == NULL)
         memset(image->pixels, 0, (size_t) image->capacity);
 }
@@ -313,7 +292,7 @@ EXPORT isize subimage_byte_size(Subimage image)
     return image.pixel_size * pixel_count;
 }
 
-EXPORT Subimage subimage_from_data_pixel_sized(void* pixels, isize width, isize height, isize pixel_size, Pixel_Type type)
+EXPORT Subimage subimage_make(void* pixels, isize width, isize height, isize pixel_size, Pixel_Type type)
 {
     Subimage view = {0};
     view.pixels = (u8*) pixels;
@@ -330,14 +309,9 @@ EXPORT Subimage subimage_from_data_pixel_sized(void* pixels, isize width, isize 
     return view;
 }
 
-EXPORT Subimage subimage_from_data(void* pixels, isize width, isize height, isize channel_count, Pixel_Type type)
+EXPORT Subimage subimage_of(Image image)
 {
-    return subimage_from_data_pixel_sized(pixels, width, height, channel_count*pixel_type_size(type), type);
-}
-
-EXPORT Subimage subimage_make(Image image)
-{
-    return subimage_from_data_pixel_sized(image.pixels, image.width, image.height, image.pixel_size, image.type);
+    return subimage_make(image.pixels, image.width, image.height, image.pixel_size, image.type);
 }
 
 EXPORT bool subimage_is_contiguous(Subimage view)
@@ -371,11 +345,11 @@ EXPORT Subimage subimage_portion(Subimage view, isize from_x, isize from_y, isiz
 
 EXPORT Subimage image_portion(Image image, isize from_x, isize from_y, isize width, isize height)
 {   
-    return subimage_range(subimage_make(image), from_x, from_y, from_x + width, from_y + height);
+    return subimage_range(subimage_of(image), from_x, from_y, from_x + width, from_y + height);
 }
 EXPORT Subimage image_range(Image image, isize from_x, isize from_y, isize to_x, isize to_y)
 {
-    return subimage_range(subimage_make(image), from_x, from_y, to_x, to_y);
+    return subimage_range(subimage_of(image), from_x, from_y, to_x, to_y);
 }
 
 EXPORT void* subimage_at(Subimage view, isize x, isize y)
@@ -445,7 +419,7 @@ EXPORT Image image_from_subimage(Subimage view, Allocator* alloc)
 {
     Image image = {0};
     image_init_unshaped(&image, alloc);
-    image_reshape_pixel_size(&image, view.width, view.height, view.pixel_size, view.type, NULL);
+    image_reshape(&image, view.width, view.height, view.pixel_size, view.type, NULL);
 
     image_copy(&image, view, 0, 0);
     return image;
@@ -455,7 +429,7 @@ EXPORT Image image_from_image(Image to_copy, Allocator* alloc)
 {
     Image image = {0};
     image.allocator = alloc;
-    image_assign(&image, subimage_make(to_copy));
+    image_assign(&image, subimage_of(to_copy));
     return image;
 }
 
@@ -477,11 +451,7 @@ EXPORT void image_reserve(Image* image, isize capacity)
     }
 }
 
-EXPORT void image_reshape(Image* image, isize width, isize height, isize channel_count, Pixel_Type type, const void* data_or_null)
-{
-    image_reshape_pixel_size(image, width, height, pixel_type_size(type) * channel_count, type, data_or_null);
-}
-EXPORT void image_reshape_pixel_size(Image* image, isize width, isize height, isize pixel_size, Pixel_Type type, const void* data_or_null)
+EXPORT void image_reshape(Image* image, isize width, isize height, isize pixel_size, Pixel_Type type, const void* data_or_null)
 {
     isize needed_size = width*height*pixel_size;
     if(needed_size > image->capacity)
@@ -510,7 +480,7 @@ EXPORT void image_reshape_pixel_size(Image* image, isize width, isize height, is
 
 EXPORT void image_assign(Image* to_image, Subimage from_image)
 {
-    image_reshape_pixel_size(to_image, from_image.width, from_image.height, from_image.pixel_size, from_image.type, from_image.pixels);
+    image_reshape(to_image, from_image.width, from_image.height, from_image.pixel_size, from_image.type, from_image.pixels);
     image_copy(to_image, from_image, 0, 0);
 }
 
@@ -542,8 +512,8 @@ EXPORT void image_resize(Image* image, isize width, isize height)
         memset(new_image.pixels, 0, (size_t) new_byte_size);
     }
 
-    Subimage to_view = subimage_make(new_image);
-    Subimage from_view = subimage_make(*image);
+    Subimage to_view = subimage_of(new_image);
+    Subimage from_view = subimage_of(*image);
     from_view.width = MIN(from_view.width, to_view.width);
     from_view.height = MIN(from_view.height, to_view.height);
 
@@ -557,7 +527,7 @@ EXPORT void image_resize(Image* image, isize width, isize height)
 
 EXPORT void image_copy(Image* to_image, Subimage from_image, isize offset_x, isize offset_y)
 {
-    subimage_copy(subimage_make(*to_image), from_image, offset_x, offset_y);
+    subimage_copy(subimage_of(*to_image), from_image, offset_x, offset_y);
 }
 
 #endif

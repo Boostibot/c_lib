@@ -11,7 +11,7 @@ INTERNAL void test_image_builder_copy()
 
     {
         Image from_image  = {0};
-        image_init(&from_image, allocator_get_default(), 1, PIXEL_TYPE_U16);
+        image_init(&from_image, allocator_get_default(), sizeof(u16), PIXEL_TYPE_U16);
         image_reserve(&from_image, 1000);
         image_resize(&from_image, 4, 4);
 
@@ -26,11 +26,11 @@ INTERNAL void test_image_builder_copy()
         TEST(memcmp(from_image.pixels, pattern, sizeof(pattern)) == 0);
 
         Image to_image = {0};
-        image_init(&to_image, allocator_get_default(), 1, PIXEL_TYPE_U16);
+        image_init(&to_image, allocator_get_default(), sizeof(u16), PIXEL_TYPE_U16);
         image_resize(&to_image, 2, 2);
 
         Subimage from_imagev = image_portion(from_image, 1, 1, 2, 2);
-        Subimage to_imagev = subimage_make(to_image);
+        Subimage to_imagev = subimage_of(to_image);
 
         subimage_copy(to_imagev, from_imagev, 0, 0);
         TEST(*(u16*) image_at(to_image, 0, 0) == 5);
