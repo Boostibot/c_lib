@@ -228,8 +228,8 @@
 
 #ifndef NDEBUG
     #define TLSF_DEBUG                      //Enables basic safery checks on passed in nodes. Adds padding to help find overwrites
-    #define TLSF_DEBUG_CHECK_DETAILED       //Enebles extensive checks on nodes. 
-    #define TLSF_DEBUG_CHECK_ALL_NODES      //Checks all nodes on every entry and before return of every function. Is extremely slow and should only be used when testing this allocator
+    //#define TLSF_DEBUG_CHECK_DETAILED       //Enebles extensive checks on nodes. 
+    //#define TLSF_DEBUG_CHECK_ALL_NODES      //Checks all nodes on every entry and before return of every function. Is extremely slow and should only be used when testing this allocator
 #endif
 
 typedef struct Tlsf_Node {
@@ -1269,7 +1269,7 @@ typedef struct _Tlsf_Allocator_On_Full_Limits {
     isize max_node_size;
 } _Tlsf_Allocator_On_Full_Limits;
 
-void _test_tlsf_alloc_stress_on_full(struct Tlsf_Allocator* allocator, isize requested_size, isize* new_memory_size, isize* new_node_memory, uint32_t flags, void* on_full_context)
+void _test_allocator_tlsf_stress_on_full(struct Tlsf_Allocator* allocator, isize requested_size, isize* new_memory_size, isize* new_node_memory, uint32_t flags, void* on_full_context)
 {
     _Tlsf_Allocator_On_Full_Limits* limits = (_Tlsf_Allocator_On_Full_Limits*) on_full_context;
     if(flags & TLSF_ON_FULL_NEED_MORE_MEMORY)
@@ -1295,9 +1295,9 @@ void _test_tlsf_alloc_stress_on_full(struct Tlsf_Allocator* allocator, isize req
     }
 }
 
-void test_tlsf_alloc_stress(double seconds, isize at_once)
+void test_allocator_tlsf_stress(double seconds, isize at_once)
 {
-    printf("[TEST]: test_tlsf_alloc_stress(seconds:%lf, at_once:%lli)\n", seconds, (long long) at_once);
+    printf("[TEST]: test_allocator_tlsf_stress(seconds:%lf, at_once:%lli)\n", seconds, (long long) at_once);
 
     typedef struct {
         uint32_t size;
@@ -1325,7 +1325,7 @@ void test_tlsf_alloc_stress(double seconds, isize at_once)
     limits.max_memory_size = memory_size;
     limits.max_node_size = node_memory_size/sizeof(Tlsf_Node);
 
-    allocator.on_full = _test_tlsf_alloc_stress_on_full;
+    allocator.on_full = _test_allocator_tlsf_stress_on_full;
     allocator.on_full_context = &limits;
 
     isize iter = 0;
@@ -1369,14 +1369,15 @@ void test_tlsf_alloc_stress(double seconds, isize at_once)
         }
     }
     tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
-    printf("[TEST]: Tlsf allocator defragmented %lli B:\n", (long long) defraged_dist);
+
+    printf("[TEST]: Tlsf allocator defragmented %lli B\n", (long long) defraged_dist);
 
     free(allocs);
     free(nodes);
     free(memory);
 }
 
-void test_tlsf_alloc(double seconds)
+void test_allocator_tlsf(double seconds)
 {
     printf("[TEST]: Tlsf allocator sizes below:\n");
     for(int32_t i = 0; i < TLSF_BINS; i++)
@@ -1399,12 +1400,12 @@ void test_tlsf_alloc(double seconds)
     }
 
     test_tlsf_alloc_unit();
-    test_tlsf_alloc_stress(seconds/4, 1);
-    test_tlsf_alloc_stress(seconds/4, 10);
-    test_tlsf_alloc_stress(seconds/4, 100);
-    test_tlsf_alloc_stress(seconds/4, 200);
+    test_allocator_tlsf_stress(seconds/4, 1);
+    test_allocator_tlsf_stress(seconds/4, 10);
+    test_allocator_tlsf_stress(seconds/4, 100);
+    test_allocator_tlsf_stress(seconds/4, 200);
 
-    printf("[TEST]: test_tlsf_alloc(%lf) success!\n", seconds);
+    printf("[TEST]: test_allocator_tlsf(%lf) success!\n", seconds);
 }
 
 //Include the benchmark only when being included alongside the rest of the codebase
@@ -1413,7 +1414,7 @@ void test_tlsf_alloc(double seconds)
     #include "perf.h"
     #include "random.h"
     #include "log.h"
-    void benchmark_tlsf_alloc_single(double seconds, bool touch, isize at_once, isize min_size, isize max_size, isize min_align_log2, isize max_align_log2)
+    void benchmark_allocator_tlsf_single(double seconds, bool touch, isize at_once, isize min_size, isize max_size, isize min_align_log2, isize max_align_log2)
     {
         LOG_INFO("BENCH", "Running benchmarks for %s with touch:%s at_once:%lli size:[%lli, %lli) align_log:[%lli %lli)", 
             format_seconds(seconds).data, touch ? "true" : "false", at_once, min_size, max_size, min_align_log2, max_align_log2);
@@ -1591,13 +1592,13 @@ void test_tlsf_alloc(double seconds)
         log_perf_stats_row("BENCH", LOG_INFO, "malloc        ", stats_malloc_free);
     }
 
-    void benchmark_tlsf_alloc(bool touch, double seconds)
+    void benchmark_allocator_tlsf(bool touch, double seconds)
     {
-        benchmark_tlsf_alloc_single(seconds, touch, 4096, 8, 64, 0, 4);
-        benchmark_tlsf_alloc_single(seconds, touch, 1024, 64, 512, 0, 4);
-        benchmark_tlsf_alloc_single(seconds, touch, 1024, 8, 64, 0, 4);
-        benchmark_tlsf_alloc_single(seconds, touch, 256, 64, 512, 0, 4);
-        benchmark_tlsf_alloc_single(seconds, touch, 1024, 4000, 8000, 0, 4);
+        benchmark_allocator_tlsf_single(seconds, touch, 4096, 8, 64, 0, 4);
+        benchmark_allocator_tlsf_single(seconds, touch, 1024, 64, 512, 0, 4);
+        benchmark_allocator_tlsf_single(seconds, touch, 1024, 8, 64, 0, 4);
+        benchmark_allocator_tlsf_single(seconds, touch, 256, 64, 512, 0, 4);
+        benchmark_allocator_tlsf_single(seconds, touch, 1024, 4000, 8000, 0, 4);
     }
     #endif
 #endif
