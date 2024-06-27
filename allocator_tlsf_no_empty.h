@@ -192,8 +192,14 @@
 // Can be set to 64 bit by defining TLSF_64_BIT.
 #ifndef TLSF_64_BIT
     typedef uint32_t Tlsf_Size;
+    typedef uint16_t Tlsf_Half_Size;
+    #define TLSF_MAX_SIZE       UINT32_MAX
+    #define TLSF_MAX_HALF_SIZE  UINT16_MAX
 #else
     typedef int64_t Tlsf_Size;
+    typedef uint32_t Tlsf_Half_Size;
+    #define TLSF_MAX_SIZE       UINT64_MAX
+    #define TLSF_MAX_HALF_SIZE  UINT32_MAX
 #endif
 
 #define TLSF_MIN_SIZE       8 //Minimum allowed size of allocation. Introduces internal fragmentation but helps to keep small leftover free spaced from polluting bins which makes the allocator faster
@@ -204,6 +210,11 @@
 #define TLSF_LAST_NODE      1 //Special last node.
 #define TLSF_INVALID        0xFFFFFFFF //used internally to signal missing. As user you never have to think about this.
 #define TLSF_MAGIC          0x46534C54 //"TLSF" in ascii little endian. Placed before malloc blocks in debug builds to detect overflows.
+#define TLSF_MEM_ALIGNED_SHIFT (sizeof(Tlsf_Size)*8 - 2) 
+
+#define TLSF_ON_FULL_NEED_MORE_MEMORY 1
+#define TLSF_ON_FULL_NEED_MORE_NODES 2
+#define TLSF_ON_FULL_INVALID_PARAMS 4
 
 #define TLSF_BIN_MANTISSA_LOG2  3
 #define TLSF_BIN_MANTISSA_SIZE  ((uint32_t) 1 << TLSF_BIN_MANTISSA_LOG2)
@@ -224,6 +235,8 @@
 typedef struct Tlsf_Node {
     Tlsf_Size offset; //offset of the memory owned by this node. Is TLSF_INVALID when in free list. 
     Tlsf_Size size; //Size of the user requested memory of this node. This stays the same for the entire life of this node. TLSF_INVALID when in free list
+    Tlsf_Half_Size align;
+    Tlsf_Half_Size align_offset;
 
     uint32_t next;  //next in order or next in free list
     uint32_t prev;  //prev in order or TLSF_INVALID when in free list
@@ -262,7 +275,7 @@ typedef struct Tlsf_Allocator {
     // or lack of nodes. Can freely reallocate `memory` and `nodes`. 
     // Should return via parameters the new memory size and node capacity. 
     // You can use this to implement panicking or growing if you are into that thing.
-    void (*on_full)(struct Tlsf_Allocator* self, isize requested_size, isize* new_memory_size, isize* new_node_capacity, void* on_full_context); 
+    void (*on_full)(struct Tlsf_Allocator* self, isize requested_size, isize* new_memory_size, isize* new_node_capacity, uint32_t flags, void* on_full_context); 
     void* on_full_context;
 } Tlsf_Allocator;
 
@@ -298,6 +311,21 @@ EXPORT isize    tlsf_size_from_bin_index(int32_t bin_index);
 EXPORT void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags);
 EXPORT void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags_or_zero, uint32_t bin_or_zero);
 
+typedef struct Tlsf_Defragment {
+    uint32_t node;
+    bool commit_move;
+    bool align_in_memory;
+    bool prev_commited;
+    bool break_next_iteration;
+
+    isize free_space_before;
+    isize new_offset; 
+    isize old_offset; 
+    isize size;
+    isize align;
+} Tlsf_Defragment;
+
+EXPORT bool tlsf_defragment(Tlsf_Allocator* allocator, Tlsf_Defragment* defrag);
 #endif
 
 //=========================  IMPLEMENTATION BELOW ==================================================
@@ -348,12 +376,12 @@ INTERNAL bool _tlsf_is_pow2_or_zero(isize val)
     return (uval & (uval-1)) == 0;
 }
 
-INTERNAL void* _tlsf_align_forward(void* ptr, isize align_to)
+INTERNAL uint64_t _tlsf_align_up(uint64_t ptr, isize align_to)
 {
     ASSERT(_tlsf_is_pow2_or_zero(align_to) && align_to > 0);
-    isize ptr_num = (isize) ptr;
+    int64_t ptr_num = (int64_t) ptr;
     ptr_num += (-ptr_num) & (align_to - 1);
-    return (void*) ptr_num;
+    return (uint64_t) ptr_num;
 }
 EXPORT int32_t tlsf_bin_index_from_size(isize size, bool round_up)
 {
@@ -390,22 +418,23 @@ INTERNAL void _tlsf_check_invariants(Tlsf_Allocator* allocator);
 INTERNAL void _tlsf_check_node(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags);
 INTERNAL void _tlsf_unlink_node_in_bin(Tlsf_Allocator* allocator, uint32_t node_i, int32_t bin_i);
 INTERNAL void _tlsf_link_node_in_bin(Tlsf_Allocator* allocator, uint32_t node_i, int32_t bin_i);
-TLSF_INLINE_NEVER INTERNAL isize _tlsf_on_full(Tlsf_Allocator* allocator, isize size, uint32_t* out_node);
 
-INTERNAL isize _tlsf_allocate(Tlsf_Allocator* allocator, isize size, uint32_t* out_node)
+TLSF_INLINE_NEVER INTERNAL isize _tlsf_on_full(Tlsf_Allocator* allocator, isize size, isize align, isize align_offset, bool align_in_memory, uint32_t flags, uint32_t* out_node);
+
+INTERNAL isize _tlsf_allocate(Tlsf_Allocator* allocator, isize size, isize align, isize align_offset, bool align_in_memory, uint32_t* out_node)
 {
     const isize max_size = tlsf_size_from_bin_index(TLSF_BINS - 1);
-    if(size > max_size)
-        return _tlsf_on_full(allocator, size, out_node);
+    const isize max_align = (uint64_t) 1 << (sizeof(Tlsf_Half_Size)*8 - 2);
 
-    if(size < TLSF_MIN_SIZE)
-        size = TLSF_MIN_SIZE;
+    isize adjusted_size = size + align + align_offset;
+    if(adjusted_size > max_size || align >= max_align || align_offset > TLSF_MAX_HALF_SIZE)
+        return _tlsf_on_full(allocator, size, align, align_offset, align_in_memory, TLSF_ON_FULL_INVALID_PARAMS, out_node);
 
     ASSERT(allocator);
     ASSERT(out_node > 0);
     _tlsf_check_invariants(allocator);
 
-    int32_t bin_from = tlsf_bin_index_from_size((uint32_t) size, true);
+    int32_t bin_from = tlsf_bin_index_from_size((uint32_t) adjusted_size, true);
     int32_t bin_i = TLSF_INVALID;
     {
         uint32_t chunk = (uint32_t) bin_from/64;
@@ -431,7 +460,12 @@ INTERNAL isize _tlsf_allocate(Tlsf_Allocator* allocator, isize size, uint32_t* o
     }
 
     if(bin_i == TLSF_INVALID || allocator->node_first_free == TLSF_INVALID)
-        return _tlsf_on_full(allocator, size, out_node);
+    {
+        uint32_t on_full_flags = 0;
+        on_full_flags |= bin_i == TLSF_INVALID                      ? TLSF_ON_FULL_NEED_MORE_MEMORY : 0;
+        on_full_flags |= allocator->node_first_free == TLSF_INVALID ? TLSF_ON_FULL_NEED_MORE_NODES : 0;
+        return _tlsf_on_full(allocator, size, align, align_offset, align_in_memory, on_full_flags, out_node);
+    }
 
     uint32_t next_i = allocator->bin_first_free[bin_i];
     _tlsf_check_node(allocator, next_i, TLSF_CHECK_USED);
@@ -444,9 +478,17 @@ INTERNAL isize _tlsf_allocate(Tlsf_Allocator* allocator, isize size, uint32_t* o
     uint32_t node_i = allocator->node_first_free;
     
     ASSERT(prev_i != node_i && node_i != next_i && next_i != prev_i);
-
     allocator->node_first_free = node->next;
-    node->offset = prev->offset + prev->size;
+
+    Tlsf_Size a_offset = (Tlsf_Size) align_offset;
+    Tlsf_Size prev_end = prev->offset + prev->size;
+    if(align_in_memory)
+        node->offset = (Tlsf_Size) ((uint8_t*) _tlsf_align_up((uint64_t) allocator->memory + prev_end + a_offset, align) - allocator->memory) - a_offset;
+    else
+        node->offset = (Tlsf_Size) _tlsf_align_up((uint64_t) (prev_end + a_offset), align) - a_offset;
+        
+    node->align_offset = (Tlsf_Half_Size) align_offset;
+    node->align = (Tlsf_Half_Size) align | (Tlsf_Half_Size) align_in_memory << TLSF_MEM_ALIGNED_SHIFT;
     node->size = (Tlsf_Size) size;
     node->next_in_bin = TLSF_INVALID; 
     node->prev_in_bin = TLSF_INVALID;
@@ -455,11 +497,20 @@ INTERNAL isize _tlsf_allocate(Tlsf_Allocator* allocator, isize size, uint32_t* o
 
     next->prev = node_i;
     prev->next = node_i;
+    
+    ASSERT(node->offset >= prev->offset + prev->size);
+    Tlsf_Size mew_node_unused = node->offset - (prev->offset + prev->size);
+    //Can only happen if align > TLSF_MIN_SIZE
+    if(mew_node_unused >= TLSF_MIN_SIZE) 
+    {
+        int32_t new_node_bin = tlsf_bin_index_from_size(mew_node_unused, false);
+        _tlsf_link_node_in_bin(allocator, node_i, new_node_bin);
+    }
 
     Tlsf_Size old_next_unused = next->offset - (prev->offset + prev->size); (void) old_next_unused;
     Tlsf_Size new_next_unused = next->offset - (node->offset + node->size);
     ASSERT(next->offset >= node->offset + node->size);
-    
+
     _tlsf_unlink_node_in_bin(allocator, next_i, bin_i);
     next->next_in_bin = TLSF_INVALID;
     next->prev_in_bin = TLSF_INVALID;
@@ -519,6 +570,8 @@ EXPORT void tlsf_deallocate(Tlsf_Allocator* allocator, uint32_t node_i)
         int32_t old_next_bin = tlsf_bin_index_from_size(old_next_unused, false);
         _tlsf_unlink_node_in_bin(allocator, next_i, old_next_bin);
     }
+    next->next_in_bin = TLSF_INVALID;
+    next->prev_in_bin = TLSF_INVALID;
     if(new_next_unused >= TLSF_MIN_SIZE)
     {
         int32_t new_next_bin = tlsf_bin_index_from_size(new_next_unused, false); 
@@ -594,14 +647,20 @@ INTERNAL void _tlsf_link_node_in_bin(Tlsf_Allocator* allocator, uint32_t node_i,
     allocator->bin_masks[bin_i/64] |= (uint64_t) 1 << (bin_i%64); 
 }
 
-TLSF_INLINE_NEVER INTERNAL isize _tlsf_on_full(Tlsf_Allocator* allocator, isize size, uint32_t* out_node)
+TLSF_INLINE_NEVER INTERNAL isize _tlsf_on_full(Tlsf_Allocator* allocator, isize size, isize align, isize align_offset, bool align_in_memory, uint32_t flags, uint32_t* out_node)
 {
     static int stop_recursion = 0;
     if(allocator->on_full && allocator->on_full_context != &stop_recursion)
     {
-        isize new_memory_size = 0;
-        isize new_node_capacity = 0;
-        allocator->on_full(allocator, size, &new_memory_size, &new_node_capacity, allocator->on_full_context);
+        _tlsf_check_invariants(allocator);
+        isize new_memory_size = allocator->memory_size;
+        isize new_node_capacity = allocator->node_capacity;
+
+        isize requested_size = size + align + align_offset;
+        int32_t requested_bin = tlsf_bin_index_from_size(requested_size, true);
+        isize needed_size = tlsf_size_from_bin_index(requested_bin);
+
+        allocator->on_full(allocator, needed_size, &new_memory_size, &new_node_capacity, flags, allocator->on_full_context);
         ASSERT(new_memory_size >= allocator->memory_size);
         ASSERT(new_node_capacity >= allocator->node_capacity);
 
@@ -618,7 +677,7 @@ TLSF_INLINE_NEVER INTERNAL isize _tlsf_on_full(Tlsf_Allocator* allocator, isize 
 
         end->prev_in_bin = TLSF_INVALID;
         end->next_in_bin = TLSF_INVALID;
-        end->offset = (Tlsf_Size) (new_memory_size/TLSF_MIN_SIZE);
+        end->offset = (Tlsf_Size) new_memory_size;
 
         Tlsf_Size new_end_unused = end->offset - (prev->offset + prev->size);
         if(new_end_unused >= TLSF_MIN_SIZE)
@@ -642,14 +701,14 @@ TLSF_INLINE_NEVER INTERNAL isize _tlsf_on_full(Tlsf_Allocator* allocator, isize 
         }
 
         //Set the new sizes
-        allocator->memory_size = end->offset*TLSF_MIN_SIZE;
+        allocator->memory_size = end->offset;
         allocator->node_capacity = (uint32_t) new_node_capacity;
         _tlsf_check_invariants(allocator);
 
         //Set on_full_context to specific value to stop infinite recursion
         void* on_full_context = allocator->on_full_context;
         allocator->on_full_context = &stop_recursion;
-        isize out = _tlsf_allocate(allocator, size, out_node);
+        isize out = _tlsf_allocate(allocator, size, align, align_offset, align_in_memory, out_node);
         allocator->on_full_context = on_full_context;
 
         return out;
@@ -695,7 +754,7 @@ EXPORT bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize mem
     memset(allocator, 0, sizeof *allocator);   
 
     isize node_capacity = node_memory_size / sizeof(Tlsf_Node);
-    if(memory_size <= 2*TLSF_MIN_SIZE || node_memory == 0 || node_capacity <= 2)
+    if(node_memory == NULL || node_capacity < 2)
         return false;
         
     allocator->nodes = (Tlsf_Node*) node_memory;
@@ -720,35 +779,42 @@ EXPORT bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize mem
         allocator->node_first_free = i;
     }
 
-    //Push START and END nodes
-    uint32_t start_i = allocator->node_first_free;
-    Tlsf_Node* start = &allocator->nodes[start_i]; 
-    allocator->node_first_free = start->next;
+    //Push FIRST and LAST nodes
+    uint32_t first_i = allocator->node_first_free;
+    Tlsf_Node* first = &allocator->nodes[first_i]; 
+    allocator->node_first_free = first->next;
     
-    uint32_t end_i = allocator->node_first_free;
-    Tlsf_Node* end = &allocator->nodes[end_i]; 
-    allocator->node_first_free = end->next;
+    uint32_t last_i = allocator->node_first_free;
+    Tlsf_Node* last = &allocator->nodes[last_i]; 
+    allocator->node_first_free = last->next;
     
     //Push first node
-    ASSERT(start_i == TLSF_FIRST_NODE);
-    ASSERT(end_i == TLSF_LAST_NODE);
+    ASSERT(first_i == TLSF_FIRST_NODE);
+    ASSERT(last_i == TLSF_LAST_NODE);
 
-    start->prev = TLSF_INVALID;
-    start->next = TLSF_LAST_NODE;
-    start->next_in_bin = TLSF_INVALID;
-    start->prev_in_bin = TLSF_INVALID;
-    start->offset = 0;
-    start->size = 0;
+    first->prev = TLSF_INVALID;
+    first->next = TLSF_LAST_NODE;
+    first->next_in_bin = TLSF_INVALID;
+    first->prev_in_bin = TLSF_INVALID;
+    first->offset = 0;
+    first->size = 0;
+    first->align_offset = 0;
+    first->align = 1;
     
-    end->prev = TLSF_FIRST_NODE;
-    end->next = TLSF_INVALID;
-    end->next_in_bin = TLSF_INVALID;
-    end->prev_in_bin = TLSF_INVALID;
-    end->offset = (Tlsf_Size) allocator->memory_size;
-    end->size = 0;
+    last->prev = TLSF_FIRST_NODE;
+    last->next = TLSF_INVALID;
+    last->next_in_bin = TLSF_INVALID;
+    last->prev_in_bin = TLSF_INVALID;
+    last->offset = (Tlsf_Size) allocator->memory_size;
+    last->size = 0;
+    last->align_offset = 0;
+    last->align = 1;
 
-    int32_t end_bin_i = tlsf_bin_index_from_size(end->offset, false);
-    _tlsf_link_node_in_bin(allocator, TLSF_LAST_NODE, end_bin_i);
+    if(last->offset >= TLSF_MIN_SIZE)
+    {
+        int32_t end_bin_i = tlsf_bin_index_from_size(last->offset, false);
+        _tlsf_link_node_in_bin(allocator, TLSF_LAST_NODE, end_bin_i);
+    }
     allocator->node_count = 2;
     
     _tlsf_check_invariants(allocator);
@@ -757,11 +823,77 @@ EXPORT bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize mem
 
 EXPORT void tlsf_reset(Tlsf_Allocator* allocator)
 {
-    void (*on_full)(struct Tlsf_Allocator* self, isize requested_size, isize* new_memory_size, isize* new_node_capacity, void* context) = allocator->on_full;
+    void (*on_full)(struct Tlsf_Allocator* self, isize requested_size, isize* new_memory_size, isize* new_node_capacity, uint32_t flags, void* context) = allocator->on_full;
     void* on_full_context = allocator->on_full_context;
     tlsf_init(allocator, allocator->memory, allocator->memory_size, allocator->nodes, allocator->node_capacity);
     allocator->on_full = on_full;
     allocator->on_full_context = on_full_context;
+}
+
+EXPORT bool tlsf_defragment(Tlsf_Allocator* allocator, Tlsf_Defragment* defrag)
+{
+    if(defrag->node != TLSF_FIRST_NODE)
+    {
+        ASSERT(defrag->node < allocator->node_capacity);
+        ASSERT(defrag->node != allocator->node_capacity);
+        Tlsf_Node* __restrict node = &allocator->nodes[defrag->node];
+        Tlsf_Node* __restrict prev = &allocator->nodes[node->prev];
+        
+        Tlsf_Size curr_offset_before_move = node->offset;
+        if(defrag->commit_move || defrag->prev_commited || defrag->node == TLSF_LAST_NODE)
+        {
+            Tlsf_Size old_unused = node->offset - ((Tlsf_Size) defrag->free_space_before + prev->size);
+            if(old_unused >= TLSF_MIN_SIZE)
+            {
+                int32_t bin_i = tlsf_bin_index_from_size(old_unused, false); 
+                _tlsf_unlink_node_in_bin(allocator, defrag->node, bin_i);
+            }
+
+            node->prev_in_bin = TLSF_INVALID;
+            node->next_in_bin = TLSF_INVALID;
+            if(defrag->commit_move && defrag->node != TLSF_LAST_NODE)
+                node->offset = (Tlsf_Size) defrag->new_offset;
+
+            Tlsf_Size new_unused = node->offset - (prev->offset + prev->size);
+            if(new_unused >= TLSF_MIN_SIZE)
+            {
+                int32_t bin_i = tlsf_bin_index_from_size(new_unused, false); 
+                _tlsf_link_node_in_bin(allocator, defrag->node, bin_i);
+            }
+        }
+        defrag->free_space_before = curr_offset_before_move;
+    }
+    
+    {
+        defrag->prev_commited = defrag->commit_move;
+        defrag->commit_move = false;
+        if(defrag->node >= allocator->node_capacity || defrag->node == TLSF_INVALID || defrag->node == TLSF_LAST_NODE)
+            return false;
+
+        uint32_t node_i = allocator->nodes[defrag->node].next;
+        Tlsf_Node* node = &allocator->nodes[node_i];
+        Tlsf_Node* prev = &allocator->nodes[node->prev];
+        
+        Tlsf_Size new_offset = node->offset;
+        Tlsf_Size prev_end = prev->offset + prev->size;
+        bool align_in_memory = !!(node->align & (1 << TLSF_MEM_ALIGNED_SHIFT));
+        if(align_in_memory)
+            new_offset = (Tlsf_Size) ((uint8_t*) _tlsf_align_up((uint64_t) allocator->memory + prev_end + node->align_offset, node->align) - allocator->memory) - node->align_offset;
+        else
+            new_offset = (Tlsf_Size) _tlsf_align_up((uint64_t) (prev_end + node->align_offset), node->align) - node->align_offset;
+
+        defrag->node = node_i;
+        defrag->old_offset = node->offset;
+        defrag->new_offset = new_offset;
+        defrag->align = node->align & ~(1 << TLSF_MEM_ALIGNED_SHIFT);
+        defrag->align_in_memory = align_in_memory;
+        defrag->size = node->size;
+
+        if(node_i == TLSF_LAST_NODE)
+            return tlsf_defragment(allocator, defrag);
+        else
+            return true;
+    }
 }
 
 EXPORT isize tlsf_allocate(Tlsf_Allocator* allocator, isize size, isize align, uint32_t* node)
@@ -777,10 +909,7 @@ EXPORT isize tlsf_allocate(Tlsf_Allocator* allocator, isize size, isize align, u
         return 0;
     }
 
-    isize offset = _tlsf_allocate(allocator, size + align, node);
-    offset = (isize) _tlsf_align_forward((void*) offset, align);
-
-    return offset;
+    return _tlsf_allocate(allocator, size, align, 0, false, node);
 }
 
 EXPORT void* tlsf_malloc(Tlsf_Allocator* allocator, isize size, isize align)
@@ -794,24 +923,25 @@ EXPORT void* tlsf_malloc(Tlsf_Allocator* allocator, isize size, isize align)
         #ifdef TLSF_DEBUG
             uint32_t magic = TLSF_MAGIC;
             uint32_t node = 0;
-            isize total_size = size + 3*sizeof(uint32_t) + align;
-            isize offset = _tlsf_allocate(allocator, total_size, &node);
+            isize total_size = size + 3*sizeof(uint32_t);
+            isize header_size = 2*sizeof(uint32_t);
+            isize offset = _tlsf_allocate(allocator, total_size, align, header_size, true, &node);
             if(node != 0)
             {
-                ptr = (uint8_t*) _tlsf_align_forward(allocator->memory + offset + 2*sizeof(uint32_t), align);
+                ptr = allocator->memory + offset + header_size;
 
-                memset(allocator->memory + offset, 0x55, total_size);
                 memcpy(ptr - 2*sizeof(uint32_t), &node,  sizeof(uint32_t));
                 memcpy(ptr - sizeof(uint32_t),   &magic, sizeof(uint32_t));
-                memcpy(allocator->memory + offset + total_size - sizeof(uint32_t), &magic, sizeof(uint32_t));
+                memset(ptr, 0x55, size);
+                memcpy(ptr + size, &magic, sizeof(uint32_t));
             }
         #else
             uint32_t node = 0;
-            isize offset = _tlsf_allocate(allocator, size + sizeof(uint32_t) + align, &node);
+            isize offset = _tlsf_allocate(allocator, size + sizeof(uint32_t), align, sizeof(uint32_t), true, &node);
             if(node != 0)
             {
-                ptr = (uint8_t*) _tlsf_align_forward(allocator->memory + offset + sizeof(uint32_t), align);
-                memcpy(ptr - sizeof(uint32_t), &node,  sizeof(uint32_t));
+                ptr = allocator->memory + offset + sizeof(uint32_t);
+                memcpy(ptr - sizeof(uint32_t), &node, sizeof(uint32_t));
             }
         #endif
     }
@@ -884,6 +1014,8 @@ EXPORT void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node_i
     }
     else
     {
+        uint32_t align = node->align & ~(1 << TLSF_MEM_ALIGNED_SHIFT);
+        TEST(_tlsf_is_pow2_or_zero(align) && align > 0);
         TEST(node->offset <= allocator->memory_size);
         TEST(node->prev < allocator->node_capacity || node_i == TLSF_FIRST_NODE);
         TEST(node->next < allocator->node_capacity || node_i == TLSF_LAST_NODE);
@@ -944,18 +1076,21 @@ EXPORT void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags)
     TEST(allocator->allocation_count - allocator->deallocation_count <= allocator->max_concurent_allocations);
     TEST(allocator->bytes_allocated <= allocator->max_bytes_allocated);
     
-    //Check START and END nodes.
-    Tlsf_Node* start = &allocator->nodes[TLSF_FIRST_NODE];
-    TEST(start->prev == TLSF_INVALID);
-    TEST(start->next_in_bin == TLSF_INVALID);
-    TEST(start->prev_in_bin == TLSF_INVALID);
-    TEST(start->offset == 0);
-    TEST(start->size == 0);
+    //Check FIRST and LAST nodes.
+    Tlsf_Node* first = &allocator->nodes[TLSF_FIRST_NODE];
+    TEST(first->prev == TLSF_INVALID);
+    TEST(first->next_in_bin == TLSF_INVALID);
+    TEST(first->prev_in_bin == TLSF_INVALID);
+    TEST(first->offset == 0);
+    TEST(first->size == 0);
+    TEST(first->align_offset == 0);
     
-    Tlsf_Node* end = &allocator->nodes[TLSF_LAST_NODE];
-    TEST(end->next == TLSF_INVALID);
-    TEST(end->offset == (Tlsf_Size) allocator->memory_size);
-    TEST(end->size == 0);
+    Tlsf_Node* last = &allocator->nodes[TLSF_LAST_NODE];
+    TEST(last->next == TLSF_INVALID);
+    TEST(last->offset == (Tlsf_Size) allocator->memory_size);
+    TEST(last->size == 0);
+    TEST(last->align_offset == 0);
+    TEST(last->align == 1);
         
     if(flags & TLSF_CHECK_ALL_NODES)
     {
@@ -1129,24 +1264,41 @@ INTERNAL double _tlsf_random_interval(double from, double to)
     return (to - from)*random + from;
 }
 
+typedef struct _Tlsf_Allocator_On_Full_Limits {
+    isize max_memory_size;
+    isize max_node_size;
+} _Tlsf_Allocator_On_Full_Limits;
+
+void _test_tlsf_alloc_stress_on_full(struct Tlsf_Allocator* allocator, isize requested_size, isize* new_memory_size, isize* new_node_memory, uint32_t flags, void* on_full_context)
+{
+    _Tlsf_Allocator_On_Full_Limits* limits = (_Tlsf_Allocator_On_Full_Limits*) on_full_context;
+    if(flags & TLSF_ON_FULL_NEED_MORE_MEMORY)
+    {
+        *new_memory_size = allocator->memory_size*3/2 + requested_size;
+        if(*new_memory_size > limits->max_memory_size) 
+            *new_memory_size = limits->max_memory_size;
+        printf("[TEST]: Tlsf allocator growing memory: %lli -> %lli Bytes\n", (long long) allocator->memory_size, (long long) *new_memory_size);
+    }
+
+    if(flags & TLSF_ON_FULL_NEED_MORE_NODES)
+    {
+        *new_node_memory = allocator->node_capacity*3/2 + sizeof(Tlsf_Node);
+        if(*new_node_memory > limits->max_node_size) 
+            *new_node_memory = limits->max_node_size;
+        printf("[TEST]: Tlsf allocator growing nodes:  %lli -> %lli Nodes\n", (long long) allocator->node_capacity, (long long) *new_node_memory);
+    }
+    
+    if(flags & TLSF_ON_FULL_INVALID_PARAMS)
+    {
+        printf("[TEST]: Tlsf allocator BAD PARAMS\n");
+        TEST(false);
+    }
+}
+
 void test_tlsf_alloc_stress(double seconds, isize at_once)
 {
-    enum {
-        MAX_SIZE_LOG2 = 17, //1/8 MB = 256 KB
-        MAX_ALIGN_LOG2 = 5,
-        MAX_AT_ONCE = 1024,
-    };
-    const double MAX_PERTURBATION = 0.2;
-    
-    ASSERT(at_once < MAX_AT_ONCE);
-    isize memory_size = 256*1024*1024;
+    printf("[TEST]: test_tlsf_alloc_stress(seconds:%lf, at_once:%lli)\n", seconds, (long long) at_once);
 
-    Tlsf_Allocator allocator = {0};
-    isize node_memory_size = (at_once + 2)*sizeof(Tlsf_Node);
-    void* nodes = malloc(node_memory_size);
-    void* memory = malloc(memory_size);
-    tlsf_init(&allocator, memory, memory_size, nodes, node_memory_size);
-    
     typedef struct {
         uint32_t size;
         uint32_t align;
@@ -1154,7 +1306,27 @@ void test_tlsf_alloc_stress(double seconds, isize at_once)
         uint32_t _padding;
         void* ptr;
     } Alloc;
-    Alloc allocs[MAX_AT_ONCE] = {0};
+
+    const isize  MAX_SIZE_LOG2 = 17; //1/8 MB = 256 KB
+    const isize  MAX_ALIGN_LOG2 = 5;
+    const double MAX_PERTURBATION = 0.2;
+    
+    isize memory_size = 256*1024*1024;
+    isize node_memory_size = (at_once + 2)*sizeof(Tlsf_Node);
+
+    void* nodes = malloc(node_memory_size);
+    void* memory = malloc(memory_size);
+    Alloc* allocs = (Alloc*) malloc(at_once*sizeof(Alloc));
+
+    Tlsf_Allocator allocator = {0};
+    TEST(tlsf_init(&allocator, memory, 0, nodes, 2*sizeof(Tlsf_Node)));
+
+    _Tlsf_Allocator_On_Full_Limits limits = {0};
+    limits.max_memory_size = memory_size;
+    limits.max_node_size = node_memory_size/sizeof(Tlsf_Node);
+
+    allocator.on_full = _test_tlsf_alloc_stress_on_full;
+    allocator.on_full_context = &limits;
 
     isize iter = 0;
     for(double start = _tlsf_clock_s(); _tlsf_clock_s() - start < seconds;)
@@ -1164,8 +1336,7 @@ void test_tlsf_alloc_stress(double seconds, isize at_once)
             i = iter;
         else
         {
-            Alloc a = allocs[i];
-            tlsf_free(&allocator, a.ptr);
+            tlsf_free(&allocator, allocs[i].ptr);
             tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
         }
         
@@ -1179,12 +1350,28 @@ void test_tlsf_alloc_stress(double seconds, isize at_once)
         allocs[i].ptr = tlsf_malloc(&allocator, allocs[i].size, allocs[i].align);
         allocs[i].node = tlsf_get_node(&allocator, allocs[i].ptr);
         
-        TEST(allocs[i].ptr == _tlsf_align_forward(allocs[i].ptr, allocs[i].align));
+        TEST((uint64_t) allocs[i].ptr == _tlsf_align_up((uint64_t) allocs[i].ptr, allocs[i].align));
         tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
 
         iter += 1;
     }
+    
+    isize defraged_dist = 0;
+    tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
+    for(Tlsf_Defragment defrag = {0}; tlsf_defragment(&allocator, &defrag);)
+    {
+        if(defrag.old_offset != defrag.new_offset)
+        {
+            defraged_dist += defrag.old_offset - defrag.new_offset;
+            //Or move the memory on GPU or whatever...
+            memmove(defrag.new_offset + allocator.memory, defrag.old_offset + allocator.memory, defrag.size);
+            defrag.commit_move = true;
+        }
+    }
+    tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
+    printf("[TEST]: Tlsf allocator defragmented %lli B:\n", (long long) defraged_dist);
 
+    free(allocs);
     free(nodes);
     free(memory);
 }
@@ -1217,7 +1404,7 @@ void test_tlsf_alloc(double seconds)
     test_tlsf_alloc_stress(seconds/4, 100);
     test_tlsf_alloc_stress(seconds/4, 200);
 
-    printf("[TEST]: test_tlsf(%lf) success!\n", seconds);
+    printf("[TEST]: test_tlsf_alloc(%lf) success!\n", seconds);
 }
 
 //Include the benchmark only when being included alongside the rest of the codebase
