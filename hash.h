@@ -163,6 +163,88 @@ JOT_HASH_API uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed
     return h;
 } 
 
+#define XXHASH64_PRIME_1  0x9E3779B185EBCA87ULL
+#define XXHASH64_PRIME_2  0xC2B2AE3D27D4EB4FULL
+#define XXHASH64_PRIME_3  0x165667B19E3779F9ULL
+#define XXHASH64_PRIME_4  0x85EBCA77C2B2AE63ULL
+#define XXHASH64_PRIME_5  0x27D4EB2F165667C5ULL
+
+static inline uint64_t _xxhash64_rotate_left(uint64_t x, uint8_t bits)
+{
+    return (x << bits) | (x >> (64 - bits));
+}
+
+static inline uint64_t _xxhash64_process_single(uint64_t previous, uint64_t input)
+{
+    return _xxhash64_rotate_left(previous + input * XXHASH64_PRIME_2, 31) * XXHASH64_PRIME_1;
+}
+
+static inline uint64_t xxhash64(const void* input, uint64_t length, uint64_t seed)
+{
+    uint32_t endian_check = 0x33221100;
+    ASSERT(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
+    ASSERT((input == NULL) == (length == 0) && length >= 0);
+
+    uint8_t* data = (uint8_t*) (void*) input;
+    uint8_t* end = data + length;
+    
+    //Bulk computation
+    uint64_t hash = seed + XXHASH64_PRIME_5;
+    if (length >= 32)
+    {
+        uint64_t state[4] = {0};
+        uint64_t block[4] = {0};
+        state[0] = seed + XXHASH64_PRIME_1 + XXHASH64_PRIME_2;
+        state[1] = seed + XXHASH64_PRIME_2;
+        state[2] = seed;
+        state[3] = seed - XXHASH64_PRIME_1;
+        
+        for(; data < end - 31; data += 32)
+        {
+            memcpy(block, data, 32);
+            state[0] = _xxhash64_process_single(state[0], block[0]);
+            state[1] = _xxhash64_process_single(state[1], block[1]);
+            state[2] = _xxhash64_process_single(state[2], block[2]);
+            state[3] = _xxhash64_process_single(state[3], block[3]);
+        }
+
+        hash = _xxhash64_rotate_left(state[0], 1)
+            + _xxhash64_rotate_left(state[1], 7)
+            + _xxhash64_rotate_left(state[2], 12)
+            + _xxhash64_rotate_left(state[3], 18);
+        hash = (hash ^ _xxhash64_process_single(0, state[0])) * XXHASH64_PRIME_1 + XXHASH64_PRIME_4;
+        hash = (hash ^ _xxhash64_process_single(0, state[1])) * XXHASH64_PRIME_1 + XXHASH64_PRIME_4;
+        hash = (hash ^ _xxhash64_process_single(0, state[2])) * XXHASH64_PRIME_1 + XXHASH64_PRIME_4;
+        hash = (hash ^ _xxhash64_process_single(0, state[3])) * XXHASH64_PRIME_1 + XXHASH64_PRIME_4;
+    }
+    hash += length;
+
+    //Consume last <32 Bytes
+    for (; data + 8 <= end; data += 8)
+    {
+        uint64_t read = 0; memcpy(&read, data, sizeof read);
+        hash = _xxhash64_rotate_left(hash ^ _xxhash64_process_single(0, read), 27) * XXHASH64_PRIME_1 + XXHASH64_PRIME_4;
+    }
+
+    if (data + 4 <= end)
+    {
+        uint32_t read = 0; memcpy(&read, data, sizeof read);
+        hash = _xxhash64_rotate_left(hash ^ read * XXHASH64_PRIME_1, 23) * XXHASH64_PRIME_2 + XXHASH64_PRIME_3;
+        data += 4;
+    }
+
+    while (data < end)
+        hash = _xxhash64_rotate_left(hash ^ (*data++) * XXHASH64_PRIME_5, 11) * XXHASH64_PRIME_1;
+        
+    // Avalanche
+    hash ^= hash >> 33;
+    hash *= XXHASH64_PRIME_2;
+    hash ^= hash >> 29;
+    hash *= XXHASH64_PRIME_3;
+    hash ^= hash >> 32;
+    return hash;
+}
+
 JOT_HASH_API uint32_t hash32_fnv_one_at_a_time(const void* key, int64_t size, uint32_t seed)
 {
     // Source: https://github.com/aappleby/smhasher/blob/master/src/Hashes.cpp
@@ -176,5 +258,7 @@ JOT_HASH_API uint32_t hash32_fnv_one_at_a_time(const void* key, int64_t size, ui
     }
     return hash;
 }
+
+
 
 #endif
