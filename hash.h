@@ -2,6 +2,8 @@
 #define JOT_HASH
 
 #include <stdint.h>
+#include <assert.h>
+#include <string.h>
 
 #ifndef JOT_HASH_API
     #define JOT_HASH_API static inline
@@ -65,15 +67,6 @@ JOT_HASH_API uint32_t hash_fold64(uint64_t hash)
 {
     return hash_mix32((uint32_t) hash, (uint32_t)(hash >> 32));
 }
-
-JOT_HASH_API uint32_t hash64_to32(uint64_t value) 
-{
-    return hash_fold64(hash64(value));
-}
-
-#include <stdint.h>
-#include <assert.h>
-#include <string.h>
 
 JOT_HASH_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed)
 {
@@ -161,8 +154,6 @@ JOT_HASH_API uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed
     return hash;
 } 
 
-
-
 #define XXHASH64_PRIME_1  0x9E3779B185EBCA87ULL
 #define XXHASH64_PRIME_2  0xC2B2AE3D27D4EB4FULL
 #define XXHASH64_PRIME_3  0x165667B19E3779F9ULL
@@ -245,7 +236,7 @@ JOT_HASH_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed)
     return hash;
 }
 
-JOT_HASH_API uint32_t hash32_fnv_one_at_a_time(const void* key, int64_t size, uint32_t seed)
+JOT_HASH_API uint32_t hash32_fnv(const void* key, int64_t size, uint32_t seed)
 {
     // Source: https://github.com/aappleby/smhasher/blob/master/src/Hashes.cpp
     assert((key == NULL) == (size == 0) && size >= 0);
@@ -257,6 +248,18 @@ JOT_HASH_API uint32_t hash32_fnv_one_at_a_time(const void* key, int64_t size, ui
         hash ^= data[i];
         hash *= 16777619;
     }
+    return hash;
+}
+
+JOT_HASH_API uint64_t hash64_fnv(const void* key, int64_t size, uint32_t seed)
+{
+    assert((key == NULL) == (size == 0) && size >= 0);
+
+    const uint8_t* data = (const uint8_t*) key;
+    uint64_t hash = seed ^ 0x27D4EB2F165667C5ULL;
+    for(int64_t i = 0; i < size; i++)
+        hash = (hash * 0x100000001b3ULL) ^ (uint64_t) data[i];
+
     return hash;
 }
 

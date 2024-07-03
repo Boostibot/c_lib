@@ -56,7 +56,7 @@ typedef struct Perf_Benchmark {
 //Returns the current time in nanoseconds. The time is relative to an arbitrary point in time, thus only difference of two perf_now() makes sense.
 EXPORT int64_t		perf_now();
 EXPORT int64_t		perf_freq(); //returns the frequency of the perf counter
-EXPORT void			perf_submit(Perf_Counter* counter, int64_t measured);
+EXPORT int64_t		perf_submit(Perf_Counter* counter, int64_t measured);
 EXPORT int64_t		perf_submit_atomic(Perf_Counter* counter, int64_t measured, bool detailed);
 EXPORT Perf_Stats	perf_get_stats(Perf_Counter counter, int64_t batch_size);
 
@@ -132,7 +132,7 @@ static void perf_benchmark_example()
 #define JOT_PERF_HAS_IMPL
 
 	
-	EXPORT void perf_submit(Perf_Counter* counter, int64_t delta)
+	EXPORT int64_t perf_submit(Perf_Counter* counter, int64_t delta)
 	{
 		ASSERT(counter != NULL && delta >= 0 && "invalid Global_Perf_Counter_Running submitted");
 
@@ -151,6 +151,8 @@ static void perf_benchmark_example()
 		counter->sum_of_squared_offset_counters += offset_delta*offset_delta;
 		counter->min_counter = MIN(counter->min_counter, delta);
 		counter->max_counter = MAX(counter->max_counter, delta);
+
+		return runs;
 	}
 	
 	EXPORT int64_t perf_submit_atomic(Perf_Counter* counter, int64_t delta, bool detailed)

@@ -549,7 +549,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         static int dummy_ = 0;
         uint64_t dummy = (uint64_t) &dummy_;
         uint64_t mask = HASH_INDEX_EMPTY | HASH_INDEX_GRAVESTONE;
-        uint64_t restored = (val & ~mask) | (dummy & mask);
+        uint64_t restored = val ^ ((val ^ dummy) & mask);
 
         return (void*) restored;
     }

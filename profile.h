@@ -64,13 +64,13 @@ void main()
 #endif
 
 //Dissables counting of currently active perf counters
-//#define PROFILE_NO_DEBUG
+#define PROFILE_NO_DEBUG
 
 //Locally enables perf counters (can be toggled just like ASSERT macros)
 #define DO_PERF_COUNTERS
 
 //Makes all counters detailed. This is the default.
-#define PROFILE_DO_ONLY_DETAILED_COUNTERS
+//#define PROFILE_DO_ONLY_DETAILED_COUNTERS
 
 //typedef void (*Global_Perf_Counter_User_Format_Func)(const Global_Perf_Counter* counter, String_Builder* into);
 
@@ -138,18 +138,18 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 #endif
 
 // ========= MACRO IMPLMENTATION ==========
-	#define _IF_NOT_PERF_START_DO_PERF_COUNTERS(name, ...) Global_Perf_Counter_Running name = {0}
+	#define _IF_NOT_PERF_START_DO_PERF_COUNTERS(name, ...) 
 	#define _IF_NOT_PERF_START_(name, ...) \
 		ATTRIBUTE_ALIGNED(64) static Global_Perf_Counter _##name = {0}; \
 		Global_Perf_Counter_Running _run##name = global_perf_counter_start(&_##name, __LINE__, __FILE__, __FUNCTION__, #name); 
 
-	#define _IF_NOT_PERF_END_DO_PERF_COUNTERS(name, ...) (void) (_run##name)
+	#define _IF_NOT_PERF_END_DO_PERF_COUNTERS(name, ...) 
 	#define _IF_NOT_PERF_END_(name, ...) global_perf_counter_end(&(_run##name))
 	
-	#define _IF_NOT_PERF_END_DETAILED_DO_PERF_COUNTERS(name, ...) (void) (_run##name)
+	#define _IF_NOT_PERF_END_DETAILED_DO_PERF_COUNTERS(name, ...) 
 	#define _IF_NOT_PERF_END_DETAILED_(name, ...) global_perf_counter_end_detailed(&(_run##name))
 
-	#define _IF_NOT_PERF_END_DISCARD_DO_PERF_COUNTERS(name, ...) (void) (_run##name)
+	#define _IF_NOT_PERF_END_DISCARD_DO_PERF_COUNTERS(name, ...) 
 	#define _IF_NOT_PERF_END_DISCARD_(name, ...) global_perf_counter_end_discard(&(_run##name))
 
 	#define PP_ID(x)                x
@@ -189,7 +189,8 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 	{
 		Global_Perf_Counter* counter = running->my_counter;
 		int64_t delta = perf_now() - running->running;
-		i64 runs = perf_submit_atomic(&counter->counter, delta, is_detailed);
+		//i64 runs = perf_submit_atomic(&counter->counter, delta, is_detailed);
+		i64 runs = perf_submit(&counter->counter, delta);
 		ASSERT(running->stopped == false, "Global_Perf_Counter_Running running counter stopped more than once!");
 
 		//only save the stats that dont need to be updated on the first run
@@ -228,8 +229,9 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 
 	EXPORT void global_perf_counter_end_discard(Global_Perf_Counter_Running* running)
 	{
-		Global_Perf_Counter* counter = running->my_counter;
+		(void) running;
 		#if !defined(PROFILE_NO_DEBUG)
+			Global_Perf_Counter* counter = running->my_counter;
 			platform_atomic_sub32(&perf_counters_running_count, 1);
 			platform_atomic_sub32(&counter->concurrent_running_counters, 1);
 			ASSERT(perf_counters_running_count >= 0 && counter->concurrent_running_counters >= 0);

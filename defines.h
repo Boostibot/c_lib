@@ -61,6 +61,10 @@ typedef struct Source_Info {
 
 #define STATIC_ARRAY_SIZE(array) (isize) (sizeof(array) / sizeof((array)[0]))
 
+//MIN and MAX of types
+#define IS_SIGNED(T)		((T) ~(T) 0 < 0) 
+#define MAX_OF(T)			((T) (0xFFFFFFFFFFFFFFFFULL >> (64 - sizeof(T)*8 + IS_SIGNED(T))))
+#define MIN_OF(T)			((T) (-IS_SIGNED(T)*((0x7FFFFFFFFFFFFFFFULL >> (64-sizeof(T)*8)) + 1)))
 
 //=========================================
 // Attributes

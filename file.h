@@ -138,7 +138,7 @@ EXPORT bool file_read_entire_append_into(String file_path, String_Builder* appen
     if(error != 0)
     {
         builder_resize(append_into, append_into->size);
-        LOG_ERROR("file.h", "error writing file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
+        LOG_ERROR("file.h", "error reading file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
     }
 
     platform_file_close(&file);
@@ -153,7 +153,7 @@ EXPORT bool file_read_entire(String file_path, String_Builder* data)
 EXPORT bool file_append_entire(String file_path, String data)
 {
     Platform_File file = {0};
-    Platform_Error error = platform_file_open(&file, file_path, PLATFORM_FILE_MODE_APPEND);
+    Platform_Error error = platform_file_open(&file, file_path, PLATFORM_FILE_MODE_APPEND | PLATFORM_FILE_MODE_CREATE);
     
     if(error == 0)
     {
@@ -169,7 +169,7 @@ EXPORT bool file_append_entire(String file_path, String data)
 EXPORT bool file_write_entire(String file_path, String data)
 {
     Platform_File file = {0};
-    Platform_Error error = platform_file_open(&file, file_path, PLATFORM_FILE_MODE_WRITE);
+    Platform_Error error = platform_file_open(&file, file_path, PLATFORM_FILE_MODE_WRITE | PLATFORM_FILE_MODE_CREATE);
     
     if(error == 0)
         error = platform_file_write(&file, data.data, data.size);

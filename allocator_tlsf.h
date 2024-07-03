@@ -1,8 +1,5 @@
-#define JOT_ALL_IMPL
-#define JOT_ALL_TEST
-
-#ifndef JOT_TLSFATOR
-#define JOT_TLSFATOR
+#ifndef JOT_ALLOCATOR_TLSF
+#define JOT_ALLOCATOR_TLSF
 
 // An implementation of TLSF style allocator.
 // See https://ieeexplore.ieee.org/document/528746/ [T. Ogasawara, "An algorithm with constant execution time for dynamic storage allocation,"] for a paper introducing this type of allocator.
@@ -170,11 +167,11 @@
 //   The other kind is _tlsf_check_[thing]_invariants() which is a simple wrapper around the test variant. 
 //   This wrapper is used internally upon entry/exit of each function and gets turned into a noop in release builds.
 
+#include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
 #if !defined(JOT_ALLOCATOR) && !defined(JOT_COUPLED)
-    #include <stdint.h>
-    #include <string.h>
     #include <assert.h>
-    #include <stdbool.h>
     #include <stdlib.h>
     
     #define EXPORT
@@ -329,8 +326,8 @@ EXPORT bool tlsf_defragment(Tlsf_Allocator* allocator, Tlsf_Defragment* defrag);
 #endif
 
 //=========================  IMPLEMENTATION BELOW ==================================================
-#if (defined(JOT_ALL_IMPL) || defined(JOT_TLSFATOR_IMPL)) && !defined(JOT_TLSFATOR_HAS_IMPL)
-#define JOT_TLSFATOR_IMPL
+#if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_TLSF_IMPL)) && !defined(JOT_ALLOCATOR_TLSF_HAS_IMPL)
+#define JOT_ALLOCATOR_TLSF_IMPL
 
 #if defined(_MSC_VER)
     #include <intrin.h>
@@ -1185,8 +1182,8 @@ INTERNAL void _tlsf_check_invariants(Tlsf_Allocator* allocator)
 
 #endif
 
-#if (defined(JOT_ALL_TEST) || defined(JOT_TLSFATOR_TEST)) && !defined(JOT_TLSFATOR_HAS_TEST)
-#define JOT_TLSFATOR_HAS_TEST
+#if (defined(JOT_ALL_TEST) || defined(JOT_ALLOCATOR_TLSF_TEST)) && !defined(JOT_ALLOCATOR_TLSF_HAS_TEST)
+#define JOT_ALLOCATOR_TLSF_HAS_TEST
 
 #ifndef STATIC_ARRAY_SIZE
     #define STATIC_ARRAY_SIZE(arr) (isize)(sizeof(arr)/sizeof((arr)[0]))
