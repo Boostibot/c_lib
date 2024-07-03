@@ -63,12 +63,12 @@ typedef struct SLZ4_Decompress_State {
 
 //Compresses the given input into output. Returns the compressed output size or negative values from SLZ4_Status. 
 // Uses the provided state_or_null or default values when null. 
-// If output is NULL and output_size is 0 does a 'dry' run: goes through the entire procedure without writing anything and returns the needed *capacity* for the output.
+// If output is NULL and output_size is 0 does a 'dry' run: goes through the entire procedure without writing anything and returns the needed *capacity* (=/= size) for the output.
 SLZ4_EXPORT int slz4_compress(void* output, int output_size, const void* input, int input_size, SLZ4_Compress_State* state_or_null);
 
 //Decompresses the given input into output. Returns the compressed output size or negative values from SLZ4_Status. 
 // Uses the provided state_or_null to provide extended error information when not null.
-// If output is NULL and output_size is 0 does a 'dry' run: goes through the entire procedure without writing anything and returns the needed *capacity* for the output.
+// If output is NULL and output_size is 0 does a 'dry' run: goes through the entire procedure without writing anything and returns the needed *capacity* (= size) for the output.
 SLZ4_EXPORT int slz4_decompress(void* output, int output_size, const void* input, int input_size, SLZ4_Decompress_State* state_or_null);
 
 //Same as slz4_compress except the output is placed into returned malloced memory. Does not fail unless malloc fails.
