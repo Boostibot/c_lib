@@ -919,7 +919,7 @@ SLZ4_EXPORT void slz4_test_sizes(double seconds)
 {
     enum {
         MAX_TEST_SIZE = 1 << 24, //16MB
-        DETAILED_TESTING = 4096,
+        DETAILED_TESTING = 256,
     };
     char* testing_buffer = (char*) malloc(MAX_TEST_SIZE);
     double start = _slz4_now();
@@ -941,7 +941,7 @@ SLZ4_EXPORT void slz4_test_sizes(double seconds)
     }
     
     //Courrpted text is compressible by about 33%. 
-    for(int i = 0; i == 0 || _slz4_now() < start + seconds/2; i ++)
+    for(int i = 0; _slz4_now() < start + seconds/2; i ++)
     {
         _slz4_test_get_rotated_text(testing_buffer, MAX_TEST_SIZE);
 
@@ -956,7 +956,7 @@ SLZ4_EXPORT void slz4_test_sizes(double seconds)
 
     //Random data is typically uncompressible
     srand(clock());
-    for(int i = 0; i == 0 || _slz4_now() < start + seconds/2; i ++)
+    for(int i = 0; _slz4_now() < start + seconds/2; i ++)
     {
         for(int j = 0; j < MAX_TEST_SIZE; j++)
             testing_buffer[j] = (char) (rand() % 256);

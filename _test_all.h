@@ -1,11 +1,15 @@
 #ifndef JOT_TEST_ALL_H
 #define JOT_TEST_ALL_H
 
-#define JOT_ALL_TEST
-
 #if defined(TEST_RUNNER)
 #define JOT_ALL_IMPL
 #endif
+
+#define JOT_ALL_TEST
+#include "list.h"
+#include "path.h"
+#include "allocator_tlsf.h"
+#include "slz4.h"
 
 #include "_test_string.h"
 #include "_test_random.h"
@@ -14,8 +18,6 @@
 #include "_test_hash_index.h"
 #include "_test_log.h"
 #include "_test_math.h"
-#include "path.h"
-#include "list.h"
 #include "_test_stable_array.h"
 #include "_test_lpf.h"
 #include "_test_image.h"
@@ -30,7 +32,6 @@ INTERNAL void test_all(f64 total_time)
 
     #define INCR total_count += 1, passed_count += (int)
     
-    INCR RUN_TEST_TIMED(test_string, total_time/4);
     INCR RUN_TEST(test_arena);
     INCR RUN_TEST(platform_test_all);
     INCR RUN_TEST(test_list);
@@ -41,10 +42,12 @@ INTERNAL void test_all(f64 total_time)
     //INCR RUN_TEST(test_random);
     INCR RUN_TEST(test_path);
 
-    INCR RUN_TEST_TIMED(test_hash_index, total_time/4);
-    INCR RUN_TEST_TIMED(test_array, total_time/4);
-    INCR RUN_TEST_TIMED(test_math, total_time/4);
-    
+    INCR RUN_TEST_TIMED(test_hash_index, total_time/6);
+    INCR RUN_TEST_TIMED(test_array, total_time/6);
+    INCR RUN_TEST_TIMED(test_math, total_time/6);
+    INCR RUN_TEST_TIMED(test_string, total_time/6);
+    INCR RUN_TEST_TIMED(test_allocator_tlsf, total_time/6);
+    INCR RUN_TEST_TIMED(slz4_test, total_time/6);
     
     #undef INCR
 

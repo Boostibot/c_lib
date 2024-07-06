@@ -1329,11 +1329,9 @@ void _platform_file_watch_function(void* _context)
         }
     }
 
-    EnterCriticalSection(&context->mutex);
     context->thread = INVALID_HANDLE_VALUE;
     _platform_file_watch_context_deinit(context);
     free(context);
-    LeaveCriticalSection(&context->mutex);
 }
 
 Platform_Error platform_file_unwatch(Platform_File_Watch* file_watch_or_null)
@@ -1402,6 +1400,9 @@ Platform_Error platform_file_watch(Platform_File_Watch* file_watch_or_null, Plat
         goto fail;
         
     context_alloced = (_Platform_File_Watch_Context*) malloc(sizeof *context_alloced);
+    if(context_alloced == NULL)
+        goto fail;
+
     success = ReadDirectoryChangesW(
         context.directory, context.buffer, (DWORD) context.buffer_size, 
         context.win_watch_subdir, context.win_flags, NULL, &context.overlapped, NULL);
@@ -1450,11 +1451,18 @@ bool platform_file_watch_poll(Platform_File_Watch file_watch, Platform_File_Watc
     _Platform_File_Watch_Context* context = (_Platform_File_Watch_Context*) file_watch.handle;
     if(context)
     {
+        //Atomic to not have to enter and leave critical section when its not needed.
         int32_t changes = platform_atomic_load32(&context->changes);
         if(changes != 0)
         {
+            //... okay some changes *probably* occured
             EnterCriticalSection(&context->mutex);
-            if((changes & _FILE_WATCH_CHANGE_CALL) && (changes & _FILE_WATCH_CHANGE_HAS_BUFFER) == 0)
+
+            //If there were change calls (ie we got a notification from the OS something changed)
+            // but we havent yet polled the OS buffer
+            //  - poll the buffer 
+            //  - set the context->changes to signal we have polled the buffer
+            if((context->changes & _FILE_WATCH_CHANGE_CALL) && (context->changes & _FILE_WATCH_CHANGE_HAS_BUFFER) == 0)
             {
                 DWORD bytes_transferred = 0;
                 GetOverlappedResult(context->directory, &context->overlapped, &bytes_transferred, FALSE);
@@ -1464,6 +1472,8 @@ bool platform_file_watch_poll(Platform_File_Watch file_watch, Platform_File_Watc
                 context->changes = _FILE_WATCH_CHANGE_HAS_BUFFER;
             }
 
+            //Iterate changes until we find a change that matches the user selection
+            // + handle the rename events which are split between two calls
             int32_t modification = 0;
             while((context->changes & _FILE_WATCH_CHANGE_HAS_BUFFER) && modification == 0)
             {
@@ -1490,11 +1500,13 @@ bool platform_file_watch_poll(Platform_File_Watch file_watch, Platform_File_Watc
                     else
                         _convert_to_utf8_normalize_path(&context->change_path, event->FileName, path_len, 0);
 
-                    //Prepare next entry
                     if (event->NextEntryOffset) {
+                        //If there is next entry iterate to it
                         context->buffer_offset += event->NextEntryOffset;
                         context->changes |= _FILE_WATCH_CHANGE_HAS_BUFFER;
-                    } else {
+                    } 
+                    else {
+                        //Else queue more changes
                         context->changes &= ~_FILE_WATCH_CHANGE_HAS_BUFFER;
 
                         BOOL success = ReadDirectoryChangesW(
@@ -1506,8 +1518,7 @@ bool platform_file_watch_poll(Platform_File_Watch file_watch, Platform_File_Watc
                     }
                 } while(event->Action == FILE_ACTION_RENAMED_OLD_NAME && event->NextEntryOffset);
 
-
-                //If the flags dont align with what the user asked for iterate again
+                //If the flags dont match what the user asked for iterate again
                 modification = modification & context->flags;
             }
 

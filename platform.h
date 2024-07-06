@@ -451,18 +451,18 @@ typedef struct Platform_File_Watch_Event {
 } Platform_File_Watch_Event;
 
 //Creates a watch of changes on a directory or a single file. These changes can be polled with platform_file_watch_poll. 
-//Returns Platform_Error indicating wheter the operation was successfull. 
+//Returns Platform_Error indicating whether the operation was successful. 
 //file_watch_flags is a bitwise combination of members of Platform_File_Watch_Flag specifying which events we to be reported.
 // 
 //If file file_watch is not null, saves this watch to the given pointer.
-//If signal_func_or_null is not null, calls it immediately after a change has occured. This can be used to give some more general signals about which watches have events.
+//If signal_func_or_null is not null, calls it immediately after a change has occurred. This can be used to give some more general signals about which watches have events.
 //
 //Note that the directory in which the watched file resides (or the watched directory itself) must exist else returns error.
 Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_String file_path, int32_t file_watch_flags, void (*signal_func_or_null)(Platform_File_Watch watch, void* context), void* context);
 //Deinits a given watch represented by file_watch_or_null. 
 Platform_Error platform_file_unwatch(Platform_File_Watch* file_watch);
 //Polls watch events from the given file watch. 
-//Returns true if event was polled and false if there are no events in the qeuue.
+//Returns true if event was polled and false if there are no events in the queue.
 //Note that once event is polled it is removed from the queue.
 //Note that this functions is implemented efficiently and in case of no events is practically free.
 bool platform_file_watch_poll(Platform_File_Watch file_watch, Platform_File_Watch_Event* event);
