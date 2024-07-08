@@ -11,8 +11,8 @@ static void test_lpf_entry_full(Lpf_Entry* entry, Lpf_Kind kind, const char* lab
         TEST(entry->line == line);
     if(indentation != -1)
         TEST(entry->indentation == indentation);
-    TEST(string_is_equal(entry->label, string_make(label)));
-    TEST(string_is_equal(entry->value, string_make(value)));
+    TEST(string_is_equal(entry->label, string_of(label)));
+    TEST(string_is_equal(entry->value, string_of(value)));
 }
 
 static void test_lpf_entry(Lpf_Entry* entry, Lpf_Kind kind, const char* label, const char* value)

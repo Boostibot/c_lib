@@ -22,10 +22,10 @@ INTERNAL void test_log()
         LOG_INFO("TEST_LOG2", "hello");
 
         TEST(log_list.size == 2);
-        TEST(string_is_equal(string_make(log_list.first->module), STRING("TEST_LOG1")));
+        TEST(string_is_equal(string_of(log_list.first->module), STRING("TEST_LOG1")));
         TEST(string_is_equal(log_list.first->message, STRING("25")));
 
-        TEST(string_is_equal(string_make(log_list.first->next->module), STRING("TEST_LOG2")));
+        TEST(string_is_equal(string_of(log_list.first->next->module), STRING("TEST_LOG2")));
         TEST(string_is_equal(log_list.first->next->message, STRING("hello")));
 
         {

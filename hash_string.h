@@ -50,7 +50,7 @@ EXPORT Hash_String hash_string_make(String string)
 
 EXPORT Hash_String hash_string_from_cstring(const char* cstr)
 {
-    return hash_string_make(string_make(cstr));
+    return hash_string_make(string_of(cstr));
 }
 
 EXPORT u64 hash_string(String string)

@@ -392,7 +392,7 @@ EXPORT Path path_parse(String path)
 
 EXPORT Path path_parse_cstring(const char* path)
 {
-    return path_parse(string_make(path));
+    return path_parse(string_of(path));
 }
 
 EXPORT String path_get_prefix(Path path)
@@ -997,7 +997,7 @@ EXPORT Path path_get_current_working_directory()
         if(last.allocator == NULL)
             builder_init(&last, allocator_get_static());
 
-        String cwd_string = string_make(cwd);
+        String cwd_string = string_of(cwd);
         builder_assign(&last, cwd_string);
         path_builder_assign(&cached, path_parse(cwd_string), 0);
     }
@@ -1055,7 +1055,7 @@ enum {
 
 void test_single_path(const char* path, const char* prefix, const char* root, const char* directories, const char* filename, const char* extension, int flags)
 {
-    String _path = string_make(path);
+    String _path = string_of(path);
     Path parsed = path_parse(_path);
     String _prefix = path_get_prefix(parsed);
     String _root = path_get_root(parsed);
@@ -1063,11 +1063,11 @@ void test_single_path(const char* path, const char* prefix, const char* root, co
     String _filename = path_get_filename(parsed);
     String _extension = path_get_extension(parsed);
     
-    TEST_STRING_EQ(_prefix, string_make(prefix));
-    TEST_STRING_EQ(_root, string_make(root));
-    TEST_STRING_EQ(_directories, string_make(directories));
-    TEST_STRING_EQ(_filename, string_make(filename));
-    TEST_STRING_EQ(_extension, string_make(extension));
+    TEST_STRING_EQ(_prefix, string_of(prefix));
+    TEST_STRING_EQ(_root, string_of(root));
+    TEST_STRING_EQ(_directories, string_of(directories));
+    TEST_STRING_EQ(_filename, string_of(filename));
+    TEST_STRING_EQ(_extension, string_of(extension));
 
     TEST(parsed.info.is_absolute == ((flags & TEST_PATH_IS_ABSOLUTE) > 0));
     TEST(parsed.info.is_directory == ((flags & TEST_PATH_IS_DIR) > 0));
@@ -1080,8 +1080,8 @@ void test_path_normalize(int flags, const char* cpath, const char* cexpected)
     for(isize i = 0; i < ARRAY_SIZE(prefixes); i++)
     {
         Arena_Frame arena = scratch_arena_acquire();
-        String_Builder prefixed_path = string_concat(&arena.allocator, string_make(prefixes[i]), string_make(cpath));
-        String_Builder prefixed_expected = string_concat(&arena.allocator, string_make(prefixes[i]), string_make(cexpected));
+        String_Builder prefixed_path = string_concat(&arena.allocator, string_of(prefixes[i]), string_of(cpath));
+        String_Builder prefixed_expected = string_concat(&arena.allocator, string_of(prefixes[i]), string_of(cexpected));
 
         Path path = path_parse(prefixed_path.string);
         Path expected = path_parse(prefixed_expected.string);
@@ -1100,8 +1100,8 @@ void test_canonicalize_with_roots_and_prefixes(int flags, const char* cabs_path,
     for(isize i = 0; i < ARRAY_SIZE(roots); i++)
     {
         Arena_Frame arena = scratch_arena_acquire();
-        String_Builder prefixed_path = string_concat(&arena.allocator, string_make(roots[i]), string_make(cabs_path));
-        String_Builder prefixed_expected = string_concat(&arena.allocator, string_make(norm_roots[i]), string_make(cexpected));
+        String_Builder prefixed_path = string_concat(&arena.allocator, string_of(roots[i]), string_of(cabs_path));
+        String_Builder prefixed_expected = string_concat(&arena.allocator, string_of(norm_roots[i]), string_of(cexpected));
 
         test_path_normalize(flags, prefixed_path.data, prefixed_expected.data);
         arena_frame_release(&arena);
@@ -1120,9 +1120,9 @@ void test_path_make_relative_absolute_with_prefixes(int flags, const char* crela
     {
         Arena_Frame arena = scratch_arena_acquire();
 
-        String_Builder prefixed_relative = string_concat(&arena.allocator, string_make(prefixes[i]), string_make(crelative));
-        String_Builder prefixed_path = string_concat(&arena.allocator, string_make(prefixes[i]), string_make(cpath));
-        String_Builder prefixed_expected = string_concat(&arena.allocator, string_make(prefixes[i]), string_make(cexpected));
+        String_Builder prefixed_relative = string_concat(&arena.allocator, string_of(prefixes[i]), string_of(crelative));
+        String_Builder prefixed_path = string_concat(&arena.allocator, string_of(prefixes[i]), string_of(cpath));
+        String_Builder prefixed_expected = string_concat(&arena.allocator, string_of(prefixes[i]), string_of(cexpected));
 
         Path relative = path_parse(prefixed_relative.string);
         Path path = path_parse(prefixed_path.string);
@@ -1146,8 +1146,8 @@ void test_path_strip_first(const char* path, const char* expected_head, const ch
     Path head = {0};
     Path tail = path_strip_first_segment(path_parse_cstring(path), &head);
 
-    TEST_STRING_EQ(head.string, string_make(expected_head));
-    TEST_STRING_EQ(tail.string, string_make(expected_tail));
+    TEST_STRING_EQ(head.string, string_of(expected_head));
+    TEST_STRING_EQ(tail.string, string_of(expected_tail));
 }
 
 void test_path_strip_last(const char* path, const char* expected_head, const char* expected_tail)
@@ -1155,8 +1155,8 @@ void test_path_strip_last(const char* path, const char* expected_head, const cha
     Path tail = {0};
     Path head = path_strip_last_segment(path_parse_cstring(path), &tail.string);
 
-    TEST_STRING_EQ(head.string, string_make(expected_head));
-    TEST_STRING_EQ(tail.string, string_make(expected_tail));
+    TEST_STRING_EQ(head.string, string_of(expected_head));
+    TEST_STRING_EQ(tail.string, string_of(expected_tail));
 }
 
 void test_path()

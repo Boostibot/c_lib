@@ -19,35 +19,18 @@ typedef struct String_Builder {
             char* data;
             isize size;
         };
-
         String string;
     };
 } String_Builder;
 
-typedef Array(String) String_Array;
+typedef Array(String)         String_Array;
 typedef Array(String_Builder) String_Builder_Array;
 
 //Constructs a String out of a string literal
 #define STRING(cstring) BRACE_INIT(String){cstring "", sizeof(cstring) - 1}
 
-//if the string is valid -> returns it
-//if the string is NULL  -> returns ""
-EXPORT const char*      cstring_escape(const char* string);
-//if string is NULL returns 0 else strlen(string)
-EXPORT isize safe_strlen(const char* string, isize max_size_or_minus_one);
-
-//Tiles pattern_size bytes long pattern across field of field_size bytes. 
-//The first occurance of pattern is placed at the very start of field and subsequent repetions
-//follow. 
-//If the field_size % pattern_size != 0 the last repetition of pattern is trimmed.
-//If pattern_size == 0 field is filled with zeros instead.
-EXPORT void memset_pattern(void *field, isize field_size, const void* pattern, isize pattern_size);
-
-#define _string_make_internal(string, size, ...) (BRACE_INIT(String){(string), (size)})
-//Makes a string. Either call like string_make("hello world") in which case strlen of the passed in string is used or 
-// string_make(my_data, my_size) in which case the passed in 'my_size' size is used
-#define string_make(string, ...) _string_make_internal((string), ##__VA_ARGS__, (isize) strlen(string)) 
-
+EXPORT String string_of(const char* str); //Constructs a string from null terminated str
+EXPORT String string_make(const char* data, isize size); //Constructs a string
 EXPORT String string_head(String string, isize to); //keeps only characters to to ( [0, to) interval )
 EXPORT String string_tail(String string, isize from); //keeps only characters from from ( [from, string.size) interval )
 EXPORT String string_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
@@ -77,8 +60,6 @@ EXPORT String_Builder builder_from_string(Allocator* allocator, String string); 
 EXPORT String_Builder string_concat(Allocator* allocator, String a, String b);
 EXPORT String_Builder string_concat3(Allocator* allocator, String a, String b, String c);
 
-EXPORT String_Builder* string_ephemeral_select(String_Builder* ephemerals, isize* slot, isize slot_count, isize min_size, isize max_size, isize reset_every);
-
 EXPORT void builder_init(String_Builder* builder, Allocator* alloc);
 EXPORT void builder_init_with_capacity(String_Builder* builder, Allocator* alloc, isize capacity_or_zero);
 EXPORT void builder_deinit(String_Builder* builder);             
@@ -99,20 +80,35 @@ EXPORT void builder_array_deinit(String_Builder_Array* array);
 //So string_replace(..., "Hello world", "lw", ".\0") -> "He..o or.d"
 EXPORT String_Builder string_replace(Allocator* allocator, String source, String to_replace, String replace_with);
 
+//Tiles pattern_size bytes long pattern across field of field_size bytes. 
+//The first occurance of pattern is placed at the very start of field and subsequent repetitions follow. 
+//If the field_size % pattern_size != 0 the last repetition of pattern is trimmed.
+//If pattern_size == 0 field is filled with zeros instead.
+EXPORT void memset_pattern(void *field, isize field_size, const void* pattern, isize pattern_size);
+
 EXPORT bool char_is_space(char c);
 EXPORT bool char_is_digit(char c);
 EXPORT bool char_is_lowercase(char c);
 EXPORT bool char_is_uppercase(char c);
 EXPORT bool char_is_alphabetic(char c);
 EXPORT bool char_is_id(char c);
-
-
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_STRING_IMPL)) && !defined(JOT_STRING_HAS_IMPL)
 #define JOT_STRING_HAS_IMPL
-
     #include <string.h>
+    
+    EXPORT String string_of(const char* str)
+    {
+        return string_make(str, str == NULL ? 0 : strlen(str));
+    }
+
+    EXPORT String string_make(const char* data, isize size)
+    {
+        String string = {data, size};
+        return string;
+    }
+
     EXPORT String string_head(String string, isize to)
     {
         CHECK_BOUNDS(to, string.size + 1);
@@ -336,23 +332,6 @@ EXPORT bool char_is_id(char c);
         builder_append(&out, c);
         return out;
     }
-    
-    EXPORT String_Builder* string_ephemeral_select(String_Builder* ephemerals, isize* slot, isize slot_count, isize min_size, isize max_size, isize reset_every)
-    {
-        String_Builder* curr = &ephemerals[*slot % slot_count];
-        
-        //We periodacally shrink the strinks so that we can use this
-        //function regulary for small and big strings without fearing that we will
-        //use too much memory
-        if(*slot % reset_every < slot_count)
-        {
-            if(curr->capacity == 0 || curr->capacity > max_size)
-                builder_init_with_capacity(curr, allocator_get_static(), min_size);
-        }
-        
-        *slot += 1;
-        return curr;
-    }
 
     EXPORT void string_deallocate(Allocator* alloc, String* string)
     {
@@ -360,30 +339,6 @@ EXPORT bool char_is_id(char c);
             allocator_deallocate(alloc, (void*) string->data, string->size + 1, 1);
         String nil = {0};
         *string = nil;
-    }
-
-    EXPORT const char* cstring_escape(const char* string)
-    {
-        if(string == NULL)
-            return "";
-        else
-            return string;
-    }
-
-    EXPORT isize safe_strlen(const char* string, isize max_size_or_minus_one)
-    {
-        if(string == NULL)
-            return 0;
-        if(max_size_or_minus_one < 0)
-            max_size_or_minus_one = INT64_MAX;
-
-        String max_string = {string, max_size_or_minus_one};
-        return string_find_first_char(max_string, '\0', 0);
-    }
-    
-    EXPORT const char* cstring_from_builder(String_Builder builder)
-    {
-        return cstring_escape(builder.data);
     }
 
     char _builder_null_termination[4] = {0};
@@ -577,7 +532,7 @@ EXPORT bool char_is_id(char c);
 
     EXPORT String_Builder builder_from_cstring(Allocator* allocator, const char* cstring)
     {
-        return builder_from_string(allocator, string_make(cstring));
+        return builder_from_string(allocator, string_of(cstring));
     }
 
     EXPORT bool builder_is_equal(String_Builder a, String_Builder b)

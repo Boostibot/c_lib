@@ -44,8 +44,8 @@ static void test_memset_pattern()
 
 static void test_string_find_single(const char* in_string_c, const char* search_for_c)
 {
-    String in_string = string_make(in_string_c);
-    String search_for = string_make(search_for_c);
+    String in_string = string_of(in_string_c);
+    String search_for = string_of(search_for_c);
 
     for(isize from_i = 0; from_i <= in_string.size; from_i++)
     {

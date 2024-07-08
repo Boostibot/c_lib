@@ -234,13 +234,13 @@ EXPORT Lpf_Entry* serialize_locate_any(Lpf_Entry* into, Lpf_Kind create_kind, Lp
 
 EXPORT Lpf_Entry* serialize_locate(Lpf_Entry* into, const char* label, Read_Or_Write action)
 {
-    return serialize_locate_any(into, LPF_ENTRY, (Lpf_Kind) (-1), string_make(label), action);
+    return serialize_locate_any(into, LPF_ENTRY, (Lpf_Kind) (-1), string_of(label), action);
 }
 
 EXPORT Lpf_Entry* lpf_dyn_entry_add(Lpf_Entry* into, Lpf_Kind kind, const char* label)
 {
     Lpf_Entry entry = {kind};
-    entry.label = string_make(label);
+    entry.label = string_of(label);
     Lpf_Entry* created = lpf_entry_push_child(NULL, into, entry);
     return created;
 }

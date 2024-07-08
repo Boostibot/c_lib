@@ -115,8 +115,8 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
     for(const Log* it = log; it != NULL; it = it->next)
     {
         const isize module_field_size = 8;
-        String module = string_make(it->module);
-        //String subject = string_make(it->subject);
+        String module = string_of(it->module);
+        //String subject = string_of(it->subject);
 
         isize size_before = append_to->size;
         String group_separator = STRING("    ");
@@ -279,7 +279,7 @@ EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* alloc, isize
 
 EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, const char* folder)
 {
-    file_logger_init_custom(logger, def_alloc, PAGE_BYTES, 2.0 / 1000, string_make(folder), STRING(""), STRING(".txt"));
+    file_logger_init_custom(logger, def_alloc, PAGE_BYTES, 2.0 / 1000, string_of(folder), STRING(""), STRING(".txt"));
 }
 
 EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, const char* folder)
