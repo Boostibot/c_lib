@@ -169,7 +169,7 @@ static void unicode_example_checks()
     //Calculates the needed size for the converted string. Stops at first error.
     utf8_len = unicode_utf16_to_utf8(NULL, 0, (const utf16_t*) utf16, utf16_len, &reading_finished_at, UNICODE_ERROR);
 
-    //Check wheter or not we have parsed the entire string
+    //Check whether or not we have parsed the entire string
     if(reading_finished_at != utf16_len)
     {
         printf("Error the string contains malformed utf16!");

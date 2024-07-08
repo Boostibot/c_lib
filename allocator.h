@@ -4,32 +4,32 @@
 // This module introduces a framework for dealing with memory and allocation used by every other system.
 // It makes very little assumptions about the use case making it very portable to other projects.
 //
-// Since memory allocation is such a prevelent problem we try to maximize profiling and locality. 
+// Since memory allocation is such a prevalent problem we try to maximize profiling and locality. 
 // 
 // We do this firstly by introducing a concept of Allocator. Allocators are structs that know how to allocate with the 
 // advantage over malloc that they can be local and distinct for distinct tasks. This makes them faster and safer then malloc
-// because we can localy see when something goes wrong. They can also be composed where allocators get their 
+// because we can locally see when something goes wrong. They can also be composed where allocators get their 
 // memory from allocators above them (their 'parents'). This is especially useful for hierarchical resource management. 
 // 
 // By using a hierarchies we can guarantee that all memory will get freed by simply freeing the highest allocator. 
-// This will work even if the lower allocators/systems leak, unlike malloc or other global alloctator systems where every 
+// This will work even if the lower allocators/systems leak, unlike malloc or other global allocator systems where every 
 // level has to be perfect.
 // 
 // that for example logs all allocations and checks their correctness.
 //
 // We also keep two global allocator pointers. These are called 'default' and 'scratch' allocators. Each system requiring memory
 // should use one of these two allocators for initialization (and then continue using that saved off pointer). 
-// By convention scratch allocator is used for "internal" allocation and default allocator is used for comunicating with the outside world.
-// Given a function that does some useful compuatation and returns an allocated reuslt it typically uses a fast scratch allocator internally
+// By convention scratch allocator is used for "internal" allocation and default allocator is used for communicating with the outside world.
+// Given a function that does some useful computation and returns an allocated result it typically uses a fast scratch allocator internally
 // and only allocates using the default allocator the returned result.
 //
 // This convention ensures that all allocation is predictable and fast (scratch allocators are most often stack allocators that 
 // are perfectly suited for fast allocation - deallocation pairs). This approach also stacks. In each function we can simply upon entry
-// instal the scratch allocator as the default allocator so that all internal functions will also comunicate to us using the fast scratch 
+// install the scratch allocator as the default allocator so that all internal functions will also communicate to us using the fast scratch 
 // allocator.
 
 // @TODO: Get rid of default and scratch allocator since we need explicitness! If a function needs a general allocator for its internal use thats a scratch allocation and
-// it should ask for it or create it right there. If a function wants to allocate dsomething for the caller, the caller should really know where to find it (thus they should pass it as an argument).
+// it should ask for it or create it right there. If a function wants to allocate something for the caller, the caller should really know where to find it (thus they should pass it as an argument).
 
 #include "defines.h"
 #include "assert.h"
@@ -48,7 +48,7 @@ typedef struct Allocator {
 } Allocator;
 
 typedef struct Allocator_Stats {
-    //The allocator used to obtain memory reisributed by this allocator.
+    //The allocator used to obtain memory redistributed by this allocator.
     //If is_top_level is set this should probably be NULL
     Allocator* parent;
     //Human readable name of the type 
@@ -60,10 +60,10 @@ typedef struct Allocator_Stats {
 	bool _padding[7];
 
     //The number of bytes given out to the program by this allocator. (does NOT include book keeping bytes).
-    //Might not be totally accurate but is required to be localy stable - if we allocate 100B and then deallocate 100B this should not change.
+    //Might not be totally accurate but is required to be locally stable - if we allocate 100B and then deallocate 100B this should not change.
     //This can be used to accurately track memory leaks. (Note that if this field is simply not set and thus is 0 the above property is satisfied)
     isize bytes_allocated;
-    isize max_bytes_allocated;  //maximum bytes_allocated during the enire lifetime of the allocator
+    isize max_bytes_allocated;  //maximum bytes_allocated during the entire lifetime of the allocator
 
     isize max_concurent_allocations;
     isize allocation_count;     //The number of allocation requests (old_ptr == NULL). Does not include reallocs!
@@ -110,13 +110,13 @@ EXPORT Allocator_Stats allocator_get_stats(Allocator* self);
 EXPORT void allocator_out_of_memory(Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align);
 
 EXPORT Allocator* allocator_get_default(); //returns the default allocator used for returning values from a function
-EXPORT Allocator* allocator_get_scratch(); //returns the scracth allocator used for temp often stack order allocations inside a function
+EXPORT Allocator* allocator_get_scratch(); //returns the scratch allocator used for temp often stack order allocations inside a function
 EXPORT Allocator* allocator_get_static(); //returns the static allocator used for allocations with potentially unbound lifetime. This includes things that will never be deallocated.
 EXPORT Allocator* allocator_or_default(Allocator* allocator_or_null); //Returns the passed in allocator_or_null. If allocator_or_null is NULL returns the current set default allocator
 
 EXPORT bool allocator_is_arena(Allocator* allocator);
 
-//@NOTE: static is useful for example for static dyanmic lookup tables, caches inside functions, quick hacks that will not be deallocated for whatever reason.
+//@NOTE: static is useful for example for static dynamic lookup tables, caches inside functions, quick hacks that will not be deallocated for whatever reason.
 
 //All of these return the previously used Allocator_Set. This enables simple set/restore pair. 
 EXPORT Allocator_Set allocator_set_default(Allocator* new_default);
@@ -312,7 +312,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     {
         ASSERT(is_power_of_two(align_to));
 
-        //this is a little criptic but according to the iternet should be the fastest way of doing this
+        //this is a little cryptic but according to the internet should be the fastest way of doing this
         // my benchmarks support this. 
         //(its about 50% faster than using div_round_up would be - even if we supply log2 alignment and bitshifts)
         isize mask = align_to - 1;

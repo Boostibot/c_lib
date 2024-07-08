@@ -9,7 +9,7 @@
 // ones that are WARNING, ERROR, or FATAL.
 
 // The syntax is: 
-// LOG_INFO("ANIM", "iterating all entitites");
+// LOG_INFO("ANIM", "iterating all entities");
 // log_group();
 // for(int i = 0; i < 10; i++)
 //     LOG_INFO("anim", "entity id:%d found", i);
@@ -22,7 +22,7 @@
 //
 //
 // Which results in:
-// 00-00-00 000 INFO  ANIM :iterating all entitites
+// 00-00-00 000 INFO  ANIM :iterating all entities
 // 00-00-00 000 INFO  ANIM .  :entity id:0 found
 //                    ANIM .  :Hello from entity
 // 00-00-00 000 INFO  ANIM .  :entity id:1 found
@@ -38,13 +38,13 @@
 //                    ANIM :10-20
 //
 // The advantages of this format are as follows:
-// 1) Readable for humnas 
+// 1) Readable for humans 
 // 2) Lack of needless symbols such as [ ] around time and ( ) around module
 // 3) Simple parsing of the file
-//    Each line is compltely separate for the parser. It begins fixed ammount of date chars then space
-//    then mdoule which cannot contain space. Then follows sequence of dots and some number of spaces. 
+//    Each line is completely separate for the parser. It begins fixed amount of date chars then space
+//    then module which cannot contain space. Then follows sequence of dots and some number of spaces. 
 //    Each dot signifies one level of depth. Then comes : or , marking the end of meta data and start of the message.
-//    Message data is till the end of the line. If message is mutlilined the next entry does not have date.
+//    Message data is till the end of the line. If message is multiline the next entry does not have date.
 
 #include "time.h"
 #include "string.h"
@@ -78,12 +78,12 @@ EXPORT typedef struct File_Logger {
     String_Builder file_prefix;                     //defaults to ""
     String_Builder file_postfix;                    //defaults to ".txt"
     
-    FILE* file;                                     //file to whcih to print;
+    FILE* file;                                     //file to which to print;
     f64 last_flush_time;
     i64 init_epoch_time;
 
     File_Logger_Print console_print_func;        //defaults to NULL in which case prints to stdout (using fwrite)
-    File_Logger_Print file_print_func;           //defaults to NULL in whcih case creates a file in file_directory_path and writes to it
+    File_Logger_Print file_print_func;           //defaults to NULL in which case creates a file in file_directory_path and writes to it
     
     void* console_print_context;    //defaults to NULL
     void* file_print_context;       //defaults to NULL
@@ -206,7 +206,7 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
 
             String curr_line = string_range(message, curr_line_pos, next_line_pos);
 
-            //if is first line do else insert header-sized ammount of spaces
+            //if is first line do else insert header-sized amountof spaces
             if(curr_line_pos != 0)
             {
                 isize before_padding = append_to->size;

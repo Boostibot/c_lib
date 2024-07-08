@@ -56,7 +56,7 @@ typedef struct Image {
 } Image;
 
 // A non owning view into a subset of Image's data. 
-// Has the same relatiionship to Image as String to String_Builder
+// Has the same relationship to Image as String to String_Builder
 typedef struct Subimage {
     u8* pixels;
     i32 pixel_size;
@@ -75,8 +75,8 @@ typedef struct Subimage {
 STATIC_ASSERT(sizeof(Image) <= 8*5);
 STATIC_ASSERT(sizeof(Subimage) <= 8*5);
 
-//returns the human readbale name of the pixel type. 
-// Example reteturn values are u8, f32, i64, custom (pixel_type > 0) and invalid (pixel_type < 0 and none of the predefined)
+//returns the human readable name of the pixel type. 
+// Example return values are "u8", "f32", "i64", ..., "custom" (for pixel_type > 0) and "invalid" (pixel_type < 0 and none of the predefined)
 EXPORT const char* pixel_type_name(Pixel_Type pixel_type);
 //Returns the size of the pixel type. The return value is always bigger than 0.
 EXPORT i32 pixel_type_size(Pixel_Type pixel_type);
@@ -227,7 +227,6 @@ EXPORT isize image_byte_size(Image image)
     isize pixel_count = image_pixel_count(image);
     return image.pixel_size * pixel_count;
 }
-
 
 EXPORT void image_deinit(Image* image)
 {

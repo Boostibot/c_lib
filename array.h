@@ -7,13 +7,13 @@
 //
 // This approach was chosen because: 
 // 1) we need type safety! Array of int should be distinct type from Array of char
-//    This discqualified the one Array struct for all types holding the type info supplied at runtime.
+//    This disqualified the one Array struct for all types holding the type info supplied at runtime.
 // 
 // 2) we need to be able to work with empty arrays easily and safely. 
 //    Empty arrays are the most common arrays so having them as a special and error prone case
-//    is less than ideal. This discvalifies the typed pointer to allocated array prefixed with header holding
+//    is less than ideal. This disqualified the typed pointer to allocated array prefixed with header holding
 //    the meta data. See how stb library implements "stretchy buffers".
-//    This approach also introduces a lot of ifs, makes the meta data adress unstable thus requiring more memory lookups.
+//    This approach also introduces a lot of ifs, makes the meta data address unstable thus requiring more memory lookups.
 // 
 // 3) we need to hold info about allocators used for the array. We should know how to deallocate any array using its allocator.
 //

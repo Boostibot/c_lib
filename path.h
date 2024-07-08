@@ -6,8 +6,8 @@
 
 // This is a not exhaustive filepath handling facility. 
 // We require all strings to pass through some basic parsing and be wrapped in Path struct. 
-// This makes it easy to distinguish desiganted paths from any other strings. 
-// Further we define Path_Builder which is guranteed to always be in normalized form.
+// This makes it easy to distinguish designated paths from any other strings. 
+// Further we define Path_Builder which is guaranteed to always be in normalized form.
 //
 // Path_Info Represents the following:
 // 
@@ -29,11 +29,11 @@
 // All handling in this file respects the above categories and nothing more.
 // Notably prefix is ignored in almost all operations but still is properly propagated when appending.
 //
-// Path_Builder is in normalized form. The following algrohitm is used for normalization:
-// (modified version of the one use std::filesystem::path. We respect "/" traling to denote directories. We also respect windows prefixes.)
+// Path_Builder is in normalized form. The following algorithm is used for normalization:
+// (modified version of the one use std::filesystem::path. We respect "/" trailing to denote directories. We also respect windows prefixes.)
 // 1 - If the path is empty, stop (normal form of an empty path is an empty path).
 // 2 - Replace each directory-separator (which may consist of multiple /) with a single /
-// 3 - Replace each slash character in the root-name with / (but not in prefix which is left uncahnged!)
+// 3 - Replace each slash character in the root-name with / (but not in prefix which is left unchanged!)
 // 4 - Remove each dot and any immediately following /.
 // 5 - Remove each non-dot-dot filename immediately followed by a / and a dot-dot.
 // 6 - If there is root-directory, remove all dot-dots and any / immediately following them.
@@ -47,9 +47,9 @@
 // 3) Includes only / (and not \)
 // 4) Absolute paths do not contain any "." or ".." segments
 // 5) Relative paths are either only "." and nothing more or dont contain "." at all. 
-//    Relative paths contain ".." segemnts only as a prefix. 
+//    Relative paths contain ".." segments only as a prefix. 
 //
-//@NOTE: We attempt to cover a few edge cases and gain as much insigth into the
+//@NOTE: We attempt to cover a few edge cases and gain as much insight into the
 //       path as we can but we by no means attempt to be exhaustively correct
 //       for all special windows cases. As such this should be viewed as an
 //       approximation of the exact solution rather than the final product.
@@ -920,7 +920,7 @@ EXPORT void path_make_relative_into(Path_Builder* into, Path relative_to, Path p
 
                     }
                     //If there was a difference in the path or path is shorter
-                    // we add appropriate ammount of ".." segments then the rest of the path
+                    // we add appropriate amountof ".." segments then the rest of the path
                     else
                     {
                         builder_append(&into->builder, STRING(".."));
@@ -1077,7 +1077,7 @@ void test_single_path(const char* path, const char* prefix, const char* root, co
 void test_path_normalize(int flags, const char* cpath, const char* cexpected)
 {
     const char* prefixes[] = {"", "\\\\?\\", "\\\\.\\"};
-    for(isize i = 0; i < STATIC_ARRAY_SIZE(prefixes); i++)
+    for(isize i = 0; i < ARRAY_SIZE(prefixes); i++)
     {
         Arena_Frame arena = scratch_arena_acquire();
         String_Builder prefixed_path = string_concat(&arena.allocator, string_make(prefixes[i]), string_make(cpath));
@@ -1097,7 +1097,7 @@ void test_canonicalize_with_roots_and_prefixes(int flags, const char* cabs_path,
     const char* roots[]      = {"\\", "C:/", "F:\\", "//Server/", "\\\\xxserverxx\\"};
     const char* norm_roots[] = {"/", "C:/", "F:/", "//Server/", "//xxserverxx/"};
     
-    for(isize i = 0; i < STATIC_ARRAY_SIZE(roots); i++)
+    for(isize i = 0; i < ARRAY_SIZE(roots); i++)
     {
         Arena_Frame arena = scratch_arena_acquire();
         String_Builder prefixed_path = string_concat(&arena.allocator, string_make(roots[i]), string_make(cabs_path));
@@ -1116,7 +1116,7 @@ enum {
 void test_path_make_relative_absolute_with_prefixes(int flags, const char* crelative, const char* cpath, const char* cexpected)
 {
     const char* prefixes[] = {"", "\\\\?\\", "\\\\.\\"};
-    for(isize i = 0; i < STATIC_ARRAY_SIZE(prefixes); i++)
+    for(isize i = 0; i < ARRAY_SIZE(prefixes); i++)
     {
         Arena_Frame arena = scratch_arena_acquire();
 

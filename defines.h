@@ -59,7 +59,7 @@ typedef struct Source_Info {
 
 #define SOURCE_INFO() BRACE_INIT(Source_Info){__LINE__, __FILE__, __FUNCTION__}
 
-#define STATIC_ARRAY_SIZE(array) (isize) (sizeof(array) / sizeof((array)[0]))
+#define ARRAY_SIZE(array) (isize) (sizeof(array) / sizeof((array)[0]))
 
 //MIN and MAX of types
 #define IS_SIGNED(T)		((T) ~(T) 0 < 0) 

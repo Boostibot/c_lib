@@ -1,8 +1,8 @@
 ﻿#ifndef JOT_LOG
 #define JOT_LOG
 
-// This file is focused on as-simpel-as-possible structured logging.
-// That is we attempt to give logs some structure but not too much (so that it is still convinient).
+// This file is focused on as-simple-as-possible structured logging.
+// That is we attempt to give logs some structure but not too much (so that it is still convenient).
 // 
 // We use three primary pieces of information for our logs:
 //  1) Log log_module - a simple string indicating from where the log came from. 
@@ -16,22 +16,22 @@
 // 
 //  3) Indentation - a visual indicator to the hierarchy of messages. 
 //                   This can be used to separate function calls. The simple global
-//                   implementation also nests (as long as we remeber to call pop 
+//                   implementation also nests (as long as we remember to call pop 
 //                   when we are done). 
 // 
 // Log log_module in combination with log log_type enables us to extremely easily locate desired properties
 // in the resulting log files. We grep for example for just LOG_ERROR from RENDER log_module. we can then 
-// reconstruct the call stack from indetation.
+// reconstruct the call stack from indentation.
 // 
 // The choice to have Log_Filter which qualifies some basic log categories instead of the usual 
 //  severity level approach was chosen because of the following: 
 // Severity level has the two primary problems:
 //  1) Lack of meaning:
-//     The choice between severity level 5 and 6 is largely abitrary. This is because the meaning of 
-//     severity is distacted by how rest of the codebase uses it.
+//     The choice between severity level 5 and 6 is largely arbitrary. This is because the meaning of 
+//     severity is dictated by how rest of the codebase uses it.
 // 
 //  2) Lack of fine grained control:
-//     If we want to dissable all info messages but keep debug emssaegs we simply cannot 
+//     If we want to disable all info messages but keep debug messages we simply cannot 
 //     (assuming severity of debug is smaller then of info - which is usually the case)
 
 
@@ -128,7 +128,7 @@ typedef struct Log {
     //@NOTE: Notice that log_module and subject are const char*
     //       and thus as static strings. This is to make 
     //       our lives easier because it almost always end
-    //       yp being static stirngs
+    //       yp being static strings
     const char* module;
     const char* subject;
     Platform_String message;
@@ -147,7 +147,7 @@ typedef struct Log {
 EXPORT Logger* log_get_logger(); //Returns the default used logger
 EXPORT Logger* log_set_logger(Logger* logger); //Sets the default used logger. Returns a pointer to the previous logger so it can be restored later.
 
-EXPORT Log_Filter log_get_filter(); //Returns the current global filter - For Log_Type log_type to be printed it must satissfy (filter & ((Log_Filter) 1 << log_type)) > 0
+EXPORT Log_Filter log_get_filter(); //Returns the current global filter - For Log_Type log_type to be printed it must satisfy (filter & ((Log_Filter) 1 << log_type)) > 0
 EXPORT Log_Filter log_set_filter(Log_Filter filter); //Sets the global filter. Returns previous value so it can be restored later.
 
 EXPORT void log_flush();    //Flushes the logger
@@ -180,8 +180,8 @@ typedef struct String_Buffer_64 {
 
 String_Buffer_16 format_ptr(void* ptr); //returns "0x00000ff76344ae64"
 String_Buffer_16 format_bytes(int64_t bytes); //returns "39B" "64KB", "10.3MB", "5.3GB", "7.531TB" etc.
-String_Buffer_16 format_seconds(double seconds); //retunrns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
-String_Buffer_16 format_nanoseconds(int64_t ns); //retunrns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
+String_Buffer_16 format_seconds(double seconds); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
+String_Buffer_16 format_nanoseconds(int64_t ns); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
 
 #define fmt_ptr(ptr) format_ptr(ptr).data
 #define fmt_bytes(bytes) format_bytes(bytes).data

@@ -1,8 +1,8 @@
 #ifndef JOT_DEBUG_ALLOCATOR
 #define JOT_DEBUG_ALLOCATOR
 
-//It is extremely easy to mess up memory management in some way in C. Even when using hierarchical memory managemnt
-// (local allocator tree) memory leeks are still localy possible which is often not idea. Thus we are need in
+//It is extremely easy to mess up memory management in some way in C. Even when using hierarchical memory management
+// (local allocator tree) memory leeks are still locally possible which is often not idea. Thus we are need in
 // of solid tooling to enable quick and reliable debugging of memory problems. 
 // 
 // This file attempts to create a simple
@@ -11,11 +11,11 @@
 //
 // From memory debugger we require the following functionality:
 // 1) assert validity of all programmer given memory blocks without touching them
-// 2) be able to list all currently active memory blocks along with some info to fascilitate debugging
+// 2) be able to list all currently active memory blocks along with some info to facilitate debugging
 // 3) assert that no overwrites (and ideally even overreads) happened 
 //
 // Additionally we would like the following:
-// 4) to see some ammount of allocation history
+// 4) to see some amount of allocation history
 // 5) runtime customize what will happen should a memory panic be raised
 // 6) the allocator should be as fast as possible
 //
@@ -38,12 +38,12 @@
 //
 // 
 // Within each *BLOCK* are contained the properly sized user data along with some header containing meta
-// data about the alloction (is used to validate arguments and fasciliate debugging), dead zones which 
-// are filled with 0x55 bytes (0 and 1 alteranting in binary), and some unspecified padding bytes which 
+// data about the allocation (is used to validate arguments and facilitate debugging), dead zones which 
+// are filled with 0x55 bytes (0 and 1 alternating in binary), and some unspecified padding bytes which 
 // may occur due to overaligned requirements for user data.
 // 
-// Prior to each access the block adress is looked up in the alive_allocations_hash. If it is found
-// the dead zones and header is checked for validty (invalidty would indicate overwrites). Only then
+// Prior to each access the block address is looked up in the alive_allocations_hash. If it is found
+// the dead zones and header is checked for validity (invalidity would indicate overwrites). Only then
 // any allocation/deallocation takes place.
 
 #include "allocator.h"
@@ -63,9 +63,9 @@ typedef Array_Aligned(Debug_Allocation, DEF_ALIGN) Debug_Allocation_Array;
 typedef enum Debug_Allocator_Panic_Reason {
     DEBUG_ALLOC_PANIC_NONE = 0, //no error
     DEBUG_ALLOC_PANIC_INVALID_PTR, //the provided pointer does not point to previously allocated block
-    DEBUG_ALLOC_PANIC_INVALID_PARAMS, //size and/or alignment for the given allocation ptr do not macth or are invalid (less then zero, not power of two)
-    DEBUG_ALLOC_PANIC_OVERWRITE_BEFORE_BLOCK, //memory was written before valid user allocation segemnt
-    DEBUG_ALLOC_PANIC_OVERWRITE_AFTER_BLOCK, //memory was written after valid user allocation segemnt
+    DEBUG_ALLOC_PANIC_INVALID_PARAMS, //size and/or alignment for the given allocation ptr do not match or are invalid (less then zero, not power of two)
+    DEBUG_ALLOC_PANIC_OVERWRITE_BEFORE_BLOCK, //memory was written before valid user allocation segment
+    DEBUG_ALLOC_PANIC_OVERWRITE_AFTER_BLOCK, //memory was written after valid user allocation segment
     DEBUG_ALLOC_PANIC_DEINIT_MEMORY_LEAKED, //memory usage on startup doesnt match memory usage on deinit. Only used when initialized with do_deinit_leak_check = true
 } Debug_Allocator_Panic_Reason;
 
@@ -79,10 +79,10 @@ typedef struct Debug_Allocator
     
     Hash_Index alive_allocations_hash;
 
-    bool do_printing;            //wheter each allocations/deallocations should be printed. can be safely togled during lifetime
-    bool do_contnual_checks;     //wheter it should checks all allocations for overwrites after each allocation.
-                                 //icurs huge performance costs. can be safely toggled during runtime.
-    bool do_deinit_leak_check;   //If the memory use on initialization and deinitializtion does not match panics.
+    bool do_printing;            //whether each allocations/deallocations should be printed. can be safely toggled during lifetime
+    bool do_continual_checks;     //whether it should checks all allocations for overwrites after each allocation.
+                                 //incurs huge performance costs. can be safely toggled during runtime.
+    bool do_deinit_leak_check;   //If the memory use on initialization and deinitialization does not match panics.
                                  //can be toggled during runtime. 
     bool is_init;                //prevents double init
     bool is_within_allocation;   //prevents infinite recursion on logging functions
@@ -105,7 +105,7 @@ typedef struct Debug_Allocator
     Allocator_Set allocator_backup;
 } Debug_Allocator;
 
-#define DEBUG_ALLOCATOR_CONTINUOUS          (u64) 1  /* do_contnual_checks = true */
+#define DEBUG_ALLOCATOR_CONTINUOUS          (u64) 1  /* do_continual_checks = true */
 #define DEBUG_ALLOCATOR_PRINT               (u64) 2  /* do_printing = true */
 #define DEBUG_ALLOCATOR_LARGE_DEAD_ZONE     (u64) 4  /* dead_zone_size = 64 */
 #define DEBUG_ALLOCATOR_NO_DEAD_ZONE        (u64) 8  /* dead_zone_size = 0 */
@@ -159,10 +159,10 @@ typedef struct Debug_Allocator_Options
     void* panic_context;
 
     bool do_printing;        //prints all allocations/deallocation
-    bool do_contnual_checks; //continually checks all allocations
-    bool do_deinit_leak_check;   //If the memory use on initialization and deinitializtion does not match panics.
+    bool do_continual_checks; //continually checks all allocations
+    bool do_deinit_leak_check;   //If the memory use on initialization and deinitialization does not match panics.
     bool _padding[5];
-    //Optional name of this allocator for printing and debugging. No defualt is set
+    //Optional name of this allocator for printing and debugging. No default is set
     const char* name;
 } Debug_Allocator_Options;
 
@@ -191,7 +191,7 @@ EXPORT void debug_allocator_init_custom(Debug_Allocator* debug, Allocator* paren
     debug->captured_callstack_size = options.captured_callstack_size;
     debug->do_deinit_leak_check = options.do_deinit_leak_check;
     debug->name = options.name;
-    debug->do_contnual_checks = options.do_contnual_checks;
+    debug->do_continual_checks = options.do_continual_checks;
     debug->dead_zone_size = options.dead_zone_size;
     debug->do_printing = options.do_printing;
     debug->parent = parent;
@@ -208,7 +208,7 @@ EXPORT void debug_allocator_init(Debug_Allocator* allocator, Allocator* parent, 
 {
     Debug_Allocator_Options options = {0};
     if(flags & DEBUG_ALLOCATOR_CONTINUOUS)
-        options.do_contnual_checks = true;
+        options.do_continual_checks = true;
     if(flags & DEBUG_ALLOCATOR_PRINT)
         options.do_printing = true;
     if(flags & DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK)
@@ -366,7 +366,7 @@ INTERNAL bool _debug_allocator_is_invariant(const Debug_Allocator* allocator)
         && "this is so that the pointers within the header will be properly aligned!");
 
     //All alive allocations must be in hash
-    if(allocator->do_contnual_checks)
+    if(allocator->do_continual_checks)
     {
         isize size_sum = 0;
         for(isize i = 0; i < allocator->alive_allocations_hash.entries_count; i ++)

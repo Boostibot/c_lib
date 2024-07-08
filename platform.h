@@ -8,21 +8,21 @@
 #include <stdbool.h>
 #endif
 
-//This is a complete operating system abstarction layer. Its implementation is as stright forward and light as possible.
-//It uses sized strings on all imputs and returns null terminated strings for maximum compatibility and performance.
-//It tries to minimize the need to track state user side instead tries to operate on fixed ammount of mutable buffers.
+//This is a complete operating system abstraction layer. Its implementation is as straight forward and light as possible.
+//It uses sized strings on all inputs and returns null terminated strings for maximum compatibility and performance.
+//It tries to minimize the need to track state user side instead tries to operate on fixed amount of mutable buffers.
 
 //Why we need this:
 //  1) Practical
 //      The c standard library is extremely minimalistic so if we wish to list all files in a directory there is no other way.
 // 
-//  2) Idealogical
-//     Its necessary to udnerstand the bedrock of any medium we are working with. Be it paper, oil & canvas or code, 
+//  2) Ideological
+//     Its necessary to understand the bedrock of any medium we are working with. Be it paper, oil & canvas or code, 
 //     understanding the medium will help us define strong limitations on the final problem solutions. This is possible
 //     and this isnt. Yes or no. This drastically shrinks the design space of any problem which allow for deeper exploration of it. 
 //     
-//     Interestingly it does not only shrink the design space it also makes it more defined. We see more oportunities that we 
-//     wouldnt have seen if we just looked at some high level abstarction library. This can lead to development of better abstractions.
+//     Interestingly it does not only shrink the design space it also makes it more defined. We see more opportunities that we 
+//     wouldnt have seen if we just looked at some high level abstraction library. This can lead to development of better abstractions.
 //  
 //     Further having absolute control over the system is rewarding. Having the knowledge of every single operation that goes on is
 //     immensely satisfying.
@@ -58,7 +58,7 @@
 #ifndef PLATFORM_OS
     //Becomes one of the PLATFORM_OS_XXXX based on the detected OS. (see below)
     //One possible use of this is to select the appropiate .c file for platform.h and include it
-    // after main making the whole build unity build, greatly simpifying the build procedure.
+    // after main making the whole build unity build, greatly simplifying the build procedure.
     //Can be user overriden by defining it before including platform.h
     #define PLATFORM_OS          PLATFORM_OS_UNKNOWN                 
 #endif
@@ -69,7 +69,7 @@
 #endif
 
 #ifndef PLATFORM_SYSTEM_BITS
-    //The adress space size of the system. Ie either 64 or 32 bit.
+    //The address space size of the system. Ie either 64 or 32 bit.
     //Can be user overriden by defining it before including platform.h
     #define PLATFORM_SYSTEM_BITS ((UINTPTR_MAX == 0xffffffff) ? 32 : 64)
 #endif
@@ -81,7 +81,7 @@
 #endif
 
 #ifndef PLATFORM_MAX_ALIGN
-    //Maximum alignment of bultin data type.
+    //Maximum alignment of builtin data type.
     //If this is incorrect (either too much or too little) please correct it by defining it!
     #define PLATFORM_MAX_ALIGN 8
 #endif
@@ -107,7 +107,7 @@
 void platform_init();
 
 //Deinitializes the platform layer, freeing all allocated resources back to os.
-//platform_init() should be called before using any other fucntion again!
+//platform_init() should be called before using any other function again!
 void platform_deinit();
 
 //=========================================
@@ -115,10 +115,10 @@ void platform_deinit();
 //=========================================
 
 typedef enum Platform_Virtual_Allocation {
-    PLATFORM_VIRTUAL_ALLOC_RESERVE  = 1, //Reserves adress space so that no other allocation can be made there
-    PLATFORM_VIRTUAL_ALLOC_COMMIT   = 2, //Commits adress space causing operating system to suply physical memory or swap file
-    PLATFORM_VIRTUAL_ALLOC_DECOMMIT = 4, //Removes adress space from commited freeing physical memory
-    PLATFORM_VIRTUAL_ALLOC_RELEASE  = 8, //Free adress space
+    PLATFORM_VIRTUAL_ALLOC_RESERVE  = 1, //Reserves address space so that no other allocation can be made there
+    PLATFORM_VIRTUAL_ALLOC_COMMIT   = 2, //Commits address space causing operating system to supply physical memory or swap file
+    PLATFORM_VIRTUAL_ALLOC_DECOMMIT = 4, //Removes address space from commited freeing physical memory
+    PLATFORM_VIRTUAL_ALLOC_RELEASE  = 8, //Free address space
 } Platform_Virtual_Allocation;
 
 typedef enum Platform_Memory_Protection {
@@ -152,7 +152,7 @@ enum {
 };
 
 //Returns a translated error message. The returned pointer is not static and shall NOT be stored as further calls to this functions will invalidate it. 
-//The returned string should be immedietelly printed or copied into a different buffer
+//The returned string should be immediately printed or copied into a different buffer
 const char* platform_translate_error(Platform_Error error);
 
 
@@ -169,7 +169,7 @@ typedef struct Platform_Mutex {
     void* handle;
 } Platform_Mutex;
 
-//@TODO: thread processor afinity!
+//@TODO: thread processor affinity!
 
 //@NOTE: We made pretty much all of the threaded functions (except init-like) into non failing
 //       even though they CAN internally return error (we just assert). That is because:
@@ -179,11 +179,11 @@ typedef struct Platform_Mutex {
 //   (ie if it failed then it failed and I cannot do anything about it apart from not calling this function)
 // 4) On win32 these functions never fail.
 //
-// *pthread_mutex_lock has a fail state on too many recursive locks and insufficient privilages which are
-// not programmer mistake. However in practice they will not happend and if they do we are doing something
-// very specific and a custom impkementation is prefered (or we can just change this).
+// *pthread_mutex_lock has a fail state on too many recursive locks and insufficient privileges which are
+// not programmer mistake. However in practice they will not happened and if they do we are doing something
+// very specific and a custom implementation is preferred (or we can just change this).
 
-//initializes a new thread and immedietely starts it with the func function.
+//initializes a new thread and immediately starts it with the func function.
 //The thread has stack_size_or_zero bytes of stack sizes rounded up to page size
 //If stack_size_or_zero is zero or lower uses system default stack size.
 //The thread automatically cleans itself up upon completion or termination.
@@ -212,7 +212,7 @@ inline static void platform_memory_fence();
 inline static void platform_processor_pause();
 
 //Returns the first/last set (1) bit position. If num is zero result is undefined.
-//The follwing invarints hold (analogous for 64 bit)
+//The following invariants hold (analogous for 64 bit)
 // (num & (1 << platform_find_first_set_bit32(num)) != 0
 // (num & (1 << (32 - platform_find_last_set_bit32(num))) != 0
 inline static int32_t platform_find_first_set_bit32(uint32_t num);
@@ -264,7 +264,7 @@ int64_t platform_epoch_time();
 //returns the number of micro-seconds between the epoch and the call to platform_init()
 int64_t platform_epoch_time_startup(); 
 
-//Returns the current value of monotonic lowlevel performance counter. Is ideal for benchamrks.
+//Returns the current value of monotonic lowlevel performance counter. Is ideal for benchmarks.
 //Generally is with around 1-100 nanosecond precision.
 int64_t platform_perf_counter();         
 //returns the frequency of the performance counter (that is counter ticks per second)
@@ -335,7 +335,7 @@ typedef struct Platform_File {
 
 typedef enum Platform_File_Open_Flags {
     PLATFORM_FILE_MODE_READ = 1,                    //Read privilege
-    PLATFORM_FILE_MODE_WRITE = 2,                   //Write privilage
+    PLATFORM_FILE_MODE_WRITE = 2,                   //Write privilege
     PLATFORM_FILE_MODE_APPEND = 4,                  //Append privileges (no effect on linux). 
                                                     //Has no effect on the file write position unlike fopen(path, "a"). 
                                                     //If you wish to start at the end of a file use platform_file_seek(file, 0, PLATFORM_FILE_SEEK_FROM_END)
@@ -357,7 +357,7 @@ Platform_Error platform_file_open(Platform_File* file, Platform_String path, int
 //Closes already opened file. If file was not open does nothing.
 Platform_Error platform_file_close(Platform_File* file);
 //Reads size bytes into the provided buffer. Sets read_bytes_because_eof to the number of bytes actually read.
-//Does nothing when file is not open/invalid state. Only performs partial reads when eof is encoutered. 
+//Does nothing when file is not open/invalid state. Only performs partial reads when eof is encountered. 
 //Specifcally this means: (*read_bytes_because_eof != size) <=> end of file reached
 Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t size, int64_t* read_bytes_because_eof);
 //Writes size bytes from the provided buffer, extending the file if necessary
@@ -365,7 +365,7 @@ Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t siz
 Platform_Error platform_file_write(Platform_File* file, const void* buffer, int64_t size);
 //Obtains the current offset from the start of the file and saves it into offset. Does not modify the file 
 Platform_Error platform_file_tell(Platform_File file, int64_t* offset);
-//Offset the current file position relative to: start of the file (0 value), current possition, end of the file
+//Offset the current file position relative to: start of the file (0 value), current position, end of the file
 Platform_Error platform_file_seek(Platform_File* file, int64_t offset, Platform_File_Seek from);
 //Flushes all cached contents of the file to disk.
 Platform_Error platform_file_flush(Platform_File* file);
@@ -373,7 +373,7 @@ Platform_Error platform_file_flush(Platform_File* file);
 //retrieves info about the specified file or directory
 Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null);
 //Creates an empty file at the specified path. Succeeds if the file exists after the call.
-//Saves to was_just_created_or_null wheter the file was just now created. If is null doesnt save anything.
+//Saves to was_just_created_or_null whether the file was just now created. If is null doesnt save anything.
 Platform_Error platform_file_create(Platform_String file_path, bool fail_if_already_existing);
 //Removes a file at the specified path. If fail_if_not_found is true succeeds only if the file was removed.
 // else succeeds if the file does not exists after the call.
@@ -386,10 +386,10 @@ Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String 
 Platform_Error platform_file_resize(Platform_String file_path, int64_t size);
 
 //Makes an empty directory
-//Saves to was_just_created_or_null wheter the file was just now created. If is null doesnt save anything.
+//Saves to was_just_created_or_null whether the file was just now created. If is null doesnt save anything.
 Platform_Error platform_directory_create(Platform_String dir_path, bool fail_if_already_existing);
 //Removes an empty directory
-//Saves to was_just_deleted_or_null wheter the file was just now deleted. If is null doesnt save anything.
+//Saves to was_just_deleted_or_null whether the file was just now deleted. If is null doesnt save anything.
 Platform_Error platform_directory_remove(Platform_String dir_path, bool fail_if_not_found);
 
 //changes the current working directory to the new_working_dir.  
@@ -405,14 +405,14 @@ Platform_Error platform_directory_list_contents_alloc(Platform_String directory_
 //Frees previously allocated file list
 void platform_directory_list_contents_free(Platform_Directory_Entry* entries);
 
-//Memory maps the file pointed to by file_path and saves the adress and size of the mapped block into mapping. 
+//Memory maps the file pointed to by file_path and saves the address and size of the mapped block into mapping. 
 //If the desired_size_or_zero == 0 maps the entire file. 
 //  if the file doesnt exist the function fails.
 //If the desired_size_or_zero > 0 maps only up to desired_size_or_zero bytes from the file.
 //  The file is resized so that it is exactly desired_size_or_zero bytes (filling empty space with 0)
 //  if the file doesnt exist the function creates a new file.
 //If the desired_size_or_zero < 0 maps additional desired_size_or_zero bytes from the file 
-//    (for appending) extending it by that ammount and filling the space with 0.
+//    (for appending) extending it by that amount and filling the space with 0.
 //  if the file doesnt exist the function creates a new file.
 Platform_Error platform_file_memory_map(Platform_String file_path, int64_t desired_size_or_zero, Platform_Memory_Mapping* mapping);
 //Unmpas the previously mapped file. If mapping is a result of failed platform_file_memory_map does nothing.
@@ -527,7 +527,7 @@ typedef struct {
 #define platform_assume_unreachable() (*(char*)0 = 0)
 
 //Captures the current stack frame pointers. 
-//Saves up to stack_size pointres into the stack array and returns the number of
+//Saves up to stack_size pointers into the stack array and returns the number of
 //stack frames captures. If the returned number is exactly stack_size a bigger buffer MIGHT be required.
 //Skips first skip_count stack pointers from the position of the called. 
 //(even with skip_count = 0 platform_capture_call_stack() will not be included within the stack)
@@ -562,7 +562,7 @@ typedef enum Platform_Exception {
 } Platform_Exception; 
 
 typedef struct Platform_Sandbox_Error {
-    //The exception that occured
+    //The exception that occurred
     Platform_Exception exception;
     
     //A translated stack trace and its size
@@ -577,18 +577,18 @@ typedef struct Platform_Sandbox_Error {
     int64_t epoch_time;
 } Platform_Sandbox_Error;
 
-//Launches the sandboxed_func inside a sendbox protecting the outside environment 
+//Launches the sandboxed_func inside a sandbox protecting the outside environment 
 // from any exceptions, including hardware exceptions that might occur inside sandboxed_func.
 //If an exception occurs collects execution context including stack pointers and calls
-// 'error_func_or_null' if not null. Gracefuly recovers from all errors. 
-//Returns the error that occured or PLATFORM_EXCEPTION_NONE = 0 on success.
+// 'error_func_or_null' if not null. Gracefully recovers from all errors. 
+//Returns the error that occurred or PLATFORM_EXCEPTION_NONE = 0 on success.
 Platform_Exception platform_exception_sandbox(
     void (*sandboxed_func)(void* sandbox_context),   
     void* sandbox_context,
     void (*error_func_or_null)(void* error_context, Platform_Sandbox_Error error),
     void* error_context);
 
-//Convertes the sandbox error to string. The string value is the name of the enum
+//Converts the sandbox error to string. The string value is the name of the enum
 // (PLATFORM_EXCEPTION_ACCESS_VIOLATION -> "PLATFORM_EXCEPTION_ACCESS_VIOLATION")
 const char* platform_exception_to_string(Platform_Exception error);
 
@@ -946,7 +946,7 @@ static bool _platform_test_report(Platform_Error error, bool is_error, const cha
 #define PTEST_ERROR(error, ...) (_platform_test_report((error), 0, #error, __FILE__, __FUNCTION__, __LINE__, "" __VA_ARGS__) ? abort() : (void) 0)
 #define PSTRING(literal)        PBRACE_INIT(Platform_String){"" literal, sizeof(literal) - 1}
 
-//String containing few problematic sequences: BOM, non acii, non single UTF16 representable chars, \r\n and \n newlines.
+//String containing few problematic sequences: BOM, non ascii, non single UTF16 representable chars, \r\n and \n newlines.
 // It should still be read in and out exactly the same!
 #define PUTF8_BOM        "\xEF\xBB\xBF"
 #define PUGLY_STR        PUTF8_BOM "Hello world!\r\n ěščřžýáéň,\n Φφ,Χχ,Ψψ,Ωω,\r\n あいうえお"
@@ -1213,7 +1213,7 @@ static void platform_test_dir_entry(Platform_Directory_Entry* entries, int64_t e
         PTEST(entry->directory_depth == directory_depth);
         PTEST(entry->info.type == type);
 
-        //@NOTE: getting the info is an acess so we skip this.
+        //@NOTE: getting the info is an access so we skip this.
         //PTEST(info.created_epoch_time == entry->info.created_epoch_time);
         //PTEST(info.last_write_epoch_time == entry->info.last_write_epoch_time);
         //PTEST(info.last_access_epoch_time == entry->info.last_access_epoch_time); 

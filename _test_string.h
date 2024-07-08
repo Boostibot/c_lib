@@ -26,7 +26,7 @@ static void test_memset_pattern()
     
     char field[128] = {0};
     char expected[128] = {0};
-    for(isize i = 0; i < STATIC_ARRAY_SIZE(test_cases); i++)
+    for(isize i = 0; i < ARRAY_SIZE(test_cases); i++)
     {
         Test_Case test_case = test_cases[i];
         isize pattern_len = (isize) strlen(test_case.pattern);

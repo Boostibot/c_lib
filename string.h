@@ -12,12 +12,8 @@ typedef Platform_String String;
 typedef struct String_Builder {
     Allocator* allocator;
     isize capacity;
-    //A slightly weird construction so that we can easily 
-    // obtain a string from the string builder.
-    //This prevents us from constantly havign to type
-    //  string_from_builder(builder)
-    // and instead just
-    //  builder.string
+    //A slightly weird construction so that we can easily obtain a string from the string builder.
+    //This saves us from constantly typing `string_from_builder(builder)` and instead just `builder.string`
     union {
         struct {
             char* data;
@@ -52,8 +48,8 @@ EXPORT void memset_pattern(void *field, isize field_size, const void* pattern, i
 // string_make(my_data, my_size) in which case the passed in 'my_size' size is used
 #define string_make(string, ...) _string_make_internal((string), ##__VA_ARGS__, (isize) strlen(string)) 
 
-EXPORT String string_head(String string, isize to); //keeps only charcters to to ( [0, to) interval )
-EXPORT String string_tail(String string, isize from); //keeps only charcters from from ( [from, string.size) interval )
+EXPORT String string_head(String string, isize to); //keeps only characters to to ( [0, to) interval )
+EXPORT String string_tail(String string, isize from); //keeps only characters from from ( [from, string.size) interval )
 EXPORT String string_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
 EXPORT String string_safe_head(String string, isize to); //returns string_head using to. If to is outside the range [0, string.size] clamps it to the range. 
 EXPORT String string_safe_tail(String string, isize from); //returns string_tail using from. If from is outside the range [0, string.size] clamps it to the range. 
@@ -61,7 +57,7 @@ EXPORT String string_safe_range(String string, isize from, isize to); //returns 
 EXPORT bool   string_is_equal(String a, String b); //Returns true if the contents and sizes of the strings match
 EXPORT bool   string_is_prefixed_with(String string, String prefix); 
 EXPORT bool   string_is_postfixed_with(String string, String postfix);
-EXPORT bool   string_has_substring_at(String larger_string, isize from_index, String smaller_string); //Retursn true if larger_string has smaller_string at index from_index
+EXPORT bool   string_has_substring_at(String larger_string, isize from_index, String smaller_string); //Returns true if larger_string has smaller_string at index from_index
 EXPORT int    string_compare(String a, String b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
 
 EXPORT isize  string_find_first(String string, String search_for, isize from); 
@@ -630,11 +626,10 @@ EXPORT bool char_is_id(char c);
         //return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z');
 
         //this is just a little flex of doing the two range checks in one
-        //using the fact that all uppercase to lowercase leters are 32 appart.
-        //That means we can just maks the fift bit and test once.
+        //using the fact that all uppercase to lowercase letters are 32 apart.
+        //That means we can just makes the fift bit and test once.
         //You can simply test this works by comparing the result of both approaches on all char values.
-        char diff = c - 'A';
-        char masked = diff & ~(1 << 5);
+        char masked = (c - 'A') & ~(1 << 5);
         bool is_letter = 0 <= masked && masked <= ('Z' - 'A');
 
         return is_letter;

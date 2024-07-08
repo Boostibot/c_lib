@@ -19,7 +19,7 @@
 #endif
 
 //#define SLZ4_PLACE_MAGIC                 //if defined each token is prefixed with 'B' in ascii to facilitate debugging. Is not LZ4 compliant.
-//#define SLZ4_TEST_AGAINST_REFERENCE_IMPL //if defined also uses the reference lz4 impelemntation for validation
+//#define SLZ4_TEST_AGAINST_REFERENCE_IMPL //if defined also uses the reference lz4 implementation for validation
 #define SLZ4_MIN_MATCH            4
 #define SLZ4_WINDOW_SIZE          0xFFFF
 #define SLZ4_MAX_SIZE             0x7F000000
@@ -78,7 +78,7 @@ SLZ4_EXPORT SLZ4_Malloced slz4_decompress_malloc(const void* input, int input_si
 
 //Returns maximum size after compression of an input of the given size.
 SLZ4_EXPORT int slz4_compressed_size_upper_bound(int size_before_compression);
-//Returns the needed size in bytes for compression table (from SLZ4_Compress_State) given the provided paramters. 
+//Returns the needed size in bytes for compression table (from SLZ4_Compress_State) given the provided parameters. 
 SLZ4_EXPORT size_t slz4_required_size_for_compression_table(int size_exponent, int bucket_exponent);
 
 #endif
@@ -134,7 +134,7 @@ SLZ4_EXPORT int slz4_compress(void* output, int output_size, const void* input, 
     //
     // The hash table used has bucket of 2^N items in each slot. These buckets act as circular arrays so that newly
     // added items are inserted possibly on top of the last item seen. The position of the last item index within each bucket is
-    // stored in a seperate array of u8's. This means we dont need to worry about removing items from the hash. 
+    // stored in a separate array of u8's. This means we dont need to worry about removing items from the hash. 
     // We also dont store the keys anywhere instead see if the memory pointed to by the match really does 
     // equal the input.
 
@@ -196,7 +196,7 @@ SLZ4_EXPORT int slz4_compress(void* output, int output_size, const void* input, 
         {
             #define slz4_hash(val) (((val) * 2654435761U) >> (32-hash_exponent))
 
-            //Read 8 bytes. Calculate the hash using the first 4 and lookup the approrpriate bucket.
+            //Read 8 bytes. Calculate the hash using the first 4 and lookup the appropriate bucket.
             uint64_t first_input_read = 0; memcpy(&first_input_read, in + in_i, sizeof first_input_read);
             uint32_t first_hash_index = slz4_hash((uint32_t) first_input_read);
 
@@ -247,7 +247,7 @@ SLZ4_EXPORT int slz4_compress(void* output, int output_size, const void* input, 
             bucket_offsets[*bucket_last] = in_i;
             *bucket_last = (*bucket_last + 1) & (bucket_size - 1);
             
-            //Decide wheter to add the found longest match as a math or insert a literal
+            //Decide whether to add the found longest match as a math or insert a literal
            
             //When we have a super long literal the size specifier 
             // is composed of many 0xFF (= 0xFF) bytes right next to each other.
@@ -423,13 +423,13 @@ SLZ4_EXPORT int slz4_decompress(void* output, int output_size, const void* input
     if(output == NULL && output_size == 0)
         output_size = SLZ4_MAX_SIZE;
 
-    //We drasticlaly speed up the decoding by not performing any bounds checks for
+    //We drastically speed up the decoding by not performing any bounds checks for
     // all things that have bounded offset/lenght. We simply again pretend the output_size
     // is smaller by the upper bound of the static offset/length limit thus adding 'padding'.
     // It just happens that everything on the hot path has bounded size so we only do about
     // 1 check per token.
     //We make heavy use of the fact we can always write more then required. This is not a problem
-    // because of the padding and the fact we will simply ovewrtie this superficial data with 
+    // because of the padding and the fact we will simply overwrtie this superficial data with 
     // something else later.
     //I have marked the hot path by comments.
     enum {FAST_PHASE_PADDING = 2*32};
@@ -470,7 +470,7 @@ SLZ4_EXPORT int slz4_decompress(void* output, int output_size, const void* input
             else
             {
                 //*hot path*
-                //We need to copy less then 15 but we alwasy copy 16
+                //We need to copy less then 15 but we always copy 16
                 // because that is just one 16B load/store instruction pair
                 //No need to check size because the required size is bounded.
                 if(out)
@@ -1076,7 +1076,7 @@ SLZ4_INTERNAL void _slz4_test_get_rotated_text(char* into, int size)
 
     //believe it or not but there is actually a limit to how long C strings can be... 
     //Its 509B by standard but compilers allow more. This blob is 4096 bytes. 
-    //Should be reasonably portable an if not just split it into multiple and oncatenate in code.
+    //Should be reasonably portable an if not just split it into multiple and concatenate in code.
     const char* long_string_base = STRINGIFY(
         Mauris ornare lacus eu consequat elementum. Pellentesque maximus bibendum
         nulla sed porta. Maecenas ex ipsum, luctus eu sem sed, congue blandit ante. In hac

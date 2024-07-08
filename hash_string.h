@@ -19,13 +19,13 @@ EXPORT Hash_String hash_string_from_cstring(const char* cstr);
 EXPORT Hash_String hash_string_make(String string);
 EXPORT u64 hash_string(String string);
 EXPORT bool hash_string_is_equal(Hash_String a, Hash_String b);         //Compares two hash strings using hash, size and the contents of data.
-EXPORT bool hash_string_is_equal_approx(Hash_String a, Hash_String b);  //Compares two hash strings using only hash and size. Can be forced to comapre data by defining DISSABLE_APPROXIMATE_EQUAL
+EXPORT bool hash_string_is_equal_approx(Hash_String a, Hash_String b);  //Compares two hash strings using only hash and size. Can be forced to compare data by defining DISSABLE_APPROXIMATE_EQUAL
 
 //Makes a hashed string out of string literal, with optimizations evaluating the hash at compile time (except on GCC). Fails for anything but string literals
 #define HSTRING(string_literal) BRACE_INIT(Hash_String){string_literal "", sizeof(string_literal) - 1, hash64_fnv_inline(string_literal, sizeof(string_literal) - 1)}
 
-//@NOTE: We use fnv because of its extreme simplicity making it very liley to be inlined
-//       and thus for static strings be evalueated at compiel time. Truly, both MSVC and 
+//@NOTE: We use fnv because of its extreme simplicity making it very likely to be inlined
+//       and thus for static strings be evaluated at compile time. Truly, both MSVC and 
 //       CLANG evaluate it at compile time. GCC does not.
 ATTRIBUTE_INLINE_ALWAYS static uint64_t _hash64_fnv_inline(const char* data, isize size)
 {

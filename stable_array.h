@@ -4,17 +4,17 @@
 // This is a data structure that aims to be as closely performant as array while being "stable"
 // meaning that pointers to items remain valid even with additions and removals.
 // 
-// We achive this by storing unstable array of pointers to blocks of items. 
-// Acess is thus simply two pointer dereferences instead of one. This guarantees O(1) fast lookup.
+// We achieve this by storing unstable array of pointers to blocks of items. 
+// Access is thus simply two pointer dereferences instead of one. This guarantees O(1) fast lookup.
 // 
 // It can be used for implementing "tables" - SQL like collections of items with possibly multiple
 // accelerating hashes. The main advantage over regular array is that we dont have to worry about vacant slots 
-// on removal and can skip the hash table lookup by keeping the pointer and using it (because the adress is stable). 
+// on removal and can skip the hash table lookup by keeping the pointer and using it (because the address is stable). 
 // We can additionally keep also the key and compare if it still matches with the one currently there.
 // 
-// This structure can store up to UINT32_MAX*32 items which means 128GB worht of uint8_t's. Of course for
+// This structure can store up to UINT32_MAX*32 items which means 128GB worth of uint8_t's. Of course for
 // that becomes 512GB for uint32_t. Because of the individual allocations for each of the blocks, the allocation
-// of a new block is constant time. On the otehr hand any number of items can be located lineary in memory making 
+// of a new block is constant time. On the other hand any number of items can be located linearly in memory making 
 // the iteration over elements very fast. Thus its well suite for large collections of data.  
 // 
 // Because we cannot swap any other item to a place of removed element we need to have some strategy
@@ -23,14 +23,14 @@
 // Additionally we keep a linked list of blocks that contain at least one empty slot so that we never 
 // have to scan through the entire array. This guarantees O(1) additions and removal.
 // 
-// Peformance consideration here is mainly the number of independent adresses we need to fetch before
+// Performance consideration here is mainly the number of independent addresses we need to fetch before
 // doing operation of interest. We need: 
 //  1: The unstable ptr array as dense as possible so that it can  remain in the cache easily
 //  
 //  2: The bit field and next not empty link to be close enough to other things so that they never
 //     require additional memory fetch.
 // 
-//  3: The final item array to have no additional data inside it to gurrantee optimal traversal speed.
+//  3: The final item array to have no additional data inside it to guarantee optimal traversal speed.
 // 
 //  4: The number of allocations needs to be kept low. It should be possible to allocate exponentially 
 //     bigger blocks at once.
@@ -40,9 +40,9 @@
 // of used/empty elements and the link to next non empty. Because ptr is 8B we need to have both the link
 // and mask 4B (if mask was 8B the structure would get padded to 24B which is way too much for consideration (1) ).
 // 
-// Additionally we store inside the Stable_Array_Block structure a bit indicating wheter this blocks adress was
+// Additionally we store inside the Stable_Array_Block structure a bit indicating whether this blocks address was
 // the one used for allocation. This enables us to allocate lets say 4 blocks at once add them to the unstable array
-// and leter recover the information that only the first of those blocks should be freed (and the size
+// and later recover the information that only the first of those blocks should be freed (and the size
 // can be calculated also).
 //
 // The main feature missing from this data structure is a way of mapping ptr to index without having to
@@ -181,8 +181,8 @@ EXPORT void stable_array_deinit(Stable_Array* stable)
     for(u32 i = 0; i < stable->blocks_size;)
     {
         //Not every block is allocated individually. Instead blocks have STABLE_ARRAY_BLOCK_ALLOCATED_BIT flag in the ptr
-        // that indicates wheter they are the first block in the allocation. 
-        // => Iterate untill the next allocated block is found then deallocate the whole contiguous region at once
+        // that indicates whether they are the first block in the allocation. 
+        // => Iterate until the next allocated block is found then deallocate the whole contiguous region at once
         u32 k = i + 1;
         for(; k < stable->blocks_size; k ++)
             if((uintptr_t) stable->blocks[k].ptr_and_is_allocated_bit & STABLE_ARRAY_BLOCK_ALLOCATED_BIT)
@@ -211,7 +211,7 @@ INTERNAL _Stable_Array_Lookup _stable_array_lookup(const Stable_Array* stable, i
 {
     _Stable_Array_Lookup out = {0};
     //Casting to unsigned is important here since for signed types the
-    // geenreated assembly for the divisions is quite messy.
+    // generated assembly for the divisions is quite messy.
     out.block_i = (size_t) index / STABLE_ARRAY_BLOCK_SIZE;
     out.item_i = (size_t) index %  STABLE_ARRAY_BLOCK_SIZE;
     

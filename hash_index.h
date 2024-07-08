@@ -4,14 +4,14 @@
 // A simple and flexible linear-probing-hash style hash index. This file is self contained!
 // 
 // We use the term hash index as opposed to hash table because this structure
-// doesnt provide the usual hash table ineterface, it marely stores indeces or pointers
+// doesnt provide the usual hash table interface, it merely stores indices or pointers
 // to the key-value data elsewhere.
 //
 // =================== REASONING ====================
 // 
 // This approach has certain benefits most importantly enabling to simply
 // write SQL style tables where every single row value can have 
-// its own accelarating Hash_Index (thats where the name comes from). 
+// its own accelerating Hash_Index (thats where the name comes from). 
 // Consider the following table:
 //
 // OWNER     AGE   NAME         ANIMAL   BIG_CHUNK_OF_DATA
@@ -45,10 +45,10 @@
 //   rows_array:  Array<(OWNER, AGE, NAME, ANIMAL, BIG_CHUNK_OF_DATA)>
 // 
 // Now whenever we lookup row by owner we first hash the owner field
-// (by whtever but always the same hash algorhitm) then use the owner_index 
+// (by whatever but always the same hash algorithm) then use the owner_index 
 // index to find the row. 
 // 
-// Only caveat being a hash colision might occur so we need to remmeber to always check if the 
+// Only caveat being a hash collision might occur so we need to remember to always check if the 
 // row we were looking for is the one we actually got! Because of this each table will most often
 // implement its own functions find_by_owner(...), find_by_name(...), find_by_age(...) etc.
 // 
@@ -62,12 +62,12 @@
 // 
 // We do quadratic probing to find our entries. We use HASH_INDEX_EMPTY and HASH_INDEX_GRAVESTONE bitpatterns
 // to mark empty spots. We rehash really at 75% by default but that can be changed.
-// Note that the bit pattern for used is 0 so for indeces we dont need to mask out anything.
+// Note that the bit pattern for used is 0 so for indices we dont need to mask out anything.
 //
 // I have conducted extensive testing and selected quadratic probing with default 75% load factor
 // because of its good performance in all regards and lower average probe length compared to linear. 
 // This makes it slightly less prone to bad hash functions. 
-// It works better than double hashing for large sizes (double hashes has awful amount of cahce misses)
+// It works better than double hashing for large sizes (double hashes has awful amount of cache misses)
 // and is faster than Robin Hood hashing for fifo-like usage patterns (robin hood has many branch 
 // misspredicts for its complex insertion logic). Robin Hood is only better for performing lookups 
 // on 'dirty' hashes (where a lot of values are gravestones) however we can solve this by rehashing 
@@ -122,7 +122,7 @@ typedef struct Hash_Index {
     int32_t size;                   //The number of key-value pairs in the hash            
     int32_t entries_count;          //The size of the underlaying Hash_Index_Entry array
     int32_t gravestone_count;
-    int32_t info_rehash_count;      //Purely informative. The number of rehashes that occured so far.
+    int32_t info_rehash_count;      //Purely informative. The number of rehashes that occurred so far.
     int32_t info_extra_probes;      //Purely informative. Contains the number of extra probes required to find all keys. That means `sum of number of probes to find all keys` - `number of keys`.
 
     int8_t  load_factor;            //defaults to 75%. Valid values [0, 100)
@@ -465,7 +465,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         while(_hash_index_needs_rehash(rehash_to, required, table->load_factor))
             rehash_to *= 2;
 
-        //If the result would be smaller OR the size would be the same but we have sufficient ammount of gravestones to clear
+        //If the result would be smaller OR the size would be the same but we have sufficient amountof gravestones to clear
         // then do cleaning rehash to exactly the same capacity 
         if(rehash_to < table->entries_count || (rehash_to == table->entries_count && table->gravestone_count * 100 >= table->entries_count*table->load_factor_gravestone) )
         {

@@ -1068,14 +1068,14 @@ void platform_directory_list_contents_free(Platform_Directory_Entry* entries)
     }
 }
 
-//Memory maps the file pointed to by file_path and saves the adress and size of the mapped block into mapping. 
+//Memory maps the file pointed to by file_path and saves the address and size of the mapped block into mapping. 
 //If the desired_size_or_zero == 0 maps the entire file. 
 //  if the file doesnt exist the function fails.
 //If the desired_size_or_zero > 0 maps only up to desired_size_or_zero bytes from the file.
 //  The file is resized so that it is exactly desired_size_or_zero bytes (filling empty space with 0)
 //  if the file doesnt exist the function creates a new file.
 //If the desired_size_or_zero < 0 maps additional desired_size_or_zero bytes from the file 
-//    (for appending) extending it by that ammount and filling the space with 0.
+//    (for appending) extending it by that amountand filling the space with 0.
 //  if the file doesnt exist the function creates a new file.
 Platform_Error platform_file_memory_map(Platform_String file_path, int64_t desired_size_or_zero, Platform_Memory_Mapping* mapping);
 //Unmpas the previously mapped file. If mapping is a result of failed platform_file_memory_map does nothing.
@@ -1090,7 +1090,7 @@ const char* platform_translate_error(Platform_Error error)
             return strerror((int) error);
 
         case PLATFORM_ERROR_OTHER:
-            return "Other platform specific error occured";
+            return "Other platform specific error occurred";
     }
 }
 
@@ -1407,7 +1407,7 @@ Platform_Exception platform_exception_sandbox(
                 break;
             }
             default: {
-                assert(false && "unexpected jump occured!");
+                assert(false && "unexpected jump occurred!");
                 break;
             }
         }

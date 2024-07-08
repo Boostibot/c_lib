@@ -70,7 +70,7 @@ JOT_HASH_API uint32_t hash_fold64(uint64_t hash)
 
 JOT_HASH_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed)
 {
-    //source (modified to not use unaliagned pointers since those are UB) https://github.com/abrandoned/murmur2/blob/master/MurmurHash2.c
+    //source (modified to not use unaligned pointers since those are UB) https://github.com/abrandoned/murmur2/blob/master/MurmurHash2.c
     uint32_t endian_check = 0x33221100;
     assert(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
     assert((key == NULL) == (size == 0) && size >= 0);
@@ -111,7 +111,7 @@ JOT_HASH_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed
 
 JOT_HASH_API uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed)
 {
-    //source (modified to not use unaliagned pointers since those are UB) https://github.com/abrandoned/murmur2/blob/master/MurmurHash2.c
+    //source (modified to not use unaligned pointers since those are UB) https://github.com/abrandoned/murmur2/blob/master/MurmurHash2.c
     uint32_t endian_check = 0x33221100;
     assert(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
     assert((key == NULL) == (size == 0) && size >= 0);

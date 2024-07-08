@@ -1,7 +1,7 @@
 #ifndef JOT_ASSERT
 #define JOT_ASSERT
 
-//Declaration of convenient and easily debuggable asserts. This file is self contained.
+//Declaration of convenient and easily debugable asserts. This file is self contained.
 //Provides TEST(x) simply checks always, ASSERT and ASSERT_SLOW which get expanded only in debug builds.
 // All of which can be used as regular 
 //      ASSERT(val > 0) 
@@ -43,7 +43,7 @@
     //Locally enables/disables asserts. If we wish to disable for part of
     // code we simply undefine them then redefine them after.
     #define DO_ASSERTS       /* enables assertions */
-    #define DO_ASSERTS_SLOW  /* enables slow assertions - expensive assertions or once that change the time complexity of an algorhitm */
+    #define DO_ASSERTS_SLOW  /* enables slow assertions - expensive assertions or once that change the time complexity of an algorithm */
     #define DO_BOUNDS_CHECKS /* checks bounds prior to lookup */
 #endif
 
@@ -73,7 +73,7 @@
     #define ASSERT_SLOW(x, ...)          _DISSABLED_TEST(x, ##__VA_ARGS__)
 #endif
 
-//In debug builds checks wheter the value falls into the valid range
+//In debug builds checks whether the value falls into the valid range
 #ifdef DO_BOUNDS_CHECKS
     #define CHECK_RANGE_BOUNDS(i, from, to)  TEST((from) <= (i) && (i) < (to), \
                                                 "Bounds check failed! %lli is not from the interval [%lli, %lli)!", \

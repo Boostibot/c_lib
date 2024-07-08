@@ -460,13 +460,13 @@ INTERNAL void benchmark_hash_index()
     const char* name = "LINEAR";
     //I am lazy so to get stats for different Hash_Indeces you have to change the implementation.
     //Its a lot easier in the short term than having 5 different versions of the same file flying about
-    for(isize j = 0; j < STATIC_ARRAY_SIZE(load_factors); j++)
+    for(isize j = 0; j < ARRAY_SIZE(load_factors); j++)
     {
-        for(isize non_existance_i = 0; non_existance_i < STATIC_ARRAY_SIZE(non_existances); non_existance_i++)
+        for(isize non_existance_i = 0; non_existance_i < ARRAY_SIZE(non_existances); non_existance_i++)
         {
 			#if 0
             printf("%s lookup \n", name);
-            for(isize k = 0; k < STATIC_ARRAY_SIZE(sizes); k++)
+            for(isize k = 0; k < ARRAY_SIZE(sizes); k++)
             {
                 Allocator* arena = allocator_acquire_arena();
                 Benchmark_Hash_Index_Context context = benchmark_hash_index_prepare(arena, (isize) 1 << sizes[k], non_existances[non_existance_i], load_factors[j]);
@@ -477,7 +477,7 @@ INTERNAL void benchmark_hash_index()
 
             printf("\n");
             printf("%s dirty lookup \n", name);
-            for(isize k = 0; k < STATIC_ARRAY_SIZE(sizes); k++)
+            for(isize k = 0; k < ARRAY_SIZE(sizes); k++)
             {
                 Allocator* arena = allocator_acquire_arena();
                 Benchmark_Hash_Index_Context context = benchmark_hash_index_prepare(arena, (isize) 1 << sizes[k], non_existances[non_existance_i], load_factors[j]);
@@ -488,7 +488,7 @@ INTERNAL void benchmark_hash_index()
 
             printf("\n");
             printf("%s insert \n", name);
-            for(isize k = 0; k < STATIC_ARRAY_SIZE(sizes); k++)
+            for(isize k = 0; k < ARRAY_SIZE(sizes); k++)
             {
                 Allocator* arena = allocator_acquire_arena();
                 Benchmark_Hash_Index_Context context = benchmark_hash_index_prepare(arena, (isize) 1 << sizes[k], non_existances[non_existance_i], load_factors[j]);
@@ -499,7 +499,7 @@ INTERNAL void benchmark_hash_index()
 
             printf("\n");
             printf("%s remove \n", name);
-            for(isize k = 0; k < STATIC_ARRAY_SIZE(sizes); k++)
+            for(isize k = 0; k < ARRAY_SIZE(sizes); k++)
             {
                 Allocator* arena = allocator_acquire_arena();
                 Benchmark_Hash_Index_Context context = benchmark_hash_index_prepare(arena, (isize) 1 << sizes[k], non_existances[non_existance_i], load_factors[j]);
@@ -511,7 +511,7 @@ INTERNAL void benchmark_hash_index()
 
             printf("\n");
             printf("%s fifo \n", name);
-            for(isize k = 0; k < STATIC_ARRAY_SIZE(sizes); k++)
+            for(isize k = 0; k < ARRAY_SIZE(sizes); k++)
             {
                 Allocator* arena = allocator_acquire_arena();
                 Benchmark_Hash_Index_Context context = benchmark_hash_index_prepare(arena, (isize) 1 << sizes[k], non_existances[non_existance_i], load_factors[j]);
@@ -522,7 +522,7 @@ INTERNAL void benchmark_hash_index()
             
             printf("\n");
             printf("%s fifo + 32 lookups \n", name);
-            for(isize k = 0; k < STATIC_ARRAY_SIZE(sizes); k++)
+            for(isize k = 0; k < ARRAY_SIZE(sizes); k++)
             {
                 Allocator* arena = allocator_acquire_arena();
                 Benchmark_Hash_Index_Context context = benchmark_hash_index_prepare(arena, (isize) 1 << sizes[k], non_existances[non_existance_i], load_factors[j]);

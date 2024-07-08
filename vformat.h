@@ -55,7 +55,7 @@ EXPORT const char* cstring_ephemeral(String string);
             PERF_COUNTER_END(format_twice);
         }
     
-        //Sometimes apparently the msvc standard linrary screws up and returns negative...
+        //Sometimes apparently the MSVC standard library screws up and returns negative...
         if(count < 0)
             count = 0;
         builder_resize(append_to, base_size + count);
@@ -96,8 +96,8 @@ EXPORT const char* cstring_ephemeral(String string);
 
         String_Builder* curr = &ephemeral_strings[slot % EPHEMERAL_SLOTS];
         
-        //We periodacally shrink the strinks so that we can use this
-        //function regulary for small and big strings without fearing that we will
+        //We periodically shrink the strings so that we can use this
+        //function regularly for small and big strings without fearing that we will
         //use too much memory
         if(slot % RESET_EVERY < EPHEMERAL_SLOTS)
         {
@@ -143,8 +143,8 @@ EXPORT const char* cstring_ephemeral(String string);
 
             String_Builder* curr = &ephemeral_strings[slot % EPHEMERAL_SLOTS];
         
-            //We periodacally shrink the strinks so that we can use this
-            //function regulary for small and big strings without fearing that we will
+            //We periodically shrink the strings so that we can use this
+            //function regularly for small and big strings without fearing that we will
             //use too much memory
             if(slot % RESET_EVERY < EPHEMERAL_SLOTS)
             {

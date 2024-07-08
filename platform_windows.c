@@ -39,11 +39,11 @@
 //=========================================
 // Virtual memory
 //=========================================
-void* platform_virtual_reallocate(void* adress, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection)
+void* platform_virtual_reallocate(void* address, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection)
 {
     if(action == PLATFORM_VIRTUAL_ALLOC_RELEASE)
     {
-        (void) VirtualFree(adress, 0, MEM_RELEASE);  
+        (void) VirtualFree(address, 0, MEM_RELEASE);  
         return NULL;
     }
 
@@ -51,7 +51,7 @@ void* platform_virtual_reallocate(void* adress, int64_t bytes, Platform_Virtual_
     {
         //Dissable warning about MEM_DECOMMIT without MEM_RELEASE because thats the whole point of this opperation we are doing here.
         #pragma warning(disable:6250)
-        (void) VirtualFree(adress, bytes, MEM_DECOMMIT);  
+        (void) VirtualFree(address, bytes, MEM_DECOMMIT);  
         #pragma warning(default:6250)
         return NULL;
     }
@@ -71,9 +71,9 @@ void* platform_virtual_reallocate(void* adress, int64_t bytes, Platform_Virtual_
         prot = PAGE_NOACCESS;
 
     if(action == PLATFORM_VIRTUAL_ALLOC_RESERVE)
-        return VirtualAlloc(adress, bytes, MEM_RESERVE, prot);
+        return VirtualAlloc(address, bytes, MEM_RESERVE, prot);
     else
-        return VirtualAlloc(adress, bytes, MEM_COMMIT, prot);
+        return VirtualAlloc(address, bytes, MEM_COMMIT, prot);
 }
 
 void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align)
@@ -491,7 +491,7 @@ static __declspec(thread) int64_t _translated_error_slot;
 const char* platform_translate_error(Platform_Error error)
 {
     if(error == PLATFORM_ERROR_OTHER)
-        return "Other platform specific error occured";
+        return "Other platform specific error occurred";
 
     char* trasnlated = NULL;
     int64_t length = FormatMessageA(
@@ -1455,7 +1455,7 @@ bool platform_file_watch_poll(Platform_File_Watch file_watch, Platform_File_Watc
         int32_t changes = platform_atomic_load32(&context->changes);
         if(changes != 0)
         {
-            //... okay some changes *probably* occured
+            //... okay some changes *probably* occurred
             EnterCriticalSection(&context->mutex);
 
             //If there were change calls (ie we got a notification from the OS something changed)

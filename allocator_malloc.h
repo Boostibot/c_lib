@@ -5,10 +5,10 @@
 // 
 // Works by prepending each allocation with a header that tracks its attributes packet to only 24B.
 // (which is a bigger achievement then how it sounds). This also enables us to traverse all active allocations
-// and deinit them if need be. Offers basic corectness checking.
+// and deinit them if need be. Offers basic correctness checking.
 // 
 // The main purpose of Malloc_Allocator is to be a quick substitute until more complex allocators are built.
-// Malloc_Allocator also exposes a malloc like inetrface for some basic control over allocations
+// Malloc_Allocator also exposes a malloc like interface for some basic control over allocations
 
 #include "allocator.h"
 
@@ -67,7 +67,7 @@ EXPORT isize allocation_list_get_block_size(Allocation_List* self, void* old_ptr
 EXPORT Allocation_List_Block* allocation_list_get_block_header(Allocation_List* self, void* old_ptr);
 
 EXPORT void malloc_allocator_init(Malloc_Allocator* self, const char* name);
-EXPORT void malloc_allocator_init_use(Malloc_Allocator* self, const char* name, u64 flags);  //convenience function that inits the allocator then imidietely makes it the default and scratch. On deinit restores to previous defaults
+EXPORT void malloc_allocator_init_use(Malloc_Allocator* self, const char* name, u64 flags);  //convenience function that inits the allocator then imidietely makes it the default or scratch. On deinit restores to previous defaults
 EXPORT void malloc_allocator_deinit(Malloc_Allocator* self);
  
 EXPORT void* malloc_allocator_malloc(Malloc_Allocator* self, isize size);
@@ -238,7 +238,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
             isize smaller_size = new_size < old_size ? new_size : old_size;
             memcpy(out_ptr, old_ptr, (size_t) smaller_size);
 
-            //Calculate the pointer from which the allocation occured. 
+            //Calculate the pointer from which the allocation occcured. 
             //This is just the block pointer if it is not offset.
             void* old_allocation = old_block_ptr;
             if(info.is_offset)

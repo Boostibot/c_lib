@@ -70,7 +70,7 @@ EXPORT int64_t base64_decode_max_output_length(int64_t input_length);
 
 //Encodes input_length bytes from data into out. 
 //Out needs to be at least base64_encode_max_output_length() bytes!
-//Returns the exact ammount of bytes written to out.
+//Returns the exact amountof bytes written to out.
 EXPORT int64_t base64_encode(void* out, const void* data, int64_t input_length, Base64_Encoding encoding);
 
 //Decodes input_length bytes from data into out. 
@@ -81,7 +81,7 @@ EXPORT int64_t base64_encode(void* out, const void* data, int64_t input_length, 
 //That means it is valid for base64 stream to this function to contain '=' inside it as long as it makes sense
 // within the previous block. The next block starts right after that normally.
 //Out needs to be at least base64_encode_max_output_length() bytes!
-//Returns the exact ammount of bytes written to out.
+//Returns the exact amountof bytes written to out.
 EXPORT int64_t base64_decode(void* out, const void* data, int64_t input_length, Base64_Decoding decoding, int64_t* error_at_or_null);
 
 //Common encodings and decodings

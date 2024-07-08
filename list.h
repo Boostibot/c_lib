@@ -5,18 +5,18 @@
 // stolen from Ryan Fleury's codebase. This file is self contained.
 // 
 // We define two variants: 
-//   list_push_nil variant allowing a specifiication of custom nil value and more control
+//   list_push_nil variant allowing a specification of custom nil value and more control
 //   list_push variant that will most often be used
 //
 // We implement the following structures:
 //  1: Chain - the simplest linked list allowing only stack order push pop
 //  2: List - the most used list type allowing pushing from both ends and popping from front
-//  3: BiList (Bidirectional list) - doublely-linked list allowing push and pop from 
+//  3: BiList (Bidirectional list) - doubly-linked list allowing push and pop from 
 //     both sides, as well as addition/removal to the middle
 //
-// All functions are preceeded by an assert checking precodnditions. 
+// All functions are preceeded by an assert checking preconditions. 
 // Due to the macro limitations we only check local properties of the list 
-// (ie. no checkcing of traversibility of the entire list)
+// (ie. no checking of traversability of the entire list)
 
 #include <stddef.h>
 
@@ -43,7 +43,7 @@
 
 //Chain
 #define chain_push_nil(first, node, next, NULL)                     \
-    ASSERT("node must not be null and izolated"                     \
+    ASSERT("node must not be null and isolated"                     \
         && (node) != NULL                                           \
         /* && (node)->next == NULL*/                                     \
     ),                                                              \
@@ -56,7 +56,7 @@
 
 //List
 #define list_push_nil(first, last, node, next, NULL) (              \
-    ASSERT("node must not be null and izolated, list must be valid" \
+    ASSERT("node must not be null and isolated, list must be valid" \
         && (node) != NULL                                           \
         && (node)->next == NULL                                     \
         && ((first) == NULL) == ((last) == NULL)                    \
@@ -67,7 +67,7 @@
     )                                                               \
     
 #define list_push_front_nil(first, last, node, next, NULL) (        \
-    ASSERT("node must not be null and izolated, list must be valid" \
+    ASSERT("node must not be null and isolated, list must be valid" \
         && (node) != NULL                                           \
         /* && (node)->next == NULL */                               \
         && ((first) == NULL) == ((last) == NULL)                    \
@@ -89,7 +89,7 @@
 
 //Bilist
 #define bilist_insert_nil_cond(first, last, after, insert_first, node, next, prev, NULL) (      \
-    ASSERT("node must not be null and izolated, after must be properly linked," \
+    ASSERT("node must not be null and isolated, after must be properly linked," \
            "list must be valid"                                                 \
         && (node) != NULL                                                       \
         /*&& (node)->next == NULL && (node)->prev == NULL*/                     \

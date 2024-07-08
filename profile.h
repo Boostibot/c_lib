@@ -7,7 +7,7 @@
 #include "perf.h"
 
 // This file provides a simple and performant API
-// for tracking running time across the whole aplication.
+// for tracking running time across the whole application.
 // Does not require any intialization, allocations or locks and
 // works across files and compilation units.
 
@@ -85,7 +85,7 @@ typedef struct Global_Perf_Counter
 	struct Global_Perf_Counter* next;
 	i32 line;
 	i32 concurrent_running_counters; 
-	//the number of concurrent running counters actiong upon this counter.
+	//the number of concurrent running counters acting upon this counter.
 	//Useful for debugging. Is 0 if PROFILE_NO_DEBUG is defines
 
 	const char* file;
@@ -111,7 +111,7 @@ typedef struct Global_Perf_Counter_Running
 
 //@TODO: rework these defines to make them simpler
 //@TODO: perf counter tick - add a macro that does not do any time tracking but only atomically increments a counter. 
-//       This can be used to track how many times an event occured within an individual function. 
+//       This can be used to track how many times an event occurred within an individual function. 
 //       This can be used for many more things such as per frame resource tracking etc. To enable this we need to implement
 //       a concept of 'space'. The default space is global but one might want to for example log perf stats into a per frame space
 //       reset every frame.

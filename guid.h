@@ -7,10 +7,10 @@
 #include "random.h"
 
 //64 bit program-unique-identifier.
-typedef enum {__ID_VAL__ = 0}* Id;  
+typedef struct _Opaque_ID_Dummy* Id;  
 
-// Ids are guranteed to be 100% unique within a single run of the program. 
-// They should also be equally distributed across their values meening they dont need to be hashed.
+// Ids are guaranteed to be 100% unique within a single run of the program. 
+// They should also be equally distributed across their values meaning they dont need to be hashed.
 // 
 //We use pointer to a custom type for three reasons:
 //  1: pointers are comparable with =, <, >, ... (unlike structs)
@@ -42,7 +42,7 @@ EXPORT Id id_generate()
     static i64 salt = 0;
     static i64 counter = 0;
     
-    //This works even in mutithreaded because the worst that could happen is we twice assign 
+    //This works even in multithreaded because the worst that could happen is we twice assign 
     // the salt to the same value. Even in partially filled states this branch will not run.
     if(salt == 0)
         salt = platform_perf_counter_startup(); 

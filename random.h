@@ -74,7 +74,7 @@ EXPORT int64_t  random_state_i64(Random_State* state);
 EXPORT int64_t  random_state_range(Random_State* state, int64_t from, int64_t to); 
 //Randomly shuffles the provided array
 EXPORT void     random_state_shuffle(Random_State* state, void* elements, int64_t element_count, int64_t element_size); 
-EXPORT void	 random_state_bytes(Random_State* state, void* into, int64_t size);
+EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size);
 
 #endif
 
@@ -179,12 +179,9 @@ EXPORT void	 random_state_bytes(Random_State* state, void* into, int64_t size);
 		//We use seed to generate longer seed ensuring none of the ints are ever 0
 		for(uint64_t i = 0; i < 4; i++)
 		{
-			while(true)
-			{
-				out.state_xiroshiro256[i] = random_splitmix(out.state_splitmix); 
-				if(out.state_xiroshiro256[i] != 0)
-					break;
-			}
+			out.state_xiroshiro256[i] = random_splitmix(out.state_splitmix); 
+			if(out.state_xiroshiro256[i] == 0)
+				out.state_xiroshiro256[i] = 1;
 		}
 
 		return out;

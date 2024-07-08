@@ -5,7 +5,7 @@
 // on its own without the possibility of accidental invalidation of allocations from 'lower' levels. 
 // (Read more for proper explanations).
 // 
-// Arena_Frame is a allocator used to coglomerate individual allocations to a continuous buffer, which allows for
+// Arena_Frame is a allocator used to conglomerate individual allocations to a continuous buffer, which allows for
 // extremely quick free-all/reset operation (just move the index back). It cannot be implemented on top of
 // the allocator interface (see allocator.h or below) because it does not know its maximum size up front.
 // (ie. we couldnt reserve and had to hard allocate 64GB of space). 
@@ -23,9 +23,9 @@
 // The user memory acquired from Arena_Frame does NOT need to be freed because it gets recycled when the Arena_Frame
 // does get freed, as such both Arena_Frame and Arena_Stack do NEED to be freed.
 //
-// We make this Arena_Stack/Arena_Frame distinction because it allows us to reason about the coglomerated lifetimes
-// and provide the stack order guarantees. The problem at hand is deciding to what furtherst point we are able to
-// to rewind inside Arena_Stack on each release of Arena_Frame. If we did the usual rewing to hard set index we would 
+// We make this Arena_Stack/Arena_Frame distinction because it allows us to reason about the conglomerated lifetimes
+// and provide the stack order guarantees. The problem at hand is deciding to what furtherest point we are able to
+// to rewind inside Arena_Stack on each release of Arena_Frame. If we did the usual rewinding to hard set index we would 
 // invalidate the stack order. Consider the following scenario (using the names of the functions defined below):
 // 
 // 
@@ -35,7 +35,7 @@
 // 
 // //saves restore point as arena1.restore_to = stack.used_to = 0 
 // Arena_Frame arena1 = arena_frame_acquire(&stack);
-// void* alloc1 = arena_frame_push(&arena1, 256, 8); //allocate 256B aligend to 8B boundary
+// void* alloc1 = arena_frame_push(&arena1, 256, 8); //allocate 256B aligned to 8B boundary
 // 
 // //saves restore point as arena2.restore_to = stack.used_to = 256
 // Arena_Frame arena2 = arena_frame_acquire(&stack);
@@ -47,16 +47,16 @@
 // Arena_Frame arena3 = arena_frame_acquire(&stack);
 // void* alloc3 = arena_frame_push(&arena3, 512, 8);
 // 
-// //alloc3 shares the same emmory as alloc2! 
+// //alloc3 shares the same memory as alloc2! 
 // 
 // arena_frame_release(alloc3);
 // 
 // 
 // Note that this situation does occur indeed occur in practice, typically while implicitly passing arena across 
-// a function boundary, for example by passing a dynamic Array to function that will push to it (thus pontetially 
+// a function boundary, for example by passing a dynamic Array to function that will push to it (thus pontentially 
 // triggering realloc). This can happen even in a case when both the caller and function called are 'well behaved'
-// and handle arenas corrrectly.
-// Also note that this situation does happen when switching between any finite ammount of backing memory regions. 
+// and handle arenas correctly.
+// Also note that this situation does happen when switching between any finite amount of backing memory regions. 
 // We switch whenever we acquire arena thus in the exmaple above arena1 would reside in memory 'A' while arena2 
 // in memory 'B'. This would prevent that specific case above from breaking but not even two arenas (Ryan Flurry 
 // style) will save us if we are not careful. I will be presuming two memory regions A and B in the examples 
@@ -64,13 +64,13 @@
 // 
 // To illustrate the point we will need to start talking about *levels*.
 // Level is a positive number starting at 1 that gets incremented every time we acquire Arena_Frame from Arena_Stack
-// and decremeted whenever we release the acquired Arena_Frame. This coresponds to a depth in a stack.
+// and decremented whenever we release the acquired Arena_Frame. This corresponds to a depth in a stack.
 //
 // The diagrams show level on the Y axis along with the memory region A, B where the level resides in. The X axis
 // shows the order of allocations. ### is symbol marking the alive region of an allocation. It is preceeded by a 
-// number coresponding to the level it was allocated from.
+// number corresponding to the level it was allocated from.
 //
-// First we illustarte the problem above with two memory regions A and B in diagram form.
+// First we illustrate the problem above with two memory regions A and B in diagram form.
 // 
 // level
 //   ^
@@ -109,10 +109,10 @@
 //
 // ===================================== IMPLEMENTATION =================================================
 // 
-// We achive this flattening by storing the list of restore points within the arena. For simplicity we store
+// We achieve this flattening by storing the list of restore points within the arena. For simplicity we store
 // some max number of restore points which are just integers to the used_to index. When a problematic allocation
-// 'from bellow' arises we set these restore indeces to values so that they will not result in error. In practice
-// this results in only one extra if with branch thats almost never taken. We further stop the compielr from 
+// 'from bellow' arises we set these restore indices to values so that they will not result in error. In practice
+// this results in only one extra if with branch thats almost never taken. We further stop the compiler from 
 // inlining the unusual case code thus having extremely low impact on the resulting speed of the arena for the
 // simple arena_frame_push() case. The acquire and release functions are a tiny bit more expensive but those are not 
 // of primary concern.
