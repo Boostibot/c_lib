@@ -59,6 +59,8 @@ EXPORT int64_t		perf_freq(); //returns the frequency of the perf counter
 EXPORT int64_t		perf_submit(Perf_Counter* counter, int64_t measured);
 EXPORT int64_t		perf_submit_atomic(Perf_Counter* counter, int64_t measured, bool detailed);
 EXPORT Perf_Stats	perf_get_stats(Perf_Counter counter, int64_t batch_size);
+EXPORT Perf_Counter perf_counter_merge(Perf_Counter a, Perf_Counter b, bool* could_combine_everything_or_null);
+EXPORT void			perf_init(Perf_Counter* counter, int64_t mean_estimate);
 
 //Maintains a benchmark. See example below for how to use this.
 EXPORT bool perf_benchmark(Perf_Benchmark* bench, double time);
@@ -68,10 +70,6 @@ EXPORT bool perf_benchmark(Perf_Benchmark* bench, double time);
 EXPORT bool perf_benchmark_custom(Perf_Benchmark* bench, Perf_Stats* stats_or_null, double warmup, double time, int64_t batch_size);
 //Submits the measured time in nanoseconds to the benchmark. The measurement is discareded if warmup is still in progress. 
 EXPORT void perf_benchmark_submit(Perf_Benchmark* bench, int64_t measured);
-//#define PERF_AUTO_WARMUP -1.0
-
-//Prevents the compiler from otpimizing away the variable (and thus its value) pointed to by ptr.
-EXPORT void perf_do_not_optimize(const void* ptr) ;
 
 //Needs implementation:
 int64_t platform_perf_counter();
@@ -131,28 +129,27 @@ static void perf_benchmark_example()
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PERF_IMPL)) && !defined(JOT_PERF_HAS_IMPL)
 #define JOT_PERF_HAS_IMPL
 
+	EXPORT void perf_init(Perf_Counter* counter, int64_t mean_estimate)
+	{
+		counter->frquency = platform_perf_counter_frequency();
+		counter->max_counter = INT64_MIN;
+		counter->min_counter = INT64_MAX;
+		counter->mean_estimate = mean_estimate;
+	}
 	
 	EXPORT int64_t perf_submit(Perf_Counter* counter, int64_t delta)
 	{
 		ASSERT(counter != NULL && delta >= 0 && "invalid Global_Perf_Counter_Running submitted");
-
-		int64_t runs = counter->runs;
-		counter->runs += 1; 
-		if(runs == 0)
-		{
-			counter->frquency = platform_perf_counter_frequency();
-			counter->max_counter = INT64_MIN;
-			counter->min_counter = INT64_MAX;
-			counter->mean_estimate = delta;
-		}
+		if(counter->frquency == 0)
+			perf_init(counter, delta);
 	
 		int64_t offset_delta = delta - counter->mean_estimate;
 		counter->counter += delta;
 		counter->sum_of_squared_offset_counters += offset_delta*offset_delta;
 		counter->min_counter = MIN(counter->min_counter, delta);
 		counter->max_counter = MAX(counter->max_counter, delta);
-
-		return runs;
+		counter->runs += 1; 
+		return counter->runs - 1;
 	}
 	
 	EXPORT int64_t perf_submit_atomic(Perf_Counter* counter, int64_t delta, bool detailed)
@@ -161,13 +158,8 @@ static void perf_benchmark_example()
 		int64_t runs = platform_atomic_add64(&counter->runs, 1); 
 		
 		//only save the stats that dont need to be updated on the first run
-		if(runs == 0)
-		{
-			counter->frquency = platform_perf_counter_frequency();
-			counter->max_counter = INT64_MIN;
-			counter->min_counter = INT64_MAX;
-			counter->mean_estimate = delta;
-		}
+		if(counter->frquency == 0)
+			perf_init(counter, delta);
 	
 		platform_atomic_add64(&counter->counter, delta);
 
@@ -198,6 +190,30 @@ static void perf_benchmark_example()
 	EXPORT int64_t perf_freq()
 	{
 		return platform_perf_counter_frequency();
+	}
+
+	EXPORT Perf_Counter perf_counter_merge(Perf_Counter a, Perf_Counter b, bool* could_combine_everything_or_null)
+	{
+		Perf_Counter out = {0};
+		out.max_counter = a.max_counter > b.max_counter ? b.max_counter : a.max_counter;
+		out.min_counter = a.min_counter < b.min_counter ? b.min_counter : a.min_counter;
+		out.frquency = a.frquency > b.frquency ? b.frquency : a.frquency;
+		out.runs = a.runs + b.runs;
+		out.counter = a.counter + b.counter;
+		if(a.mean_estimate == b.mean_estimate)
+		{
+			out.mean_estimate = a.mean_estimate;
+			out.sum_of_squared_offset_counters = a.sum_of_squared_offset_counters + b.sum_of_squared_offset_counters;
+			if(could_combine_everything_or_null)
+				*could_combine_everything_or_null = true;
+		}
+		else
+		{
+			if(could_combine_everything_or_null)
+				*could_combine_everything_or_null = false;
+		}
+
+		return out;
 	}
 
 	EXPORT Perf_Stats perf_get_stats(Perf_Counter counter, int64_t batch_size)
@@ -300,27 +316,6 @@ static void perf_benchmark_example()
 
 		return stats;
 	}
-	
-	EXPORT void perf_do_not_optimize(const void* ptr) 
-	{ 
-		#if defined(__GNUC__) || defined(__clang__)
-			__asm__ __volatile__("" : "+r"(ptr))
-		#else
-			static volatile int __perf_always_zero = 0;
-			if(__perf_always_zero == 0x7FFFFFFF)
-			{
-				volatile int* vol_ptr = (volatile int*) (void*) ptr;
-				//If we would use the following line the compiler could infer that 
-				//we are only really modifying the value at ptr. Thus if we did 
-				// perf_do_not_optimize(long_array) it would gurantee no optimize only at the first element.
-				//The precise version is also not very predictable. Often the compilers decide to only keep the first element
-				// of the array no metter which one we actually request not to optimize. 
-				//
-				// __perf_always_zero = *vol_ptr;
-				__perf_always_zero = vol_ptr[*vol_ptr];
-			}
-		#endif
-    }
 
 	EXPORT bool perf_benchmark_custom(Perf_Benchmark* bench, Perf_Stats* stats_or_null, double warmup, double time, int64_t batch_size)
 	{

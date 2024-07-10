@@ -3,7 +3,7 @@
 
 #include "log.h"
 #include "vformat.h"
-#include "profile.h"
+#include "new_profile_preinclude.h"
 
 typedef struct Log_List {
     Logger logger;
@@ -111,7 +111,7 @@ EXPORT void log_list_log_func(Logger* logger_, i32 group_depth, int actions, con
 {
     Log_List* logger = (Log_List*) (void*) logger_;
 
-    PERF_COUNTER_START();
+    PROFILE_START();
 
     Log log_list = {0};
     if(actions & LOG_ACTION_LOG)
@@ -167,7 +167,7 @@ EXPORT void log_list_log_func(Logger* logger_, i32 group_depth, int actions, con
         _log_alloc_recursive(first, last, &log_list, logger->allocator, logger->filter, 0);
     }
 
-    PERF_COUNTER_END();
+    PROFILE_END();
 }
 
 EXPORT void log_list_init(Log_List* log_list, Allocator* allocator)

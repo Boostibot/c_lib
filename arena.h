@@ -118,7 +118,7 @@
 // of primary concern.
 
 #include "allocator.h"
-#include "profile.h"
+#include "new_profile_preinclude.h"
 
 #define ARENA_DEF_STACK_SIZE   256
 #define ARENA_DEF_RESERVE_SIZE 64 * GIBI_BYTE 
@@ -255,9 +255,9 @@ EXPORT void arena_commit(Arena* arena, isize size)
         if(commit_new > arena->reserved)
             abort(); //@TODO: something more proper but still keeping things fast
             
-        PERF_COUNTER_START(commit);
+        PROFILE_START(commit);
         void* state = platform_virtual_reallocate(arena->data + arena->commit, commit_new - arena->commit, PLATFORM_VIRTUAL_ALLOC_COMMIT, PLATFORM_MEMORY_PROT_READ_WRITE);
-        PERF_COUNTER_END(commit);
+        PROFILE_END(commit);
         if(state == NULL)
             abort();
 
@@ -349,7 +349,7 @@ EXPORT bool arena_stack_init(Arena_Stack* arena, isize reserve_size_or_zero, isi
 
 ATTRIBUTE_INLINE_NEVER void _arena_handle_unusual_push(Arena_Stack* stack, i32 depth, isize size, isize align)
 {
-    PERF_COUNTER_START();
+    PROFILE_START();
     _arena_debug_check_invariants(stack);
     if(stack->stack_depth > depth)
     {
@@ -370,12 +370,12 @@ ATTRIBUTE_INLINE_NEVER void _arena_handle_unusual_push(Arena_Stack* stack, i32 d
     _arena_debug_fill_stack(stack);
     _arena_debug_check_invariants(stack);
 
-    PERF_COUNTER_END();
+    PROFILE_END();
 }
 
 INTERNAL ATTRIBUTE_INLINE_ALWAYS void* _arena_frame_push_nonzero_inline(Arena_Frame* arena, isize size, isize align)
 {
-    PERF_COUNTER_START();
+    PROFILE_START();
     ASSERT(arena->stack && arena->level > 0);
     Arena_Stack* stack = arena->stack;
     _arena_debug_check_invariants(stack);
@@ -387,7 +387,7 @@ INTERNAL ATTRIBUTE_INLINE_ALWAYS void* _arena_frame_push_nonzero_inline(Arena_Fr
     stack->arena.size = out - stack->arena.data + size;
 
     _arena_debug_check_invariants(stack);
-    PERF_COUNTER_END();
+    PROFILE_END();
     return out;
 }
 
@@ -405,7 +405,7 @@ EXPORT void* arena_frame_push(Arena_Frame* arena, isize size, isize align)
 
 EXPORT void arena_frame_release(Arena_Frame* arena)
 {
-    PERF_COUNTER_START();
+    PROFILE_START();
 
     Arena_Stack* stack = arena->stack;
     ASSERT(arena->stack && arena->level > 0);
@@ -434,7 +434,7 @@ EXPORT void arena_frame_release(Arena_Frame* arena)
         memset(arena, 0, sizeof* arena);
     }
 
-    PERF_COUNTER_END();
+    PROFILE_END();
 }
 
 //Compatibility function for the allocator interface
@@ -473,7 +473,7 @@ EXPORT Allocator_Stats arena_frame_get_allocatator_stats(Allocator* self)
 
 EXPORT Arena_Frame arena_frame_acquire(Arena_Stack* stack)
 {
-    PERF_COUNTER_START();
+    PROFILE_START();
 
     _arena_debug_check_invariants(stack);
     i32 new_depth = stack->stack_depth + 1;
@@ -492,7 +492,7 @@ EXPORT Arena_Frame arena_frame_acquire(Arena_Stack* stack)
     out.level = new_depth;
     out.stack = stack;
 
-    PERF_COUNTER_END();
+    PROFILE_END();
     return out;
 }
 

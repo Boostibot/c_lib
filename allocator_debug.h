@@ -51,7 +51,8 @@
 #include "hash_index.h"
 #include "hash.h"
 #include "log.h"
-#include "profile.h"
+
+#include "new_profile_preinclude.h"
 #include "vformat.h"
 
 typedef struct Debug_Allocator          Debug_Allocator;
@@ -524,7 +525,7 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
         return allocator_reallocate(self->parent, new_size, old_ptr_, old_size, align);
     }
     
-    PERF_COUNTER_START();
+    PROFILE_START();
     _debug_allocator_is_invariant(self);
 
     Debug_Alloc_Sizes new_sizes = _debug_allocator_allocation_sizes(self, new_size, align);
@@ -545,7 +546,7 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
         Debug_Allocator_Panic_Reason reason = _debug_allocator_check_block(self, old_ptr, &interpenetration, &hash_found, old_size, align);
         if(reason != DEBUG_ALLOC_PANIC_NONE)
         {
-            PERF_COUNTER_END();
+            PROFILE_END();
             return _debug_allocator_panic(self, reason, old_ptr, interpenetration);
         }
         
@@ -557,7 +558,7 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
     //if failed return failiure and do nothing
     if(new_block_ptr == NULL && new_size != 0)
     {
-        PERF_COUNTER_END();
+        PROFILE_END();
         return NULL;
     }
     
@@ -617,7 +618,7 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
         self->reallocation_count += 1;
     
     _debug_allocator_is_invariant(self);
-    PERF_COUNTER_END();
+    PROFILE_END();
     return new_ptr;
 }
 

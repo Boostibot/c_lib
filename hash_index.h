@@ -164,9 +164,9 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         #endif
     #endif
 
-    #ifndef PERF_COUNTER_START
-        #define PERF_COUNTER_START(...)
-        #define PERF_COUNTER_END(...);
+    #ifndef PROFILE_START
+        #define PROFILE_START(...)
+        #define PROFILE_END(...);
     #endif
 
     #ifndef ATTRIBUTE_INLINE_NEVER
@@ -469,25 +469,25 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         // then do cleaning rehash to exactly the same capacity 
         if(rehash_to < table->entries_count || (rehash_to == table->entries_count && table->gravestone_count * 100 >= table->entries_count*table->load_factor_gravestone) )
         {
-            PERF_COUNTER_START(in_place);
+            PROFILE_START(in_place);
             #ifdef JOT_ARENA
             if(table->do_in_place_rehash)
                 hash_index_rehash_in_place(table);
             else
             #endif
                 _hash_index_rehash(table, table->entries_count, true);
-            PERF_COUNTER_END(in_place);
+            PROFILE_END(in_place);
         }
         else
         {
-            PERF_COUNTER_START(normal);
+            PROFILE_START(normal);
             //If we have for example a single gravestone and we want insert another entry
             // its better to rehash to a bigger size right away 
             if(rehash_to == table->entries_count)
                 rehash_to *= 2;
             
             _hash_index_rehash(table, rehash_to, true);
-            PERF_COUNTER_END(normal);
+            PROFILE_END(normal);
         }
     }
 

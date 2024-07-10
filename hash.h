@@ -73,7 +73,7 @@ JOT_HASH_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed
     //source (modified to not use unaligned pointers since those are UB) https://github.com/abrandoned/murmur2/blob/master/MurmurHash2.c
     uint32_t endian_check = 0x33221100;
     assert(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
-    assert((key == NULL) == (size == 0) && size >= 0);
+    assert((key != NULL || size == 0) && size >= 0);
 
     const uint32_t magic = 0x5bd1e995;
     const int r = 24;
@@ -114,7 +114,7 @@ JOT_HASH_API uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed
     //source (modified to not use unaligned pointers since those are UB) https://github.com/abrandoned/murmur2/blob/master/MurmurHash2.c
     uint32_t endian_check = 0x33221100;
     assert(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
-    assert((key == NULL) == (size == 0) && size >= 0);
+    assert((key != NULL || size == 0) && size >= 0);
 
     const uint64_t magic = 0xc6a4a7935bd1e995;
     const int r = 47;
@@ -174,7 +174,7 @@ JOT_HASH_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed)
 {
     uint32_t endian_check = 0x33221100;
     assert(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
-    assert((key == NULL) == (size == 0) && size >= 0);
+    assert((key != NULL || size == 0) && size >= 0);
 
     uint8_t* data = (uint8_t*) (void*) key;
     uint8_t* end = data + size;
@@ -239,7 +239,7 @@ JOT_HASH_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed)
 JOT_HASH_API uint32_t hash32_fnv(const void* key, int64_t size, uint32_t seed)
 {
     // Source: https://github.com/aappleby/smhasher/blob/master/src/Hashes.cpp
-    assert((key == NULL) == (size == 0) && size >= 0);
+    assert((key != NULL || size == 0) && size >= 0);
 
     uint32_t hash = seed ^ 2166136261UL;
     const uint8_t* data = (const uint8_t*) key;
@@ -253,7 +253,7 @@ JOT_HASH_API uint32_t hash32_fnv(const void* key, int64_t size, uint32_t seed)
 
 JOT_HASH_API uint64_t hash64_fnv(const void* key, int64_t size, uint32_t seed)
 {
-    assert((key == NULL) == (size == 0) && size >= 0);
+    assert((key != NULL || size == 0) && size >= 0);
 
     const uint8_t* data = (const uint8_t*) key;
     uint64_t hash = seed ^ 0x27D4EB2F165667C5ULL;

@@ -19,13 +19,13 @@ void main()
 	//========== 1: capture stats ===============
     for(isize i = 0; i < 100000; i++)
 	{
-		PERF_COUNTER_START(my_counter);
+		PROFILE_START(my_counter);
         //Run some code
-		    PERF_COUNTER_START(my_counter2);
+		    PROFILE_START(my_counter2);
             //Run some code
             //printf("%d ", (int) i);
-		    PERF_COUNTER_END(my_counter2);
-		PERF_COUNTER_END(my_counter);
+		    PROFILE_END(my_counter2);
+		PROFILE_END(my_counter);
 	}
     
 	//========== 2: print stats ===============
@@ -67,21 +67,17 @@ void main()
 #define PROFILE_NO_DEBUG
 
 //Locally enables perf counters (can be toggled just like ASSERT macros)
-#define DO_PERF_COUNTERS
+#define DO_PROFILES
 
 //Makes all counters detailed. This is the default.
 //#define PROFILE_DO_ONLY_DETAILED_COUNTERS
 
-//typedef void (*Global_Perf_Counter_User_Format_Func)(const Global_Perf_Counter* counter, String_Builder* into);
+//typedef struct Profile_Thread_Handle Profile_Thread_Handle;
+
+
 
 typedef struct Global_Perf_Counter
 {
-	//Sometimes we want to add some extra piece of data we track to our counters
-	//such as: number of hash collisions, number of times a certain branch was taken etc.
-	//We cannot track this 
-	//void* user_format_context;
-	//Global_Perf_Counter_User_Format_Func* user_format_func;
-
 	struct Global_Perf_Counter* next;
 	i32 line;
 	i32 concurrent_running_counters; 
@@ -116,10 +112,10 @@ typedef struct Global_Perf_Counter_Running
 //       a concept of 'space'. The default space is global but one might want to for example log perf stats into a per frame space
 //       reset every frame.
 
-EXPORT Global_Perf_Counter_Running global_perf_counter_start(Global_Perf_Counter* my_counter, i32 line, const char* file, const char* function, const char* name);
-EXPORT void global_perf_counter_end(Global_Perf_Counter_Running* running);
-EXPORT void global_perf_counter_end_detailed(Global_Perf_Counter_Running* running);
-EXPORT void global_perf_counter_end_discard(Global_Perf_Counter_Running* running);
+EXPORT Global_Perf_Counter_Running profile_start(Global_Perf_Counter* my_counter, i32 line, const char* file, const char* function, const char* name);
+EXPORT void profile_end(Global_Perf_Counter_Running* running);
+EXPORT void profile_end_detailed(Global_Perf_Counter_Running* running);
+EXPORT void profile_end_discard(Global_Perf_Counter_Running* running);
 
 EXPORT Global_Perf_Counter* profile_get_counters();
 EXPORT i64 profile_get_total_running_counters_count();
@@ -127,30 +123,30 @@ EXPORT f64 profile_get_counter_total_running_time_s(Global_Perf_Counter counter)
 EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counter);
 
 //Optional arguments
-#define PERF_COUNTER_START(...)			PP_ID(PP_CONCAT(_IF_NOT_PERF_START_,		DO_PERF_COUNTERS)(__VA_ARGS__, _))
-#define PERF_COUNTER_END(...)			PP_ID(PP_CONCAT(_IF_NOT_PERF_END_,			DO_PERF_COUNTERS)(__VA_ARGS__, _))
-#define PERF_COUNTER_END_DETAILED(...)	PP_ID(PP_CONCAT(_IF_NOT_PERF_END_DETAILED_, DO_PERF_COUNTERS)(__VA_ARGS__, _))
-#define PERF_COUNTER_END_DISCARD(...)	PP_ID(PP_CONCAT(_IF_NOT_PERF_END_DISCARD_,	DO_PERF_COUNTERS)(__VA_ARGS__, _))
+#define PROFILE_START(...)			PP_ID(PP_CONCAT(_IF_NOT_PERF_START_,		DO_PROFILES)(__VA_ARGS__, _))
+#define PROFILE_END(...)			PP_ID(PP_CONCAT(_IF_NOT_PERF_END_,			DO_PROFILES)(__VA_ARGS__, _))
+#define PROFILE_END_DETAILED(...)	PP_ID(PP_CONCAT(_IF_NOT_PERF_END_DETAILED_, DO_PROFILES)(__VA_ARGS__, _))
+#define PROFILE_END_DISCARD(...)	PP_ID(PP_CONCAT(_IF_NOT_PERF_END_DISCARD_,	DO_PROFILES)(__VA_ARGS__, _))
 
 #ifdef PROFILE_DO_ONLY_DETAILED_COUNTERS
-	#undef PERF_COUNTER_END
-	#define PERF_COUNTER_END(name) PERF_COUNTER_END_DETAILED(name)
+	#undef PROFILE_END
+	#define PROFILE_END(name) PROFILE_END_DETAILED(name)
 #endif
 
 // ========= MACRO IMPLMENTATION ==========
-	#define _IF_NOT_PERF_START_DO_PERF_COUNTERS(name, ...) 
+	#define _IF_NOT_PERF_START_DO_PROFILES(name, ...) 
 	#define _IF_NOT_PERF_START_(name, ...) \
 		ATTRIBUTE_ALIGNED(64) static Global_Perf_Counter _##name = {0}; \
-		Global_Perf_Counter_Running _run##name = global_perf_counter_start(&_##name, __LINE__, __FILE__, __FUNCTION__, #name); 
+		Global_Perf_Counter_Running _run##name = profile_start(&_##name, __LINE__, __FILE__, __FUNCTION__, #name); 
 
-	#define _IF_NOT_PERF_END_DO_PERF_COUNTERS(name, ...) 
-	#define _IF_NOT_PERF_END_(name, ...) global_perf_counter_end(&(_run##name))
+	#define _IF_NOT_PERF_END_DO_PROFILES(name, ...) 
+	#define _IF_NOT_PERF_END_(name, ...) profile_end(&(_run##name))
 	
-	#define _IF_NOT_PERF_END_DETAILED_DO_PERF_COUNTERS(name, ...) 
-	#define _IF_NOT_PERF_END_DETAILED_(name, ...) global_perf_counter_end_detailed(&(_run##name))
+	#define _IF_NOT_PERF_END_DETAILED_DO_PROFILES(name, ...) 
+	#define _IF_NOT_PERF_END_DETAILED_(name, ...) profile_end_detailed(&(_run##name))
 
-	#define _IF_NOT_PERF_END_DISCARD_DO_PERF_COUNTERS(name, ...) 
-	#define _IF_NOT_PERF_END_DISCARD_(name, ...) global_perf_counter_end_discard(&(_run##name))
+	#define _IF_NOT_PERF_END_DISCARD_DO_PROFILES(name, ...) 
+	#define _IF_NOT_PERF_END_DISCARD_(name, ...) profile_end_discard(&(_run##name))
 
 	#define PP_ID(x)                x
 	#define _PP_CONCAT(a, b)        a ## b
@@ -167,7 +163,7 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 	static Global_Perf_Counter* perf_counters_linked_list = NULL;
 	static i32 perf_counters_running_count = 0;
 	
-	EXPORT Global_Perf_Counter_Running global_perf_counter_start(Global_Perf_Counter* my_counter, i32 line, const char* file, const char* function, const char* name)
+	EXPORT Global_Perf_Counter_Running profile_start(Global_Perf_Counter* my_counter, i32 line, const char* file, const char* function, const char* name)
 	{
 		Global_Perf_Counter_Running running = {0};
 		running.running = perf_now();
@@ -217,17 +213,17 @@ EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counte
 		running->stopped = true;
 	}
 
-	EXPORT void global_perf_counter_end(Global_Perf_Counter_Running* running)
+	EXPORT void profile_end(Global_Perf_Counter_Running* running)
 	{
 		_perf_counter_end(running, false);
 	}
 	
-	EXPORT void global_perf_counter_end_detailed(Global_Perf_Counter_Running* running)
+	EXPORT void profile_end_detailed(Global_Perf_Counter_Running* running)
 	{
 		_perf_counter_end(running, true);
 	}
 
-	EXPORT void global_perf_counter_end_discard(Global_Perf_Counter_Running* running)
+	EXPORT void profile_end_discard(Global_Perf_Counter_Running* running)
 	{
 		(void) running;
 		#if !defined(PROFILE_NO_DEBUG)

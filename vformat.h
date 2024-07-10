@@ -2,7 +2,7 @@
 #define JOT_VFORMAT
 
 #include "string.h"
-#include "profile.h"
+#include "new_profile_preinclude.h"
 #include <stdarg.h>
 
 EXPORT void vformat_append_into(String_Builder* append_to, const char* format, va_list args);
@@ -25,7 +25,7 @@ EXPORT const char* cstring_ephemeral(String string);
 
     EXPORT void vformat_append_into(String_Builder* append_to, const char* format, va_list args)
     {
-        PERF_COUNTER_START();
+        PROFILE_START();
 
         if(format == NULL)
             format = "";
@@ -49,10 +49,10 @@ EXPORT const char* cstring_ephemeral(String string);
         
         if(count > estimated_size)
         {
-            PERF_COUNTER_START(format_twice);
+            PROFILE_START(format_twice);
             builder_resize(append_to, base_size + count + 3);
             count = vsnprintf(append_to->data + base_size, (size_t) (append_to->size - base_size), format, args_copy);
-            PERF_COUNTER_END(format_twice);
+            PROFILE_END(format_twice);
         }
     
         //Sometimes apparently the MSVC standard library screws up and returns negative...
@@ -61,7 +61,7 @@ EXPORT const char* cstring_ephemeral(String string);
         builder_resize(append_to, base_size + count);
         ASSERT(append_to->data[base_size + count] == '\0');
         
-        PERF_COUNTER_END();
+        PROFILE_END();
         return;
     }
     
@@ -124,7 +124,7 @@ EXPORT const char* cstring_ephemeral(String string);
 
     EXPORT const char* cstring_ephemeral(String string)
     {
-        PERF_COUNTER_START();
+        PROFILE_START();
 
         enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256, PAGE_MIN_SIZE = 1024};
         const char* string_end = string.data + string.size;
@@ -136,7 +136,7 @@ EXPORT const char* cstring_ephemeral(String string);
             out = string.data;
         else
         {
-            PERF_COUNTER_START(required_escaping);
+            PROFILE_START(required_escaping);
 
             static ATTRIBUTE_THREAD_LOCAL String_Builder ephemeral_strings[EPHEMERAL_SLOTS] = {0};
             static ATTRIBUTE_THREAD_LOCAL isize slot = 0;
@@ -159,10 +159,10 @@ EXPORT const char* cstring_ephemeral(String string);
             builder_assign(curr, string);
             out = curr->data;
             
-            PERF_COUNTER_END(required_escaping);
+            PROFILE_END(required_escaping);
         }
 
-        PERF_COUNTER_END();
+        PROFILE_END();
         return out;
     }
 

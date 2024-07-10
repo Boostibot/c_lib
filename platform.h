@@ -202,7 +202,8 @@ void            platform_mutex_deinit(Platform_Mutex* mutex);
 void            platform_mutex_lock(Platform_Mutex* mutex);
 void            platform_mutex_unlock(Platform_Mutex* mutex);
 bool            platform_mutex_try_lock(Platform_Mutex* mutex); //Tries to lock a mutex. Returns true if mutex was locked successfully. If it was not returns false without waiting.
-
+void            platform_mutex_global_lock(uint64_t id);
+void            platform_mutex_global_unlock(uint64_t id);
 
 //=========================================
 // Atomics 

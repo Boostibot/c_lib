@@ -48,7 +48,7 @@
 
 #include "time.h"
 #include "string.h"
-#include "profile.h"
+#include "new_profile_preinclude.h"
 #include "vformat.h"
 #include "time.h"
 #include "log.h"
@@ -110,7 +110,7 @@ EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, cons
 EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* append_to, i32 depth, const Log* log)
 {       
     isize indentation = depth;
-    PERF_COUNTER_START();
+    PROFILE_START();
 
     for(const Log* it = log; it != NULL; it = it->next)
     {
@@ -232,7 +232,7 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
         if(it->first_child)
             file_logger_log_append_into(scratch, append_to, depth + 1, it->first_child);
     }
-    PERF_COUNTER_END();
+    PROFILE_END();
 }
 
 EXPORT void file_logger_deinit(File_Logger* logger)
@@ -304,7 +304,7 @@ EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, cons
 
 EXPORT bool file_logger_flush(File_Logger* logger)
 {
-    PERF_COUNTER_START();
+    PROFILE_START();
     File_Logger* self = (File_Logger*) (void*) logger;
 
     bool state = true;
@@ -350,14 +350,14 @@ EXPORT bool file_logger_flush(File_Logger* logger)
         builder_clear(&self->buffer);
     }
 
-    PERF_COUNTER_END();
+    PROFILE_END();
     return state;
 }
 
 
 EXPORT void file_logger_log(Logger* logger_, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args)
 {
-    PERF_COUNTER_START();
+    PROFILE_START();
     File_Logger* self = (File_Logger*) (void*) logger_;
     
     platform_mutex_lock(&self->mutex);
@@ -426,7 +426,7 @@ EXPORT void file_logger_log(Logger* logger_, i32 group_depth, int actions, const
     }
 
     platform_mutex_unlock(&self->mutex);
-    PERF_COUNTER_END();
+    PROFILE_END();
 }
 
 

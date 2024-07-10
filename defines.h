@@ -32,6 +32,7 @@ typedef double      f64;
 typedef long long int lli;
 typedef unsigned long long llu;
 
+//@TODO: remove
 typedef struct Source_Info {
     int64_t line;
     const char* file;
@@ -44,6 +45,8 @@ typedef struct Source_Info {
 #define CLAMP(value, low, high) MAX(low, MIN(value, high))
 #define DIV_CEIL(value, div_by) (((value) + (div_by) - 1) / (div_by))
 #define MOD(val, range) (((val) % (range) + (range)) % (range))
+
+//@TODO remove
 #define SWAP(a_ptr, b_ptr, Type) \
     do { \
          Type temp = *(a_ptr); \
@@ -57,7 +60,7 @@ typedef struct Source_Info {
     #define BRACE_INIT(Struct_Type) (Struct_Type)
 #endif 
 
-#define SOURCE_INFO() BRACE_INIT(Source_Info){__LINE__, __FILE__, __FUNCTION__}
+#define SOURCE_INFO() BRACE_INIT(Source_Info){__LINE__, __FILE__, __func__}
 
 #define ARRAY_SIZE(array) (isize) (sizeof(array) / sizeof((array)[0]))
 
@@ -106,10 +109,6 @@ typedef struct Source_Info {
 #endif
 #ifndef INTERNAL
     #define INTERNAL static
-#endif
-
-#ifndef _MSC_VER
-    #define __FUNCTION__ __func__
 #endif
 
 #endif

@@ -34,7 +34,7 @@
 #include "defines.h"
 #include "assert.h"
 #include "platform.h"
-#include "profile.h"
+#include "new_profile_preinclude.h"
 
 typedef struct Allocator        Allocator;
 typedef struct Allocator_Stats  Allocator_Stats;
@@ -164,7 +164,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     EXPORT ATTRIBUTE_ALLOCATOR(2, 5) 
     void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
-        PERF_COUNTER_START();
+        PROFILE_START();
         void* out = NULL;
         ASSERT(new_size >= 0 && old_size >= 0 && is_power_of_two(align) && "provided arguments must be valid!");
         
@@ -179,7 +179,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
                 out = from_allocator->allocate(from_allocator, new_size, old_ptr, old_size, align);
         }
             
-        PERF_COUNTER_END();
+        PROFILE_END();
         return out;
     }
 

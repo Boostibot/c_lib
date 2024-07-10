@@ -179,14 +179,10 @@ typedef struct String_Buffer_64 {
 } String_Buffer_64;
 
 String_Buffer_16 format_ptr(void* ptr); //returns "0x00000ff76344ae64"
-String_Buffer_16 format_bytes(int64_t bytes); //returns "39B" "64KB", "10.3MB", "5.3GB", "7.531TB" etc.
-String_Buffer_16 format_seconds(double seconds); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
-String_Buffer_16 format_nanoseconds(int64_t ns); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
+String_Buffer_16 format_bytes(int64_t bytes, int width); //returns "39B" "64KB", "10.3MB", "5.3GB", "7.531TB" etc.
+String_Buffer_16 format_seconds(double seconds, int width); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
+String_Buffer_16 format_nanoseconds(int64_t ns, int width); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
 
-#define fmt_ptr(ptr) format_ptr(ptr).data
-#define fmt_bytes(bytes) format_bytes(bytes).data
-#define fmt_sec(seconds) format_seconds(seconds).data
-#define fmt_nanosec(nanoseconds) format_nanoseconds(nanoseconds).data
 #define STRING_PRINT(string) (int) (string).size, (string).data
 
 EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator);
@@ -410,8 +406,8 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
         LOG(log_module, log_type, "type_name:           %s", stats.type_name);
         LOG(log_module, log_type, "name:                %s", stats.name);
 
-        LOG(log_module, log_type, "bytes_allocated:     %s", fmt_bytes(stats.bytes_allocated));
-        LOG(log_module, log_type, "max_bytes_allocated: %s", fmt_bytes(stats.max_bytes_allocated));
+        LOG(log_module, log_type, "bytes_allocated:     %s", format_bytes(stats.bytes_allocated, 0).data);
+        LOG(log_module, log_type, "max_bytes_allocated: %s", format_bytes(stats.max_bytes_allocated, 0).data);
 
         LOG(log_module, log_type, "allocation_count:    %lli", stats.allocation_count);
         LOG(log_module, log_type, "deallocation_count:  %lli", stats.deallocation_count);
@@ -438,14 +434,14 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
 
         LOG_FATAL("memory", "Allocator %s %s reported out of memory!", stats.type_name, stats.name);
 
-        LOG_INFO(">memory", "new_size:    %s", fmt_bytes(new_size));
-        LOG_INFO(">memory", "old_size:    %s", fmt_bytes(old_size));
-        LOG_INFO(">memory", "old_ptr:     %s", fmt_ptr(old_ptr));
+        LOG_INFO(">memory", "new_size:    %s", format_bytes(new_size, 0).data);
+        LOG_INFO(">memory", "old_size:    %s", format_bytes(old_size, 0).data);
+        LOG_INFO(">memory", "old_ptr:     %s", format_ptr(old_ptr).data);
         LOG_INFO(">memory", "align:       %lli", (lli) align);
 
         LOG_INFO(">memory", "Allocator_Stats:");
-        LOG_INFO(">>memory", "bytes_allocated:     %s", fmt_bytes(stats.bytes_allocated));
-        LOG_INFO(">>memory", "max_bytes_allocated: %s", fmt_bytes(stats.max_bytes_allocated));
+        LOG_INFO(">>memory", "bytes_allocated:     %s", format_bytes(stats.bytes_allocated, 0).data);
+        LOG_INFO(">>memory", "max_bytes_allocated: %s", format_bytes(stats.max_bytes_allocated, 0).data);
 
         LOG_INFO(">>memory", "allocation_count:    %lli", (lli) stats.allocation_count);
         LOG_INFO(">>memory", "deallocation_count:  %lli", (lli) stats.deallocation_count);
@@ -465,7 +461,7 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
         return out;
     }
 
-    EXPORT String_Buffer_16 format_bytes(int64_t bytes)
+    EXPORT String_Buffer_16 format_bytes(int64_t bytes, int width)
     {
         int64_t TB = (int64_t) 1024*1024*1024*1024;
         int64_t GB = (int64_t) 1024*1024*1024;
@@ -475,20 +471,20 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
         int64_t abs = bytes > 0 ? bytes : -bytes;
         String_Buffer_16 out = {0};
         if(abs >= TB)
-            snprintf(out.data, sizeof out.data, "%.3lfTB", (double) bytes / (double) TB);
+            snprintf(out.data, sizeof out.data, "%*.3lfTB", width, (double) bytes / (double) TB);
         else if(abs >= GB)
-            snprintf(out.data, sizeof out.data, "%.2lfGB", (double) bytes / (double) GB);
+            snprintf(out.data, sizeof out.data, "%*.2lfGB", width, (double) bytes / (double) GB);
         else if(abs >= MB)
-            snprintf(out.data, sizeof out.data, "%.2lfMB", (double) bytes / (double) MB);
+            snprintf(out.data, sizeof out.data, "%*.2lfMB", width, (double) bytes / (double) MB);
         else if(abs >= KB)
-            snprintf(out.data, sizeof out.data, "%.1lfKB", (double) bytes / (double) KB);
+            snprintf(out.data, sizeof out.data, "%*.1lfKB", width, (double) bytes / (double) KB);
         else
-            snprintf(out.data, sizeof out.data, "%lliB", (long long) bytes);
+            snprintf(out.data, sizeof out.data, "%*lliB", width+1, (long long) bytes);
 
         return out;
     }
 
-    EXPORT String_Buffer_16 format_nanoseconds(int64_t ns)
+    EXPORT String_Buffer_16 format_nanoseconds(int64_t ns, int width)
     {
         int64_t sec = (int64_t) 1000*1000*1000;
         int64_t milli = (int64_t) 1000*1000;
@@ -497,20 +493,20 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
         int64_t abs = ns > 0 ? ns : -ns;
         String_Buffer_16 out = {0};
         if(abs >= sec)
-            snprintf(out.data, sizeof out.data, "%.2lfs", (double) ns / (double) sec);
+            snprintf(out.data, sizeof out.data, "%*.2lfs", width+1, (double) ns / (double) sec);
         else if(abs >= milli)
-            snprintf(out.data, sizeof out.data, "%.2lfms", (double) ns / (double) milli);
+            snprintf(out.data, sizeof out.data, "%*.2lfms", width, (double) ns / (double) milli);
         else if(abs >= micro)
-            snprintf(out.data, sizeof out.data, "%lliμs", (long long) (ns / micro));
+            snprintf(out.data, sizeof out.data, "%*lliμs", width, (long long) (ns / micro));
         else
-            snprintf(out.data, sizeof out.data, "%llins", (long long) ns);
+            snprintf(out.data, sizeof out.data, "%*llins", width, (long long) ns);
 
         return out;
     }
 
-    EXPORT String_Buffer_16 format_seconds(double seconds)
+    EXPORT String_Buffer_16 format_seconds(double seconds, int width)
     {
-        return format_nanoseconds((int64_t) (seconds * 1000*1000*1000));
+        return format_nanoseconds((int64_t) (seconds * 1000*1000*1000), width);
     }
     
 #endif
