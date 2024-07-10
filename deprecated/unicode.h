@@ -24,8 +24,8 @@
 #define ASSERT(x) assert(x)
 #endif
 
-#ifndef EXPORT
-    #define EXPORT
+#ifndef EXTERNAL
+    #define EXTERNAL
 #endif
 
 // User can typedef their own types
@@ -72,14 +72,14 @@ typedef int64_t  isize;            //size can be signed or unsigned
 //
 // See examples below for usage.
 
-EXPORT isize unicode_utf8_to_utf16(utf16_t* target_or_null, isize target_max_len, utf8_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
-EXPORT isize unicode_utf8_to_utf32(utf32_t* target_or_null, isize target_max_len, utf8_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
+EXTERNAL isize unicode_utf8_to_utf16(utf16_t* target_or_null, isize target_max_len, utf8_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
+EXTERNAL isize unicode_utf8_to_utf32(utf32_t* target_or_null, isize target_max_len, utf8_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
 
-EXPORT isize unicode_utf16_to_utf8(utf8_t* target_or_null, isize target_max_len, utf16_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
-EXPORT isize unicode_utf16_to_utf32(utf32_t* target_or_null, isize target_max_len, utf16_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
+EXTERNAL isize unicode_utf16_to_utf8(utf8_t* target_or_null, isize target_max_len, utf16_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
+EXTERNAL isize unicode_utf16_to_utf32(utf32_t* target_or_null, isize target_max_len, utf16_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
 
-EXPORT isize unicode_utf32_to_utf8(utf8_t* target_or_null, isize target_max_len, utf32_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
-EXPORT isize unicode_utf32_to_utf16(utf16_t* target_or_null, isize target_max_len, utf32_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
+EXTERNAL isize unicode_utf32_to_utf8(utf8_t* target_or_null, isize target_max_len, utf32_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
+EXTERNAL isize unicode_utf32_to_utf16(utf16_t* target_or_null, isize target_max_len, utf32_t const* source, isize source_len, isize* source_finished_at_or_null, codepoint_t replecement);
 
 // =========================== CODE POINT INTERFACE ===========================
  
@@ -91,44 +91,44 @@ EXPORT isize unicode_utf32_to_utf16(utf16_t* target_or_null, isize target_max_le
 
 //The following functions return the needed size to encode the given codepoint in the encoding. 
 //The codepoint must be valid and should be checked before calling these functions!
-EXPORT isize unicode_codepoint_length_utf8(codepoint_t codepoint);
-EXPORT isize unicode_codepoint_length_utf16(codepoint_t codepoint);
-EXPORT isize unicode_codepoint_length_utf32(codepoint_t codepoint);
+EXTERNAL isize unicode_codepoint_length_utf8(codepoint_t codepoint);
+EXTERNAL isize unicode_codepoint_length_utf16(codepoint_t codepoint);
+EXTERNAL isize unicode_codepoint_length_utf32(codepoint_t codepoint);
 
 //The following functions write the representation of the provided codepoint into the provided buffer.
 //Returns the number of items written. On sucess this is always at least 1.
 //If the resulting codepoint size is greater than len nothing is written and the function returns 0.
 //The codepoint must be valid and should be checked before calling these functions!
-EXPORT isize unicode_codepoint_encode_utf8(codepoint_t codepoint, utf8_t* utf8, isize len);
-EXPORT isize unicode_codepoint_encode_utf16(codepoint_t codepoint, utf16_t* utf16, isize len);
-EXPORT isize unicode_codepoint_encode_utf32(codepoint_t codepoint, utf32_t* utf32, isize len);
+EXTERNAL isize unicode_codepoint_encode_utf8(codepoint_t codepoint, utf8_t* utf8, isize len);
+EXTERNAL isize unicode_codepoint_encode_utf16(codepoint_t codepoint, utf16_t* utf16, isize len);
+EXTERNAL isize unicode_codepoint_encode_utf32(codepoint_t codepoint, utf32_t* utf32, isize len);
 
 //The following functions read a representation of a single codepoint and store it into the codepoint pointer.
 //Returns the number of items read. On sucess this is always at least 1.
 //If the sequence is too short or invalid writes UNICODE_ERROR into codepoint but still returns the 
 // the number of characters read. This can be used to skip or correct invalid sequences.
 //Returns 0 only if len is 0.
-EXPORT isize unicode_codepoint_decode_utf8(codepoint_t* codepoint, const utf8_t* utf8, isize len);
-EXPORT isize unicode_codepoint_decode_utf16(codepoint_t* codepoint, const utf16_t* utf16, isize len);
-EXPORT isize unicode_codepoint_decode_utf32(codepoint_t* codepoint, const utf32_t* utf32, isize len);
+EXTERNAL isize unicode_codepoint_decode_utf8(codepoint_t* codepoint, const utf8_t* utf8, isize len);
+EXTERNAL isize unicode_codepoint_decode_utf16(codepoint_t* codepoint, const utf16_t* utf16, isize len);
+EXTERNAL isize unicode_codepoint_decode_utf32(codepoint_t* codepoint, const utf32_t* utf32, isize len);
 
 //Casts the single character to a codepoint. 
 //If fails returns UNICODE_ERROR. Useful for prototyping.
-EXPORT codepoint_t unicode_codepoint_from_ascii(char c);
-EXPORT codepoint_t unicode_codepoint_from_wide(wchar_t wc);
+EXTERNAL codepoint_t unicode_codepoint_from_ascii(char c);
+EXTERNAL codepoint_t unicode_codepoint_from_wide(wchar_t wc);
 
 //Interprets start of NULL TERMINATED sequence as a single codepoint and returns it. 
 //If fails returns UNICODE_ERROR. Useful for prototyping.
-EXPORT codepoint_t unicode_codepoint_from_utf8(const char* str);
-EXPORT codepoint_t unicode_codepoint_from_utf16(const wchar_t* str);
-EXPORT codepoint_t unicode_codepoint_from_utf32(const utf32_t* str);
+EXTERNAL codepoint_t unicode_codepoint_from_utf8(const char* str);
+EXTERNAL codepoint_t unicode_codepoint_from_utf16(const wchar_t* str);
+EXTERNAL codepoint_t unicode_codepoint_from_utf32(const utf32_t* str);
 
 // Returns if codepoint is valid (in the valid range and not surrogate). 
 // Note that even valid codepoints might not be assigned any value and thus not be printable!
-EXPORT bool unicode_codepoint_is_valid(codepoint_t codepoint); 
+EXTERNAL bool unicode_codepoint_is_valid(codepoint_t codepoint); 
 
 //Returns if the codepoint is surrogate. Surrogate codepoints are not valid unicode.
-EXPORT bool unicode_codepoint_is_surrogate(codepoint_t codepoint); 
+EXTERNAL bool unicode_codepoint_is_surrogate(codepoint_t codepoint); 
 
 
 // =========================== EXAMPLE ===========================
@@ -251,7 +251,7 @@ typedef struct
 // The patterns for leading bytes of a UTF-8 codepoint encoding
 // Each pattern represents the leading byte for a character encoded with N UTF-8 bytes,
 // where N is the index + 1
-EXPORT const _utf8_pattern _utf8_leading_bytes[] =
+EXTERNAL const _utf8_pattern _utf8_leading_bytes[] =
 {
     { 0x80, 0x00 }, // 0xxxxxxx
     { 0xE0, 0xC0 }, // 110xxxxx
@@ -262,7 +262,7 @@ EXPORT const _utf8_pattern _utf8_leading_bytes[] =
 // The number of elements in _utf8_leading_bytes
 #define UTF8_LEADING_BYTES_LEN 4
 
-EXPORT bool unicode_codepoint_is_surrogate(codepoint_t codepoint)
+EXTERNAL bool unicode_codepoint_is_surrogate(codepoint_t codepoint)
 {
     codepoint_t expanded_surrogate_mask = 0xFFFF0000 | UNICODE_GENERIC_UNICODE_SURROGATE_MASK;
     codepoint_t masked = codepoint & expanded_surrogate_mask;
@@ -270,20 +270,20 @@ EXPORT bool unicode_codepoint_is_surrogate(codepoint_t codepoint)
     return is_surrogate;
 }
 
-EXPORT bool unicode_codepoint_is_valid(codepoint_t codepoint)
+EXTERNAL bool unicode_codepoint_is_valid(codepoint_t codepoint)
 {
     bool is_in_range = UNICODE_MIN <= codepoint && codepoint <= UNICODE_MAX;
     bool is_surrogate = unicode_codepoint_is_surrogate(codepoint);
     return is_in_range && !is_surrogate;
 }
 
-EXPORT codepoint_t unicode_codepoint_from_ascii(char c)
+EXTERNAL codepoint_t unicode_codepoint_from_ascii(char c)
 {
     codepoint_t out = (codepoint_t) c;
     return out;
 }
 
-EXPORT codepoint_t unicode_codepoint_from_wide(wchar_t wc)
+EXTERNAL codepoint_t unicode_codepoint_from_wide(wchar_t wc)
 {
     uint16_t high = (uint16_t) wc;
     if ((high & UNICODE_GENERIC_UNICODE_SURROGATE_MASK) != UNICODE_GENERIC_SURROGATE_VALUE)
@@ -292,7 +292,7 @@ EXPORT codepoint_t unicode_codepoint_from_wide(wchar_t wc)
         return UNICODE_ERROR;
 }
 
-EXPORT isize unicode_codepoint_decode_utf16(codepoint_t* codepoint, const utf16_t* utf16, isize len)
+EXTERNAL isize unicode_codepoint_decode_utf16(codepoint_t* codepoint, const utf16_t* utf16, isize len)
 {
     *codepoint = UNICODE_ERROR;
     if(len <= 0)
@@ -334,7 +334,7 @@ EXPORT isize unicode_codepoint_decode_utf16(codepoint_t* codepoint, const utf16_
 
 // Calculates the number of UTF-8 characters it would take to encode a codepoint
 // The codepoint won't be checked for validity, that should be done beforehand.
-EXPORT isize unicode_codepoint_length_utf8(codepoint_t codepoint)
+EXTERNAL isize unicode_codepoint_length_utf8(codepoint_t codepoint)
 {
     ASSERT(unicode_codepoint_is_valid(codepoint));
     // An array with the max values would be more elegant, but a bit too heavy
@@ -352,7 +352,7 @@ EXPORT isize unicode_codepoint_length_utf8(codepoint_t codepoint)
     return 4;
 }
 
-EXPORT isize unicode_codepoint_encode_utf8(codepoint_t codepoint, utf8_t* utf8, isize len)
+EXTERNAL isize unicode_codepoint_encode_utf8(codepoint_t codepoint, utf8_t* utf8, isize len)
 {
     isize size = unicode_codepoint_length_utf8(codepoint);
     
@@ -384,7 +384,7 @@ EXPORT isize unicode_codepoint_encode_utf8(codepoint_t codepoint, utf8_t* utf8, 
 }
 
 
-EXPORT isize unicode_codepoint_decode_utf8(codepoint_t* codepoint, const utf8_t* utf8, isize len)
+EXTERNAL isize unicode_codepoint_decode_utf8(codepoint_t* codepoint, const utf8_t* utf8, isize len)
 {
     *codepoint = UNICODE_ERROR;
     if(len <= 0)
@@ -459,7 +459,7 @@ EXPORT isize unicode_codepoint_decode_utf8(codepoint_t* codepoint, const utf8_t*
 
 // Calculates the number of UTF-16 characters it would take to encode a codepoint
 // The codepoint won't be checked for validity, that should be done beforehand.
-EXPORT isize unicode_codepoint_length_utf16(codepoint_t codepoint)
+EXTERNAL isize unicode_codepoint_length_utf16(codepoint_t codepoint)
 {
     ASSERT(unicode_codepoint_is_valid(codepoint));
     if (codepoint <= UNICODE_BMP_END)
@@ -468,7 +468,7 @@ EXPORT isize unicode_codepoint_length_utf16(codepoint_t codepoint)
     return 2;
 }
 
-EXPORT isize unicode_codepoint_encode_utf16(codepoint_t codepoint, utf16_t* utf16, isize len)
+EXTERNAL isize unicode_codepoint_encode_utf16(codepoint_t codepoint, utf16_t* utf16, isize len)
 {
     uint16_t* utf16_ = (uint16_t*) utf16;
 
@@ -502,14 +502,14 @@ EXPORT isize unicode_codepoint_encode_utf16(codepoint_t codepoint, utf16_t* utf1
     return 2;
 }
 
-EXPORT isize unicode_codepoint_length_utf32(codepoint_t codepoint)
+EXTERNAL isize unicode_codepoint_length_utf32(codepoint_t codepoint)
 {
     ASSERT(unicode_codepoint_is_valid(codepoint));
     (void) codepoint;
     return 1;
 }
 
-EXPORT isize unicode_codepoint_decode_utf32(codepoint_t* codepoint, const utf32_t* utf32, isize len)
+EXTERNAL isize unicode_codepoint_decode_utf32(codepoint_t* codepoint, const utf32_t* utf32, isize len)
 {
     if(len <= 0)
     {
@@ -523,7 +523,7 @@ EXPORT isize unicode_codepoint_decode_utf32(codepoint_t* codepoint, const utf32_
     }
 }
 
-EXPORT isize unicode_codepoint_encode_utf32(codepoint_t codepoint, utf32_t* utf32, isize len)
+EXTERNAL isize unicode_codepoint_encode_utf32(codepoint_t codepoint, utf32_t* utf32, isize len)
 {
     if(len <= 0)
         return 0;
@@ -542,7 +542,7 @@ EXPORT isize unicode_codepoint_encode_utf32(codepoint_t codepoint, utf32_t* utf3
 
 //The code is absolutely identical for all 6 case so we make a macro.
 #define _UNICODE_DEFINE_CONVERSION(from, to)                                                                                                                                                                        \
-    EXPORT isize _UNICODE_CONCAT4(unicode_utf,from,_to_utf,to)(UTF(to)* write_or_null, isize write_len, UTF(from) const* read, isize read_len, isize* read_finished_at, codepoint_t replacement_policy)             \
+    EXTERNAL isize _UNICODE_CONCAT4(unicode_utf,from,_to_utf,to)(UTF(to)* write_or_null, isize write_len, UTF(from) const* read, isize read_len, isize* read_finished_at, codepoint_t replacement_policy)             \
     {                                                                                                                                                                                                               \
         isize write_index = 0;                                                                                                                                                                                      \
         isize read_index = 0;                                                                                                                                                                                       \
@@ -605,7 +605,7 @@ _UNICODE_DEFINE_CONVERSION(32, 16)
 #undef _UNICODE_CONCAT2
 #undef UTF
 
-EXPORT codepoint_t unicode_codepoint_from_utf8(const char* str)
+EXTERNAL codepoint_t unicode_codepoint_from_utf8(const char* str)
 {
     isize len = 0;
     if(str != NULL)
@@ -616,7 +616,7 @@ EXPORT codepoint_t unicode_codepoint_from_utf8(const char* str)
     return out;
 }
 
-EXPORT codepoint_t unicode_codepoint_from_utf16(const wchar_t* str)
+EXTERNAL codepoint_t unicode_codepoint_from_utf16(const wchar_t* str)
 {
     isize len = 0;
     if(str != NULL)
@@ -627,7 +627,7 @@ EXPORT codepoint_t unicode_codepoint_from_utf16(const wchar_t* str)
     return out;
 }
 
-EXPORT codepoint_t unicode_codepoint_from_utf32(const utf32_t* str)
+EXTERNAL codepoint_t unicode_codepoint_from_utf32(const utf32_t* str)
 {
     if(str == NULL || str[0] == 0)
         return UNICODE_ERROR;

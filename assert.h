@@ -20,10 +20,10 @@
         #define ASSUME_UNREACHABLE() (*(int*)0 = 0)
     #endif
 
-    #ifndef EXPORT 
-        #define EXPORT
+    #ifndef EXTERNAL 
+        #define EXTERNAL
     #endif
-    EXPORT void assertion_report(const char* expression, int line, const char* file, const char* function, const char* format, ...)
+    EXTERNAL void assertion_report(const char* expression, int line, const char* file, const char* function, const char* format, ...)
     {
         printf("TEST(%s) or ASSERT failed in %s %s:%i\n", expression, function, file, line);
         if(strlen(format) > 1)
@@ -88,7 +88,7 @@
 //Gets called when assertion fails. 
 //Does not have to terminate process since that is done at call site by the assert macro itself.
 //if ASSERT_CUSTOM_REPORT is defined is left unimplemented
-EXPORT void assertion_report(const char* expression, int line, const char* file, const char* function, const char* format, ...);
+EXTERNAL void assertion_report(const char* expression, int line, const char* file, const char* function, const char* format, ...);
 
 //Pre-Processor (PP) utils
 #define _PP_CONCAT(a, b)        a ## b

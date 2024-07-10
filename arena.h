@@ -133,12 +133,12 @@ typedef struct Arena {
     isize commit_granularity;
 } Arena;
 
-EXPORT bool arena_init(Arena* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero);
-EXPORT void arena_deinit(Arena* arena);
-EXPORT void* arena_push_nonzero_unaligned(Arena* arena, isize size);
-EXPORT void* arena_push_nonzero(Arena* arena, isize size, isize align);
-EXPORT void* arena_push(Arena* arena, isize size, isize align);
-EXPORT void arena_reset(Arena* arena, isize position);
+EXTERNAL bool arena_init(Arena* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero);
+EXTERNAL void arena_deinit(Arena* arena);
+EXTERNAL void* arena_push_nonzero_unaligned(Arena* arena, isize size);
+EXTERNAL void* arena_push_nonzero(Arena* arena, isize size, isize align);
+EXTERNAL void* arena_push(Arena* arena, isize size, isize align);
+EXTERNAL void arena_reset(Arena* arena, isize position);
 
 typedef struct Arena_Stack Arena_Stack; 
 
@@ -172,22 +172,22 @@ typedef struct Arena_Frame {
     i32 _padding;
 } Arena_Frame;
 
-EXPORT bool arena_stack_init(Arena_Stack* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero, isize stack_max_depth_or_zero, Arena_Stack_On_Bad_Push on_bad_push_or_null, const char* name_or_null);
-EXPORT void arena_stack_deinit(Arena_Stack* arena);
+EXTERNAL bool arena_stack_init(Arena_Stack* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero, isize stack_max_depth_or_zero, Arena_Stack_On_Bad_Push on_bad_push_or_null, const char* name_or_null);
+EXTERNAL void arena_stack_deinit(Arena_Stack* arena);
 
-EXPORT void arena_frame_release(Arena_Frame* arena);
-EXPORT Arena_Frame arena_frame_acquire(Arena_Stack* stack);
-EXPORT void* arena_frame_push(Arena_Frame* arena, isize size, isize align);
-EXPORT void* arena_frame_push_nonzero(Arena_Frame* arena, isize size, isize align);
+EXTERNAL void arena_frame_release(Arena_Frame* arena);
+EXTERNAL Arena_Frame arena_frame_acquire(Arena_Stack* stack);
+EXTERNAL void* arena_frame_push(Arena_Frame* arena, isize size, isize align);
+EXTERNAL void* arena_frame_push_nonzero(Arena_Frame* arena, isize size, isize align);
 
 #define ARENA_PUSH(arena_ptr, count, Type) ((Type*) arena_push((arena_ptr), (count) * sizeof(Type), __alignof(Type)))
 #define ARENA_FRAME_PUSH(arena_ptr, count, Type) ((Type*) arena_frame_push((arena_ptr), (count) * sizeof(Type), __alignof(Type)))
 
-EXPORT void* arena_frame_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
-EXPORT Allocator_Stats arena_frame_get_allocatator_stats(Allocator* self);
+EXTERNAL void* arena_frame_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
+EXTERNAL Allocator_Stats arena_frame_get_allocatator_stats(Allocator* self);
 
-EXPORT Arena_Stack* scratch_arena_stack();
-EXPORT Arena_Frame scratch_arena_acquire();
+EXTERNAL Arena_Stack* scratch_arena_stack();
+EXTERNAL Arena_Frame scratch_arena_acquire();
 
 //An allocator capable of storing only a **SINGLE** allocation at a time. 
 // Allows the allocation to be reallocated up or down within the arena.
@@ -201,17 +201,17 @@ typedef struct Arena_Single_Allocator {
     isize max_size;
 } Arena_Single_Allocator;
 
-EXPORT void* arena_single_allocator_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
-EXPORT Allocator_Stats arena_single_allocator_get_allocatator_stats(Allocator* self);
-EXPORT bool arena_single_allocator_init(Arena_Single_Allocator* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero, const char* name);
-EXPORT void arena_single_allocator_deinit(Arena_Single_Allocator* arena);
+EXTERNAL void* arena_single_allocator_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
+EXTERNAL Allocator_Stats arena_single_allocator_get_allocatator_stats(Allocator* self);
+EXTERNAL bool arena_single_allocator_init(Arena_Single_Allocator* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero, const char* name);
+EXTERNAL void arena_single_allocator_deinit(Arena_Single_Allocator* arena);
 
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ARENA_IMPL)) && !defined(JOT_ARENA_HAS_IMPL)
 #define JOT_ARENA_HAS_IMPL
 
-EXPORT bool arena_init(Arena* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero)
+EXTERNAL bool arena_init(Arena* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero)
 {
     arena_deinit(arena);
 
@@ -239,7 +239,7 @@ EXPORT bool arena_init(Arena* arena, isize reserve_size_or_zero, isize commit_gr
     return true;
 }
 
-EXPORT void arena_deinit(Arena* arena)
+EXTERNAL void arena_deinit(Arena* arena)
 {
     if(arena->data)
         platform_virtual_reallocate(arena->data, arena->reserved, PLATFORM_VIRTUAL_ALLOC_RELEASE, PLATFORM_MEMORY_PROT_NO_ACCESS);
@@ -247,7 +247,7 @@ EXPORT void arena_deinit(Arena* arena)
     memset(arena, 0, sizeof *arena);
 }
 
-EXPORT void arena_commit(Arena* arena, isize size)
+EXTERNAL void arena_commit(Arena* arena, isize size)
 {
     if(size > arena->commit)
     {
@@ -264,7 +264,7 @@ EXPORT void arena_commit(Arena* arena, isize size)
         arena->commit = commit_new;
     }
 }
-EXPORT void* arena_push_nonzero_unaligned(Arena* arena, isize size)
+EXTERNAL void* arena_push_nonzero_unaligned(Arena* arena, isize size)
 {
     arena_commit(arena, arena->size + size);
     void* out = arena->data + arena->size;
@@ -272,7 +272,7 @@ EXPORT void* arena_push_nonzero_unaligned(Arena* arena, isize size)
     return out;
 }
 
-EXPORT void* arena_push_nonzero(Arena* arena, isize size, isize align)
+EXTERNAL void* arena_push_nonzero(Arena* arena, isize size, isize align)
 {
     //We just kinda refuse to handle the case where we overflow. 
     //We should really make that into abort or something.
@@ -284,14 +284,14 @@ EXPORT void* arena_push_nonzero(Arena* arena, isize size, isize align)
     return out;
 }
 
-EXPORT void* arena_push(Arena* arena, isize size, isize align)
+EXTERNAL void* arena_push(Arena* arena, isize size, isize align)
 {
     void* out = arena_push_nonzero(arena, size, align);
     memset(out, 0, size);
     return out;
 }
 
-EXPORT void arena_reset(Arena* arena, isize position)
+EXTERNAL void arena_reset(Arena* arena, isize position)
 {
     arena->size = position;
 }
@@ -314,14 +314,14 @@ INTERNAL void _arena_debug_check_invariants(Arena_Stack* arena);
 INTERNAL void _arena_debug_fill_stack(Arena_Stack* arena);
 INTERNAL void _arena_debug_fill_data(Arena_Stack* arena, isize size);
 
-EXPORT void arena_stack_deinit(Arena_Stack* arena)
+EXTERNAL void arena_stack_deinit(Arena_Stack* arena)
 {
     _arena_debug_check_invariants(arena);
     arena_deinit(&arena->arena);
     memset(arena, 0, sizeof *arena);
 }
 
-EXPORT bool arena_stack_init(Arena_Stack* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero, isize stack_max_depth_or_zero, Arena_Stack_On_Bad_Push on_bad_push_or_null, const char* name_or_null)
+EXTERNAL bool arena_stack_init(Arena_Stack* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero, isize stack_max_depth_or_zero, Arena_Stack_On_Bad_Push on_bad_push_or_null, const char* name_or_null)
 {
     arena_stack_deinit(arena);
     if(arena_init(&arena->arena, reserve_size_or_zero, commit_granularity_or_zero) == false)
@@ -391,19 +391,19 @@ INTERNAL ATTRIBUTE_INLINE_ALWAYS void* _arena_frame_push_nonzero_inline(Arena_Fr
     return out;
 }
 
-EXPORT void* arena_frame_push_nonzero(Arena_Frame* arena, isize size, isize align)
+EXTERNAL void* arena_frame_push_nonzero(Arena_Frame* arena, isize size, isize align)
 {
     return _arena_frame_push_nonzero_inline(arena, size, align);
 }
 
-EXPORT void* arena_frame_push(Arena_Frame* arena, isize size, isize align)
+EXTERNAL void* arena_frame_push(Arena_Frame* arena, isize size, isize align)
 {
     void* ptr = arena_frame_push_nonzero(arena, size, align);
     memset(ptr, 0, (size_t) size);
     return ptr;
 }
 
-EXPORT void arena_frame_release(Arena_Frame* arena)
+EXTERNAL void arena_frame_release(Arena_Frame* arena)
 {
     PROFILE_START();
 
@@ -438,7 +438,7 @@ EXPORT void arena_frame_release(Arena_Frame* arena)
 }
 
 //Compatibility function for the allocator interface
-EXPORT void* arena_frame_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
+EXTERNAL void* arena_frame_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
 {
     void* out = NULL;
     if(new_size > old_size)
@@ -451,7 +451,7 @@ EXPORT void* arena_frame_reallocate(Allocator* self, isize new_size, void* old_p
     return out;
 }
 
-EXPORT Allocator_Stats arena_frame_get_allocatator_stats(Allocator* self)
+EXTERNAL Allocator_Stats arena_frame_get_allocatator_stats(Allocator* self)
 {
     Arena_Frame* arena = (Arena_Frame*) (void*) self;
     Arena_Stack* stack = arena->stack;
@@ -471,7 +471,7 @@ EXPORT Allocator_Stats arena_frame_get_allocatator_stats(Allocator* self)
     return stats;
 }
 
-EXPORT Arena_Frame arena_frame_acquire(Arena_Stack* stack)
+EXTERNAL Arena_Frame arena_frame_acquire(Arena_Stack* stack)
 {
     PROFILE_START();
 
@@ -520,11 +520,11 @@ INTERNAL int memcmp_byte(const void* ptr, int byte, isize size)
 }
 
 ATTRIBUTE_THREAD_LOCAL Arena_Stack _scratch_arena_stack;
-EXPORT Arena_Stack* scratch_arena_stack()
+EXTERNAL Arena_Stack* scratch_arena_stack()
 {
     return &_scratch_arena_stack;
 }
-EXPORT Arena_Frame scratch_arena_acquire()
+EXTERNAL Arena_Frame scratch_arena_acquire()
 {
     if(_scratch_arena_stack.arena.data == NULL)
         arena_stack_init(&_scratch_arena_stack, 0, 0, 0, NULL, "scratch arena stack");
@@ -567,7 +567,7 @@ INTERNAL void _arena_debug_fill_data(Arena_Stack* stack, isize size)
     }
 }
 
-EXPORT void* arena_single_allocator_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
+EXTERNAL void* arena_single_allocator_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
 {
     Arena_Single_Allocator* alloc = (Arena_Single_Allocator*) (void*) self;
     ASSERT(old_ptr == alloc->arena.data);
@@ -582,7 +582,7 @@ EXPORT void* arena_single_allocator_reallocate(Allocator* self, isize new_size, 
     return out;
 }
 
-EXPORT Allocator_Stats arena_single_allocator_get_allocatator_stats(Allocator* self)
+EXTERNAL Allocator_Stats arena_single_allocator_get_allocatator_stats(Allocator* self)
 {
     Arena_Single_Allocator* alloc = (Arena_Single_Allocator*) (void*) self;
     Allocator_Stats out = {0};
@@ -593,7 +593,7 @@ EXPORT Allocator_Stats arena_single_allocator_get_allocatator_stats(Allocator* s
 
     return out;
 }
-EXPORT bool arena_single_allocator_init(Arena_Single_Allocator* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero, const char* name)
+EXTERNAL bool arena_single_allocator_init(Arena_Single_Allocator* arena, isize reserve_size_or_zero, isize commit_granularity_or_zero, const char* name)
 {
     if(arena_init(&arena->arena, reserve_size_or_zero, commit_granularity_or_zero) == false)
         return false;
@@ -604,7 +604,7 @@ EXPORT bool arena_single_allocator_init(Arena_Single_Allocator* arena, isize res
     arena->name = name;
     return true;
 }
-EXPORT void arena_single_allocator_deinit(Arena_Single_Allocator* arena)
+EXTERNAL void arena_single_allocator_deinit(Arena_Single_Allocator* arena)
 {
     arena_deinit(&arena->arena);
     memset(arena, 0, sizeof *arena);

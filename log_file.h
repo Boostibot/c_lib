@@ -56,7 +56,7 @@
 
 typedef bool(*File_Logger_Print)(const void* data, isize size, void* context); 
 
-EXPORT typedef struct File_Logger {
+EXTERNAL typedef struct File_Logger {
     Logger logger;
     Allocator* default_allocator;
     String_Builder buffer;
@@ -94,20 +94,20 @@ EXPORT typedef struct File_Logger {
     Logger* prev_logger;
 } File_Logger;
 
-EXPORT void file_logger_log(Logger* logger_, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args);
-EXPORT bool file_logger_flush(File_Logger* logger);
+EXTERNAL void file_logger_log(Logger* logger_, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args);
+EXTERNAL bool file_logger_flush(File_Logger* logger);
 
-EXPORT void file_logger_deinit(File_Logger* logger);
-EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, isize flush_every_bytes, f64 flush_every_seconds, String folder, String prefix, String postfix);
-EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, const char* folder);
-EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, const char* folder);
+EXTERNAL void file_logger_deinit(File_Logger* logger);
+EXTERNAL void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, isize flush_every_bytes, f64 flush_every_seconds, String folder, String prefix, String postfix);
+EXTERNAL void file_logger_init(File_Logger* logger, Allocator* def_alloc, const char* folder);
+EXTERNAL void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, const char* folder);
 
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_LOGGER_FILE_IMPL)) && !defined(JOT_LOGGER_FILE_HAS_IMPL)
 #define JOT_LOGGER_FILE_HAS_IMPL
 
-EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* append_to, i32 depth, const Log* log)
+EXTERNAL void file_logger_log_append_into(Allocator* scratch, String_Builder* append_to, i32 depth, const Log* log)
 {       
     isize indentation = depth;
     PROFILE_START();
@@ -235,7 +235,7 @@ EXPORT void file_logger_log_append_into(Allocator* scratch, String_Builder* appe
     PROFILE_END();
 }
 
-EXPORT void file_logger_deinit(File_Logger* logger)
+EXTERNAL void file_logger_deinit(File_Logger* logger)
 {
     builder_deinit(&logger->buffer);
     builder_deinit(&logger->file_directory_path);
@@ -252,7 +252,7 @@ EXPORT void file_logger_deinit(File_Logger* logger)
     memset(logger, 0, sizeof *logger);
 }
 
-EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* alloc, isize flush_every_bytes, f64 flush_every_seconds, String folder, String prefix, String postfix)
+EXTERNAL void file_logger_init_custom(File_Logger* logger, Allocator* alloc, isize flush_every_bytes, f64 flush_every_seconds, String folder, String prefix, String postfix)
 {
     file_logger_deinit(logger);
     
@@ -277,12 +277,12 @@ EXPORT void file_logger_init_custom(File_Logger* logger, Allocator* alloc, isize
     builder_assign(&logger->file_postfix, postfix);
 }
 
-EXPORT void file_logger_init(File_Logger* logger, Allocator* def_alloc, const char* folder)
+EXTERNAL void file_logger_init(File_Logger* logger, Allocator* def_alloc, const char* folder)
 {
     file_logger_init_custom(logger, def_alloc, PAGE_BYTES, 2.0 / 1000, string_of(folder), STRING(""), STRING(".txt"));
 }
 
-EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, const char* folder)
+EXTERNAL void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, const char* folder)
 {
     file_logger_init(logger, def_alloc, folder);
     logger->prev_logger = log_set_logger(&logger->logger);
@@ -302,7 +302,7 @@ EXPORT void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, cons
 #define ANSI_COLOR_WHITE        "\x1B[37m"
 #define ANSI_COLOR_GRAY         "\x1B[90m"
 
-EXPORT bool file_logger_flush(File_Logger* logger)
+EXTERNAL bool file_logger_flush(File_Logger* logger)
 {
     PROFILE_START();
     File_Logger* self = (File_Logger*) (void*) logger;
@@ -355,7 +355,7 @@ EXPORT bool file_logger_flush(File_Logger* logger)
 }
 
 
-EXPORT void file_logger_log(Logger* logger_, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args)
+EXTERNAL void file_logger_log(Logger* logger_, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args)
 {
     PROFILE_START();
     File_Logger* self = (File_Logger*) (void*) logger_;

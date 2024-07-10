@@ -104,8 +104,8 @@ typedef struct Source_Info {
     #define ATTRIBUTE_ALLOCATOR(size_arg_index, align_arg_index)
 #endif
 
-#ifndef EXPORT
-    #define EXPORT
+#ifndef EXTERNAL
+    #define EXTERNAL
 #endif
 #ifndef INTERNAL
     #define INTERNAL static

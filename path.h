@@ -90,31 +90,31 @@ typedef struct Path {
     Path_Info info;
 } Path;
 
-EXPORT bool is_path_sep(char c);
-EXPORT isize string_find_first_path_separator(String string, isize from);
-EXPORT isize string_find_last_path_separator(String string, isize from);
+EXTERNAL bool is_path_sep(char c);
+EXTERNAL isize string_find_first_path_separator(String string, isize from);
+EXTERNAL isize string_find_last_path_separator(String string, isize from);
 
-EXPORT Path   path_parse(String path);
-EXPORT Path   path_parse_cstring(const char* path);
-EXPORT void   path_parse_root(String path, Path_Info* info);
-EXPORT void   path_parse_rest(String path, Path_Info* info);
-EXPORT bool   path_is_empty(Path path);
-EXPORT String path_get_prefix(Path path);
-EXPORT String path_get_root(Path path);
-EXPORT String path_get_directories(Path path);
-EXPORT String path_get_extension(Path path);
-EXPORT String path_get_filename(Path path);
-EXPORT String path_get_root_content(Path path);
-EXPORT String path_get_filename_without_extension(Path path);
-EXPORT String path_get_without_trailing_slash(Path path);
-EXPORT String path_get_segments(Path path);
+EXTERNAL Path   path_parse(String path);
+EXTERNAL Path   path_parse_cstring(const char* path);
+EXTERNAL void   path_parse_root(String path, Path_Info* info);
+EXTERNAL void   path_parse_rest(String path, Path_Info* info);
+EXTERNAL bool   path_is_empty(Path path);
+EXTERNAL String path_get_prefix(Path path);
+EXTERNAL String path_get_root(Path path);
+EXTERNAL String path_get_directories(Path path);
+EXTERNAL String path_get_extension(Path path);
+EXTERNAL String path_get_filename(Path path);
+EXTERNAL String path_get_root_content(Path path);
+EXTERNAL String path_get_filename_without_extension(Path path);
+EXTERNAL String path_get_without_trailing_slash(Path path);
+EXTERNAL String path_get_segments(Path path);
 
-EXPORT Path path_strip_prefix(Path path);
-EXPORT Path path_strip_root(Path path);
-EXPORT Path path_strip_trailing_slash(Path path);
-EXPORT Path path_strip_last_segment(Path path, String* last_segment_or_null);
-EXPORT Path path_strip_first_segment(Path path, Path* first_segment_or_null);
-EXPORT Path path_strip_to_containing_directory(Path path);
+EXTERNAL Path path_strip_prefix(Path path);
+EXTERNAL Path path_strip_root(Path path);
+EXTERNAL Path path_strip_trailing_slash(Path path);
+EXTERNAL Path path_strip_last_segment(Path path, String* last_segment_or_null);
+EXTERNAL Path path_strip_first_segment(Path path, Path* first_segment_or_null);
+EXTERNAL Path path_strip_to_containing_directory(Path path);
 
 typedef struct Path_Segement_Iterator {
     String segment;
@@ -123,8 +123,8 @@ typedef struct Path_Segement_Iterator {
     isize segment_to;
 } Path_Segement_Iterator;
 
-EXPORT bool path_segment_iterate_string(Path_Segement_Iterator* it, String path, isize till_root_size);
-EXPORT bool path_segment_iterate(Path_Segement_Iterator* it, Path path);
+EXTERNAL bool path_segment_iterate_string(Path_Segement_Iterator* it, String path, isize till_root_size);
+EXTERNAL bool path_segment_iterate(Path_Segement_Iterator* it, Path path);
 
 typedef union Path_Builder {
     struct {
@@ -156,43 +156,43 @@ enum {
     PATH_FLAG_NO_PREFIX = 256,              //Does not append prefix (for normalize this meens the result will not have prefix)
 };
 
-EXPORT void         path_builder_deinit(Path_Builder* builder);
-EXPORT void         path_builder_init(Path_Builder* builder, Allocator* alloc_or_null, isize initial_capacity_or_zero);
-EXPORT Path_Builder path_builder_make(Allocator* alloc_or_null, isize initial_capacity_or_zero);
-EXPORT bool         path_builder_append(Path_Builder* into, Path path, int flags);
-EXPORT void         path_builder_clear(Path_Builder* builder);
-EXPORT void         path_normalize_in_place(Path_Builder* path, int flags);
-EXPORT Path_Builder path_normalize(Allocator* alloc, Path path, int flags);
-EXPORT Path_Builder path_concat(Allocator* alloc, Path a, Path b);
-EXPORT Path_Builder path_concat_many(Allocator* alloc, const Path* paths, isize path_count);
-EXPORT void         path_make_relative_into(Path_Builder* into, Path relative_to, Path path);
-EXPORT void         path_make_absolute_into(Path_Builder* into, Path relative_to, Path path);
-EXPORT Path_Builder path_make_relative(Allocator* alloc, Path relative_to, Path path);
-EXPORT Path_Builder path_make_absolute(Allocator* alloc, Path relative_to, Path path);
+EXTERNAL void         path_builder_deinit(Path_Builder* builder);
+EXTERNAL void         path_builder_init(Path_Builder* builder, Allocator* alloc_or_null, isize initial_capacity_or_zero);
+EXTERNAL Path_Builder path_builder_make(Allocator* alloc_or_null, isize initial_capacity_or_zero);
+EXTERNAL bool         path_builder_append(Path_Builder* into, Path path, int flags);
+EXTERNAL void         path_builder_clear(Path_Builder* builder);
+EXTERNAL void         path_normalize_in_place(Path_Builder* path, int flags);
+EXTERNAL Path_Builder path_normalize(Allocator* alloc, Path path, int flags);
+EXTERNAL Path_Builder path_concat(Allocator* alloc, Path a, Path b);
+EXTERNAL Path_Builder path_concat_many(Allocator* alloc, const Path* paths, isize path_count);
+EXTERNAL void         path_make_relative_into(Path_Builder* into, Path relative_to, Path path);
+EXTERNAL void         path_make_absolute_into(Path_Builder* into, Path relative_to, Path path);
+EXTERNAL Path_Builder path_make_relative(Allocator* alloc, Path relative_to, Path path);
+EXTERNAL Path_Builder path_make_absolute(Allocator* alloc, Path relative_to, Path path);
 
-EXPORT Path path_get_executable();
-EXPORT Path path_get_executable_directory();
-EXPORT Path path_get_current_working_directory();
+EXTERNAL Path path_get_executable();
+EXTERNAL Path path_get_executable_directory();
+EXTERNAL Path path_get_current_working_directory();
 
-EXPORT Path path_absolute_ephemeral(Path relative_to, Path path);
-EXPORT Path path_relative_ephemeral(Path relative_to, Path path);
+EXTERNAL Path path_absolute_ephemeral(Path relative_to, Path path);
+EXTERNAL Path path_relative_ephemeral(Path relative_to, Path path);
 
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PATH_IMPL)) && !defined(JOT_PATH_HAS_IMPL)
 #define JOT_PATH_HAS_IMPL
 
-EXPORT bool path_is_empty(Path path)
+EXTERNAL bool path_is_empty(Path path)
 {
     return path.string.size <= path.info.prefix_size;
 }
 
-EXPORT bool is_path_sep(char c)
+EXTERNAL bool is_path_sep(char c)
 {
     return c == '/' || c == '\\';
 }
 
-EXPORT isize string_find_first_path_separator(String string, isize from)
+EXTERNAL isize string_find_first_path_separator(String string, isize from)
 {
     for(isize i = from; i < string.size; i++)
         if(string.data[i] == '/' || string.data[i] == '\\')
@@ -201,7 +201,7 @@ EXPORT isize string_find_first_path_separator(String string, isize from)
     return -1;
 }
 
-EXPORT isize string_find_last_path_separator(String string, isize from)
+EXTERNAL isize string_find_last_path_separator(String string, isize from)
 {
     for(isize i = from; i-- > 0; )
         if(string.data[i] == '/' || string.data[i] == '\\')
@@ -210,7 +210,7 @@ EXPORT isize string_find_last_path_separator(String string, isize from)
     return -1;
 }
 
-EXPORT void path_parse_root(String path, Path_Info* info)
+EXTERNAL void path_parse_root(String path, Path_Info* info)
 {
     info->prefix_size = 0;
     info->root_content_from = 0;
@@ -309,7 +309,7 @@ EXPORT void path_parse_root(String path, Path_Info* info)
     }
 }
 
-EXPORT void path_parse_rest(String path, Path_Info* info)
+EXTERNAL void path_parse_rest(String path, Path_Info* info)
 {
     //Clear the overriden
     info->is_directory = false;
@@ -382,7 +382,7 @@ EXPORT void path_parse_rest(String path, Path_Info* info)
     }
 }
 
-EXPORT Path path_parse(String path)
+EXTERNAL Path path_parse(String path)
 {
     Path out_path = {path};
     path_parse_root(path, &out_path.info);
@@ -390,33 +390,33 @@ EXPORT Path path_parse(String path)
     return out_path;
 }
 
-EXPORT Path path_parse_cstring(const char* path)
+EXTERNAL Path path_parse_cstring(const char* path)
 {
     return path_parse(string_of(path));
 }
 
-EXPORT String path_get_prefix(Path path)
+EXTERNAL String path_get_prefix(Path path)
 {
     return string_head(path.string, path.info.prefix_size);
 }
 
-EXPORT String path_get_root(Path path)
+EXTERNAL String path_get_root(Path path)
 {
     return string_range(path.string, path.info.prefix_size, path.info.prefix_size + path.info.root_size);
 }
 
-EXPORT String path_get_root_content(Path path)
+EXTERNAL String path_get_root_content(Path path)
 {
     return string_range(path.string, path.info.root_content_from, path.info.root_content_to);
 }
 
-EXPORT String path_get_directories(Path path)
+EXTERNAL String path_get_directories(Path path)
 {
     isize from = path.info.prefix_size + path.info.root_size;
     return string_range(path.string, from, from + path.info.directories_size);
 }
 
-EXPORT String path_get_without_trailing_slash(Path path)
+EXTERNAL String path_get_without_trailing_slash(Path path)
 {   
     if(path.info.has_trailing_slash)
         return path.string;
@@ -424,7 +424,7 @@ EXPORT String path_get_without_trailing_slash(Path path)
         return string_head(path.string, path.string.size - 1);
 }
 
-EXPORT String path_get_segments(Path path)
+EXTERNAL String path_get_segments(Path path)
 {
     isize from = path.info.prefix_size + path.info.root_size;
     isize to = path.string.size;
@@ -434,12 +434,12 @@ EXPORT String path_get_segments(Path path)
     return string_range(path.string, from, to);
 }
 
-EXPORT String path_get_filename(Path path)
+EXTERNAL String path_get_filename(Path path)
 {
     return string_range(path.string, path.string.size - path.info.filename_size, path.string.size);
 }
 
-EXPORT String path_get_filename_without_extension(Path path)
+EXTERNAL String path_get_filename_without_extension(Path path)
 {
     String filename = path_get_filename(path);
     if(path.info.extension_size > 0)
@@ -448,12 +448,12 @@ EXPORT String path_get_filename_without_extension(Path path)
     return filename;
 }
 
-EXPORT String path_get_extension(Path path)
+EXTERNAL String path_get_extension(Path path)
 {
     return string_range(path.string, path.string.size - path.info.extension_size, path.string.size);
 }
 
-EXPORT Path path_strip_prefix(Path path)
+EXTERNAL Path path_strip_prefix(Path path)
 {
     Path out = path;
     out.string = string_tail(path.string, path.info.prefix_size);
@@ -461,7 +461,7 @@ EXPORT Path path_strip_prefix(Path path)
     return out;
 }
 
-EXPORT Path path_strip_root(Path path)
+EXTERNAL Path path_strip_root(Path path)
 {   
     Path out = path;
     out.string = string_tail(path.string, path.info.prefix_size + path.info.root_size);
@@ -473,7 +473,7 @@ EXPORT Path path_strip_root(Path path)
     return out;
 }
 
-EXPORT Path path_strip_trailing_slash(Path path)
+EXTERNAL Path path_strip_trailing_slash(Path path)
 {
     Path out = path;
     if(path.info.has_trailing_slash)
@@ -486,7 +486,7 @@ EXPORT Path path_strip_trailing_slash(Path path)
 
 //Splits "C:/path/to/dir/"  --> "C:/path/to/" + "dir"
 //       "path/to/file.txt" --> "path/to/" + "file.txt"
-EXPORT Path path_strip_last_segment(Path path, String* last_segment_or_null)
+EXTERNAL Path path_strip_last_segment(Path path, String* last_segment_or_null)
 {
     Path no_trailing = path_strip_trailing_slash(path);
     isize split_i = string_find_last_path_separator(no_trailing.string, no_trailing.string.size);
@@ -507,7 +507,7 @@ EXPORT Path path_strip_last_segment(Path path, String* last_segment_or_null)
 
 //Splits "C:/path/to/dir/"   --> "C:/path/" + "to/dir/"
 //       "path/to/file.txt"  --> "path/" + "to/file.txt"
-EXPORT Path path_strip_first_segment(Path path, Path* first_segment_or_null)
+EXTERNAL Path path_strip_first_segment(Path path, Path* first_segment_or_null)
 {
     isize root_till = path.info.root_size + path.info.prefix_size;
     isize split_i = string_find_first_path_separator(path.string, root_till);
@@ -529,7 +529,7 @@ EXPORT Path path_strip_first_segment(Path path, Path* first_segment_or_null)
     return out;
 }
 
-EXPORT Path path_strip_to_containing_directory(Path path)
+EXTERNAL Path path_strip_to_containing_directory(Path path)
 {
     if(path.info.is_directory)
         return path;
@@ -537,7 +537,7 @@ EXPORT Path path_strip_to_containing_directory(Path path)
         return path_strip_last_segment(path, NULL);
 }
 
-EXPORT bool path_segment_iterate_string(Path_Segement_Iterator* it, String path, isize till_root_size)
+EXTERNAL bool path_segment_iterate_string(Path_Segement_Iterator* it, String path, isize till_root_size)
 {
     isize segment_from = till_root_size;
     if(it->segment_number != 0)
@@ -559,35 +559,35 @@ EXPORT bool path_segment_iterate_string(Path_Segement_Iterator* it, String path,
     return true;
 }
 
-EXPORT bool path_segment_iterate(Path_Segement_Iterator* it, Path path)
+EXTERNAL bool path_segment_iterate(Path_Segement_Iterator* it, Path path)
 {
     return path_segment_iterate_string(it, path.string, path.info.prefix_size + path.info.root_size);
 }
 
-EXPORT void path_builder_deinit(Path_Builder* builder)
+EXTERNAL void path_builder_deinit(Path_Builder* builder)
 {
     builder_deinit(&builder->builder);
     memset(builder, 0, sizeof *builder);
 }
-EXPORT void path_builder_init(Path_Builder* builder, Allocator* alloc_or_null, isize initial_capacity_or_zero)
+EXTERNAL void path_builder_init(Path_Builder* builder, Allocator* alloc_or_null, isize initial_capacity_or_zero)
 {
     builder_init_with_capacity(&builder->builder, alloc_or_null, initial_capacity_or_zero);
     memset(&builder->info, 0, sizeof builder->info);
 }
 
-EXPORT Path_Builder path_builder_make(Allocator* alloc_or_null, isize initial_capacity_or_zero)
+EXTERNAL Path_Builder path_builder_make(Allocator* alloc_or_null, isize initial_capacity_or_zero)
 {
     Path_Builder builder = {builder_make(alloc_or_null, initial_capacity_or_zero)};
     return builder;
 }
 
-EXPORT void path_builder_clear(Path_Builder* builder)
+EXTERNAL void path_builder_clear(Path_Builder* builder)
 {
     memset(&builder->info, 0, sizeof builder->info);
     builder_clear(&builder->builder);
 }
 
-EXPORT bool path_builder_append(Path_Builder* into, Path path, int flags)
+EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
 {
     //@NOTE: this function is the main normalization function. It expects 
     // into to be in a valid state.
@@ -800,13 +800,13 @@ EXPORT bool path_builder_append(Path_Builder* into, Path path, int flags)
     return state;
 }
 
-EXPORT void path_builder_assign(Path_Builder* into, Path path, int flags)
+EXTERNAL void path_builder_assign(Path_Builder* into, Path path, int flags)
 {
     path_builder_clear(into);
     path_builder_append(into, path, flags);
 }
 
-EXPORT void path_normalize_in_place(Path_Builder* into, int flags)
+EXTERNAL void path_normalize_in_place(Path_Builder* into, int flags)
 {
     Arena_Frame arena = scratch_arena_acquire();
     String_Builder copy = builder_from_string(&arena.allocator, into->string);
@@ -815,14 +815,14 @@ EXPORT void path_normalize_in_place(Path_Builder* into, int flags)
     arena_frame_release(&arena);
 }
 
-EXPORT Path_Builder path_normalize(Allocator* alloc, Path path, int flags)
+EXTERNAL Path_Builder path_normalize(Allocator* alloc, Path path, int flags)
 {
     Path_Builder builder = path_builder_make(alloc, 0);
     path_builder_append(&builder, path, flags);
     return builder;
 }
 
-EXPORT Path_Builder path_concat_many(Allocator* alloc, const Path* paths, isize path_count)
+EXTERNAL Path_Builder path_concat_many(Allocator* alloc, const Path* paths, isize path_count)
 {
     //A simple heuristic to try to guess the needed capacity
     isize combined_cap = 10;
@@ -836,14 +836,14 @@ EXPORT Path_Builder path_concat_many(Allocator* alloc, const Path* paths, isize 
     return builder;
 }
 
-EXPORT Path_Builder path_concat(Allocator* alloc, Path a, Path b)
+EXTERNAL Path_Builder path_concat(Allocator* alloc, Path a, Path b)
 {
     Path paths[2] = {a, b};
     return path_concat_many(alloc, paths, 2);
 }
 
 
-EXPORT void path_make_relative_into(Path_Builder* into, Path relative_to, Path path)
+EXTERNAL void path_make_relative_into(Path_Builder* into, Path relative_to, Path path)
 {
     path_builder_clear(into);
     
@@ -946,7 +946,7 @@ EXPORT void path_make_relative_into(Path_Builder* into, Path relative_to, Path p
     }
 }
 
-EXPORT void path_make_absolute_into(Path_Builder* into, Path relative_to, Path path)
+EXTERNAL void path_make_absolute_into(Path_Builder* into, Path relative_to, Path path)
 {
     path_builder_clear(into);
     if(path.info.is_absolute == false)
@@ -954,21 +954,21 @@ EXPORT void path_make_absolute_into(Path_Builder* into, Path relative_to, Path p
     path_builder_append(into, path, 0);
 }
 
-EXPORT Path_Builder path_make_relative(Allocator* alloc, Path relative_to, Path path)
+EXTERNAL Path_Builder path_make_relative(Allocator* alloc, Path relative_to, Path path)
 {
     Path_Builder out = path_builder_make(alloc, 0);
     path_make_relative_into(&out, relative_to, path);
     return out;
 }
 
-EXPORT Path_Builder path_make_absolute(Allocator* alloc, Path relative_to, Path path)
+EXTERNAL Path_Builder path_make_absolute(Allocator* alloc, Path relative_to, Path path)
 {
     Path_Builder out = path_builder_make(alloc, 0);
     path_make_absolute_into(&out, relative_to, path);
     return out;
 }
 
-EXPORT Path path_get_executable()
+EXTERNAL Path path_get_executable()
 {
     static bool was_parsed = false;
     static Path_Builder builder = {0};
@@ -981,12 +981,12 @@ EXPORT Path path_get_executable()
     return builder.path;
 }
 
-EXPORT Path path_get_executable_directory()
+EXTERNAL Path path_get_executable_directory()
 {
     return path_strip_to_containing_directory(path_get_executable());
 }
 
-EXPORT Path path_get_current_working_directory()
+EXTERNAL Path path_get_current_working_directory()
 {
     static Path_Builder cached = {0};
     static String_Builder last = {0};
@@ -1026,13 +1026,13 @@ INTERNAL Path_Builder* _path_ephemeral_builder()
     return curr;
 }
 
-EXPORT Path path_absolute_ephemeral(Path relative_to, Path path)
+EXTERNAL Path path_absolute_ephemeral(Path relative_to, Path path)
 {
     Path_Builder* ephemeral = _path_ephemeral_builder();
     path_make_absolute_into(ephemeral, relative_to, path);
     return ephemeral->path;
 }
-EXPORT Path path_relative_ephemeral(Path relative_to, Path path)
+EXTERNAL Path path_relative_ephemeral(Path relative_to, Path path)
 {
     Path_Builder* ephemeral = _path_ephemeral_builder();
     path_make_relative_into(ephemeral, relative_to, path);

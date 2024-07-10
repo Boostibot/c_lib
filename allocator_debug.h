@@ -115,28 +115,28 @@ typedef struct Debug_Allocator
 
 //Initalizes the debug allocator using a parent and options. 
 //Many options cannot be changed during the life of the debug allocator.
-EXPORT void debug_allocator_init_custom(Debug_Allocator* allocator, Allocator* parent, Debug_Allocator_Options options);
-EXPORT void debug_allocator_init(Debug_Allocator* allocator, Allocator* parent, u64 flags);
+EXTERNAL void debug_allocator_init_custom(Debug_Allocator* allocator, Allocator* parent, Debug_Allocator_Options options);
+EXTERNAL void debug_allocator_init(Debug_Allocator* allocator, Allocator* parent, u64 flags);
 //Initalizes the debug allocator and makes it the dafault and scratch global allocator.
 //Additional flags defined above can be passed to quickly tweak the allocator.
 //Restores the old allocators on deinit. 
-EXPORT void debug_allocator_init_use(Debug_Allocator* allocator, Allocator* parent, u64 flags);
+EXTERNAL void debug_allocator_init_use(Debug_Allocator* allocator, Allocator* parent, u64 flags);
 //Deinits the debug allocator
-EXPORT void debug_allocator_deinit(Debug_Allocator* allocator);
+EXTERNAL void debug_allocator_deinit(Debug_Allocator* allocator);
 
-EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr, isize old_size, isize align);
-EXPORT Allocator_Stats debug_allocator_get_stats(Allocator* self_);
+EXTERNAL void* debug_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr, isize old_size, isize align);
+EXTERNAL Allocator_Stats debug_allocator_get_stats(Allocator* self_);
 
 //Returns info about the specific alive debug allocation @TODO
-EXPORT Debug_Allocation       debug_allocator_get_allocation(const Debug_Allocator* allocator, void* ptr); 
+EXTERNAL Debug_Allocation       debug_allocator_get_allocation(const Debug_Allocator* allocator, void* ptr); 
 //Returns up to get_max currectly alive allocations sorted by their time of allocation. If get_max <= 0 returns all
-EXPORT Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debug_Allocator allocator, isize print_max);
+EXTERNAL Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debug_Allocator allocator, isize print_max);
 
 //Prints up to get_max currectly alive allocations sorted by their time of allocation. If get_max <= 0 returns all
-EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_Type log_type, const Debug_Allocator allocator, isize print_max); 
+EXTERNAL void debug_allocator_print_alive_allocations(const char* log_module, Log_Type log_type, const Debug_Allocator allocator, isize print_max); 
 
 //Converts a panic reason to string
-EXPORT const char* debug_allocator_panic_reason_to_string(Debug_Allocator_Panic_Reason reason);
+EXTERNAL const char* debug_allocator_panic_reason_to_string(Debug_Allocator_Panic_Reason reason);
 
 typedef struct Debug_Allocation {
     void* ptr;                     
@@ -178,7 +178,7 @@ typedef struct Debug_Allocator_Options
 #include <stdlib.h> //qsort
 
 
-EXPORT void debug_allocator_init_custom(Debug_Allocator* debug, Allocator* parent, Debug_Allocator_Options options)
+EXTERNAL void debug_allocator_init_custom(Debug_Allocator* debug, Allocator* parent, Debug_Allocator_Options options)
 {
     debug_allocator_deinit(debug);
     hash_index_init(&debug->alive_allocations_hash, parent);
@@ -205,7 +205,7 @@ EXPORT void debug_allocator_init_custom(Debug_Allocator* debug, Allocator* paren
     debug->is_init = true;
 }
 
-EXPORT void debug_allocator_init(Debug_Allocator* allocator, Allocator* parent, u64 flags)
+EXTERNAL void debug_allocator_init(Debug_Allocator* allocator, Allocator* parent, u64 flags)
 {
     Debug_Allocator_Options options = {0};
     if(flags & DEBUG_ALLOCATOR_CONTINUOUS)
@@ -223,7 +223,7 @@ EXPORT void debug_allocator_init(Debug_Allocator* allocator, Allocator* parent, 
 
     debug_allocator_init_custom(allocator, parent, options);
 }
-EXPORT void debug_allocator_init_use(Debug_Allocator* debug, Allocator* parent, u64 flags)
+EXTERNAL void debug_allocator_init_use(Debug_Allocator* debug, Allocator* parent, u64 flags)
 {
     debug_allocator_init(debug, parent, flags);
     debug->allocator_backup = allocator_set_both(&debug->allocator, &debug->allocator);
@@ -390,7 +390,7 @@ INTERNAL bool _debug_allocator_is_invariant(const Debug_Allocator* allocator)
     return true;
 }
 
-EXPORT const char* debug_allocator_panic_reason_to_string(Debug_Allocator_Panic_Reason reason)
+EXTERNAL const char* debug_allocator_panic_reason_to_string(Debug_Allocator_Panic_Reason reason)
 {
     switch(reason)
     {
@@ -424,7 +424,7 @@ INTERNAL void* _debug_allocator_panic(Debug_Allocator* self, Debug_Allocator_Pan
 
     return NULL;
 }
-EXPORT void debug_allocator_deinit(Debug_Allocator* allocator)
+EXTERNAL void debug_allocator_deinit(Debug_Allocator* allocator)
 {
     if(allocator->bytes_allocated != 0 && allocator->do_deinit_leak_check)
         _debug_allocator_panic(allocator, DEBUG_ALLOC_PANIC_DEINIT_MEMORY_LEAKED, NULL, 0);
@@ -448,7 +448,7 @@ EXPORT void debug_allocator_deinit(Debug_Allocator* allocator)
     *allocator = null;
 }
 
-EXPORT Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debug_Allocator allocator, isize print_max)
+EXTERNAL Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debug_Allocator allocator, isize print_max)
 {
     isize count = print_max;
     const Hash_Index* hash = &allocator.alive_allocations_hash;
@@ -487,7 +487,7 @@ EXPORT Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debug_
 
 
 
-EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_Type log_type, const Debug_Allocator allocator, isize print_max)
+EXTERNAL void debug_allocator_print_alive_allocations(const char* log_module, Log_Type log_type, const Debug_Allocator allocator, isize print_max)
 {
     _debug_allocator_is_invariant(&allocator);
     
@@ -516,7 +516,7 @@ EXPORT void debug_allocator_print_alive_allocations(const char* log_module, Log_
     array_deinit(&alive);
 }
 
-EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr_, isize old_size, isize align)
+EXTERNAL void* debug_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr_, isize old_size, isize align)
 {
     Debug_Allocator* self = (Debug_Allocator*) (void*) self_;
     //If is arena just use it and return
@@ -622,7 +622,7 @@ EXPORT void* debug_allocator_allocate(Allocator* self_, isize new_size, void* ol
     return new_ptr;
 }
 
-EXPORT Allocator_Stats debug_allocator_get_stats(Allocator* self_)
+EXTERNAL Allocator_Stats debug_allocator_get_stats(Allocator* self_)
 {
     Debug_Allocator* self = (Debug_Allocator*) (void*) self_;
     Allocator_Stats out = {0};

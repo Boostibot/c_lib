@@ -174,7 +174,7 @@
     #include <assert.h>
     #include <stdlib.h>
     
-    #define EXPORT
+    #define EXTERNAL
     #define INTERNAL static
     #define ASSERT(x, ...) assert(x)
     #define TEST(x, ...)  (!(x) ? abort() : (void) 0)
@@ -272,40 +272,40 @@ typedef struct Tlsf_Allocator {
 
 //Initializes the allocator. `memory_or_null` can be NULL in which case the allocator can only be used with the tlsf_allocate/tlsf_deallocate
 // interface. Calling tlsf_malloc/tlsf_free will result in assertion.
-EXPORT bool     tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize memory_size, void* node_memory, isize node_memory_size);
+EXTERNAL bool     tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize memory_size, void* node_memory, isize node_memory_size);
 //Resets the allocator thus essentially 'freeing' all allocations.
-EXPORT void     tlsf_reset(Tlsf_Allocator* allocator);
+EXTERNAL void     tlsf_reset(Tlsf_Allocator* allocator);
 //Grows available memory
-EXPORT void     tlsf_grow_memory(Tlsf_Allocator* allocator, void* new_memory, isize new_memory_size);
+EXTERNAL void     tlsf_grow_memory(Tlsf_Allocator* allocator, void* new_memory, isize new_memory_size);
 //Grows available node capacity
-EXPORT void     tlsf_grow_nodes(Tlsf_Allocator* allocator, void* new_node_memory, isize new_node_memory_size);
+EXTERNAL void     tlsf_grow_nodes(Tlsf_Allocator* allocator, void* new_node_memory, isize new_node_memory_size);
 
 //Allocates a `size` bytes of the potentially non local memory (ie. maybe on GPU) and returns an offset into the memory block. 
 //Aligns the returned `offset` so that `(offset + align_offset) % align == 0`.
 //Saves the allocated node handle into `node_output`. If fails to allocate returns 0 and saves 0 into `node_output`.
-EXPORT isize    tlsf_allocate(Tlsf_Allocator* allocator, uint32_t* node_output, isize size, isize align, isize align_offset);
+EXTERNAL isize    tlsf_allocate(Tlsf_Allocator* allocator, uint32_t* node_output, isize size, isize align, isize align_offset);
 //Deallocates a node obtained from tlsf_allocate or tlsf_malloc. If node is 0 does not do anything.
-EXPORT void     tlsf_deallocate(Tlsf_Allocator* allocator, uint32_t node);
+EXTERNAL void     tlsf_deallocate(Tlsf_Allocator* allocator, uint32_t node);
 
 //Allocates a `size` bytes in the local memory and returns a pointer to it. 
 //The returned pointer `ptr` is aligned such that `((uintptr_t) ptr + align_offset) % align == 0`. 
 //If fails to allocate returns NULL.
-EXPORT void*    tlsf_malloc(Tlsf_Allocator* allocator, isize size, isize align, isize align_offset);
+EXTERNAL void*    tlsf_malloc(Tlsf_Allocator* allocator, isize size, isize align, isize align_offset);
 //Frees an allocation represented by a `ptr` obtained from tlsf_malloc. if `ptr` is NULL does not do anything.
-EXPORT void     tlsf_free(Tlsf_Allocator* allocator, void* ptr);
+EXTERNAL void     tlsf_free(Tlsf_Allocator* allocator, void* ptr);
 
 //Returns the size of the given node. If the `node_i` is invalid returns 0. If the `node_i` was freed returns 0xFFFFFFFF.
-EXPORT isize    tlsf_node_size(Tlsf_Allocator* allocator, uint32_t node_i);
+EXTERNAL isize    tlsf_node_size(Tlsf_Allocator* allocator, uint32_t node_i);
 //Returns a node of the allocation done by calling tlsf_malloc. If `ptr` is NULL returns 0. 
-EXPORT uint32_t tlsf_get_node(Tlsf_Allocator* allocator, void* ptr); 
+EXTERNAL uint32_t tlsf_get_node(Tlsf_Allocator* allocator, void* ptr); 
 
-EXPORT int32_t  tlsf_bin_index_from_size(isize size, bool round_up);
-EXPORT isize    tlsf_size_from_bin_index(int32_t bin_index);
+EXTERNAL int32_t  tlsf_bin_index_from_size(isize size, bool round_up);
+EXTERNAL isize    tlsf_size_from_bin_index(int32_t bin_index);
 
 //Checks whether the allocator is in valid state. If is not aborts.
 // Flags can be TLSF_CHECK_DETAILED and TLSF_CHECK_ALL_NODES.
-EXPORT void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags);
-EXPORT void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags_or_zero, uint32_t bin_or_zero);
+EXTERNAL void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags);
+EXTERNAL void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags_or_zero, uint32_t bin_or_zero);
 
 #endif
 
@@ -364,7 +364,7 @@ INTERNAL uint64_t _tlsf_align_up(uint64_t ptr, isize align_to)
     ptr_num += (-ptr_num) & (align_to - 1);
     return (uint64_t) ptr_num;
 }
-EXPORT int32_t tlsf_bin_index_from_size(isize size, bool round_up)
+EXTERNAL int32_t tlsf_bin_index_from_size(isize size, bool round_up)
 {
     ASSERT(size >= 0);
     if(size < TLSF_BIN_MANTISSA_SIZE)
@@ -384,7 +384,7 @@ EXPORT int32_t tlsf_bin_index_from_size(isize size, bool round_up)
     return (int32_t) res;
 }
 
-EXPORT isize tlsf_size_from_bin_index(int32_t bin_index)
+EXTERNAL isize tlsf_size_from_bin_index(int32_t bin_index)
 {
     uint32_t exp = (uint32_t) bin_index >> TLSF_BIN_MANTISSA_LOG2;
     uint32_t mantissa = (uint32_t) bin_index & TLSF_BIN_MANTISSA_MASK;
@@ -512,7 +512,7 @@ INTERNAL isize _tlsf_allocate(Tlsf_Allocator* allocator, isize size, isize align
     return node->offset;
 }
 
-EXPORT void tlsf_deallocate(Tlsf_Allocator* allocator, uint32_t node_i)
+EXTERNAL void tlsf_deallocate(Tlsf_Allocator* allocator, uint32_t node_i)
 {
     ASSERT(allocator);
     _tlsf_check_invariants(allocator);
@@ -623,7 +623,7 @@ INTERNAL void _tlsf_link_node_in_bin(Tlsf_Allocator* allocator, uint32_t node_i,
     allocator->bin_masks[bin_i/64] |= (uint64_t) 1 << (bin_i%64); 
 }
 
-EXPORT void tlsf_grow_memory(Tlsf_Allocator* allocator, void* new_memory, isize new_memory_size)
+EXTERNAL void tlsf_grow_memory(Tlsf_Allocator* allocator, void* new_memory, isize new_memory_size)
 {
     _tlsf_check_invariants(allocator);
     ASSERT(new_memory_size >= allocator->memory_size && (new_memory != NULL || allocator->memory == NULL));
@@ -659,7 +659,7 @@ EXPORT void tlsf_grow_memory(Tlsf_Allocator* allocator, void* new_memory, isize 
     _tlsf_check_invariants(allocator);
 }
 
-EXPORT void tlsf_grow_nodes(Tlsf_Allocator* allocator, void* new_node_memory, isize new_node_memory_size)
+EXTERNAL void tlsf_grow_nodes(Tlsf_Allocator* allocator, void* new_node_memory, isize new_node_memory_size)
 {
     _tlsf_check_invariants(allocator);
 
@@ -718,7 +718,7 @@ EXPORT void tlsf_grow_nodes(Tlsf_Allocator* allocator, void* new_node_memory, is
     }   
 #endif
 
-EXPORT bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize memory_size, void* node_memory, isize node_memory_size)
+EXTERNAL bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize memory_size, void* node_memory, isize node_memory_size)
 {
     ASSERT(allocator);
     ASSERT(memory_size >= 0);
@@ -788,12 +788,12 @@ EXPORT bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize mem
     return true;
 }
 
-EXPORT void tlsf_reset(Tlsf_Allocator* allocator)
+EXTERNAL void tlsf_reset(Tlsf_Allocator* allocator)
 {
     tlsf_init(allocator, allocator->memory, allocator->memory_size, allocator->nodes, allocator->node_capacity);
 }
 
-EXPORT isize tlsf_allocate(Tlsf_Allocator* allocator, uint32_t* node_output, isize size, isize align, isize align_offset)
+EXTERNAL isize tlsf_allocate(Tlsf_Allocator* allocator, uint32_t* node_output, isize size, isize align, isize align_offset)
 {
     ASSERT(allocator);
     ASSERT(size >= 0);
@@ -810,7 +810,7 @@ EXPORT isize tlsf_allocate(Tlsf_Allocator* allocator, uint32_t* node_output, isi
     return _tlsf_allocate(allocator, size, align, align_offset, false, node_output);
 }
 
-EXPORT void* tlsf_malloc(Tlsf_Allocator* allocator, isize size, isize align, isize align_offset)
+EXTERNAL void* tlsf_malloc(Tlsf_Allocator* allocator, isize size, isize align, isize align_offset)
 {
     ASSERT(allocator);
     ASSERT(size >= 0);
@@ -849,7 +849,7 @@ EXPORT void* tlsf_malloc(Tlsf_Allocator* allocator, isize size, isize align, isi
     return ptr;
 }
 
-EXPORT uint32_t tlsf_get_node(Tlsf_Allocator* allocator, void* ptr)
+EXTERNAL uint32_t tlsf_get_node(Tlsf_Allocator* allocator, void* ptr)
 {
     if(ptr == NULL)
         return 0;
@@ -876,13 +876,13 @@ EXPORT uint32_t tlsf_get_node(Tlsf_Allocator* allocator, void* ptr)
     return node_i;
 }
 
-EXPORT void tlsf_free(Tlsf_Allocator* allocator, void* ptr)
+EXTERNAL void tlsf_free(Tlsf_Allocator* allocator, void* ptr)
 {
     uint32_t node = tlsf_get_node(allocator, ptr);
     tlsf_deallocate(allocator, node);
 }
 
-EXPORT isize tlsf_node_size(Tlsf_Allocator* allocator, uint32_t node_i)
+EXTERNAL isize tlsf_node_size(Tlsf_Allocator* allocator, uint32_t node_i)
 {
     if(TLSF_LAST_NODE < node_i && node_i < allocator->node_capacity)
     {
@@ -894,7 +894,7 @@ EXPORT isize tlsf_node_size(Tlsf_Allocator* allocator, uint32_t node_i)
         return 0;
 }
 
-EXPORT void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags, uint32_t bin_i)
+EXTERNAL void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags, uint32_t bin_i)
 {
     TEST(0 <= node_i && node_i < allocator->node_capacity);
     Tlsf_Node* node = &allocator->nodes[node_i];
@@ -966,7 +966,7 @@ EXPORT void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node_i
     }
 }
 
-EXPORT void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags)
+EXTERNAL void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags)
 {
     //Check fields
     TEST(allocator->nodes != NULL);

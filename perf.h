@@ -10,8 +10,8 @@
 	#define ASSERT(x) assert(x)
 #endif
 
-#ifndef EXPORT
-	#define EXPORT 
+#ifndef EXTERNAL
+	#define EXTERNAL 
 #endif
 
 typedef struct Perf_Counter {
@@ -54,22 +54,22 @@ typedef struct Perf_Benchmark {
 } Perf_Benchmark;
 
 //Returns the current time in nanoseconds. The time is relative to an arbitrary point in time, thus only difference of two perf_now() makes sense.
-EXPORT int64_t		perf_now();
-EXPORT int64_t		perf_freq(); //returns the frequency of the perf counter
-EXPORT int64_t		perf_submit(Perf_Counter* counter, int64_t measured);
-EXPORT int64_t		perf_submit_no_init(Perf_Counter* counter, int64_t measured);
-EXPORT Perf_Stats	perf_get_stats(Perf_Counter counter, int64_t batch_size);
-EXPORT Perf_Counter perf_counter_merge(Perf_Counter a, Perf_Counter b, bool* could_combine_everything_or_null);
-EXPORT Perf_Counter	perf_counter_init(int64_t mean_estimate);
+EXTERNAL int64_t		perf_now();
+EXTERNAL int64_t		perf_freq(); //returns the frequency of the perf counter
+EXTERNAL int64_t		perf_submit(Perf_Counter* counter, int64_t measured);
+EXTERNAL int64_t		perf_submit_no_init(Perf_Counter* counter, int64_t measured);
+EXTERNAL Perf_Stats	perf_get_stats(Perf_Counter counter, int64_t batch_size);
+EXTERNAL Perf_Counter perf_counter_merge(Perf_Counter a, Perf_Counter b, bool* could_combine_everything_or_null);
+EXTERNAL Perf_Counter	perf_counter_init(int64_t mean_estimate);
 
 //Maintains a benchmark. See example below for how to use this.
-EXPORT bool perf_benchmark(Perf_Benchmark* bench, double time);
+EXTERNAL bool perf_benchmark(Perf_Benchmark* bench, double time);
 
 //Maintains a benchmark requiring manual measurement. Allows to submit more settings. 
 // Measurements need to be added using perf_benchmark_submit() to register!
-EXPORT bool perf_benchmark_custom(Perf_Benchmark* bench, Perf_Stats* stats_or_null, double warmup, double time, int64_t batch_size);
+EXTERNAL bool perf_benchmark_custom(Perf_Benchmark* bench, Perf_Stats* stats_or_null, double warmup, double time, int64_t batch_size);
 //Submits the measured time in nanoseconds to the benchmark. The measurement is discareded if warmup is still in progress. 
-EXPORT void perf_benchmark_submit(Perf_Benchmark* bench, int64_t measured);
+EXTERNAL void perf_benchmark_submit(Perf_Benchmark* bench, int64_t measured);
 
 //Needs implementation:
 int64_t platform_perf_counter();
@@ -124,7 +124,7 @@ static void perf_benchmark_example()
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PERF_IMPL)) && !defined(JOT_PERF_HAS_IMPL)
 #define JOT_PERF_HAS_IMPL
 
-	EXPORT Perf_Counter perf_counter_init(int64_t mean_estimate)
+	EXTERNAL Perf_Counter perf_counter_init(int64_t mean_estimate)
 	{
 		Perf_Counter out = {0};
 		out.frquency = platform_perf_counter_frequency();
@@ -134,7 +134,7 @@ static void perf_benchmark_example()
 		return out;
 	}
 	
-	EXPORT int64_t perf_submit_no_init(Perf_Counter* counter, int64_t delta)
+	EXTERNAL int64_t perf_submit_no_init(Perf_Counter* counter, int64_t delta)
 	{
 		int64_t offset_delta = delta - counter->mean_estimate;
 		counter->counter += delta;
@@ -145,7 +145,7 @@ static void perf_benchmark_example()
 		return counter->runs - 1;
 	}
 
-	EXPORT int64_t perf_submit(Perf_Counter* counter, int64_t delta)
+	EXTERNAL int64_t perf_submit(Perf_Counter* counter, int64_t delta)
 	{
 		ASSERT(counter != NULL && delta >= 0 && "invalid submit");
 		if(counter->frquency == 0)
@@ -155,17 +155,17 @@ static void perf_benchmark_example()
 	}
 	
 	//@TODO: RDTSC!
-	EXPORT int64_t perf_now()
+	EXTERNAL int64_t perf_now()
 	{
 		return platform_perf_counter();
 	}
 
-	EXPORT int64_t perf_freq()
+	EXTERNAL int64_t perf_freq()
 	{
 		return platform_perf_counter_frequency();
 	}
 
-	EXPORT Perf_Counter perf_counter_merge(Perf_Counter a, Perf_Counter b, bool* could_combine_everything_or_null)
+	EXTERNAL Perf_Counter perf_counter_merge(Perf_Counter a, Perf_Counter b, bool* could_combine_everything_or_null)
 	{
 		Perf_Counter out = {0};
 		out.max_counter = a.max_counter > b.max_counter ? b.max_counter : a.max_counter;
@@ -189,7 +189,7 @@ static void perf_benchmark_example()
 		return out;
 	}
 
-	EXPORT Perf_Stats perf_get_stats(Perf_Counter counter, int64_t batch_size)
+	EXTERNAL Perf_Stats perf_get_stats(Perf_Counter counter, int64_t batch_size)
 	{
 		if(batch_size <= 0)
 			batch_size = 1;
@@ -290,7 +290,7 @@ static void perf_benchmark_example()
 		return stats;
 	}
 
-	EXPORT bool perf_benchmark_custom(Perf_Benchmark* bench, Perf_Stats* stats_or_null, double warmup, double time, int64_t batch_size)
+	EXTERNAL bool perf_benchmark_custom(Perf_Benchmark* bench, Perf_Stats* stats_or_null, double warmup, double time, int64_t batch_size)
 	{
 		int64_t now = perf_now();
 		if(bench->start == 0)
@@ -320,7 +320,7 @@ static void perf_benchmark_example()
 		}
 	}
 
-	EXPORT bool perf_benchmark(Perf_Benchmark* bench, double time)
+	EXTERNAL bool perf_benchmark(Perf_Benchmark* bench, double time)
 	{
 		int64_t last = bench->iter_begin_time;
 		bool out = perf_benchmark_custom(bench, NULL, time/8, time, 1);
@@ -333,7 +333,7 @@ static void perf_benchmark_example()
 		return out;
 	}
 
-	EXPORT void perf_benchmark_submit(Perf_Benchmark* bench, int64_t measurement)
+	EXTERNAL void perf_benchmark_submit(Perf_Benchmark* bench, int64_t measurement)
 	{
 		if(bench->iter_begin_time - bench->start > bench->warmup)
 			perf_submit(&bench->counter, measurement);

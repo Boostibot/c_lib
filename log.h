@@ -144,25 +144,25 @@ typedef struct Log {
     struct Log* last_child;
 } Log;
 
-EXPORT Logger* log_get_logger(); //Returns the default used logger
-EXPORT Logger* log_set_logger(Logger* logger); //Sets the default used logger. Returns a pointer to the previous logger so it can be restored later.
+EXTERNAL Logger* log_get_logger(); //Returns the default used logger
+EXTERNAL Logger* log_set_logger(Logger* logger); //Sets the default used logger. Returns a pointer to the previous logger so it can be restored later.
 
-EXPORT Log_Filter log_get_filter(); //Returns the current global filter - For Log_Type log_type to be printed it must satisfy (filter & ((Log_Filter) 1 << log_type)) > 0
-EXPORT Log_Filter log_set_filter(Log_Filter filter); //Sets the global filter. Returns previous value so it can be restored later.
+EXTERNAL Log_Filter log_get_filter(); //Returns the current global filter - For Log_Type log_type to be printed it must satisfy (filter & ((Log_Filter) 1 << log_type)) > 0
+EXTERNAL Log_Filter log_set_filter(Log_Filter filter); //Sets the global filter. Returns previous value so it can be restored later.
 
-EXPORT void log_flush();    //Flushes the logger
-EXPORT void log_group();    //Increases group depth (indentation) of subsequent log messages
-EXPORT void log_ungroup();  //Decreases group depth (indentation) of subsequent log messages
-EXPORT i32* log_group_depth(); //Returns the current group depth
-EXPORT void log_captured(const Log* log_list);
+EXTERNAL void log_flush();    //Flushes the logger
+EXTERNAL void log_group();    //Increases group depth (indentation) of subsequent log messages
+EXTERNAL void log_ungroup();  //Decreases group depth (indentation) of subsequent log messages
+EXTERNAL i32* log_group_depth(); //Returns the current group depth
+EXTERNAL void log_captured(const Log* log_list);
 
-EXPORT const char* log_type_to_string(Log_Type log_type);
+EXTERNAL const char* log_type_to_string(Log_Type log_type);
 
-EXPORT void log_message_no_check(const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* child, const char* format, ...);
-EXPORT void vlog_message(const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* child, const char* format, va_list args);
+EXTERNAL void log_message_no_check(const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* child, const char* format, ...);
+EXTERNAL void vlog_message(const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* child, const char* format, va_list args);
 
-EXPORT void log_callstack_no_check(const char* log_module, Log_Type log_type, isize skip, const char* format, ...);
-EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, void** callstack, isize callstack_size);
+EXTERNAL void log_callstack_no_check(const char* log_module, Log_Type log_type, isize skip, const char* format, ...);
+EXTERNAL void log_captured_callstack(const char* log_module, Log_Type log_type, void** callstack, isize callstack_size);
 
 //A cute hack to typecheck printf arguments better and more portable than attribute annotations.
 //Simply use printf(format, args...) as well but dont actually evaluate it (using sizeof)
@@ -185,7 +185,7 @@ String_Buffer_16 format_nanoseconds(int64_t ns, int width); //returns "153ns", "
 
 #define STRING_PRINT(string) (int) (string).size, (string).data
 
-EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator);
+EXTERNAL Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator);
 
 //Logs a message. Does not get dissabled.
 #define LOG(log_module, log_type, format, ...)                         log_message(log_module, "", log_type, SOURCE_INFO(), NULL, format, ##__VA_ARGS__)
@@ -218,19 +218,19 @@ typedef struct Global_Log_State {
 
 static ATTRIBUTE_THREAD_LOCAL Global_Log_State _global_log_state = {~(Log_Filter) 0}; //All channels on!
 
-EXPORT Logger* log_get_logger()
+EXTERNAL Logger* log_get_logger()
 {
     return _global_log_state.logger;
 }
 
-EXPORT Logger* log_set_logger(Logger* logger)
+EXTERNAL Logger* log_set_logger(Logger* logger)
 {
     Logger* before = _global_log_state.logger;
     _global_log_state.logger = logger;
     return before;
 }
 
-EXPORT void log_captured(const Log* log_list)
+EXTERNAL void log_captured(const Log* log_list)
 {
     Global_Log_State* state = &_global_log_state;
     if(state->logger && (state->filter & ((Log_Filter) 1 << log_list->type)))
@@ -242,7 +242,7 @@ EXPORT void log_captured(const Log* log_list)
         state->logger = logger;
     }
 }
-EXPORT void log_flush()
+EXTERNAL void log_flush()
 {   
     Global_Log_State* state = &_global_log_state;
     if(state->logger)
@@ -251,26 +251,26 @@ EXPORT void log_flush()
         state->logger->log(state->logger, 0, LOG_ACTION_FLUSH, "", "", (Log_Type) 0, SOURCE_INFO(), NULL, "", args);
     }
 }
-EXPORT void log_group()
+EXTERNAL void log_group()
 {
     _global_log_state.group_depth += 1;
 }
-EXPORT void log_ungroup()
+EXTERNAL void log_ungroup()
 {
     ASSERT(_global_log_state.group_depth > 0);
     _global_log_state.group_depth = MAX(_global_log_state.group_depth - 1, 0);
 }
-EXPORT i32* log_group_depth()
+EXTERNAL i32* log_group_depth()
 {
     return &_global_log_state.group_depth;
 }
 
-EXPORT Log_Filter log_get_filter()
+EXTERNAL Log_Filter log_get_filter()
 {
     return _global_log_state.filter;
 }
 
-EXPORT Log_Filter log_set_filter(Log_Filter filter)
+EXTERNAL Log_Filter log_set_filter(Log_Filter filter)
 {
     Log_Filter* gloabl_filter = &_global_log_state.filter;
     Log_Filter prev = *gloabl_filter; 
@@ -278,7 +278,7 @@ EXPORT Log_Filter log_set_filter(Log_Filter filter)
     return prev;
 }
 
-EXPORT void log_message_no_check(const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* child, const char* format, ...)
+EXTERNAL void log_message_no_check(const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* child, const char* format, ...)
 {
     va_list args;               
     va_start(args, format);     
@@ -286,7 +286,7 @@ EXPORT void log_message_no_check(const char* log_module, const char* subject, Lo
     va_end(args);            
 }
 
-EXPORT void vlog_message(const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* first_child, const char* format, va_list args)
+EXTERNAL void vlog_message(const char* log_module, const char* subject, Log_Type log_type, Source_Info source, const Log* first_child, const char* format, va_list args)
 {   
     Global_Log_State* state = &_global_log_state;
     if(state->logger && (state->filter & ((Log_Filter) 1 << log_type)))
@@ -307,7 +307,7 @@ EXPORT void vlog_message(const char* log_module, const char* subject, Log_Type l
     }
 }
 
-EXPORT const char* log_type_to_string(Log_Type log_type)
+EXTERNAL const char* log_type_to_string(Log_Type log_type)
 {
     switch(log_type)
     {
@@ -323,7 +323,7 @@ EXPORT const char* log_type_to_string(Log_Type log_type)
     }
 }
 
-EXPORT void log_callstack_no_check(const char* log_module, Log_Type log_type, isize skip, const char* format, ...)
+EXTERNAL void log_callstack_no_check(const char* log_module, Log_Type log_type, isize skip, const char* format, ...)
 {
     bool has_msg = format != NULL && strlen(format) != 0;
     if(has_msg)
@@ -344,7 +344,7 @@ EXPORT void log_callstack_no_check(const char* log_module, Log_Type log_type, is
         log_ungroup();
 }
 
-EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, void** callstack, isize callstack_size)
+EXTERNAL void log_captured_callstack(const char* log_module, Log_Type log_type, void** callstack, isize callstack_size)
 {
     if(callstack_size < 0 || callstack == NULL)
         callstack_size = 0;
@@ -375,7 +375,7 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, vo
 }
 
 #ifndef ASSERT_CUSTOM_REPORT
-    EXPORT void assertion_report(const char* expression, int line, const char* file, const char* function, const char* format, ...)
+    EXTERNAL void assertion_report(const char* expression, int line, const char* file, const char* function, const char* format, ...)
     {
         Source_Info source = {line, file, function};
         log_message("assert", "", LOG_FATAL, source, NULL, "TEST(%s) TEST/ASSERT failed! %s:%i", expression, file, line);
@@ -391,7 +391,7 @@ EXPORT void log_captured_callstack(const char* log_module, Log_Type log_type, vo
     }
 #endif
     
-EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator)
+EXTERNAL Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_type, Allocator* allocator)
 {
     Allocator_Stats stats = {0};
     if(allocator != NULL && allocator->get_stats != NULL)
@@ -420,7 +420,7 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
 }
 
 #ifndef ALLOCATOR_CUSTOM_OUT_OF_MEMORY
-    EXPORT void allocator_out_of_memory(Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align)
+    EXTERNAL void allocator_out_of_memory(Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         Allocator_Stats stats = {0};
         if(allocator != NULL && allocator->get_stats != NULL)
@@ -454,14 +454,14 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
     }
 #endif
     
-    EXPORT String_Buffer_16 format_ptr(void* ptr)
+    EXTERNAL String_Buffer_16 format_ptr(void* ptr)
     {
         String_Buffer_16 out = {0};
         snprintf(out.data, sizeof out.data, "0x%08llx", (long long) ptr);
         return out;
     }
 
-    EXPORT String_Buffer_16 format_bytes(int64_t bytes, int width)
+    EXTERNAL String_Buffer_16 format_bytes(int64_t bytes, int width)
     {
         int64_t TB = (int64_t) 1024*1024*1024*1024;
         int64_t GB = (int64_t) 1024*1024*1024;
@@ -484,7 +484,7 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
         return out;
     }
 
-    EXPORT String_Buffer_16 format_nanoseconds(int64_t ns, int width)
+    EXTERNAL String_Buffer_16 format_nanoseconds(int64_t ns, int width)
     {
         int64_t sec = (int64_t) 1000*1000*1000;
         int64_t milli = (int64_t) 1000*1000;
@@ -504,7 +504,7 @@ EXPORT Allocator_Stats log_allocator_stats(const char* log_module, Log_Type log_
         return out;
     }
 
-    EXPORT String_Buffer_16 format_seconds(double seconds, int width)
+    EXTERNAL String_Buffer_16 format_seconds(double seconds, int width)
     {
         return format_nanoseconds((int64_t) (seconds * 1000*1000*1000), width);
     }

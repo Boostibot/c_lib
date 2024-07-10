@@ -15,10 +15,10 @@ typedef struct Discrete_Distribution {
     bool _padding[3];
 } Discrete_Distribution;
 
-EXPORT Discrete_Distribution random_discrete_make(const i32 probabilities[], isize probabilities_size);
-EXPORT Discrete_Distribution random_discrete_make_state(const i32 probabilities[], isize probabilities_size, Random_State state);
-EXPORT i32 random_discrete(Discrete_Distribution* distribution);
-EXPORT void random_discrete_deinit(Discrete_Distribution* dist);
+EXTERNAL Discrete_Distribution random_discrete_make(const i32 probabilities[], isize probabilities_size);
+EXTERNAL Discrete_Distribution random_discrete_make_state(const i32 probabilities[], isize probabilities_size, Random_State state);
+EXTERNAL i32 random_discrete(Discrete_Distribution* distribution);
+EXTERNAL void random_discrete_deinit(Discrete_Distribution* dist);
 
 typedef enum Test_Func_Type {
     TEST_FUNC_TYPE_SIMPLE = 0,
@@ -30,7 +30,7 @@ typedef void (*Test_Func)();
 typedef void (*Test_Func_Timed)(f64 max_time);
 typedef void (*Test_Func_Custom)(void* user_data);
 
-EXPORT bool run_test(void* func, const char* name, Test_Func_Type type, f64 max_time, void* user_data);
+EXTERNAL bool run_test(void* func, const char* name, Test_Func_Type type, f64 max_time, void* user_data);
 
 #define RUN_TEST(func)                  (sizeof((Test_Func)0 == (func)),           run_test((void*) (func), #func, TEST_FUNC_TYPE_SIMPLE, 0, NULL))
 #define RUN_TEST_TIMED(func, time)      (sizeof((Test_Func_Timed)0 == (func)),     run_test((void*) (func), #func, TEST_FUNC_TYPE_TIMED, (time), NULL))
@@ -52,7 +52,7 @@ typedef struct Test_Run_Context {
     void* user_data;
 } Test_Run_Context;
 
-EXPORT void _run_test_try(void* context)
+EXTERNAL void _run_test_try(void* context)
 {
     Test_Run_Context* c = (Test_Run_Context*) context;
     switch(c->type)
@@ -70,7 +70,7 @@ EXPORT void _run_test_try(void* context)
     }
 }
 
-EXPORT void _run_test_recover(void* context, Platform_Sandbox_Error error)
+EXTERNAL void _run_test_recover(void* context, Platform_Sandbox_Error error)
 {
     Test_Run_Context* c = (Test_Run_Context*) context;
     if(error.exception != PLATFORM_EXCEPTION_ABORT)
@@ -80,7 +80,7 @@ EXPORT void _run_test_recover(void* context, Platform_Sandbox_Error error)
     }
 }
 
-EXPORT bool run_test(void* func, const char* name, Test_Func_Type type, f64 max_time, void* user_data)
+EXTERNAL bool run_test(void* func, const char* name, Test_Func_Type type, f64 max_time, void* user_data)
 {
     Test_Run_Context context = {0};
     context.user_data = user_data;
@@ -108,7 +108,7 @@ EXPORT bool run_test(void* func, const char* name, Test_Func_Type type, f64 max_
     return success;
 }
 
-EXPORT Discrete_Distribution random_discrete_make(const i32 probabilities[], isize probabilities_size)
+EXTERNAL Discrete_Distribution random_discrete_make(const i32 probabilities[], isize probabilities_size)
 {
     i32 prob_sum = 0;
 	for(isize i = 0; i < probabilities_size; i++)
@@ -135,7 +135,7 @@ EXPORT Discrete_Distribution random_discrete_make(const i32 probabilities[], isi
 	return out;
 }
 
-EXPORT Discrete_Distribution random_discrete_make_state(const i32 probabilities[], isize probabilities_size, Random_State state)
+EXTERNAL Discrete_Distribution random_discrete_make_state(const i32 probabilities[], isize probabilities_size, Random_State state)
 {
     Discrete_Distribution out = random_discrete_make(probabilities, probabilities_size);
     out.state = state;
@@ -143,7 +143,7 @@ EXPORT Discrete_Distribution random_discrete_make_state(const i32 probabilities[
     return out;
 }
 
-EXPORT i32 random_discrete(Discrete_Distribution* distribution)
+EXTERNAL i32 random_discrete(Discrete_Distribution* distribution)
 {
     Random_State* state = distribution->use_state ? &distribution->state : random_state();
 	
@@ -154,7 +154,7 @@ EXPORT i32 random_discrete(Discrete_Distribution* distribution)
 	return index;
 }
 
-EXPORT void random_discrete_deinit(Discrete_Distribution* dist)
+EXTERNAL void random_discrete_deinit(Discrete_Distribution* dist)
 {
 	array_deinit(&dist->prob_table);
 	dist->prob_sum = 0;

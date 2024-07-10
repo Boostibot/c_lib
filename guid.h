@@ -23,10 +23,10 @@ typedef struct {
     u64 hi;
 } Guid;
 
-EXPORT Id id_generate();
-EXPORT Guid guid_generate();
-EXPORT u64 guid_hash64(Guid guid);
-EXPORT u64 guid_hash32(Guid guid);
+EXTERNAL Id id_generate();
+EXTERNAL Guid guid_generate();
+EXTERNAL u64 guid_hash64(Guid guid);
+EXTERNAL u64 guid_hash32(Guid guid);
 
 #endif
 
@@ -34,7 +34,7 @@ EXPORT u64 guid_hash32(Guid guid);
 #if (defined(JOT_ALL_IMPL) || defined(JOT_GUID_IMPL)) && !defined(JOT_GUID_HAS_IMPL)
 #define JOT_GUID_HAS_IMPL
 
-EXPORT Id id_generate()
+EXTERNAL Id id_generate()
 {
     //We generate the random values by doing atomic add on a counter and hashing the result.
     //We add salt to the hash to make the sequence random between program runs.
@@ -59,7 +59,7 @@ EXPORT Id id_generate()
     return (Id) hashed_id;
 }
 
-EXPORT Guid guid_generate()
+EXTERNAL Guid guid_generate()
 {
     static ATTRIBUTE_THREAD_LOCAL Guid _rng_state = {0};
     Guid* rng_state = &_rng_state;
@@ -76,12 +76,12 @@ EXPORT Guid guid_generate()
     return out;
 }
 
-EXPORT u64 guid_hash64(Guid guid)
+EXTERNAL u64 guid_hash64(Guid guid)
 {
     return guid.lo*3 + guid.hi;
 }
 
-EXPORT u64 guid_hash32(Guid guid)
+EXTERNAL u64 guid_hash32(Guid guid)
 {
     return hash_fold64(guid_hash64(guid));
 }

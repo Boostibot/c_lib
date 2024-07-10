@@ -29,7 +29,7 @@
     #include <assert.h>
     #include <stdbool.h>
     
-    #define EXPORT
+    #define EXTERNAL
     #define INTERNAL static
     #define DEF_ALIGN sizeof(void*)
     #define ASSERT(x) assert(x)
@@ -99,13 +99,13 @@ typedef Array(void*)    ptr_Array;
 typedef i64_Array isize_Array;
 typedef u64_Array usize_Array;
 
-EXPORT void generic_array_init(Generic_Array gen, Allocator* allocator);
-EXPORT void generic_array_deinit(Generic_Array gen);
-EXPORT void generic_array_set_capacity(Generic_Array gen, isize capacity); 
-EXPORT bool generic_array_is_invariant(Generic_Array gen);
-EXPORT void generic_array_resize(Generic_Array gen, isize to_size, bool zero_new);
-EXPORT void generic_array_reserve(Generic_Array gen, isize to_capacity);
-EXPORT void generic_array_append(Generic_Array gen, const void* data, isize data_count);
+EXTERNAL void generic_array_init(Generic_Array gen, Allocator* allocator);
+EXTERNAL void generic_array_deinit(Generic_Array gen);
+EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity); 
+EXTERNAL bool generic_array_is_invariant(Generic_Array gen);
+EXTERNAL void generic_array_resize(Generic_Array gen, isize to_size, bool zero_new);
+EXTERNAL void generic_array_reserve(Generic_Array gen, isize to_capacity);
+EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize data_count);
 
 #ifdef __cplusplus
     #define array_make_generic(array_ptr) (Generic_Array{&(array_ptr)->untyped, sizeof *(array_ptr)->data, sizeof *(array_ptr)->ALIGN})
@@ -197,7 +197,7 @@ EXPORT void generic_array_append(Generic_Array gen, const void* data, isize data
 #define JOT_ARRAY_HAS_IMPL
 #include <string.h>
 
-EXPORT bool generic_array_is_invariant(Generic_Array gen)
+EXTERNAL bool generic_array_is_invariant(Generic_Array gen)
 {
     bool is_capacity_correct = 0 <= gen.array->capacity;
     bool is_size_correct = (0 <= gen.array->size && gen.array->size <= gen.array->capacity);
@@ -214,7 +214,7 @@ EXPORT bool generic_array_is_invariant(Generic_Array gen)
     return result;
 }
 
-EXPORT void generic_array_init(Generic_Array gen, Allocator* allocator)
+EXTERNAL void generic_array_init(Generic_Array gen, Allocator* allocator)
 {
     generic_array_deinit(gen);
 
@@ -223,7 +223,7 @@ EXPORT void generic_array_init(Generic_Array gen, Allocator* allocator)
         gen.array->allocator = allocator_get_default();
 }
 
-EXPORT void generic_array_deinit(Generic_Array gen)
+EXTERNAL void generic_array_deinit(Generic_Array gen)
 {
     ASSERT(gen.array != NULL);
     ASSERT(generic_array_is_invariant(gen));
@@ -233,7 +233,7 @@ EXPORT void generic_array_deinit(Generic_Array gen)
     memset(gen.array, 0, sizeof *gen.array);
 }
 
-EXPORT void generic_array_set_capacity(Generic_Array gen, isize capacity)
+EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity)
 {
     ASSERT(generic_array_is_invariant(gen));
     ASSERT(capacity >= 0);
@@ -253,7 +253,7 @@ EXPORT void generic_array_set_capacity(Generic_Array gen, isize capacity)
     ASSERT(generic_array_is_invariant(gen));
 }
 
-EXPORT void generic_array_resize(Generic_Array gen, isize to_size, bool zero_new)
+EXTERNAL void generic_array_resize(Generic_Array gen, isize to_size, bool zero_new)
 {
     generic_array_reserve(gen, to_size);
     if(zero_new && to_size > gen.array->size)
@@ -263,7 +263,7 @@ EXPORT void generic_array_resize(Generic_Array gen, isize to_size, bool zero_new
     ASSERT(generic_array_is_invariant(gen));
 }
 
-EXPORT void generic_array_reserve(Generic_Array gen, isize to_fit)
+EXTERNAL void generic_array_reserve(Generic_Array gen, isize to_fit)
 {
     ASSERT(generic_array_is_invariant(gen));
     ASSERT(to_fit >= 0);
@@ -278,7 +278,7 @@ EXPORT void generic_array_reserve(Generic_Array gen, isize to_fit)
     generic_array_set_capacity(gen, new_capacity + 1);
 }
 
-EXPORT void generic_array_append(Generic_Array gen, const void* data, isize data_count)
+EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize data_count)
 {
     ASSERT(data_count >= 0);
     generic_array_reserve(gen, gen.array->size+data_count);

@@ -29,123 +29,123 @@ typedef Array(String_Builder) String_Builder_Array;
 //Constructs a String out of a string literal
 #define STRING(cstring) BRACE_INIT(String){cstring "", sizeof(cstring) - 1}
 
-EXPORT String string_of(const char* str); //Constructs a string from null terminated str
-EXPORT String string_make(const char* data, isize size); //Constructs a string
-EXPORT String string_head(String string, isize to); //keeps only characters to to ( [0, to) interval )
-EXPORT String string_tail(String string, isize from); //keeps only characters from from ( [from, string.size) interval )
-EXPORT String string_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
-EXPORT String string_safe_head(String string, isize to); //returns string_head using to. If to is outside the range [0, string.size] clamps it to the range. 
-EXPORT String string_safe_tail(String string, isize from); //returns string_tail using from. If from is outside the range [0, string.size] clamps it to the range. 
-EXPORT String string_safe_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
-EXPORT bool   string_is_equal(String a, String b); //Returns true if the contents and sizes of the strings match
-EXPORT bool   string_is_prefixed_with(String string, String prefix); 
-EXPORT bool   string_is_postfixed_with(String string, String postfix);
-EXPORT bool   string_has_substring_at(String larger_string, isize from_index, String smaller_string); //Returns true if larger_string has smaller_string at index from_index
-EXPORT int    string_compare(String a, String b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
+EXTERNAL String string_of(const char* str); //Constructs a string from null terminated str
+EXTERNAL String string_make(const char* data, isize size); //Constructs a string
+EXTERNAL String string_head(String string, isize to); //keeps only characters to to ( [0, to) interval )
+EXTERNAL String string_tail(String string, isize from); //keeps only characters from from ( [from, string.size) interval )
+EXTERNAL String string_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
+EXTERNAL String string_safe_head(String string, isize to); //returns string_head using to. If to is outside the range [0, string.size] clamps it to the range. 
+EXTERNAL String string_safe_tail(String string, isize from); //returns string_tail using from. If from is outside the range [0, string.size] clamps it to the range. 
+EXTERNAL String string_safe_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
+EXTERNAL bool   string_is_equal(String a, String b); //Returns true if the contents and sizes of the strings match
+EXTERNAL bool   string_is_prefixed_with(String string, String prefix); 
+EXTERNAL bool   string_is_postfixed_with(String string, String postfix);
+EXTERNAL bool   string_has_substring_at(String larger_string, isize from_index, String smaller_string); //Returns true if larger_string has smaller_string at index from_index
+EXTERNAL int    string_compare(String a, String b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
 
-EXPORT isize  string_find_first(String string, String search_for, isize from); 
-EXPORT isize  string_find_last_from(String in_str, String search_for, isize from);
-EXPORT isize  string_find_last(String string, String search_for); 
+EXTERNAL isize  string_find_first(String string, String search_for, isize from); 
+EXTERNAL isize  string_find_last_from(String in_str, String search_for, isize from);
+EXTERNAL isize  string_find_last(String string, String search_for); 
 
-EXPORT isize  string_find_first_char(String string, char search_for, isize from); 
-EXPORT isize  string_find_last_char_from(String in_str, char search_for, isize from);
-EXPORT isize  string_find_last_char(String string, char search_for); 
+EXTERNAL isize  string_find_first_char(String string, char search_for, isize from); 
+EXTERNAL isize  string_find_last_char_from(String in_str, char search_for, isize from);
+EXTERNAL isize  string_find_last_char(String string, char search_for); 
 
-EXPORT void string_deallocate(Allocator* arena, String* string);
+EXTERNAL void string_deallocate(Allocator* arena, String* string);
 
-EXPORT String_Builder builder_make(Allocator* alloc_or_null, isize capacity_or_zero);
-EXPORT String_Builder builder_from_cstring(Allocator* allocator, const char* cstring); //Allocates a String_Builder from cstring.
-EXPORT String_Builder builder_from_string(Allocator* allocator, String string);  //Allocates a String_Builder from String using an allocator.
+EXTERNAL String_Builder builder_make(Allocator* alloc_or_null, isize capacity_or_zero);
+EXTERNAL String_Builder builder_from_cstring(Allocator* allocator, const char* cstring); //Allocates a String_Builder from cstring.
+EXTERNAL String_Builder builder_from_string(Allocator* allocator, String string);  //Allocates a String_Builder from String using an allocator.
 
-EXPORT String_Builder string_concat(Allocator* allocator, String a, String b);
-EXPORT String_Builder string_concat3(Allocator* allocator, String a, String b, String c);
+EXTERNAL String_Builder string_concat(Allocator* allocator, String a, String b);
+EXTERNAL String_Builder string_concat3(Allocator* allocator, String a, String b, String c);
 
-EXPORT void builder_init(String_Builder* builder, Allocator* alloc);
-EXPORT void builder_init_with_capacity(String_Builder* builder, Allocator* alloc, isize capacity_or_zero);
-EXPORT void builder_deinit(String_Builder* builder);             
-EXPORT void builder_set_capacity(String_Builder* builder, isize capacity);             
-EXPORT void builder_resize(String_Builder* builder, isize capacity);             
-EXPORT void builder_clear(String_Builder* builder);             
-EXPORT void builder_push(String_Builder* builder, char c);             
-EXPORT char builder_pop(String_Builder* builder);             
-EXPORT void builder_append(String_Builder* builder, String string); //Appends a string
-EXPORT void builder_assign(String_Builder* builder, String string); //Sets the contents of the builder to be equal to string
-EXPORT bool builder_is_equal(String_Builder a, String_Builder b); //Returns true if the contents and sizes of the strings match
-EXPORT int  builder_compare(String_Builder a, String_Builder b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
+EXTERNAL void builder_init(String_Builder* builder, Allocator* alloc);
+EXTERNAL void builder_init_with_capacity(String_Builder* builder, Allocator* alloc, isize capacity_or_zero);
+EXTERNAL void builder_deinit(String_Builder* builder);             
+EXTERNAL void builder_set_capacity(String_Builder* builder, isize capacity);             
+EXTERNAL void builder_resize(String_Builder* builder, isize capacity);             
+EXTERNAL void builder_clear(String_Builder* builder);             
+EXTERNAL void builder_push(String_Builder* builder, char c);             
+EXTERNAL char builder_pop(String_Builder* builder);             
+EXTERNAL void builder_append(String_Builder* builder, String string); //Appends a string
+EXTERNAL void builder_assign(String_Builder* builder, String string); //Sets the contents of the builder to be equal to string
+EXTERNAL bool builder_is_equal(String_Builder a, String_Builder b); //Returns true if the contents and sizes of the strings match
+EXTERNAL int  builder_compare(String_Builder a, String_Builder b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
 
-EXPORT void builder_array_deinit(String_Builder_Array* array);
+EXTERNAL void builder_array_deinit(String_Builder_Array* array);
 
 //Replaces in source that are equal to some character from to_replace with the character at the same exact position of replace_with.
 //If there is '\0' at the matching position of replace_with, removes the character without substituting"
 //So string_replace(..., "Hello world", "lw", ".\0") -> "He..o or.d"
-EXPORT String_Builder string_replace(Allocator* allocator, String source, String to_replace, String replace_with);
+EXTERNAL String_Builder string_replace(Allocator* allocator, String source, String to_replace, String replace_with);
 
 //Tiles pattern_size bytes long pattern across field of field_size bytes. 
 //The first occurance of pattern is placed at the very start of field and subsequent repetitions follow. 
 //If the field_size % pattern_size != 0 the last repetition of pattern is trimmed.
 //If pattern_size == 0 field is filled with zeros instead.
-EXPORT void memset_pattern(void *field, isize field_size, const void* pattern, isize pattern_size);
+EXTERNAL void memset_pattern(void *field, isize field_size, const void* pattern, isize pattern_size);
 
-EXPORT bool char_is_space(char c);
-EXPORT bool char_is_digit(char c);
-EXPORT bool char_is_lowercase(char c);
-EXPORT bool char_is_uppercase(char c);
-EXPORT bool char_is_alphabetic(char c);
-EXPORT bool char_is_id(char c);
+EXTERNAL bool char_is_space(char c);
+EXTERNAL bool char_is_digit(char c);
+EXTERNAL bool char_is_lowercase(char c);
+EXTERNAL bool char_is_uppercase(char c);
+EXTERNAL bool char_is_alphabetic(char c);
+EXTERNAL bool char_is_id(char c);
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_STRING_IMPL)) && !defined(JOT_STRING_HAS_IMPL)
 #define JOT_STRING_HAS_IMPL
     #include <string.h>
     
-    EXPORT String string_of(const char* str)
+    EXTERNAL String string_of(const char* str)
     {
         return string_make(str, str == NULL ? 0 : strlen(str));
     }
 
-    EXPORT String string_make(const char* data, isize size)
+    EXTERNAL String string_make(const char* data, isize size)
     {
         String string = {data, size};
         return string;
     }
 
-    EXPORT String string_head(String string, isize to)
+    EXTERNAL String string_head(String string, isize to)
     {
         CHECK_BOUNDS(to, string.size + 1);
         String head = {string.data, to};
         return head;
     }
 
-    EXPORT String string_tail(String string, isize from)
+    EXTERNAL String string_tail(String string, isize from)
     {
         CHECK_BOUNDS(from, string.size + 1);
         String tail = {string.data + from, string.size - from};
         return tail;
     }
     
-    EXPORT String string_range(String string, isize from, isize to)
+    EXTERNAL String string_range(String string, isize from, isize to)
     {
         return string_tail(string_head(string, to), from);
     }
 
-    EXPORT String string_safe_head(String string, isize to)
+    EXTERNAL String string_safe_head(String string, isize to)
     {
         return string_head(string, CLAMP(to, 0, string.size));
     }
     
-    EXPORT String string_safe_tail(String string, isize from)
+    EXTERNAL String string_safe_tail(String string, isize from)
     {
         return string_tail(string, CLAMP(from, 0, string.size));
     }
 
-    EXPORT String string_safe_range(String string, isize from, isize to)
+    EXTERNAL String string_safe_range(String string, isize from, isize to)
     {
         isize escaped_from = CLAMP(from, 0, string.size);
         isize escaped_to = CLAMP(to, 0, string.size);
         return string_range(string, escaped_from, escaped_to);
     }
 
-    EXPORT isize string_find_first(String in_str, String search_for, isize from)
+    EXTERNAL isize string_find_first(String in_str, String search_for, isize from)
     {
         ASSERT(from >= 0);
 
@@ -182,7 +182,7 @@ EXPORT bool char_is_id(char c);
         return -1;
     }
       
-    EXPORT isize string_find_last_from(String in_str, String search_for, isize from)
+    EXTERNAL isize string_find_last_from(String in_str, String search_for, isize from)
     {
         ASSERT(from >= 0);
         if(from + search_for.size > in_str.size)
@@ -217,19 +217,19 @@ EXPORT bool char_is_id(char c);
         return -1;
     }
 
-    EXPORT isize string_find_last(String in_str, String search_for)
+    EXTERNAL isize string_find_last(String in_str, String search_for)
     {
         isize from = MAX(in_str.size - 1, 0);
         return string_find_last_from(in_str, search_for, from);
     }
     
-    EXPORT isize string_find_first_char(String string, char search_for, isize from)
+    EXTERNAL isize string_find_first_char(String string, char search_for, isize from)
     {
         char* ptr = (char*) memchr(string.data + from, search_for, string.size - from);
         return ptr ? (isize) (ptr - string.data) : -1; 
     }
     
-    EXPORT void memset_pattern(void *field, isize field_size, const void* pattern, isize pattern_size)
+    EXTERNAL void memset_pattern(void *field, isize field_size, const void* pattern, isize pattern_size)
     {
         if (field_size <= pattern_size)
             memcpy(field, pattern, (size_t) field_size);
@@ -255,7 +255,7 @@ EXPORT bool char_is_id(char c);
         }
     }
 
-    EXPORT isize string_find_last_char_from(String string, char search_for, isize from)
+    EXTERNAL isize string_find_last_char_from(String string, char search_for, isize from)
     {
         for(isize i = from + 1; i-- > 0; )
             if(string.data[i] == search_for)
@@ -264,12 +264,12 @@ EXPORT bool char_is_id(char c);
         return -1;
     }
     
-    EXPORT isize string_find_last_char(String string, char search_for)
+    EXTERNAL isize string_find_last_char(String string, char search_for)
     {
         return string_find_last_char_from(string, search_for, string.size - 1);
     }
 
-    EXPORT int string_compare(String a, String b)
+    EXTERNAL int string_compare(String a, String b)
     {
         if(a.size > b.size)
             return -1;
@@ -280,7 +280,7 @@ EXPORT bool char_is_id(char c);
         return res;
     }
     
-    EXPORT bool string_is_equal(String a, String b)
+    EXTERNAL bool string_is_equal(String a, String b)
     {
         if(a.size != b.size)
             return false;
@@ -289,7 +289,7 @@ EXPORT bool char_is_id(char c);
         return eq;
     }
 
-    EXPORT bool string_is_prefixed_with(String string, String prefix)
+    EXTERNAL bool string_is_prefixed_with(String string, String prefix)
     {
         if(string.size < prefix.size)
             return false;
@@ -298,7 +298,7 @@ EXPORT bool char_is_id(char c);
         return string_is_equal(trimmed, prefix);
     }
 
-    EXPORT bool string_is_postfixed_with(String string, String postfix)
+    EXTERNAL bool string_is_postfixed_with(String string, String postfix)
     {
         if(string.size < postfix.size)
             return false;
@@ -307,7 +307,7 @@ EXPORT bool char_is_id(char c);
         return string_is_equal(trimmed, postfix);
     }
 
-    EXPORT bool string_has_substring_at(String larger_string, isize from_index, String smaller_string)
+    EXTERNAL bool string_has_substring_at(String larger_string, isize from_index, String smaller_string)
     {
         if(larger_string.size - from_index < smaller_string.size)
             return false;
@@ -316,7 +316,7 @@ EXPORT bool char_is_id(char c);
         return string_is_equal(portion, smaller_string);
     }
     
-    EXPORT String_Builder string_concat(Allocator* allocator, String a, String b)
+    EXTERNAL String_Builder string_concat(Allocator* allocator, String a, String b)
     {
         String_Builder out = builder_make(allocator, a.size + b.size);
         builder_append(&out, a);
@@ -324,7 +324,7 @@ EXPORT bool char_is_id(char c);
         return out;
     }
 
-    EXPORT String_Builder string_concat3(Allocator* allocator, String a, String b, String c)
+    EXTERNAL String_Builder string_concat3(Allocator* allocator, String a, String b, String c)
     {
         String_Builder out = builder_make(allocator, a.size + b.size + c.size);
         builder_append(&out, a);
@@ -333,7 +333,7 @@ EXPORT bool char_is_id(char c);
         return out;
     }
 
-    EXPORT void string_deallocate(Allocator* alloc, String* string)
+    EXTERNAL void string_deallocate(Allocator* alloc, String* string)
     {
         if(string->size != 0)
             allocator_deallocate(alloc, (void*) string->data, string->size + 1, 1);
@@ -342,7 +342,7 @@ EXPORT bool char_is_id(char c);
     }
 
     char _builder_null_termination[4] = {0};
-    EXPORT bool _builder_is_invariant(const String_Builder* builder)
+    EXTERNAL bool _builder_is_invariant(const String_Builder* builder)
     {
         bool is_capacity_correct = 0 <= builder->capacity;
         bool is_size_correct = (0 <= builder->size && builder->size <= builder->capacity);
@@ -362,7 +362,7 @@ EXPORT bool char_is_id(char c);
         ASSERT(result);
         return result;
     }
-    EXPORT void builder_deinit(String_Builder* builder)
+    EXTERNAL void builder_deinit(String_Builder* builder)
     {
         ASSERT(builder != NULL);
         ASSERT(_builder_is_invariant(builder));
@@ -373,7 +373,7 @@ EXPORT bool char_is_id(char c);
         memset(builder, 0, sizeof *builder);
     }
     
-    EXPORT void builder_init(String_Builder* builder, Allocator* allocator)
+    EXTERNAL void builder_init(String_Builder* builder, Allocator* allocator)
     {
         builder_deinit(builder);
         builder->allocator = allocator;
@@ -382,14 +382,14 @@ EXPORT bool char_is_id(char c);
             builder->allocator = allocator_get_default();
     }
 
-    EXPORT void builder_init_with_capacity(String_Builder* builder, Allocator* allocator, isize capacity_or_zero)
+    EXTERNAL void builder_init_with_capacity(String_Builder* builder, Allocator* allocator, isize capacity_or_zero)
     {
         builder_init(builder, allocator);
         if(capacity_or_zero > 0)
             builder_set_capacity(builder, capacity_or_zero);
     }
 
-    EXPORT String_Builder builder_make(Allocator* alloc_or_null, isize capacity_or_zero)
+    EXTERNAL String_Builder builder_make(Allocator* alloc_or_null, isize capacity_or_zero)
     {
         String_Builder builder = {0};
         builder.allocator = alloc_or_null;
@@ -399,7 +399,7 @@ EXPORT bool char_is_id(char c);
         return builder;
     }
 
-    EXPORT void builder_set_capacity(String_Builder* builder, isize capacity)
+    EXTERNAL void builder_set_capacity(String_Builder* builder, isize capacity)
     {
         ASSERT(_builder_is_invariant(builder));
         ASSERT(capacity >= 0);
@@ -453,7 +453,7 @@ EXPORT bool char_is_id(char c);
         ASSERT(_builder_is_invariant(builder));
     }
     
-    EXPORT void builder_reserve(String_Builder* builder, isize to_fit)
+    EXTERNAL void builder_reserve(String_Builder* builder, isize to_fit)
     {
         ASSERT(to_fit >= 0);
         if(builder->capacity > to_fit)
@@ -466,7 +466,7 @@ EXPORT bool char_is_id(char c);
 
         builder_set_capacity(builder, new_capacity);
     }
-    EXPORT void builder_resize(String_Builder* builder, isize to_size)
+    EXTERNAL void builder_resize(String_Builder* builder, isize to_size)
     {
         builder_reserve(builder, to_size);
         if(to_size >= builder->size)
@@ -479,12 +479,12 @@ EXPORT bool char_is_id(char c);
         ASSERT(_builder_is_invariant(builder));
     }
 
-    EXPORT void builder_clear(String_Builder* builder)
+    EXTERNAL void builder_clear(String_Builder* builder)
     {
         builder_resize(builder, 0);
     }
 
-    EXPORT void builder_append(String_Builder* builder, String string)
+    EXTERNAL void builder_append(String_Builder* builder, String string)
     {
         ASSERT(string.size >= 0);
         builder_reserve(builder, builder->size+string.size);
@@ -493,20 +493,20 @@ EXPORT bool char_is_id(char c);
         ASSERT(_builder_is_invariant(builder));
     }
 
-    EXPORT void builder_assign(String_Builder* builder, String string)
+    EXTERNAL void builder_assign(String_Builder* builder, String string)
     {
         builder_resize(builder, string.size);
         memcpy(builder->data, string.data, (size_t) string.size);
         ASSERT(_builder_is_invariant(builder));
     }
 
-    EXPORT void builder_push(String_Builder* builder, char c)
+    EXTERNAL void builder_push(String_Builder* builder, char c)
     {
         builder_reserve(builder, builder->size+1);
         builder->data[builder->size++] = c;
     }
 
-    EXPORT char builder_pop(String_Builder* builder)
+    EXTERNAL char builder_pop(String_Builder* builder)
     {
         ASSERT(builder->size > 0);
         char popped = builder->data[--builder->size];
@@ -514,7 +514,7 @@ EXPORT bool char_is_id(char c);
         return popped;
     }
     
-    EXPORT void builder_array_deinit(String_Builder_Array* array)
+    EXTERNAL void builder_array_deinit(String_Builder_Array* array)
     {
         for(isize i = 0; i < array->size; i++)
             builder_deinit(&array->data[i]);
@@ -522,7 +522,7 @@ EXPORT bool char_is_id(char c);
         array_deinit(array);
     }
     
-    EXPORT String_Builder builder_from_string(Allocator* allocator, String string)
+    EXTERNAL String_Builder builder_from_string(Allocator* allocator, String string)
     {
         String_Builder builder = builder_make(allocator, string.size);
         if(string.size)
@@ -530,22 +530,22 @@ EXPORT bool char_is_id(char c);
         return builder;
     }
 
-    EXPORT String_Builder builder_from_cstring(Allocator* allocator, const char* cstring)
+    EXTERNAL String_Builder builder_from_cstring(Allocator* allocator, const char* cstring)
     {
         return builder_from_string(allocator, string_of(cstring));
     }
 
-    EXPORT bool builder_is_equal(String_Builder a, String_Builder b)
+    EXTERNAL bool builder_is_equal(String_Builder a, String_Builder b)
     {
         return string_is_equal(a.string, b.string);
     }
     
-    EXPORT int builder_compare(String_Builder a, String_Builder b)
+    EXTERNAL int builder_compare(String_Builder a, String_Builder b)
     {
         return string_compare(a.string, b.string);
     }
 
-    EXPORT bool char_is_space(char c)
+    EXTERNAL bool char_is_space(char c)
     {
         switch(c)
         {
@@ -561,22 +561,22 @@ EXPORT bool char_is_id(char c);
         }
     }
 
-    EXPORT bool char_is_digit(char c)
+    EXTERNAL bool char_is_digit(char c)
     {
         return '0' <= c && c <= '9';
     }
 
-    EXPORT bool char_is_lowercase(char c)
+    EXTERNAL bool char_is_lowercase(char c)
     {
         return 'a' <= c && c <= 'z';
     }
 
-    EXPORT bool char_is_uppercase(char c)
+    EXTERNAL bool char_is_uppercase(char c)
     {
         return 'A' <= c && c <= 'Z';
     }
 
-    EXPORT bool char_is_alphabetic(char c)
+    EXTERNAL bool char_is_alphabetic(char c)
     {
         //return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z');
 
@@ -591,7 +591,7 @@ EXPORT bool char_is_id(char c);
     }
 
     //all characters permitted inside a common programming language id. [0-9], _, [a-z], [A-Z]
-    EXPORT bool char_is_id(char c)
+    EXTERNAL bool char_is_id(char c)
     {
         return char_is_digit(c) || char_is_alphabetic(c) || c == '_';
     }

@@ -8,41 +8,41 @@
 #define ASSERT(x) assert(x)
 #endif
 
-#ifndef EXPORT
-    #define EXPORT
+#ifndef EXTERNAL
+    #define EXTERNAL
 #endif
 
 //Generates next random value
 //Seed can be any value
 //Taken from: https://prng.di.unimi.it/splitmix64.c
-EXPORT uint64_t random_splitmix(uint64_t* state);
+EXTERNAL uint64_t random_splitmix(uint64_t* state);
 
 //Generates next random value
 //Seed must not be anywhere zero. Lower 3 bits have bias. Good for floating point
 //Taken from: https://prng.di.unimi.it/xoshiro256plus.c
-EXPORT uint64_t random_xiroshiro256(uint64_t state[4]);
+EXTERNAL uint64_t random_xiroshiro256(uint64_t state[4]);
 
 //generates random bool
-EXPORT bool     random_bool();	
+EXTERNAL bool     random_bool();	
 //generates random float in range [0, 1)
-EXPORT float    random_f32();
+EXTERNAL float    random_f32();
 //generates random double in range [0, 1)
-EXPORT double   random_f64(); 
+EXTERNAL double   random_f64(); 
 //generates random u64 in range [0, U64_MAX] 
-EXPORT uint64_t random_u64();  
+EXTERNAL uint64_t random_u64();  
 //generates random i64 in range [I64_MIN, U64_MAX] 
-EXPORT int64_t  random_i64();  
+EXTERNAL int64_t  random_i64();  
 //generates unbiased random integer in range [from, to)
-EXPORT int64_t  random_range(int64_t from, int64_t to); 
+EXTERNAL int64_t  random_range(int64_t from, int64_t to); 
 
-EXPORT double   random_interval_f64(double from, double to); 
-EXPORT float    random_interval_f32(float from, float to); 
+EXTERNAL double   random_interval_f64(double from, double to); 
+EXTERNAL float    random_interval_f32(float from, float to); 
 //writes size bytes of random data into into
-EXPORT void     random_bytes(void* into, int64_t size);
+EXTERNAL void     random_bytes(void* into, int64_t size);
 //Randomly shuffles the provided array
-EXPORT void     random_shuffle(void* elements, int64_t element_count, int64_t element_size); 
+EXTERNAL void     random_shuffle(void* elements, int64_t element_count, int64_t element_size); 
 //Swaps two values of the given size
-EXPORT void     swap_any(void* a, void* b, int64_t size); 
+EXTERNAL void     swap_any(void* a, void* b, int64_t size); 
 
 typedef struct {
 	uint64_t seed;
@@ -51,30 +51,30 @@ typedef struct {
 } Random_State;
 
 //Generates a random seed using system clock and internal state
-EXPORT uint64_t     random_clock_seed();
+EXTERNAL uint64_t     random_clock_seed();
 //initializes Random_State using given seed
-EXPORT Random_State random_state_from_seed(uint64_t seed); 
+EXTERNAL Random_State random_state_from_seed(uint64_t seed); 
 //initialized Random_State using system clock
-EXPORT Random_State random_state_from_clock();
+EXTERNAL Random_State random_state_from_clock();
 
 //Returns pointer to the global state currently used
-EXPORT Random_State* random_state();
+EXTERNAL Random_State* random_state();
 
 //generates random bool
-EXPORT bool     random_state_bool(Random_State* state);	
+EXTERNAL bool     random_state_bool(Random_State* state);	
 //generates random float in range [0, 1)
-EXPORT float    random_state_f32(Random_State* state);
+EXTERNAL float    random_state_f32(Random_State* state);
 //generates random double in range [0, 1)
-EXPORT double   random_state_f64(Random_State* state); 
+EXTERNAL double   random_state_f64(Random_State* state); 
 //generates random u64 in range [0, U64_MAX] 
-EXPORT uint64_t random_state_u64(Random_State* state);  
+EXTERNAL uint64_t random_state_u64(Random_State* state);  
 //generates random i64 in range [I64_MIN, U64_MAX] 
-EXPORT int64_t  random_state_i64(Random_State* state);  
+EXTERNAL int64_t  random_state_i64(Random_State* state);  
 //generates unbiased random integer in range [from, to)
-EXPORT int64_t  random_state_range(Random_State* state, int64_t from, int64_t to); 
+EXTERNAL int64_t  random_state_range(Random_State* state, int64_t from, int64_t to); 
 //Randomly shuffles the provided array
-EXPORT void     random_state_shuffle(Random_State* state, void* elements, int64_t element_count, int64_t element_size); 
-EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size);
+EXTERNAL void     random_state_shuffle(Random_State* state, void* elements, int64_t element_count, int64_t element_size); 
+EXTERNAL void	    random_state_bytes(Random_State* state, void* into, int64_t size);
 
 #endif
 
@@ -133,7 +133,7 @@ EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size
 		#define INTERNAL static
 	#endif
 	
-	EXPORT uint64_t random_splitmix(uint64_t* state) 
+	EXTERNAL uint64_t random_splitmix(uint64_t* state) 
 	{
 		uint64_t z = (*state += 0x9e3779b97f4a7c15);
 		z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9;
@@ -145,7 +145,7 @@ EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size
 		return (x << k) | (x >> (64 - k));
 	}
 
-	EXPORT uint64_t random_xiroshiro256(uint64_t state[4]) 
+	EXTERNAL uint64_t random_xiroshiro256(uint64_t state[4]) 
 	{
 		const uint64_t result = state[0] + state[3];
 
@@ -163,14 +163,14 @@ EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size
 		return result;
 	}
 
-	EXPORT uint64_t random_clock_seed()
+	EXTERNAL uint64_t random_clock_seed()
 	{
 		uint64_t precise_time_point = _precise_clock_time();
 		uint64_t seed = random_splitmix(&precise_time_point);
 		return seed;
 	}
 	
-	EXPORT Random_State random_state_from_seed(uint64_t seed)
+	EXTERNAL Random_State random_state_from_seed(uint64_t seed)
 	{
 		Random_State out = {0};
 		out.seed = seed;
@@ -187,7 +187,7 @@ EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size
 		return out;
 	}
 
-	EXPORT Random_State random_state_from_clock()
+	EXTERNAL Random_State random_state_from_clock()
 	{
 		uint64_t seed = random_clock_seed();
 		Random_State out = random_state_from_seed(seed);
@@ -208,7 +208,7 @@ EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size
 		return out;
 	}
 
-	EXPORT float random_state_f32(Random_State* state)
+	EXTERNAL float random_state_f32(Random_State* state)
 	{
 		uint64_t random = random_xiroshiro256(state->state_xiroshiro256);
 		uint64_t mantissa = random >> (64 - 23);
@@ -216,7 +216,7 @@ EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size
 		return random_f32;
 	}
 
-	EXPORT double random_state_f64(Random_State* state)
+	EXTERNAL double random_state_f64(Random_State* state)
 	{
 		uint64_t random = random_xiroshiro256(state->state_xiroshiro256);
 		uint64_t mantissa = random >> (64 - 52);
@@ -224,20 +224,20 @@ EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size
 		return random_f64;
 	}
 
-	EXPORT bool random_state_bool(Random_State* state)
+	EXTERNAL bool random_state_bool(Random_State* state)
 	{
 		uint64_t random = random_splitmix(state->state_splitmix);
 		bool out = random % 2 == 0;
 		return out;
 	}
 	
-	EXPORT int64_t random_state_i64(Random_State* state)
+	EXTERNAL int64_t random_state_i64(Random_State* state)
 	{
 		int64_t random_i64 = (int64_t) random_splitmix(state->state_splitmix);
 		return random_i64;
 	}
 
-	EXPORT uint64_t random_state_u64(Random_State* state)
+	EXTERNAL uint64_t random_state_u64(Random_State* state)
 	{
 		uint64_t random_u64 = random_splitmix(state->state_splitmix);
 		return random_u64;
@@ -259,7 +259,7 @@ EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size
 		return x;
 	}
 
-	EXPORT int64_t random_state_range(Random_State* state, int64_t from, int64_t to)
+	EXTERNAL int64_t random_state_range(Random_State* state, int64_t from, int64_t to)
 	{
 		ASSERT(to > from);
 		uint64_t range = (uint64_t) (to - from);
@@ -268,7 +268,7 @@ EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size
 		return out;
 	}
 
-	EXPORT void swap_any(void* a, void* b, int64_t size)
+	EXTERNAL void swap_any(void* a, void* b, int64_t size)
 	{
 		ASSERT(size >= 0);
 		enum {LOCAL = 64};
@@ -293,7 +293,7 @@ EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size
 		memcpy(elemsj + exact,   temp,           (size_t) remainder);
 	}
 
-	EXPORT void random_state_shuffle(Random_State* state, void* elements, int64_t element_count, int64_t element_size)
+	EXTERNAL void random_state_shuffle(Random_State* state, void* elements, int64_t element_count, int64_t element_size)
 	{
 		ASSERT(element_count >= 0 && element_size >= 0);
 		enum {LOCAL = 256};
@@ -325,7 +325,7 @@ EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size
 		}
 	}
 	
-	EXPORT void random_state_bytes(Random_State* state, void* into, int64_t size)
+	EXTERNAL void random_state_bytes(Random_State* state, void* into, int64_t size)
 	{
 		int64_t full_randoms = size / 8;
 		int64_t remainder = size % 8;
@@ -338,7 +338,7 @@ EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size
 		memcpy(&fulls[full_randoms], &last, (size_t) remainder);
 	}
 
-	EXPORT Random_State* random_state()
+	EXTERNAL Random_State* random_state()
 	{
 		//If uninit initializes to random
 		static _RAND_THREAD_LOCAL Random_State _random_state = {0};
@@ -350,43 +350,43 @@ EXPORT void	    random_state_bytes(Random_State* state, void* into, int64_t size
 		return state;
 	}
 
-	EXPORT void random_set_state(Random_State state)
+	EXTERNAL void random_set_state(Random_State state)
 	{
 		Random_State* state_ptr = random_state();
 		*state_ptr = state;
 	}
 	
-	EXPORT bool     random_bool() { return random_state_bool(random_state()); }	
-	EXPORT float    random_f32()  { return random_state_f32(random_state()); }
-	EXPORT double   random_f64()  { return random_state_f64(random_state()); } 
-	EXPORT uint64_t random_u64()  { return random_state_u64(random_state()); }  
-	EXPORT int64_t  random_i64()  { return random_state_i64(random_state()); }  
+	EXTERNAL bool     random_bool() { return random_state_bool(random_state()); }	
+	EXTERNAL float    random_f32()  { return random_state_f32(random_state()); }
+	EXTERNAL double   random_f64()  { return random_state_f64(random_state()); } 
+	EXTERNAL uint64_t random_u64()  { return random_state_u64(random_state()); }  
+	EXTERNAL int64_t  random_i64()  { return random_state_i64(random_state()); }  
 
-	EXPORT int64_t random_range(int64_t from, int64_t to) 
+	EXTERNAL int64_t random_range(int64_t from, int64_t to) 
 	{ 
 		return random_state_range(random_state(), from, to); 
 	}
 	
-	EXPORT double random_interval_f64(double from, double to)
+	EXTERNAL double random_interval_f64(double from, double to)
 	{
 		double range = to - from;
 		double random = random_f64();
 		return random*range + from;
 	}
 
-	EXPORT float random_interval_f32(float from, float to)
+	EXTERNAL float random_interval_f32(float from, float to)
 	{
 		float range = to - from;
 		float random = random_f32();
 		return random*range + from;
 	}
 
-	EXPORT void random_shuffle(void* elements, int64_t element_count, int64_t element_size) 
+	EXTERNAL void random_shuffle(void* elements, int64_t element_count, int64_t element_size) 
 	{ 
 		random_state_shuffle(random_state(), elements, element_count, element_size); 
 	}
 
-	EXPORT void random_bytes(void* into, int64_t size)
+	EXTERNAL void random_bytes(void* into, int64_t size)
 	{
 		random_state_bytes(random_state(), into, size);
 	}

@@ -87,49 +87,49 @@ typedef struct Allocator_Set {
 #define SIMD_ALIGN PLATFORM_SIMD_ALIGN
 
 //Attempts to call the realloc funtion of the from_allocator. Can return nullptr indicating failiure
-EXPORT ATTRIBUTE_ALLOCATOR(2, 5) 
+EXTERNAL ATTRIBUTE_ALLOCATOR(2, 5) 
 void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
 
 //Calls the realloc function of from_allocator. If fails calls the currently installed Allocator_Out_Of_Memory_Func (panics). This should be used most of the time
-EXPORT ATTRIBUTE_ALLOCATOR(2, 5) 
+EXTERNAL ATTRIBUTE_ALLOCATOR(2, 5) 
 void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
 
 //Calls the realloc function of from_allocator to allocate, if fails panics
-EXPORT ATTRIBUTE_ALLOCATOR(2, 3) 
+EXTERNAL ATTRIBUTE_ALLOCATOR(2, 3) 
 void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align);
 
 //Calls the realloc function of from_allocator to deallocate
-EXPORT 
+EXTERNAL 
 void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize old_size, isize align);
 
 //Retrieves stats from the allocator. The stats can be only partially filled.
-EXPORT Allocator_Stats allocator_get_stats(Allocator* self);
+EXTERNAL Allocator_Stats allocator_get_stats(Allocator* self);
 
 //Gets called when function requiring to always succeed fails an allocation - most often from allocator_reallocate
 //If ALLOCATOR_CUSTOM_OUT_OF_MEMORY is defines is left unimplemented
-EXPORT void allocator_out_of_memory(Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align);
+EXTERNAL void allocator_out_of_memory(Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align);
 
-EXPORT Allocator* allocator_get_default(); //returns the default allocator used for returning values from a function
-EXPORT Allocator* allocator_get_scratch(); //returns the scratch allocator used for temp often stack order allocations inside a function
-EXPORT Allocator* allocator_get_static(); //returns the static allocator used for allocations with potentially unbound lifetime. This includes things that will never be deallocated.
-EXPORT Allocator* allocator_or_default(Allocator* allocator_or_null); //Returns the passed in allocator_or_null. If allocator_or_null is NULL returns the current set default allocator
+EXTERNAL Allocator* allocator_get_default(); //returns the default allocator used for returning values from a function
+EXTERNAL Allocator* allocator_get_scratch(); //returns the scratch allocator used for temp often stack order allocations inside a function
+EXTERNAL Allocator* allocator_get_static(); //returns the static allocator used for allocations with potentially unbound lifetime. This includes things that will never be deallocated.
+EXTERNAL Allocator* allocator_or_default(Allocator* allocator_or_null); //Returns the passed in allocator_or_null. If allocator_or_null is NULL returns the current set default allocator
 
-EXPORT bool allocator_is_arena(Allocator* allocator);
+EXTERNAL bool allocator_is_arena(Allocator* allocator);
 
 //@NOTE: static is useful for example for static dynamic lookup tables, caches inside functions, quick hacks that will not be deallocated for whatever reason.
 
 //All of these return the previously used Allocator_Set. This enables simple set/restore pair. 
-EXPORT Allocator_Set allocator_set_default(Allocator* new_default);
-EXPORT Allocator_Set allocator_set_scratch(Allocator* new_scratch);
-EXPORT Allocator_Set allocator_set_static(Allocator* new_scratch);
-EXPORT Allocator_Set allocator_set_both(Allocator* new_default, Allocator* new_scratch);
-EXPORT Allocator_Set allocator_set(Allocator_Set backup); 
+EXTERNAL Allocator_Set allocator_set_default(Allocator* new_default);
+EXTERNAL Allocator_Set allocator_set_scratch(Allocator* new_scratch);
+EXTERNAL Allocator_Set allocator_set_static(Allocator* new_scratch);
+EXTERNAL Allocator_Set allocator_set_both(Allocator* new_default, Allocator* new_scratch);
+EXTERNAL Allocator_Set allocator_set(Allocator_Set backup); 
 
-EXPORT bool  is_power_of_two(isize num);
-EXPORT bool  is_power_of_two_or_zero(isize num);
-EXPORT void* align_forward(void* ptr, isize align_to);
-EXPORT void* align_backward(void* ptr, isize align_to);
-EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void) bytes; return NULL;}
+EXTERNAL bool  is_power_of_two(isize num);
+EXTERNAL bool  is_power_of_two_or_zero(isize num);
+EXTERNAL void* align_forward(void* ptr, isize align_to);
+EXTERNAL void* align_backward(void* ptr, isize align_to);
+EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void) bytes; return NULL;}
 
 #define CACHE_LINE  ((int64_t) 64)
 #define PAGE_BYTES  ((int64_t) 4096)
@@ -161,7 +161,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
     void* arena_frame_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
 
     INTERNAL ATTRIBUTE_THREAD_LOCAL Global_Allocator_State _allocator_state = {0};
-    EXPORT ATTRIBUTE_ALLOCATOR(2, 5) 
+    EXTERNAL ATTRIBUTE_ALLOCATOR(2, 5) 
     void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         PROFILE_START();
@@ -183,7 +183,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         return out;
     }
 
-    EXPORT ATTRIBUTE_ALLOCATOR(2, 5) 
+    EXTERNAL ATTRIBUTE_ALLOCATOR(2, 5) 
     void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         void* obtained = allocator_try_reallocate(from_allocator, new_size, old_ptr, old_size, align);
@@ -193,18 +193,18 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         return obtained;
     }
 
-    EXPORT ATTRIBUTE_ALLOCATOR(2, 3) 
+    EXTERNAL ATTRIBUTE_ALLOCATOR(2, 3) 
     void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align)
     {
         return allocator_reallocate(from_allocator, new_size, NULL, 0, align);
     }
 
-    EXPORT void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize old_size, isize align)
+    EXTERNAL void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize old_size, isize align)
     {
         allocator_reallocate(from_allocator, 0, old_ptr, old_size, align);
     }
 
-    EXPORT Allocator_Stats allocator_get_stats(Allocator* self)
+    EXTERNAL Allocator_Stats allocator_get_stats(Allocator* self)
     {
         Allocator_Stats out = {0};
         if(self && self->get_stats)
@@ -213,30 +213,30 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         return out;
     }
     
-    EXPORT bool allocator_is_arena(Allocator* allocator)
+    EXTERNAL bool allocator_is_arena(Allocator* allocator)
     {
         return allocator != NULL && allocator->allocate == arena_frame_reallocate;
     }
     
-    EXPORT Allocator* allocator_get_default()
+    EXTERNAL Allocator* allocator_get_default()
     {
         return _allocator_state.default_allocator;
     }
-    EXPORT Allocator* allocator_get_scratch()
+    EXTERNAL Allocator* allocator_get_scratch()
     {
         return _allocator_state.scratch_allocator;
     }
-    EXPORT Allocator* allocator_get_static()
+    EXTERNAL Allocator* allocator_get_static()
     {
         return _allocator_state.static_allocator;
     }
     
-    EXPORT Allocator* allocator_or_default(Allocator* allocator_or_null)
+    EXTERNAL Allocator* allocator_or_default(Allocator* allocator_or_null)
     {
         return allocator_or_null ? allocator_or_null : allocator_get_default();
     }
 
-    EXPORT Allocator_Set allocator_set_default(Allocator* new_default)
+    EXTERNAL Allocator_Set allocator_set_default(Allocator* new_default)
     {
         Allocator_Set set_to = {0};
         set_to.allocator_default = new_default;
@@ -244,7 +244,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         return allocator_set(set_to);
     }
 
-    EXPORT Allocator_Set allocator_set_scratch(Allocator* new_scratch)
+    EXTERNAL Allocator_Set allocator_set_scratch(Allocator* new_scratch)
     {
         Allocator_Set set_to = {0};
         set_to.allocator_scratch = new_scratch;
@@ -252,7 +252,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         return allocator_set(set_to);
     }
 
-    EXPORT Allocator_Set allocator_set_static(Allocator* new_static)
+    EXTERNAL Allocator_Set allocator_set_static(Allocator* new_static)
     {
         Allocator_Set set_to = {0};
         set_to.allocator_static = new_static;
@@ -260,7 +260,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         return allocator_set(set_to);
     }
 
-    EXPORT Allocator_Set allocator_set_both(Allocator* new_default, Allocator* new_scratch)
+    EXTERNAL Allocator_Set allocator_set_both(Allocator* new_default, Allocator* new_scratch)
     {
         Allocator_Set set_to = {new_default, new_scratch};
         set_to.set_default = true;
@@ -268,7 +268,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         return allocator_set(set_to);
     }
 
-    EXPORT Allocator_Set allocator_set(Allocator_Set set_to)
+    EXTERNAL Allocator_Set allocator_set(Allocator_Set set_to)
     {
         Global_Allocator_State* state = &_allocator_state;
 
@@ -297,18 +297,18 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         return prev;
     }
     
-    EXPORT bool is_power_of_two_or_zero(isize num) 
+    EXTERNAL bool is_power_of_two_or_zero(isize num) 
     {
         usize n = (usize) num;
         return ((n & (n-1)) == 0);
     }
 
-    EXPORT bool is_power_of_two(isize num) 
+    EXTERNAL bool is_power_of_two(isize num) 
     {
         return (num>0 && is_power_of_two_or_zero(num));
     }
 
-    EXPORT void* align_forward(void* ptr, isize align_to)
+    EXTERNAL void* align_forward(void* ptr, isize align_to)
     {
         ASSERT(is_power_of_two(align_to));
 
@@ -322,7 +322,7 @@ EXPORT void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void
         return (void*) ptr_num;
     }
 
-    EXPORT void* align_backward(void* ptr, isize align_to)
+    EXTERNAL void* align_backward(void* ptr, isize align_to)
     {
         ASSERT(is_power_of_two(align_to));
 

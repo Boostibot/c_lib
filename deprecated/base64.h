@@ -20,8 +20,8 @@
 #define ASSERT(x) assert(x)
 #endif
 
-#ifndef EXPORT
-    #define EXPORT
+#ifndef EXTERNAL
+    #define EXTERNAL
 #endif
 
 #define BASE64_ENCODING_TABLE_SIZE      64  /* the required minimum size for the encoding table*/
@@ -63,15 +63,15 @@ typedef struct Base64_Decoding
 } Base64_Decoding;
 
 //Returns the needed maximu output length of the output given the input_legth
-EXPORT int64_t base64_encode_max_output_length(int64_t input_length);
+EXTERNAL int64_t base64_encode_max_output_length(int64_t input_length);
 
 //Returns the needed maximu output length of the output given the input_legth
-EXPORT int64_t base64_decode_max_output_length(int64_t input_length);
+EXTERNAL int64_t base64_decode_max_output_length(int64_t input_length);
 
 //Encodes input_length bytes from data into out. 
 //Out needs to be at least base64_encode_max_output_length() bytes!
 //Returns the exact amountof bytes written to out.
-EXPORT int64_t base64_encode(void* out, const void* data, int64_t input_length, Base64_Encoding encoding);
+EXTERNAL int64_t base64_encode(void* out, const void* data, int64_t input_length, Base64_Encoding encoding);
 
 //Decodes input_length bytes from data into out. 
 //If the input data is malformed (contains other characters than BASE64_DIGITS 
@@ -82,26 +82,26 @@ EXPORT int64_t base64_encode(void* out, const void* data, int64_t input_length, 
 // within the previous block. The next block starts right after that normally.
 //Out needs to be at least base64_encode_max_output_length() bytes!
 //Returns the exact amountof bytes written to out.
-EXPORT int64_t base64_decode(void* out, const void* data, int64_t input_length, Base64_Decoding decoding, int64_t* error_at_or_null);
+EXTERNAL int64_t base64_decode(void* out, const void* data, int64_t input_length, Base64_Decoding decoding, int64_t* error_at_or_null);
 
 //Common encodings and decodings
 //Url/filesystem safe encoding. We use this for everything. Formally RFC 4648 / Base64URL
-EXPORT const Base64_Encoding base64_encoding_url();
-EXPORT const Base64_Encoding base64_encoding_url_no_pad();
-EXPORT const Base64_Encoding base64_encoding_url_utf8();   //common internet encoding
-EXPORT const Base64_Decoding base64_decoding_universal();  //Common decoding that should work for *most* base64 encodings.
+EXTERNAL const Base64_Encoding base64_encoding_url();
+EXTERNAL const Base64_Encoding base64_encoding_url_no_pad();
+EXTERNAL const Base64_Encoding base64_encoding_url_utf8();   //common internet encoding
+EXTERNAL const Base64_Decoding base64_decoding_universal();  //Common decoding that should work for *most* base64 encodings.
 
 //The appropriate encoding/decoding tables used by the above encodings/decodings. See implementation
-EXPORT const uint8_t* base64_encoding_table_url();
-EXPORT const uint8_t* base64_encoding_table_utf8();
-EXPORT const uint8_t* base64_decoding_table_universal();
+EXTERNAL const uint8_t* base64_encoding_table_url();
+EXTERNAL const uint8_t* base64_encoding_table_utf8();
+EXTERNAL const uint8_t* base64_decoding_table_universal();
 
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_BASE64_IMPL)) && !defined(JOT_BASE64_HAS_IMPL)
 #define JOT_BASE64_HAS_IMPL
 
-EXPORT int64_t base64_encode_max_output_length(int64_t input_length)
+EXTERNAL int64_t base64_encode_max_output_length(int64_t input_length)
 {
     ASSERT(input_length >= 0);
     int64_t olen = (input_length + 2) / 3 * 4;
@@ -109,7 +109,7 @@ EXPORT int64_t base64_encode_max_output_length(int64_t input_length)
     return olen;
 }
 
-EXPORT int64_t base64_encode(void* _out, const void* _data, int64_t len, Base64_Encoding encoding)
+EXTERNAL int64_t base64_encode(void* _out, const void* _data, int64_t len, Base64_Encoding encoding)
 {
     ASSERT(_out != NULL && _data != NULL);
     uint8_t* src = (uint8_t*) _data;
@@ -153,14 +153,14 @@ EXPORT int64_t base64_encode(void* _out, const void* _data, int64_t len, Base64_
 }
 
 //this is an upper estimate! We cannot know how many '=' are in the sequence so this simply doesnt take them into account.
-EXPORT int64_t base64_decode_max_output_length(int64_t input_length)
+EXTERNAL int64_t base64_decode_max_output_length(int64_t input_length)
 {
     ASSERT(input_length >= 0);
     int64_t out_size = (input_length + 3) / 4 * 3;
     return out_size;
 }
 
-EXPORT int64_t base64_decode(void* _out, const void* _data, int64_t input_length, Base64_Decoding decoding, int64_t* error_at)
+EXTERNAL int64_t base64_decode(void* _out, const void* _data, int64_t input_length, Base64_Decoding decoding, int64_t* error_at)
 {
     ASSERT(_out != NULL && _data != NULL);
     #define E BASE64_DECODING_ERROR_VALUE /* Error value */
@@ -443,35 +443,35 @@ const uint8_t BASE64_TABLE_DECODING_URL[BASE64_DECODING_TABLE_SIZE] = {
 
 #endif
 
-EXPORT const uint8_t* base64_encoding_table_url()
+EXTERNAL const uint8_t* base64_encoding_table_url()
 {
     return BASE64_ENCODING_TABLE_URL;
 }
-EXPORT const uint8_t* base64_encoding_table_utf8()
+EXTERNAL const uint8_t* base64_encoding_table_utf8()
 {
     return BASE64_ENCODING_TABLE_UTF8;
 }
-EXPORT const uint8_t* base64_decoding_table_universal()
+EXTERNAL const uint8_t* base64_decoding_table_universal()
 {
     return BASE64_DECODING_TABLE_UNIVERSAL;
 }
 
-EXPORT const Base64_Encoding base64_encoding_url()
+EXTERNAL const Base64_Encoding base64_encoding_url()
 {
     Base64_Encoding out = {BASE64_ENCODING_TABLE_URL, '=', true};
     return out;
 }
-EXPORT const Base64_Encoding base64_encoding_url_no_pad()
+EXTERNAL const Base64_Encoding base64_encoding_url_no_pad()
 {
     Base64_Encoding out = {BASE64_ENCODING_TABLE_URL, '=', false};
     return out;
 }
-EXPORT const Base64_Encoding base64_encoding_url_utf8()
+EXTERNAL const Base64_Encoding base64_encoding_url_utf8()
 {
     Base64_Encoding out = {BASE64_ENCODING_TABLE_UTF8, '=', true};
     return out;
 }
-EXPORT const Base64_Decoding base64_decoding_universal()
+EXTERNAL const Base64_Decoding base64_decoding_universal()
 {
     Base64_Decoding out = {BASE64_DECODING_TABLE_UNIVERSAL, '=', true, false};
     return out;

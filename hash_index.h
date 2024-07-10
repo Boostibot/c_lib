@@ -80,7 +80,7 @@
     #include <assert.h>
     #include <stdbool.h>
     
-    #define EXPORT
+    #define EXTERNAL
     #define INTERNAL static
     #define DEF_ALIGN sizeof(void*)
     #define ASSERT(x) assert(x)
@@ -131,25 +131,25 @@ typedef struct Hash_Index {
     bool    _padding;
 } Hash_Index;
 
-EXPORT void  hash_index_init(Hash_Index* table, Allocator* allocator); //Initalizes table to use the given allocator and the default load factor (75%) 
-EXPORT void  hash_index_init_load_factor(Hash_Index* table, Allocator* allocator, isize load_factor_percent, isize load_factor_gravestone_percent); //Initalizes table to use the given allocator and the provided load factor
-EXPORT void  hash_index_deinit(Hash_Index* table); //Deinitializes table
-EXPORT void  hash_index_copy(Hash_Index* to_table, Hash_Index from_table); //Clears to_table then inserts all entrues from from tabvle. Reallocates if too small.
-EXPORT void  hash_index_clear(Hash_Index* to_table); //Clears the entrire hash index without reallocating.
-EXPORT isize hash_index_find(Hash_Index table, uint64_t hash); //Finds an entry in the hash index and returns its index. If no such hash is present returns -1.
-EXPORT isize hash_index_find_next(Hash_Index table, uint64_t hash, isize prev_found); //Find next entry with the same hash starting from the index of prev_found entry. This is used to iterate all entries matching the specifed hash.
-EXPORT isize hash_index_find_or_insert(Hash_Index* table, uint64_t hash, uint64_t value_if_inserted); //Attempts to find an entry and return its index. If fails inserts and returns index to the newly inserted
-EXPORT void  hash_index_rehash(Hash_Index* table, isize to_size); //rehashes to the nearest size gretaer then the size specified and size required to store all entries.
-EXPORT void  hash_index_rehash_in_place(Hash_Index* table);
-EXPORT void  hash_index_reserve(Hash_Index* table, isize to_size); //reserves space such that its possibel to store up to to_size elements without triggering rehash.
-EXPORT isize hash_index_insert(Hash_Index* table, uint64_t hash, uint64_t value); //Inserts an entry and returns its index. The hash can be duplicate.
-EXPORT Hash_Index_Entry hash_index_remove(Hash_Index* table, isize found); //Removes already found entry. If the provided index is -1 does nothing.
-EXPORT bool  hash_index_is_invariant(Hash_Index table, bool slow_check); //Checks if the hash index is in invarint state
-EXPORT bool  hash_index_is_entry_used(Hash_Index_Entry entry); //Returns if the given entry is used (and thus okay to read from or write to)
+EXTERNAL void  hash_index_init(Hash_Index* table, Allocator* allocator); //Initalizes table to use the given allocator and the default load factor (75%) 
+EXTERNAL void  hash_index_init_load_factor(Hash_Index* table, Allocator* allocator, isize load_factor_percent, isize load_factor_gravestone_percent); //Initalizes table to use the given allocator and the provided load factor
+EXTERNAL void  hash_index_deinit(Hash_Index* table); //Deinitializes table
+EXTERNAL void  hash_index_copy(Hash_Index* to_table, Hash_Index from_table); //Clears to_table then inserts all entrues from from tabvle. Reallocates if too small.
+EXTERNAL void  hash_index_clear(Hash_Index* to_table); //Clears the entrire hash index without reallocating.
+EXTERNAL isize hash_index_find(Hash_Index table, uint64_t hash); //Finds an entry in the hash index and returns its index. If no such hash is present returns -1.
+EXTERNAL isize hash_index_find_next(Hash_Index table, uint64_t hash, isize prev_found); //Find next entry with the same hash starting from the index of prev_found entry. This is used to iterate all entries matching the specifed hash.
+EXTERNAL isize hash_index_find_or_insert(Hash_Index* table, uint64_t hash, uint64_t value_if_inserted); //Attempts to find an entry and return its index. If fails inserts and returns index to the newly inserted
+EXTERNAL void  hash_index_rehash(Hash_Index* table, isize to_size); //rehashes to the nearest size gretaer then the size specified and size required to store all entries.
+EXTERNAL void  hash_index_rehash_in_place(Hash_Index* table);
+EXTERNAL void  hash_index_reserve(Hash_Index* table, isize to_size); //reserves space such that its possibel to store up to to_size elements without triggering rehash.
+EXTERNAL isize hash_index_insert(Hash_Index* table, uint64_t hash, uint64_t value); //Inserts an entry and returns its index. The hash can be duplicate.
+EXTERNAL Hash_Index_Entry hash_index_remove(Hash_Index* table, isize found); //Removes already found entry. If the provided index is -1 does nothing.
+EXTERNAL bool  hash_index_is_invariant(Hash_Index table, bool slow_check); //Checks if the hash index is in invarint state
+EXTERNAL bool  hash_index_is_entry_used(Hash_Index_Entry entry); //Returns if the given entry is used (and thus okay to read from or write to)
 
-EXPORT uint64_t hash_index_escape_value(uint64_t val); //Escapes value so that it can be safely written to Hash_Index_Entry.value
-EXPORT uint64_t hash_index_escape_ptr(const void* val); //Escapes pointer so that it can be safely written to Hash_Index_Entry.value
-EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously escaped pointer from Hash_Index_Entry.value
+EXTERNAL uint64_t hash_index_escape_value(uint64_t val); //Escapes value so that it can be safely written to Hash_Index_Entry.value
+EXTERNAL uint64_t hash_index_escape_ptr(const void* val); //Escapes pointer so that it can be safely written to Hash_Index_Entry.value
+EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously escaped pointer from Hash_Index_Entry.value
 
 #endif
 
@@ -262,7 +262,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
     }
     
 
-    EXPORT void hash_index_clear(Hash_Index* to_table)
+    EXTERNAL void hash_index_clear(Hash_Index* to_table)
     {
         PROFILE_START();
         //can also be memset to byte pattern that has HASH_INDEX_EMPTY.
@@ -278,7 +278,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         PROFILE_END();
     }
     
-    EXPORT bool _hash_index_needs_rehash(isize current_size, isize to_size, isize load_factor)
+    EXTERNAL bool _hash_index_needs_rehash(isize current_size, isize to_size, isize load_factor)
     {
         return to_size * 100 >= current_size * load_factor;
     }
@@ -299,7 +299,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         else
             table->load_factor_gravestone = (int8_t) load_factor_percent;
     }
-    EXPORT void hash_index_init_load_factor(Hash_Index* table, Allocator* allocator, isize load_factor_percent, isize load_factor_gravestone_percent)
+    EXTERNAL void hash_index_init_load_factor(Hash_Index* table, Allocator* allocator, isize load_factor_percent, isize load_factor_gravestone_percent)
     {
         hash_index_deinit(table);
         PROFILE_START();
@@ -307,7 +307,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         PROFILE_END();
     }
 
-    EXPORT void hash_index_init(Hash_Index* table, Allocator* allocator)
+    EXTERNAL void hash_index_init(Hash_Index* table, Allocator* allocator)
     {
         hash_index_init_load_factor(table, allocator, (isize) -1, (isize) -1);
     }   
@@ -356,7 +356,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         return ((n & (n-1)) == 0) && num > 0;
     }
 
-    EXPORT bool hash_index_is_invariant(Hash_Index table, bool slow_check)
+    EXTERNAL bool hash_index_is_invariant(Hash_Index table, bool slow_check)
     {
         PROFILE_START();
         bool ptr_size_inv = (table.entries == NULL) == (table.entries_count == 0);
@@ -409,7 +409,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         return is_invariant;
     }
     
-    EXPORT isize hash_index_find(Hash_Index table, uint64_t hash)
+    EXTERNAL isize hash_index_find(Hash_Index table, uint64_t hash)
     {
         PROFILE_START();
         isize found = _hash_index_find_from(table, hash, hash);
@@ -417,7 +417,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         return found;
     }
     
-    EXPORT isize hash_index_find_next(Hash_Index table, uint64_t hash, isize prev_found)
+    EXTERNAL isize hash_index_find_next(Hash_Index table, uint64_t hash, isize prev_found)
     {
         PROFILE_START();
         ASSERT(0 <= prev_found && prev_found < table.entries_count);
@@ -426,7 +426,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         return found;
     }
     
-    EXPORT void hash_index_deinit(Hash_Index* table)
+    EXTERNAL void hash_index_deinit(Hash_Index* table)
     {
         PROFILE_START();
         ASSERT(hash_index_is_invariant(*table, HASH_INDEX_DEBUG));
@@ -437,12 +437,12 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         PROFILE_END();
     }
 
-    EXPORT void hash_index_copy(Hash_Index* to_table, Hash_Index from_table)
+    EXTERNAL void hash_index_copy(Hash_Index* to_table, Hash_Index from_table)
     {
         _hash_index_rehash_copy(to_table, from_table, from_table.size, false);
     }
     
-    EXPORT void hash_index_rehash_in_place(Hash_Index* table)
+    EXTERNAL void hash_index_rehash_in_place(Hash_Index* table)
     {
         if(table->entries_count > 0)
         {
@@ -459,7 +459,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
 
     }
 
-    EXPORT void _hash_index_rehash(Hash_Index* table, isize to_size, bool size_is_capacity)
+    EXTERNAL void _hash_index_rehash(Hash_Index* table, isize to_size, bool size_is_capacity)
     {
         Hash_Index rehashed = {0};
         hash_index_init_load_factor(&rehashed, table->allocator, table->load_factor, table->load_factor_gravestone);
@@ -469,7 +469,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         *table = rehashed;
     }
     
-    EXPORT void hash_index_rehash(Hash_Index* table, isize to_size)
+    EXTERNAL void hash_index_rehash(Hash_Index* table, isize to_size)
     {
         _hash_index_rehash(table, to_size, false);
     }
@@ -509,25 +509,25 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         }
     }
 
-    EXPORT void hash_index_reserve(Hash_Index* table, isize to_size)
+    EXTERNAL void hash_index_reserve(Hash_Index* table, isize to_size)
     {
         if(_hash_index_needs_rehash(table->entries_count, to_size + table->gravestone_count, table->load_factor))
             hash_index_grow(table, to_size);
     }
     
-    EXPORT isize hash_index_find_or_insert(Hash_Index* table, uint64_t hash, uint64_t value_if_inserted)
+    EXTERNAL isize hash_index_find_or_insert(Hash_Index* table, uint64_t hash, uint64_t value_if_inserted)
     {
         hash_index_reserve(table, table->size + 1);
         return _hash_index_find_or_insert(table, hash, value_if_inserted, true);
     }
 
-    EXPORT isize hash_index_insert(Hash_Index* table, uint64_t hash, uint64_t value)
+    EXTERNAL isize hash_index_insert(Hash_Index* table, uint64_t hash, uint64_t value)
     {
         hash_index_reserve(table, table->size + 1);
         return _hash_index_find_or_insert(table, hash, value, false);
     }
 
-    EXPORT Hash_Index_Entry hash_index_remove(Hash_Index* table, isize found)
+    EXTERNAL Hash_Index_Entry hash_index_remove(Hash_Index* table, isize found)
     {
         PROFILE_START();
         Hash_Index_Entry removed = {0};
@@ -546,23 +546,23 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         return removed;
     }
     
-    EXPORT bool hash_index_is_entry_used(Hash_Index_Entry entry)
+    EXTERNAL bool hash_index_is_entry_used(Hash_Index_Entry entry)
     {
         //is not empty nor gravestone
         return (entry.value & (HASH_INDEX_EMPTY | HASH_INDEX_GRAVESTONE)) == 0;
     }
 
-    EXPORT uint64_t hash_index_escape_value(uint64_t val)
+    EXTERNAL uint64_t hash_index_escape_value(uint64_t val)
     {
         return (val & ~(HASH_INDEX_EMPTY | HASH_INDEX_GRAVESTONE));
     }
     
-    EXPORT uint64_t hash_index_escape_ptr(const void* val)
+    EXTERNAL uint64_t hash_index_escape_ptr(const void* val)
     {
         return hash_index_escape_value((uint64_t) val);
     }
     
-    EXPORT void* hash_index_restore_ptr(uint64_t val)
+    EXTERNAL void* hash_index_restore_ptr(uint64_t val)
     {
         //We use the higher bits from ptr dummy to restore 
         // the value to valid ptr

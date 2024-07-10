@@ -52,9 +52,9 @@ typedef struct Profile_Global_Data {
 	int32_t pad;
 } Profile_Global_Data;
 
-EXPORT bool profile_get_stats(Profile_Zone_Stats_Array* stats);
-EXPORT void profile_init(Allocator* alloc);
-EXPORT ATTRIBUTE_INLINE_NEVER void profile_init_thread_zone(Profile_Thread_Zone** handle, const Profile_ID* zone_id, uint64_t mean_estimate);
+EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats);
+EXTERNAL void profile_init(Allocator* alloc);
+EXTERNAL ATTRIBUTE_INLINE_NEVER void profile_init_thread_zone(Profile_Thread_Zone** handle, const Profile_ID* zone_id, uint64_t mean_estimate);
 
 static inline int64_t fenced_now();
 static inline int64_t profile_now();
@@ -66,9 +66,9 @@ typedef enum Log_Perf_Sort_By{
 	PERF_SORT_BY_RUNS,
 } Log_Perf_Sort_By;
 
-EXPORT void profile_log_all(const char* log_module, Log_Type log_type, Log_Perf_Sort_By sort_by);
-EXPORT void log_perf_stats_hdr(const char* log_module, Log_Type log_type, const char* label);
-EXPORT void log_perf_stats_row(const char* log_module, Log_Type log_type, const char* label, Perf_Stats stats);
+EXTERNAL void profile_log_all(const char* log_module, Log_Type log_type, Log_Perf_Sort_By sort_by);
+EXTERNAL void log_perf_stats_hdr(const char* log_module, Log_Type log_type, const char* label);
+EXTERNAL void log_perf_stats_row(const char* log_module, Log_Type log_type, const char* label, Perf_Stats stats);
 
 //@TODO: Move into platform layer
 #include <stdint.h>
@@ -118,7 +118,7 @@ static inline void profile_submit(Profile_Type type, Profile_Thread_Zone** handl
 static ATTRIBUTE_THREAD_LOCAL Profile_Thread_Zone gfallback_thread_zones = {0}; 
 static Profile_Global_Data gprofile_data = {0};
 
-EXPORT void profile_init(Allocator* alloc)
+EXTERNAL void profile_init(Allocator* alloc)
 {
 	platform_mutex_init(&gprofile_data.mutex);
 	
@@ -174,7 +174,7 @@ INTERNAL isize profile_add_zone(Profile_Global_Data* profile_data, uint64_t hash
 	return profile_data->zones.size - 1;
 }
 
-EXPORT ATTRIBUTE_INLINE_NEVER void profile_init_thread_zone(Profile_Thread_Zone** handle, const Profile_ID* zone_id, uint64_t mean_estimate)
+EXTERNAL ATTRIBUTE_INLINE_NEVER void profile_init_thread_zone(Profile_Thread_Zone** handle, const Profile_ID* zone_id, uint64_t mean_estimate)
 {
 	if(gprofile_data.is_init)
 	{
@@ -213,7 +213,7 @@ EXPORT ATTRIBUTE_INLINE_NEVER void profile_init_thread_zone(Profile_Thread_Zone*
 	}
 }
 
-EXPORT bool profile_get_stats(Profile_Zone_Stats_Array* stats)
+EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 {
 	if(gprofile_data.is_init)
 	{
@@ -247,11 +247,11 @@ EXPORT bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 	}
 }
 
-	EXPORT void log_perf_stats_hdr(const char* log_module, Log_Type log_type, const char* label)
+	EXTERNAL void log_perf_stats_hdr(const char* log_module, Log_Type log_type, const char* label)
 	{
 		LOG(log_module, log_type, "%s     time |        runs |   σ/μ", label);
 	}
-	EXPORT void log_perf_stats_row(const char* log_module, Log_Type log_type, const char* label, Perf_Stats stats)
+	EXTERNAL void log_perf_stats_row(const char* log_module, Log_Type log_type, const char* label, Perf_Stats stats)
 	{
 		LOG(log_module, log_type, "%s%s | %11lli | %5.2lf", label, format_seconds(stats.average_s, 5).data, stats.runs, stats.normalized_standard_deviation_s);
 	}
@@ -292,7 +292,7 @@ EXPORT bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 		return res;
 	}
 
-	EXPORT void profile_log_all(const char* log_module, Log_Type log_type, Log_Perf_Sort_By sort_by)
+	EXTERNAL void profile_log_all(const char* log_module, Log_Type log_type, Log_Perf_Sort_By sort_by)
 	{
 		(void) sort_by;
 		Arena_Frame arena = scratch_arena_acquire();

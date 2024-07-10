@@ -22,13 +22,13 @@ typedef struct Log_List {
     Logger* prev_logger;
 } Log_List;
 
-EXPORT void log_list_init(Log_List* log_list, Allocator* allocator);
-EXPORT void log_list_init_capture(Log_List* log_list, Allocator* allocator);
-EXPORT void log_list_deinit(Log_List* log_list);
-EXPORT void log_capture(Log_List* log_list);
-EXPORT void log_capture_end(Log_List* log_list);
+EXTERNAL void log_list_init(Log_List* log_list, Allocator* allocator);
+EXTERNAL void log_list_init_capture(Log_List* log_list, Allocator* allocator);
+EXTERNAL void log_list_deinit(Log_List* log_list);
+EXTERNAL void log_capture(Log_List* log_list);
+EXTERNAL void log_capture_end(Log_List* log_list);
 
-EXPORT void log_list_log_func(Logger* logger_, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args);
+EXTERNAL void log_list_log_func(Logger* logger_, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args);
 
 #endif
 
@@ -95,7 +95,7 @@ INTERNAL void _log_alloc_recursive(Log** first_child_ptr, Log** last_child_ptr, 
     }
 }
 
-EXPORT void log_list_deinit(Log_List* log_list)
+EXTERNAL void log_list_deinit(Log_List* log_list)
 {
     if(allocator_is_arena(log_list->allocator) == false && log_list->allocator != NULL)
         _log_dealloc_recursive(log_list->first, log_list->allocator, 0);
@@ -107,7 +107,7 @@ EXPORT void log_list_deinit(Log_List* log_list)
 }
 
 //void log_list_log_func(Logger* logger_, const Log* log_list, i32 group_depth, Log_Action action)
-EXPORT void log_list_log_func(Logger* logger_, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args)
+EXTERNAL void log_list_log_func(Logger* logger_, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args)
 {
     Log_List* logger = (Log_List*) (void*) logger_;
 
@@ -170,7 +170,7 @@ EXPORT void log_list_log_func(Logger* logger_, i32 group_depth, int actions, con
     PROFILE_END();
 }
 
-EXPORT void log_list_init(Log_List* log_list, Allocator* allocator)
+EXTERNAL void log_list_init(Log_List* log_list, Allocator* allocator)
 {
     log_list_deinit(log_list);
     Log_List out = {0};
@@ -182,19 +182,19 @@ EXPORT void log_list_init(Log_List* log_list, Allocator* allocator)
     *log_list = out;
 }
 
-EXPORT void log_list_init_capture(Log_List* log_list, Allocator* allocator)
+EXTERNAL void log_list_init_capture(Log_List* log_list, Allocator* allocator)
 {
     log_list_init(log_list, allocator);
     log_capture(log_list);
 }
 
-EXPORT void log_capture(Log_List* log_list)
+EXTERNAL void log_capture(Log_List* log_list)
 {
     log_list->prev_logger = log_set_logger(&log_list->logger);
     log_list->had_prev_logger = true;
 }
 
-EXPORT void log_capture_end(Log_List* log_list)
+EXTERNAL void log_capture_end(Log_List* log_list)
 {
     if(log_list->had_prev_logger)
     {

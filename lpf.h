@@ -130,21 +130,21 @@ typedef struct Lpf_Read_Options {
 
 typedef Array(Lpf_Entry) Lpf_Entry_Array;
 
-EXPORT Lpf_Write_Options lpf_default_write_options();
-EXPORT Lpf_Read_Options lpf_default_read_options();
-EXPORT String lpf_write(Arena_Frame* arena, const Lpf_Entry* top_level, isize top_level_count, const Lpf_Write_Options* options_or_null);
-EXPORT String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lpf_Write_Options* options_or_null);
-EXPORT Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Options* read_options_or_null);
+EXTERNAL Lpf_Write_Options lpf_default_write_options();
+EXTERNAL Lpf_Read_Options lpf_default_read_options();
+EXTERNAL String lpf_write(Arena_Frame* arena, const Lpf_Entry* top_level, isize top_level_count, const Lpf_Write_Options* options_or_null);
+EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lpf_Write_Options* options_or_null);
+EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Options* read_options_or_null);
 
 //@TODO: rework strings
-EXPORT String lpf_string_duplicate(Arena_Frame* arena, String string);
-EXPORT Lpf_Entry* lpf_entry_push_child(Arena_Frame* arena, Lpf_Entry* parent, Lpf_Entry child);
+EXTERNAL String lpf_string_duplicate(Arena_Frame* arena, String string);
+EXTERNAL Lpf_Entry* lpf_entry_push_child(Arena_Frame* arena, Lpf_Entry* parent, Lpf_Entry child);
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_LPF_IMPL)) && !defined(JOT_LPF_HAS_IMPL)
 #define JOT_LPF_HAS_IMPL
 
-EXPORT Lpf_Entry* lpf_entry_push_child(Arena_Frame* arena, Lpf_Entry* parent, Lpf_Entry child)
+EXTERNAL Lpf_Entry* lpf_entry_push_child(Arena_Frame* arena, Lpf_Entry* parent, Lpf_Entry child)
 {
     if(parent->children_count >= parent->children_capacity)
     {
@@ -160,7 +160,7 @@ EXPORT Lpf_Entry* lpf_entry_push_child(Arena_Frame* arena, Lpf_Entry* parent, Lp
     return parent->children + parent->children_count - 1;
 }
 
-EXPORT String lpf_string_duplicate(Arena_Frame* arena, String string)
+EXTERNAL String lpf_string_duplicate(Arena_Frame* arena, String string)
 {
     char* str = (char*) arena_frame_push_nonzero(arena, string.size + 1, 1);
     memcpy(str, string.data, (size_t) string.size);
@@ -200,13 +200,13 @@ INTERNAL bool _lpf_is_label_invalid_char(char c)
     return c == ':' || c == ';' || c == ',' || c == '#' || c == '{' || c == '}' || c == ' ' || c == '\t';
 }
 
-EXPORT Lpf_Read_Options lpf_default_read_options()
+EXTERNAL Lpf_Read_Options lpf_default_read_options()
 {
     Lpf_Read_Options out = {false};
     return out;
 }
 
-EXPORT Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Options* read_options_or_null)
+EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Options* read_options_or_null)
 {
     typedef enum {
         BLANK,
@@ -480,7 +480,7 @@ EXPORT Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Opti
     return root;
 }
 
-EXPORT Lpf_Write_Options lpf_default_write_options()
+EXTERNAL Lpf_Write_Options lpf_default_write_options()
 {
     Lpf_Write_Options options = {0};
     options.indentations_per_level = 4;
@@ -494,7 +494,7 @@ EXPORT Lpf_Write_Options lpf_default_write_options()
     return options;
 }
 
-EXPORT String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lpf_Write_Options* options_or_null)
+EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lpf_Write_Options* options_or_null)
 {
     //Writing is reverse process from reading so we first rpdouce an array of tokens and then serialize them all in a small forloop.
     typedef enum {
@@ -806,7 +806,7 @@ EXPORT String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lpf_
     return return_string;
 }
 
-EXPORT String lpf_write(Arena_Frame* arena, const Lpf_Entry* top_level, isize top_level_count, const Lpf_Write_Options* options_or_null)
+EXTERNAL String lpf_write(Arena_Frame* arena, const Lpf_Entry* top_level, isize top_level_count, const Lpf_Write_Options* options_or_null)
 {
     Lpf_Entry root = {0};
     root.kind = LPF_COLLECTION;

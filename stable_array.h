@@ -90,18 +90,18 @@ typedef struct Stable_Array {
     u32 fill_empty_with; 
 } Stable_Array;
 
-EXPORT void  stable_array_init_custom(Stable_Array* stable, Allocator* alloc, isize item_size, isize item_align, isize growth_lin, f32 growth_mult, u32 fill_empty_with);
-EXPORT void  stable_array_init(Stable_Array* stable, Allocator* alloc, isize item_size);
-EXPORT void  stable_array_deinit(Stable_Array* stable);
+EXTERNAL void  stable_array_init_custom(Stable_Array* stable, Allocator* alloc, isize item_size, isize item_align, isize growth_lin, f32 growth_mult, u32 fill_empty_with);
+EXTERNAL void  stable_array_init(Stable_Array* stable, Allocator* alloc, isize item_size);
+EXTERNAL void  stable_array_deinit(Stable_Array* stable);
 
-EXPORT isize stable_array_capacity(const Stable_Array* stable);
-EXPORT void* stable_array_at(const Stable_Array* stable, isize index);
-EXPORT void* stable_array_alive_at(const Stable_Array* stable, isize index, void* if_not_found);
-EXPORT isize stable_array_insert(Stable_Array* stable, void** out_or_null);
-EXPORT void  stable_array_remove(Stable_Array* stable, isize index);
-EXPORT void  stable_array_reserve(Stable_Array* stable, isize to);
+EXTERNAL isize stable_array_capacity(const Stable_Array* stable);
+EXTERNAL void* stable_array_at(const Stable_Array* stable, isize index);
+EXTERNAL void* stable_array_alive_at(const Stable_Array* stable, isize index, void* if_not_found);
+EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out_or_null);
+EXTERNAL void  stable_array_remove(Stable_Array* stable, isize index);
+EXTERNAL void  stable_array_reserve(Stable_Array* stable, isize to);
 
-EXPORT void stable_array_test_invariants(const Stable_Array* stable, bool slow_checks);
+EXTERNAL void stable_array_test_invariants(const Stable_Array* stable, bool slow_checks);
 
 #define STABLE_ARRAY_FOR_EACH_BEGIN_UNTYPED(stable, Ptr_Type, ptr_name, Index_Type, index)                          \
     for(isize _block_i = 0; _block_i < (stable).blocks_size; _block_i++)                                            \
@@ -150,7 +150,7 @@ INTERNAL void _stable_array_check_invariants(const Stable_Array* stable)
     #endif
 }
 
-EXPORT void stable_array_init_custom(Stable_Array* stable, Allocator* alloc, isize item_size, isize item_align, isize growth_lin, f32 growth_mult, u32 fill_empty_with)
+EXTERNAL void stable_array_init_custom(Stable_Array* stable, Allocator* alloc, isize item_size, isize item_align, isize growth_lin, f32 growth_mult, u32 fill_empty_with)
 {
     ASSERT(item_size > 0 && is_power_of_two(item_align));
 
@@ -164,17 +164,17 @@ EXPORT void stable_array_init_custom(Stable_Array* stable, Allocator* alloc, isi
     _stable_array_check_invariants(stable);
 }
 
-EXPORT void stable_array_init(Stable_Array* stable, Allocator* alloc, isize item_size)
+EXTERNAL void stable_array_init(Stable_Array* stable, Allocator* alloc, isize item_size)
 {
     stable_array_init_custom(stable, alloc, item_size, DEF_ALIGN, STABLE_ARRAY_BLOCK_SIZE, 1.5f, 0x00);
 }
 
-EXPORT isize stable_array_capacity(const Stable_Array* stable)
+EXTERNAL isize stable_array_capacity(const Stable_Array* stable)
 {
     return stable->blocks_size * STABLE_ARRAY_BLOCK_SIZE;
 }
 
-EXPORT void stable_array_deinit(Stable_Array* stable)
+EXTERNAL void stable_array_deinit(Stable_Array* stable)
 {
     PROFILE_START();
     if(stable->blocks_capacity > 0)
@@ -225,7 +225,7 @@ INTERNAL _Stable_Array_Lookup _stable_array_lookup(const Stable_Array* stable, i
     return out;
 }
 
-EXPORT void* stable_array_at(const Stable_Array* stable, isize index)
+EXTERNAL void* stable_array_at(const Stable_Array* stable, isize index)
 {
     CHECK_BOUNDS(index, stable_array_capacity(stable));
     _Stable_Array_Lookup lookup = _stable_array_lookup(stable, index);
@@ -235,7 +235,7 @@ EXPORT void* stable_array_at(const Stable_Array* stable, isize index)
     return lookup.item;
 }
 
-EXPORT void* stable_array_alive_at(const Stable_Array* stable, isize index, void* if_not_found)
+EXTERNAL void* stable_array_alive_at(const Stable_Array* stable, isize index, void* if_not_found)
 {
     if(0 <= index && index <= stable_array_capacity(stable))
     {
@@ -247,7 +247,7 @@ EXPORT void* stable_array_alive_at(const Stable_Array* stable, isize index, void
     return if_not_found;
 }
 
-EXPORT isize stable_array_insert(Stable_Array* stable, void** out)
+EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out)
 {
     PROFILE_START();
     _stable_array_check_invariants(stable);
@@ -287,7 +287,7 @@ EXPORT isize stable_array_insert(Stable_Array* stable, void** out)
     return out_i;
 }
 
-EXPORT void stable_array_remove(Stable_Array* stable, isize index)
+EXTERNAL void stable_array_remove(Stable_Array* stable, isize index)
 {
     PROFILE_START();
     _stable_array_check_invariants(stable);
@@ -314,7 +314,7 @@ EXPORT void stable_array_remove(Stable_Array* stable, isize index)
     PROFILE_END();
 }
 
-EXPORT void stable_array_reserve(Stable_Array* stable, isize to_size)
+EXTERNAL void stable_array_reserve(Stable_Array* stable, isize to_size)
 {
     isize capacity = stable_array_capacity(stable);
     if(to_size > capacity)
@@ -371,7 +371,7 @@ EXPORT void stable_array_reserve(Stable_Array* stable, isize to_size)
     }
 }
 
-EXPORT void stable_array_test_invariants(const Stable_Array* stable, bool slow_checks)
+EXTERNAL void stable_array_test_invariants(const Stable_Array* stable, bool slow_checks)
 {
     PROFILE_START();
     #define IS_IN_RANGE(lo, a, hi) ((lo) <= (a) && (a) < (hi))

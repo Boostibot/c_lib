@@ -50,22 +50,22 @@ typedef struct Allocation_List_Block {
     #endif
 } Allocation_List_Block;
 
-EXPORT void  allocation_list_free_all(Allocation_List* self, Allocator* parent_or_null);
-EXPORT void* allocation_list_allocate(Allocation_List* self, Allocator* parent_or_null, isize new_size, void* old_ptr, isize old_size, isize align);
+EXTERNAL void  allocation_list_free_all(Allocation_List* self, Allocator* parent_or_null);
+EXTERNAL void* allocation_list_allocate(Allocation_List* self, Allocator* parent_or_null, isize new_size, void* old_ptr, isize old_size, isize align);
 
-EXPORT isize allocation_list_get_block_size(Allocation_List* self, void* old_ptr);
-EXPORT Allocation_List_Block* allocation_list_get_block_header(Allocation_List* self, void* old_ptr);
+EXTERNAL isize allocation_list_get_block_size(Allocation_List* self, void* old_ptr);
+EXTERNAL Allocation_List_Block* allocation_list_get_block_header(Allocation_List* self, void* old_ptr);
 
-EXPORT void malloc_allocator_init(Malloc_Allocator* self, const char* name);
-EXPORT void malloc_allocator_init_use(Malloc_Allocator* self, const char* name, u64 flags);  //convenience function that inits the allocator then imidietely makes it the default or scratch. On deinit restores to previous defaults
-EXPORT void malloc_allocator_deinit(Malloc_Allocator* self);
+EXTERNAL void malloc_allocator_init(Malloc_Allocator* self, const char* name);
+EXTERNAL void malloc_allocator_init_use(Malloc_Allocator* self, const char* name, u64 flags);  //convenience function that inits the allocator then imidietely makes it the default or scratch. On deinit restores to previous defaults
+EXTERNAL void malloc_allocator_deinit(Malloc_Allocator* self);
  
-EXPORT void* malloc_allocator_malloc(Malloc_Allocator* self, isize size);
-EXPORT void* malloc_allocator_realloc(Malloc_Allocator* self, void* old_ptr, isize new_size);
-EXPORT void malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
+EXTERNAL void* malloc_allocator_malloc(Malloc_Allocator* self, isize size);
+EXTERNAL void* malloc_allocator_realloc(Malloc_Allocator* self, void* old_ptr, isize new_size);
+EXTERNAL void malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
 
-EXPORT void* malloc_allocator_allocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
-EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
+EXTERNAL void* malloc_allocator_allocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
+EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
 
 #endif
 
@@ -110,7 +110,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         #endif
     }
     
-    EXPORT void allocation_list_free_all(Allocation_List* self, Allocator* parent_or_null)
+    EXTERNAL void allocation_list_free_all(Allocation_List* self, Allocator* parent_or_null)
     {
         _allocation_list_assert_block_coherency(self, self->last_block);
         for(Allocation_List_Block* block = self->last_block; block != NULL; )
@@ -125,7 +125,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         memset(self, 0, sizeof *self);
     }
 
-    EXPORT void* allocation_list_allocate(Allocation_List* self, Allocator* parent_or_null, isize new_size, void* old_ptr, isize old_size, isize align)
+    EXTERNAL void* allocation_list_allocate(Allocation_List* self, Allocator* parent_or_null, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         PROFILE_START();
         isize capped_align = MAX(align, DEF_ALIGN);
@@ -221,20 +221,20 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         return out_ptr;
     }
 
-    EXPORT Allocation_List_Block* allocation_list_get_block_header(Allocation_List* self, void* old_ptr)
+    EXTERNAL Allocation_List_Block* allocation_list_get_block_header(Allocation_List* self, void* old_ptr)
     {
         Allocation_List_Block* out = (Allocation_List_Block*) old_ptr - 1;
         _allocation_list_assert_block_coherency(self, out);
         return out;
     }
 
-    EXPORT isize allocation_list_get_block_size(Allocation_List* self, void* old_ptr)
+    EXTERNAL isize allocation_list_get_block_size(Allocation_List* self, void* old_ptr)
     {
         Allocation_List_Block* block = allocation_list_get_block_header(self, old_ptr);
         return block->size;
     }
 
-    EXPORT void malloc_allocator_init(Malloc_Allocator* self, const char* name)
+    EXTERNAL void malloc_allocator_init(Malloc_Allocator* self, const char* name)
     {
         if(self == NULL)
             return;
@@ -245,21 +245,21 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         self->name = name;
     }
 
-    EXPORT void malloc_allocator_init_use(Malloc_Allocator* self, const char* name, u64 flags)
+    EXTERNAL void malloc_allocator_init_use(Malloc_Allocator* self, const char* name, u64 flags)
     {
         (void) flags;
         malloc_allocator_init(self, name);
         self->allocator_backup = allocator_set_both(&self->allocator, &self->allocator);
     }
 
-    EXPORT void malloc_allocator_deinit(Malloc_Allocator* self)
+    EXTERNAL void malloc_allocator_deinit(Malloc_Allocator* self)
     {
         allocation_list_free_all(&self->list, self->parent);
         allocator_set(self->allocator_backup);
         memset(self, 0, sizeof *self);
     }
 
-    EXPORT void* malloc_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr, isize old_size, isize align)
+    EXTERNAL void* malloc_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         Malloc_Allocator* self = (Malloc_Allocator*) (void*) self_;
         void* out = allocation_list_allocate(&self->list, self->parent, new_size, old_ptr, old_size, align);
@@ -278,7 +278,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         return out;
     }
 
-    EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self_)
+    EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self_)
     {
         Malloc_Allocator* self = (Malloc_Allocator*) (void*) self_;
         Allocator_Stats out = {0};
@@ -295,19 +295,19 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         return out;
     }
 
-    EXPORT void* malloc_allocator_malloc(Malloc_Allocator* self, isize size)
+    EXTERNAL void* malloc_allocator_malloc(Malloc_Allocator* self, isize size)
     {
         return allocation_list_allocate(&self->list, self->parent, size, NULL, 0, DEF_ALIGN);
     }
 
-    EXPORT void* malloc_allocator_realloc(Malloc_Allocator* self, void* old_ptr, isize new_size)
+    EXTERNAL void* malloc_allocator_realloc(Malloc_Allocator* self, void* old_ptr, isize new_size)
     {
         isize old_size = allocation_list_get_block_size(&self->list, old_ptr);
         void* out = allocation_list_allocate(&self->list, self->parent, new_size, old_ptr, old_size, DEF_ALIGN);
         return out;
     }
 
-    EXPORT void malloc_allocator_free(Malloc_Allocator* self, void* old_ptr)
+    EXTERNAL void malloc_allocator_free(Malloc_Allocator* self, void* old_ptr)
     {
         if(old_ptr != NULL)
         {

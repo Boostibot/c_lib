@@ -9,30 +9,30 @@ typedef enum Match_Kind {
     MATCH_INVERTED,
 } Match_Kind;
 
-EXPORT bool match_char_custom(String str, isize* index, char c, Match_Kind match);
-EXPORT bool match_any_of_custom(String str, isize* index, String any_of, Match_Kind match);
-EXPORT bool match_whitespace_custom(String str, isize* index, Match_Kind match);
+EXTERNAL bool match_char_custom(String str, isize* index, char c, Match_Kind match);
+EXTERNAL bool match_any_of_custom(String str, isize* index, String any_of, Match_Kind match);
+EXTERNAL bool match_whitespace_custom(String str, isize* index, Match_Kind match);
 
 //Matches a single character
-EXPORT bool match_char(String str, isize* index, char c);
+EXTERNAL bool match_char(String str, isize* index, char c);
 //Matches any number of characters contained within any_of. Returns true if matched at least one.
-EXPORT bool match_any_of(String str, isize* index, String any_of);
+EXTERNAL bool match_any_of(String str, isize* index, String any_of);
 //Matches sequence exactly.
-EXPORT bool match_sequence(String str, isize* index, String sequence);
+EXTERNAL bool match_sequence(String str, isize* index, String sequence);
 //Matches any number of whitespace chars from index
-EXPORT bool match_whitespace(String str, isize* index);
+EXTERNAL bool match_whitespace(String str, isize* index);
 //matches: [space][non space (*)] and returns true if (*) matched at least one char. Saves to from start of (*) and to to one past_end 
-EXPORT bool match_whitespace_separated(String str, isize* index, isize* from, isize* to); 
+EXTERNAL bool match_whitespace_separated(String str, isize* index, isize* from, isize* to); 
 
 //starts with _, [a-z], [A-Z] then is followed by any number of [0-9], _, [a-z], [A-Z]
-EXPORT bool match_name(String str, isize* index); 
-EXPORT bool match_name_chars(String str, isize* index);
+EXTERNAL bool match_name(String str, isize* index); 
+EXTERNAL bool match_name_chars(String str, isize* index);
 
-EXPORT bool match_decimal_u64(String str, isize* index, u64* out); //"00113000" -> 113000
-EXPORT bool match_decimal_i64(String str, isize* index, i64* out); //"-00113000" -> -113000
-EXPORT bool match_decimal_i32(String str, isize* index, i32* out); //"-00113000" -> -113000
-EXPORT bool match_decimal_f32(String str, isize* index, f32* out); //"-0011.0300" -> -11.03000
-EXPORT bool match_decimal_f64(String str, isize* index, f64* out);
+EXTERNAL bool match_decimal_u64(String str, isize* index, u64* out); //"00113000" -> 113000
+EXTERNAL bool match_decimal_i64(String str, isize* index, i64* out); //"-00113000" -> -113000
+EXTERNAL bool match_decimal_i32(String str, isize* index, i32* out); //"-00113000" -> -113000
+EXTERNAL bool match_decimal_f32(String str, isize* index, f32* out); //"-0011.0300" -> -11.03000
+EXTERNAL bool match_decimal_f64(String str, isize* index, f64* out);
 
 typedef struct Line_Iterator {
     String line;
@@ -42,12 +42,12 @@ typedef struct Line_Iterator {
 } Line_Iterator;
 
 //use like so for(Line_Iterator it = {0}; line_iterator_get_line(&it, string); ) {...}
-EXPORT bool line_iterator_get_line(Line_Iterator* iterator, String string);
-EXPORT bool line_iterator_get_separated_by(Line_Iterator* iterator, String string, char c);
+EXTERNAL bool line_iterator_get_line(Line_Iterator* iterator, String string);
+EXTERNAL bool line_iterator_get_separated_by(Line_Iterator* iterator, String string, char c);
 
-EXPORT String string_trim_prefix_whitespace(String s);
-EXPORT String string_trim_postfix_whitespace(String s);
-EXPORT String string_trim_whitespace(String s);
+EXTERNAL String string_trim_prefix_whitespace(String s);
+EXTERNAL String string_trim_postfix_whitespace(String s);
+EXTERNAL String string_trim_whitespace(String s);
 
 #endif
 
@@ -57,7 +57,7 @@ EXPORT String string_trim_whitespace(String s);
 
 
 
-EXPORT bool match_char_custom(String str, isize* index, char c, Match_Kind match)
+EXTERNAL bool match_char_custom(String str, isize* index, char c, Match_Kind match)
 {
     if(*index < str.size && (str.data[*index] == c) == (match == MATCH_NORMAL))
     {
@@ -67,12 +67,12 @@ EXPORT bool match_char_custom(String str, isize* index, char c, Match_Kind match
     return false;
 }
 
-EXPORT bool match_char(String str, isize* index, char c)
+EXTERNAL bool match_char(String str, isize* index, char c)
 {
     return match_char_custom(str, index, c, MATCH_NORMAL);
 }
 
-EXPORT bool match_any_of_custom(String str, isize* index, String any_of, Match_Kind match)
+EXTERNAL bool match_any_of_custom(String str, isize* index, String any_of, Match_Kind match)
 {
     isize i = *index;
     for(; i < str.size; i++)
@@ -95,12 +95,12 @@ EXPORT bool match_any_of_custom(String str, isize* index, String any_of, Match_K
     return matched;
 }
 
-EXPORT bool match_any_of(String str, isize* index, String any_of)
+EXTERNAL bool match_any_of(String str, isize* index, String any_of)
 {
     return match_any_of_custom(str, index, any_of, MATCH_NORMAL);
 }
 
-EXPORT bool match_sequence(String str, isize* index, String sequence)
+EXTERNAL bool match_sequence(String str, isize* index, String sequence)
 {
     if(string_has_substring_at(str, *index, sequence))
     {
@@ -110,7 +110,7 @@ EXPORT bool match_sequence(String str, isize* index, String sequence)
     return false;   
 }
 
-EXPORT bool match_whitespace_custom(String str, isize* index, Match_Kind match)
+EXTERNAL bool match_whitespace_custom(String str, isize* index, Match_Kind match)
 {
     isize i = *index;
     for(; i < str.size; i++)
@@ -125,13 +125,13 @@ EXPORT bool match_whitespace_custom(String str, isize* index, Match_Kind match)
 }
 
 
-EXPORT bool match_whitespace(String str, isize* index)
+EXTERNAL bool match_whitespace(String str, isize* index)
 {
     return match_whitespace_custom(str, index, MATCH_NORMAL);
 }
 
 
-EXPORT bool match_whitespace_separated(String str, isize* index, isize* from, isize* to)
+EXTERNAL bool match_whitespace_separated(String str, isize* index, isize* from, isize* to)
 {
     isize index_ = *index;
     bool matched = match_whitespace_custom(str, &index_, MATCH_NORMAL);
@@ -149,7 +149,7 @@ EXPORT bool match_whitespace_separated(String str, isize* index, isize* from, is
     return matched;
 }
 
-EXPORT bool match_name_chars(String str, isize* index)
+EXTERNAL bool match_name_chars(String str, isize* index)
 {
     isize i = *index;
     for(; i < str.size; i++)
@@ -164,7 +164,7 @@ EXPORT bool match_name_chars(String str, isize* index)
 }
 
 //starts with _, [a-z], [A-Z] or _ then is followed by any number of [0-9], _, [a-z], [A-Z]
-EXPORT bool match_name(String str, isize* index)
+EXTERNAL bool match_name(String str, isize* index)
 {
     if(*index < str.size)
     {
@@ -185,7 +185,7 @@ EXPORT bool match_name(String str, isize* index)
 }
 
 //matches a sequence of digits in decimal: "00113000" -> 113000
-EXPORT bool match_decimal_u64(String str, isize* index, u64* out)
+EXTERNAL bool match_decimal_u64(String str, isize* index, u64* out)
 {
     u64 parsed = 0;
     isize i = *index;
@@ -215,7 +215,7 @@ EXPORT bool match_decimal_u64(String str, isize* index, u64* out)
 }
 
 //matches a sequence of signed digits in decimal: "-00113000" -> -113000
-EXPORT bool match_decimal_i64(String str, isize* index, i64* out)
+EXTERNAL bool match_decimal_i64(String str, isize* index, i64* out)
 {
     bool has_minus = match_char(str, index, '-');
     u64 uout = 0;
@@ -229,7 +229,7 @@ EXPORT bool match_decimal_i64(String str, isize* index, i64* out)
     return matched_number;
 }
 
-EXPORT bool match_decimal_i32(String str, isize* index, i32* out)
+EXTERNAL bool match_decimal_i32(String str, isize* index, i32* out)
 {
     bool has_minus = match_char(str, index, '-');
     u64 uout = 0;
@@ -270,7 +270,7 @@ INTERNAL f64 _quick_pow10lf(isize power)
     };
 }
 
-EXPORT bool match_decimal_f32(String str, isize* index, f32* out)
+EXTERNAL bool match_decimal_f32(String str, isize* index, f32* out)
 {
     u64 before_dot = 0;
     u64 after_dot = 0;
@@ -296,7 +296,7 @@ EXPORT bool match_decimal_f32(String str, isize* index, f32* out)
 }
 
 //@TODO: do we need this?
-EXPORT bool match_decimal_f64(String str, isize* index, f64* out)
+EXTERNAL bool match_decimal_f64(String str, isize* index, f64* out)
 {
     u64 before_dot = 0;
     u64 after_dot = 0;
@@ -321,7 +321,7 @@ EXPORT bool match_decimal_f64(String str, isize* index, f64* out)
     return true;
 }
 
-EXPORT bool line_iterator_get_separated_by(Line_Iterator* iterator, String string, char c)
+EXTERNAL bool line_iterator_get_separated_by(Line_Iterator* iterator, String string, char c)
 {
     isize line_from = 0;
     if(iterator->line_number != 0)
@@ -343,12 +343,12 @@ EXPORT bool line_iterator_get_separated_by(Line_Iterator* iterator, String strin
     return true;
 }
 
-EXPORT bool line_iterator_get_line(Line_Iterator* iterator, String string)
+EXTERNAL bool line_iterator_get_line(Line_Iterator* iterator, String string)
 {
     return line_iterator_get_separated_by(iterator, string, '\n');
 }
 
-EXPORT String string_trim_prefix_whitespace(String s)
+EXTERNAL String string_trim_prefix_whitespace(String s)
 {
     isize from = 0;
     for(; from < s.size; from++)
@@ -357,7 +357,7 @@ EXPORT String string_trim_prefix_whitespace(String s)
 
     return string_tail(s, from);
 }
-EXPORT String string_trim_postfix_whitespace(String s)
+EXTERNAL String string_trim_postfix_whitespace(String s)
 {
     isize to = s.size;
     for(; to-- > 0; )
@@ -366,7 +366,7 @@ EXPORT String string_trim_postfix_whitespace(String s)
 
     return string_head(s, to + 1);
 }
-EXPORT String string_trim_whitespace(String s)
+EXTERNAL String string_trim_whitespace(String s)
 {
     String prefix_trimmed = string_trim_prefix_whitespace(s);
     String both_trimmed = string_trim_postfix_whitespace(prefix_trimmed);

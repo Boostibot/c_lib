@@ -4,16 +4,16 @@
 #include "string.h"
 #include "path.h"
 
-EXPORT bool file_read_entire_append_into(String file_path, String_Builder* append_into);
-EXPORT bool file_read_entire(String file_path, String_Builder* data);
-EXPORT bool file_append_entire(String file_path, String data);
-EXPORT bool file_write_entire(String file_path, String data);
+EXTERNAL bool file_read_entire_append_into(String file_path, String_Builder* append_into);
+EXTERNAL bool file_read_entire(String file_path, String_Builder* data);
+EXTERNAL bool file_append_entire(String file_path, String data);
+EXTERNAL bool file_write_entire(String file_path, String data);
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_FILE_IMPL)) && !defined(JOT_FILE_HAS_IMPL)
 #define JOT_FILE_HAS_IMPL
 
-EXPORT bool file_read_entire_append_into(String file_path, String_Builder* append_into)
+EXTERNAL bool file_read_entire_append_into(String file_path, String_Builder* append_into)
 {
     PROFILE_START();
     Platform_File_Info info = {0};
@@ -41,12 +41,12 @@ EXPORT bool file_read_entire_append_into(String file_path, String_Builder* appen
     return error == 0;
 }
 
-EXPORT bool file_read_entire(String file_path, String_Builder* data)
+EXTERNAL bool file_read_entire(String file_path, String_Builder* data)
 {
     builder_clear(data);
     return file_read_entire_append_into(file_path, data);
 }
-EXPORT bool file_append_entire(String file_path, String data)
+EXTERNAL bool file_append_entire(String file_path, String data)
 {
     PROFILE_START();
     Platform_File file = {0};
@@ -64,7 +64,7 @@ EXPORT bool file_append_entire(String file_path, String data)
     PROFILE_END();
     return error == 0;
 }
-EXPORT bool file_write_entire(String file_path, String data)
+EXTERNAL bool file_write_entire(String file_path, String data)
 {
     PROFILE_START();
     Platform_File file = {0};
