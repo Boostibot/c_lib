@@ -48,7 +48,7 @@
 
 #include "time.h"
 #include "string.h"
-#include "new_profile_preinclude.h"
+#include "profile_defs.h"
 #include "vformat.h"
 #include "time.h"
 #include "log.h"

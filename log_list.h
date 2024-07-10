@@ -3,7 +3,7 @@
 
 #include "log.h"
 #include "vformat.h"
-#include "new_profile_preinclude.h"
+#include "profile_defs.h"
 
 typedef struct Log_List {
     Logger logger;

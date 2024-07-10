@@ -50,6 +50,7 @@
 // hash table. This however requires a lot of item specific information (to be able to set the align properly).
 
 #include "allocator.h"
+#include "profile_defs.h"
 
 #define STABLE_ARRAY_BLOCK_SIZE             32
 #define STABLE_ARRAY_FILLED_MASK_FULL       (u32) 0xffffffff
@@ -175,6 +176,7 @@ EXPORT isize stable_array_capacity(const Stable_Array* stable)
 
 EXPORT void stable_array_deinit(Stable_Array* stable)
 {
+    PROFILE_START();
     if(stable->blocks_capacity > 0)
         _stable_array_check_invariants(stable);
 
@@ -198,6 +200,7 @@ EXPORT void stable_array_deinit(Stable_Array* stable)
 
     allocator_deallocate(stable->allocator, stable->blocks, stable->blocks_capacity * isizeof(Stable_Array_Block), _STABLE_ARRAY_BLOCKS_ARR_ALIGN);
     memset(stable, 0, sizeof *stable);
+    PROFILE_END();
 }
 
 typedef struct _Stable_Array_Lookup {
@@ -246,6 +249,7 @@ EXPORT void* stable_array_alive_at(const Stable_Array* stable, isize index, void
 
 EXPORT isize stable_array_insert(Stable_Array* stable, void** out)
 {
+    PROFILE_START();
     _stable_array_check_invariants(stable);
     if(stable->size + 1 > stable_array_capacity(stable))
         stable_array_reserve(stable, stable->size + 1);
@@ -277,12 +281,15 @@ EXPORT isize stable_array_insert(Stable_Array* stable, void** out)
 
     if(out)
         *out = out_ptr;
-
-    return block_i*STABLE_ARRAY_BLOCK_SIZE + first_empty_index;
+        
+    isize out_i = block_i*STABLE_ARRAY_BLOCK_SIZE + first_empty_index;
+    PROFILE_END();
+    return out_i;
 }
 
 EXPORT void stable_array_remove(Stable_Array* stable, isize index)
 {
+    PROFILE_START();
     _stable_array_check_invariants(stable);
     CHECK_BOUNDS(index, stable_array_capacity(stable));
 
@@ -304,6 +311,7 @@ EXPORT void stable_array_remove(Stable_Array* stable, isize index)
     stable->size -= 1;
     block->filled_mask = block->filled_mask & ~bit;
     _stable_array_check_invariants(stable);
+    PROFILE_END();
 }
 
 EXPORT void stable_array_reserve(Stable_Array* stable, isize to_size)
@@ -311,6 +319,7 @@ EXPORT void stable_array_reserve(Stable_Array* stable, isize to_size)
     isize capacity = stable_array_capacity(stable);
     if(to_size > capacity)
     {
+        PROFILE_START();
         _stable_array_check_invariants(stable);
         ASSERT(stable->first_not_filled_i1 == 0, "If there are not empty slots the stable array should really be full");
         
@@ -358,11 +367,13 @@ EXPORT void stable_array_reserve(Stable_Array* stable, isize to_size)
         //mark the block on the allocation as allocated 
         stable->blocks[blocks_before].ptr_and_is_allocated_bit |= STABLE_ARRAY_BLOCK_ALLOCATED_BIT;
         _stable_array_check_invariants(stable);
+        PROFILE_END();
     }
 }
 
 EXPORT void stable_array_test_invariants(const Stable_Array* stable, bool slow_checks)
 {
+    PROFILE_START();
     #define IS_IN_RANGE(lo, a, hi) ((lo) <= (a) && (a) < (hi))
     TEST((stable->allocator != NULL));
     TEST(stable->blocks_size <= stable->blocks_capacity);
@@ -444,6 +455,7 @@ EXPORT void stable_array_test_invariants(const Stable_Array* stable, bool slow_c
     }
 
     #undef IS_IN_RANGE
+    PROFILE_END();
 }
 
 #endif

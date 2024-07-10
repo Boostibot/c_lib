@@ -1,264 +1,384 @@
-﻿#ifndef JOT_PROFILE
-#define JOT_PROFILE
+﻿
+#if !defined(JOT_profile)
+#define JOT_profile
 
-#include "platform.h"
-#include "defines.h"
-#include "assert.h"
+#include "profile_defs.h"
+
+#include "hash.h"
+#include "hash_index.h"
+#include "array.h"
 #include "perf.h"
+#include "log.h"
+#include "string.h"
+#include "vformat.h"
+#include "arena.h"
+#include <stdlib.h>
 
-// This file provides a simple and performant API
-// for tracking running time across the whole application.
-// Does not require any intialization, allocations or locks and
-// works across files and compilation units.
-
-// See below for example. 
-
-#ifdef _PROFILE_EXAMPLE
-void main()
-{
-	//========== 1: capture stats ===============
-    for(isize i = 0; i < 100000; i++)
-	{
-		PROFILE_START(my_counter);
-        //Run some code
-		    PROFILE_START(my_counter2);
-            //Run some code
-            //printf("%d ", (int) i);
-		    PROFILE_END(my_counter2);
-		PROFILE_END(my_counter);
-	}
-    
-	//========== 2: print stats ===============
-	for(Global_Perf_Counter* counter = profile_get_counters(); counter != NULL; counter = counter->next)
-	{
-		printf("total: %09lf ms average: %09lf ms counter \"%s\" : %s : %d\n", 
-			profile_get_counter_total_running_time_s(*counter)*1000,
-			profile_get_counter_average_running_time_s(*counter)*1000,
-			counter->name,
-			counter->function,
-			(int) counter->line
-		);
-	}
-
-	//On my machine the output is
+typedef struct Profile_Thread_Zone {
+	Platform_Thread thread;
 	
-	//without any optimalizations:
-	//00.000131 ms counter "my_counter" : main : 10
-    //00.000041 ms counter "my_counter2" : main : 12
+	struct Profile_Thread_Zone* next;
+	struct Profile_Thread_Zone* prev;
 
-	//With -O2 and #define PROFILE_NO_DEBUG:
-    //00.000067 ms counter "my_counter" : main : 10
-    //00.000020 ms counter "my_counter2" : main : 12
-
-	//With -O2 and #define PROFILE_NO_DEBUG: and #define PROFILE_NO_ATOMICS
-    //00.000056 ms counter "my_counter" : main : 10
-    //00.000020 ms counter "my_counter2" : main : 12
-
-	//Update: PROFILE_NO_ATOMICS is no longer supported
-
-	//As you can see the profiling incrus minimal overhead. 
-	//This is especially noticable with the #define PROFILE_NO_ATOMICS
-	//which esentially strips it down to only the bare necessities without 
-	//improving the performance in any cosiderable way.
-}
-#endif
-
-//Dissables counting of currently active perf counters
-#define PROFILE_NO_DEBUG
-
-//Locally enables perf counters (can be toggled just like ASSERT macros)
-#define DO_PROFILES
-
-//Makes all counters detailed. This is the default.
-//#define PROFILE_DO_ONLY_DETAILED_COUNTERS
-
-//typedef struct Profile_Thread_Handle Profile_Thread_Handle;
-
-
-
-typedef struct Global_Perf_Counter
-{
-	struct Global_Perf_Counter* next;
-	i32 line;
-	i32 concurrent_running_counters; 
-	//the number of concurrent running counters acting upon this counter.
-	//Useful for debugging. Is 0 if PROFILE_NO_DEBUG is defines
-
-	const char* file;
-	const char* function;
-	const char* name;
-
-	bool is_detailed;
-	bool _padding[7];
 	Perf_Counter counter;
-} Global_Perf_Counter;
+} Profile_Thread_Zone;
 
-typedef struct Global_Perf_Counter_Running
+typedef struct Profile_Zone {
+	Profile_ID id;
+	uint64_t mean_estimate;
+	uint64_t thread_zone_count;
+
+	Profile_Thread_Zone* first;
+	Profile_Thread_Zone* last;
+} Profile_Zone;
+
+typedef struct Profile_Zone_Stats {
+	Perf_Stats stats;
+	Profile_ID id;
+} Profile_Zone_Stats;
+
+typedef Array(Profile_Zone) Profile_Zone_Array;
+typedef Array(Profile_Zone_Stats) Profile_Zone_Stats_Array;
+
+typedef struct Profile_Global_Data {
+	Platform_Mutex mutex;
+	
+	Hash_Index zone_hash;
+	Profile_Zone_Array zones;
+
+	uint64_t is_init;
+	uint64_t init_time;
+	int32_t max_threads;
+	int32_t pad;
+} Profile_Global_Data;
+
+EXPORT bool profile_get_stats(Profile_Zone_Stats_Array* stats);
+EXPORT void profile_init(Allocator* alloc);
+EXPORT ATTRIBUTE_INLINE_NEVER void profile_init_thread_zone(Profile_Thread_Zone** handle, const Profile_ID* zone_id, uint64_t mean_estimate);
+
+static inline int64_t fenced_now();
+static inline int64_t profile_now();
+static inline void profile_submit(Profile_Type type, Profile_Thread_Zone** handle_ptr, const Profile_ID* zone_id, int64_t before, int64_t after);
+
+typedef enum Log_Perf_Sort_By{
+	PERF_SORT_BY_NAME,
+	PERF_SORT_BY_TIME,
+	PERF_SORT_BY_RUNS,
+} Log_Perf_Sort_By;
+
+EXPORT void profile_log_all(const char* log_module, Log_Type log_type, Log_Perf_Sort_By sort_by);
+EXPORT void log_perf_stats_hdr(const char* log_module, Log_Type log_type, const char* label);
+EXPORT void log_perf_stats_row(const char* log_module, Log_Type log_type, const char* label, Perf_Stats stats);
+
+#include <stdint.h>
+#ifdef _MSC_VER
+# include <intrin.h>
+#else
+# include <x86intrin.h>
+#endif
+
+static inline int64_t fenced_now()
+{ 
+	_ReadWriteBarrier(); 
+    _mm_lfence();
+	return (int64_t) __rdtsc();
+}
+
+static inline int64_t profile_now()
 {
-	Global_Perf_Counter* my_counter;
-	i64 running;
-	i64 line;
-	const char* file;
-	const char* function;
-	const char* name;
-	bool stopped;
-	bool _padding[7];
-} Global_Perf_Counter_Running;
+	_ReadWriteBarrier(); 
+	return (int64_t) __rdtsc();
+}
 
-//@TODO: rework these defines to make them simpler
-//@TODO: perf counter tick - add a macro that does not do any time tracking but only atomically increments a counter. 
-//       This can be used to track how many times an event occurred within an individual function. 
-//       This can be used for many more things such as per frame resource tracking etc. To enable this we need to implement
-//       a concept of 'space'. The default space is global but one might want to for example log perf stats into a per frame space
-//       reset every frame.
-
-EXPORT Global_Perf_Counter_Running profile_start(Global_Perf_Counter* my_counter, i32 line, const char* file, const char* function, const char* name);
-EXPORT void profile_end(Global_Perf_Counter_Running* running);
-EXPORT void profile_end_detailed(Global_Perf_Counter_Running* running);
-EXPORT void profile_end_discard(Global_Perf_Counter_Running* running);
-
-EXPORT Global_Perf_Counter* profile_get_counters();
-EXPORT i64 profile_get_total_running_counters_count();
-EXPORT f64 profile_get_counter_total_running_time_s(Global_Perf_Counter counter);
-EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counter);
-
-//Optional arguments
-#define PROFILE_START(...)			PP_ID(PP_CONCAT(_IF_NOT_PERF_START_,		DO_PROFILES)(__VA_ARGS__, _))
-#define PROFILE_END(...)			PP_ID(PP_CONCAT(_IF_NOT_PERF_END_,			DO_PROFILES)(__VA_ARGS__, _))
-#define PROFILE_END_DETAILED(...)	PP_ID(PP_CONCAT(_IF_NOT_PERF_END_DETAILED_, DO_PROFILES)(__VA_ARGS__, _))
-#define PROFILE_END_DISCARD(...)	PP_ID(PP_CONCAT(_IF_NOT_PERF_END_DISCARD_,	DO_PROFILES)(__VA_ARGS__, _))
-
-#ifdef PROFILE_DO_ONLY_DETAILED_COUNTERS
-	#undef PROFILE_END
-	#define PROFILE_END(name) PROFILE_END_DETAILED(name)
-#endif
-
-// ========= MACRO IMPLMENTATION ==========
-	#define _IF_NOT_PERF_START_DO_PROFILES(name, ...) 
-	#define _IF_NOT_PERF_START_(name, ...) \
-		ATTRIBUTE_ALIGNED(64) static Global_Perf_Counter _##name = {0}; \
-		Global_Perf_Counter_Running _run##name = profile_start(&_##name, __LINE__, __FILE__, __FUNCTION__, #name); 
-
-	#define _IF_NOT_PERF_END_DO_PROFILES(name, ...) 
-	#define _IF_NOT_PERF_END_(name, ...) profile_end(&(_run##name))
-	
-	#define _IF_NOT_PERF_END_DETAILED_DO_PROFILES(name, ...) 
-	#define _IF_NOT_PERF_END_DETAILED_(name, ...) profile_end_detailed(&(_run##name))
-
-	#define _IF_NOT_PERF_END_DISCARD_DO_PROFILES(name, ...) 
-	#define _IF_NOT_PERF_END_DISCARD_(name, ...) profile_end_discard(&(_run##name))
-
-	#define PP_ID(x)                x
-	#define _PP_CONCAT(a, b)        a ## b
-	#define PP_CONCAT(a, b)         _PP_CONCAT(a, b)
-#endif
-
-#if (defined(JOT_ALL_IMPL) || defined(JOT_PROFILE_IMPL)) && !defined(JOT_PROFILE_HAS_IMPL)
-#define JOT_PROFILE_HAS_IMPL
-
-	//Must be correctly sized for optimal performance
-	//need to be on separed cache lines to eliminate false sharing
-	STATIC_ASSERT(sizeof(Global_Perf_Counter) >= 64);
-
-	static Global_Perf_Counter* perf_counters_linked_list = NULL;
-	static i32 perf_counters_running_count = 0;
-	
-	EXPORT Global_Perf_Counter_Running profile_start(Global_Perf_Counter* my_counter, i32 line, const char* file, const char* function, const char* name)
+static inline void profile_submit(Profile_Type type, Profile_Thread_Zone** handle, const Profile_ID* zone_id, int64_t before, int64_t after)
+{
+	ASSERT(zone_id->type == type);
+	if(*handle == NULL)
+		profile_init_thread_zone(handle, zone_id, type != PROFILE_COUNTER ? after - before : 0);
+		
+	switch(type)
 	{
-		Global_Perf_Counter_Running running = {0};
-		running.running = perf_now();
-		running.my_counter = my_counter;
-		running.line = line;
-		running.file = file;
-		running.function = function;
-		running.name = name;
-	
-		#if !defined(PROFILE_NO_DEBUG)
-			platform_atomic_add32(&perf_counters_running_count, 1);
-			platform_atomic_add32(&my_counter->concurrent_running_counters, 1);
-		#endif
-
-		return running;
-	}
-
-	INTERNAL void _perf_counter_end(Global_Perf_Counter_Running* running, bool is_detailed)
-	{
-		Global_Perf_Counter* counter = running->my_counter;
-		int64_t delta = perf_now() - running->running;
-		//i64 runs = perf_submit_atomic(&counter->counter, delta, is_detailed);
-		i64 runs = perf_submit(&counter->counter, delta);
-		ASSERT(running->stopped == false, "Global_Perf_Counter_Running running counter stopped more than once!");
-
-		//only save the stats that dont need to be updated on the first run
-		if(runs == 1)
-		{
-			//platform_atomic_excahnge64 sets the value pointed to by the first argument to the second argument and returns the original value
-			//We use this to set the head to the newly added counter and save the old previous first node so we can reference it from our counter
-			Global_Perf_Counter* prev_head = (Global_Perf_Counter*) platform_atomic_excahnge64((volatile i64*) (void*) &perf_counters_linked_list, (i64) counter);
-
-			counter->next = prev_head;
-			counter->file = running->file;
-			counter->line = (i32) running->line;
-			counter->function = running->function;
-			counter->name = running->name;
-			counter->is_detailed = is_detailed;
+		case PROFILE_DEFAULT: {
+			int64_t delta = after - before;
+			int64_t offset_delta = delta - (*handle)->counter.mean_estimate;
+			(*handle)->counter.sum_of_squared_offset_counters += offset_delta*offset_delta;
+			(*handle)->counter.min_counter = MIN((*handle)->counter.min_counter, delta);
+			(*handle)->counter.max_counter = MAX((*handle)->counter.max_counter, delta);
 		}
-	
-		#if !defined(PROFILE_NO_DEBUG)
-			platform_atomic_sub32(&perf_counters_running_count, 1);
-			platform_atomic_sub32(&counter->concurrent_running_counters, 1);
-			ASSERT(perf_counters_running_count >= 0 && counter->concurrent_running_counters >= 0);
-		#endif
+		case PROFILE_FAST: {
+			(*handle)->counter.counter += after - before;
+		}
+		case PROFILE_COUNTER: {
+			(*handle)->counter.runs += 1;
+		}
+	}
+}
+#endif 
 
-		running->stopped = true;
+#if (defined(JOT_ALL_IMPL) || defined(JOT_profile_IMPL)) && !defined(JOT_profile_HAS_IMPL)
+#define JOT_profile_HAS_IMPL
+
+static ATTRIBUTE_THREAD_LOCAL Profile_Thread_Zone gfallback_thread_zones = {0}; 
+static Profile_Global_Data gprofile_data = {0};
+
+EXPORT void profile_init(Allocator* alloc)
+{
+	platform_mutex_init(&gprofile_data.mutex);
+	
+	hash_index_init(&gprofile_data.zone_hash, alloc);
+	array_init(&gprofile_data.zones, alloc);
+
+	gprofile_data.init_time = profile_now();
+	gprofile_data.is_init = true;
+}
+
+INTERNAL uint64_t profile_hash_zone(Profile_ID zone_id)
+{
+	uint64_t file_hash = xxhash64(zone_id.file, strlen(zone_id.file), 0);
+	uint64_t func_hash = xxhash64(zone_id.function, strlen(zone_id.function), 0);
+	uint64_t name_hash = xxhash64(zone_id.name, strlen(zone_id.name), 0);
+
+	uint64_t hash = file_hash ^ func_hash ^ name_hash;
+	return hash;
+}
+
+INTERNAL bool profile_id_compare(Profile_ID id1, Profile_ID id2)
+{
+	return strcmp(id1.function, id2.function) == 0
+			&& strcmp(id1.file, id2.file) == 0
+			&& strcmp(id1.name, id2.name) == 0;
+}
+
+INTERNAL isize profile_find_zone(Profile_Global_Data* profile_data, uint64_t hash, Profile_ID zone_id)
+{
+	isize found = hash_index_find(profile_data->zone_hash, hash);
+	while(found != -1)
+	{
+		isize index = profile_data->zone_hash.entries[found].value;
+		Profile_Zone* zone = &profile_data->zones.data[index];
+		if(profile_id_compare(zone->id, zone_id))
+			return index;
+
+		found = hash_index_find_next(profile_data->zone_hash, hash, found);
 	}
 
-	EXPORT void profile_end(Global_Perf_Counter_Running* running)
-	{
-		_perf_counter_end(running, false);
-	}
-	
-	EXPORT void profile_end_detailed(Global_Perf_Counter_Running* running)
-	{
-		_perf_counter_end(running, true);
-	}
+	return -1;
+}
 
-	EXPORT void profile_end_discard(Global_Perf_Counter_Running* running)
+INTERNAL isize profile_add_zone(Profile_Global_Data* profile_data, uint64_t hash, Profile_ID zone_id, uint64_t mean_estimate)
+{
+	hash_index_insert(&profile_data->zone_hash, hash, profile_data->zones.size);
+
+	Profile_Zone zone = {PROFILE_UNINIT};
+	zone.id = zone_id;
+	zone.mean_estimate = mean_estimate;
+
+	array_push(&profile_data->zones, zone);
+	return profile_data->zones.size - 1;
+}
+
+EXPORT ATTRIBUTE_INLINE_NEVER void profile_init_thread_zone(Profile_Thread_Zone** handle, const Profile_ID* zone_id, uint64_t mean_estimate)
+{
+	if(gprofile_data.is_init)
 	{
-		(void) running;
-		#if !defined(PROFILE_NO_DEBUG)
-			Global_Perf_Counter* counter = running->my_counter;
-			platform_atomic_sub32(&perf_counters_running_count, 1);
-			platform_atomic_sub32(&counter->concurrent_running_counters, 1);
-			ASSERT(perf_counters_running_count >= 0 && counter->concurrent_running_counters >= 0);
-		#endif
-	}
-	
-	INTERNAL f64 _safe_div(f64 num, f64 den, f64 if_zero)
-	{
-		if(den == 0)
-			return if_zero;
+		platform_mutex_lock(&gprofile_data.mutex);
+		uint64_t hash = profile_hash_zone(*zone_id);
+
+		//thats right. we malloc each thread zone individually :)
+		(*handle) = (Profile_Thread_Zone*) platform_heap_reallocate(sizeof(Profile_Thread_Zone), NULL, 64);
+		memset((*handle), 0, sizeof *(*handle));
+
+		isize zone_i = profile_find_zone(&gprofile_data, hash, *zone_id);
+		if(zone_i == -1)
+			zone_i = profile_add_zone(&gprofile_data, hash, *zone_id, mean_estimate);
+
+		Profile_Zone* zone = &gprofile_data.zones.data[zone_i];
+		zone->thread_zone_count += 1;
+		if(zone->first == NULL)
+		{
+			zone->first = (*handle);
+			zone->last = (*handle);
+		}
 		else
-			return num/den;
-	}
+		{
+			(*handle)->prev = zone->last;
+			zone->last->next = (*handle);
+			zone->last = (*handle);
+		}
 
-	EXPORT f64 profile_get_counter_total_running_time_s(Global_Perf_Counter counter)
-	{
-		return _safe_div((f64) counter.counter.counter, (f64) counter.counter.frquency, 0);
+		(*handle)->thread = platform_thread_get_current();
+		perf_init(&(*handle)->counter, zone->mean_estimate);
+		platform_mutex_unlock(&gprofile_data.mutex);
 	}
-	EXPORT f64 profile_get_counter_average_running_time_s(Global_Perf_Counter counter)
+	else
 	{
-		return _safe_div((f64) counter.counter.counter, (f64) (counter.counter.frquency * counter.counter.runs), 0);
+		(*handle) = &gfallback_thread_zones;
+	}
+}
+
+EXPORT bool profile_get_stats(Profile_Zone_Stats_Array* stats)
+{
+	if(gprofile_data.is_init)
+	{
+		platform_mutex_lock(&gprofile_data.mutex);
+		array_resize(stats, gprofile_data.zones.size);
+		
+		for(isize i = 0; i < gprofile_data.zones.size; i++)
+		{
+			Profile_Zone* zone = &gprofile_data.zones.data[i];
+			Perf_Counter combined = {0};
+			for(Profile_Thread_Zone* thread_zone = zone->first; thread_zone != NULL; thread_zone = thread_zone->next)
+			{
+				if(thread_zone == zone->first)
+					combined = thread_zone->counter;
+				else
+					combined = perf_counter_merge(combined, thread_zone->counter, NULL);
+			}
+			
+			Profile_Zone_Stats* out_stats = &stats->data[i];
+			out_stats->id = zone->id;
+			out_stats->stats = perf_get_stats(combined, 1);
+		}
+
+		platform_mutex_unlock(&gprofile_data.mutex);
+		return true;
+	}
+	else
+	{
+		array_resize(stats, 0);
+		return false;
+	}
+}
+
+	EXPORT void log_perf_stats_hdr(const char* log_module, Log_Type log_type, const char* label)
+	{
+		LOG(log_module, log_type, "%s     time |        runs |   σ/μ", label);
+	}
+	EXPORT void log_perf_stats_row(const char* log_module, Log_Type log_type, const char* label, Perf_Stats stats)
+	{
+		LOG(log_module, log_type, "%s%s | %11lli | %5.2lf", label, format_seconds(stats.average_s, 5).data, stats.runs, stats.normalized_standard_deviation_s);
 	}
 	
-	EXPORT Global_Perf_Counter* profile_get_counters()
+	INTERNAL int _profile_compare_runs(const void* a_, const void* b_)
 	{
-		return perf_counters_linked_list;
+		Profile_Zone_Stats* a = (Profile_Zone_Stats*) a_;
+		Profile_Zone_Stats* b = (Profile_Zone_Stats*) b_;
+    
+		if(a->stats.runs > b->stats.runs)
+			return -1;
+		else 
+			return 1;
+	}
+	
+	INTERNAL int _profile_compare_total_time_func(const void* a_, const void* b_)
+	{
+		Profile_Zone_Stats* a = (Profile_Zone_Stats*) a_;
+		Profile_Zone_Stats* b = (Profile_Zone_Stats*) b_;
+    
+		if(a->stats.total_s > b->stats.total_s)
+			return -1;
+		else 
+			return 1;
 	}
 
-	EXPORT i64 profile_get_total_running_counters_count()
+	INTERNAL int _profile_compare_file_func(const void* a_, const void* b_)
 	{
-		return perf_counters_running_count;
+		Profile_Zone_Stats* a = (Profile_Zone_Stats*) a_;
+		Profile_Zone_Stats* b = (Profile_Zone_Stats*) b_;
+    
+		int res = strcmp(a->id.file, b->id.file);
+		if(res == 0)
+			res = strcmp(a->id.function, b->id.function);
+		if(res == 0)
+			res = strcmp(a->id.name, b->id.name);
+
+		return res;
 	}
 
+	EXPORT void profile_log_all(const char* log_module, Log_Type log_type, Log_Perf_Sort_By sort_by)
+	{
+		(void) sort_by;
+		Arena_Frame arena = scratch_arena_acquire();
+		Profile_Zone_Stats_Array all_stats = {&arena.allocator};
+		profile_get_stats(&all_stats);
+		
+		String common_prefix = {0};
+		for(isize i = 0; i < all_stats.size; i++)
+		{
+			String file = string_of(all_stats.data[i].id.file);
+			if(i == 0)
+				common_prefix = file;
+			else
+			{
+				isize k = 0;
+				for(; k < MIN(common_prefix.size, file.size); k++)
+					if(common_prefix.data[k] != file.data[k])
+						break;
+
+				common_prefix = string_head(common_prefix, k);
+			}
+		}
+
+		switch(sort_by)
+		{
+			default:
+			case PERF_SORT_BY_NAME: qsort(all_stats.data, (size_t) all_stats.size, sizeof *all_stats.data, _profile_compare_file_func); break;
+			case PERF_SORT_BY_TIME: qsort(all_stats.data, (size_t) all_stats.size, sizeof *all_stats.data, _profile_compare_total_time_func); break;
+			case PERF_SORT_BY_RUNS: qsort(all_stats.data, (size_t) all_stats.size, sizeof *all_stats.data, _profile_compare_runs); break;
+		}
+
+		LOG(log_module, log_type, "Logging perf counters (still running %lli):", (lli) 0);
+		log_group();
+			LOG(log_module, log_type, "    total ms | average ms |  runs  |  σ/μ  | [min max] ms        | source");
+			for(isize i = 0; i < all_stats.size; i++)
+			{
+				Profile_Zone_Stats single = all_stats.data[i];
+
+				const char* name = "";
+				if(string_of(single.id.name).size > 0)
+					name = format_ephemeral("'%s'", single.id.name).data;
+
+				if(single.id.type == PROFILE_DEFAULT)
+				{
+					LOG(log_module, log_type, "%s %s %12lli %5.2lf [%s %s] %25s %-4lli %s %s", 
+						format_seconds(single.stats.total_s,9).data,
+						format_seconds(single.stats.average_s, 7).data,
+						(lli) single.stats.runs,
+						single.stats.normalized_standard_deviation_s,
+						format_seconds(single.stats.min_s, 7).data,
+						format_seconds(single.stats.max_s, 7).data,
+						single.id.file + common_prefix.size,
+						(lli) single.id.line,
+						single.id.function,
+						name
+					);
+				}
+				if(single.id.type == PROFILE_FAST)
+				{
+					LOG(log_module, log_type, "%s %s %8lli %25s %-4lli %s %s", 
+						format_seconds(single.stats.total_s, 9).data,
+						format_seconds(single.stats.average_s, 7).data,
+						(lli) single.stats.runs,
+						single.id.file + common_prefix.size,
+						(lli) single.id.line,
+						single.id.function,
+						name
+					);
+				}
+				
+				if(single.id.type == PROFILE_COUNTER)
+				{
+					LOG(log_module, log_type, "%8lli %25s %-4lli %s %s", 
+						(lli) single.stats.runs,
+						single.id.file + common_prefix.size,
+						(lli) single.id.line,
+						single.id.function,
+						name
+					);
+				}
+			}
+		log_ungroup();
+
+		arena_frame_release(&arena);
+	}
 #endif

@@ -23,7 +23,7 @@
 #include "_test_image.h"
 #include "perf.h"
 
-#include "profile_utils.h"
+#include "profile.h"
 INTERNAL void test_all(f64 total_time)
 {
     LOG_INFO("TEST", "RUNNING ALL TESTS");
@@ -56,7 +56,7 @@ INTERNAL void test_all(f64 total_time)
     else
         LOG_WARN("TEST", "TESTING FINISHED! passed %i of %i tests", total_count, passed_count);
 
-    log_perf_counters("TEST", LOG_INFO, PERF_SORT_BY_NAME);
+    profile_log_all("TEST", LOG_INFO, PERF_SORT_BY_NAME);
 }
 
 

@@ -121,6 +121,7 @@ EXPORT bool file_write_entire(String file_path, String contents)
 
 EXPORT bool file_read_entire_append_into(String file_path, String_Builder* append_into)
 {
+    PROFILE_START();
     Platform_File_Info info = {0};
     Platform_File file = {0};
     Platform_Error error = platform_file_info(file_path, &info);
@@ -142,6 +143,7 @@ EXPORT bool file_read_entire_append_into(String file_path, String_Builder* appen
     }
 
     platform_file_close(&file);
+    PROFILE_END();
     return error == 0;
 }
 
@@ -152,6 +154,7 @@ EXPORT bool file_read_entire(String file_path, String_Builder* data)
 }
 EXPORT bool file_append_entire(String file_path, String data)
 {
+    PROFILE_START();
     Platform_File file = {0};
     Platform_Error error = platform_file_open(&file, file_path, PLATFORM_FILE_MODE_APPEND | PLATFORM_FILE_MODE_CREATE);
     
@@ -164,10 +167,12 @@ EXPORT bool file_append_entire(String file_path, String data)
     if(error != 0)
         LOG_ERROR("file.h", "error appending file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
     platform_file_close(&file);
+    PROFILE_END();
     return error == 0;
 }
 EXPORT bool file_write_entire(String file_path, String data)
 {
+    PROFILE_START();
     Platform_File file = {0};
     Platform_Error error = platform_file_open(&file, file_path, PLATFORM_FILE_MODE_WRITE | PLATFORM_FILE_MODE_CREATE);
     
@@ -178,6 +183,7 @@ EXPORT bool file_write_entire(String file_path, String data)
         LOG_ERROR("file.h", "error writing file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
 
     platform_file_close(&file);
+    PROFILE_END();
     return error == 0;
 }
 #endif

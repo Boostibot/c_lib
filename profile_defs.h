@@ -1,5 +1,5 @@
-#if !defined(JOT_NEW_PROFILE_PREINCLUDE) 
-#define JOT_NEW_PROFILE_PREINCLUDE
+#if !defined(JOT_profile_defs) 
+#define JOT_profile_defs
 #include <stdint.h>
 
 typedef enum Profile_Type {

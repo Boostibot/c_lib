@@ -52,7 +52,7 @@
 #include "hash.h"
 #include "log.h"
 
-#include "new_profile_preinclude.h"
+#include "profile_defs.h"
 #include "vformat.h"
 
 typedef struct Debug_Allocator          Debug_Allocator;

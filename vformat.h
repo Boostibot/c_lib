@@ -2,7 +2,7 @@
 #define JOT_VFORMAT
 
 #include "string.h"
-#include "new_profile_preinclude.h"
+#include "profile_defs.h"
 #include <stdarg.h>
 
 EXPORT void vformat_append_into(String_Builder* append_to, const char* format, va_list args);
@@ -89,6 +89,7 @@ EXPORT const char* cstring_ephemeral(String string);
     
     EXPORT String vformat_ephemeral(const char* format, va_list args)
     {
+        PROFILE_START();
         enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256};
 
         static ATTRIBUTE_THREAD_LOCAL String_Builder ephemeral_strings[EPHEMERAL_SLOTS] = {0};
@@ -102,13 +103,16 @@ EXPORT const char* cstring_ephemeral(String string);
         if(slot % RESET_EVERY < EPHEMERAL_SLOTS)
         {
             if(curr->capacity == 0 || curr->capacity > KEPT_SIZE)
+            {
+                PROFILE_COUNTER(reset);
                 builder_init_with_capacity(curr, allocator_get_static(), KEPT_SIZE);
+            }
         }
         
         vformat_into(curr, format, args);
 
         slot += 1;
-
+        PROFILE_END();
         return curr->string;
     }
 
@@ -150,6 +154,7 @@ EXPORT const char* cstring_ephemeral(String string);
             {
                 if(curr->capacity == 0 || curr->capacity > KEPT_SIZE)
                 {
+                    PROFILE_COUNTER(reset);
                     isize required_capacity = MAX(string.size, KEPT_SIZE);
                     builder_init_with_capacity(curr, allocator_get_static(), required_capacity);
                 }

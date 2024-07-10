@@ -200,6 +200,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
 
     INTERNAL isize _hash_index_find_or_insert(Hash_Index* table, uint64_t hash, uint64_t value, bool stop_if_found) 
     {
+        PROFILE_START();
         ASSERT(table->size + table->gravestone_count < table->entries_count && "there must be space for insertion");
         ASSERT(table->entries_count > 0);
 
@@ -255,13 +256,15 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         //Saturating add of new_counter
         table->info_extra_probes += (int32_t) counter;
         ASSERT(hash_index_is_invariant(*table, HASH_INDEX_DEBUG));
-
+        
+        PROFILE_END();
         return (isize) insert_index;
     }
     
 
     EXPORT void hash_index_clear(Hash_Index* to_table)
     {
+        PROFILE_START();
         //can also be memset to byte pattern that has HASH_INDEX_EMPTY.
         for(int32_t i = 0; i < to_table->entries_count; i++)
         {
@@ -272,6 +275,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         to_table->info_extra_probes = 0;
         to_table->gravestone_count = 0;
         to_table->size = 0;
+        PROFILE_END();
     }
     
     EXPORT bool _hash_index_needs_rehash(isize current_size, isize to_size, isize load_factor)
@@ -298,7 +302,9 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
     EXPORT void hash_index_init_load_factor(Hash_Index* table, Allocator* allocator, isize load_factor_percent, isize load_factor_gravestone_percent)
     {
         hash_index_deinit(table);
+        PROFILE_START();
         _hash_index_init_if_not_init(table, allocator, load_factor_percent, load_factor_gravestone_percent);
+        PROFILE_END();
     }
 
     EXPORT void hash_index_init(Hash_Index* table, Allocator* allocator)
@@ -307,7 +313,8 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
     }   
 
     INTERNAL void _hash_index_rehash_copy(Hash_Index* to_table, Hash_Index from_table, isize to_size, bool size_is_capacity)
-    {
+    {   
+        PROFILE_START();
         ASSERT(hash_index_is_invariant(*to_table, HASH_INDEX_DEBUG));
         ASSERT(hash_index_is_invariant(from_table, HASH_INDEX_DEBUG));
 
@@ -340,6 +347,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
         to_table->info_rehash_count += 1;
 
         ASSERT(hash_index_is_invariant(*to_table, HASH_INDEX_DEBUG));
+        PROFILE_END();
     }
     
     INTERNAL bool _hash_is_power_of_two(isize num) 
@@ -350,6 +358,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
 
     EXPORT bool hash_index_is_invariant(Hash_Index table, bool slow_check)
     {
+        PROFILE_START();
         bool ptr_size_inv = (table.entries == NULL) == (table.entries_count == 0);
         bool sizes_inv = table.size >= 0 && table.entries_count >= 0 && table.gravestone_count >= 0; 
         bool not_full_inv = (table.size + table.gravestone_count < table.entries_count) || table.entries_count == 0;
@@ -396,27 +405,36 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
             && load_factor_inv && load_factor_gravestone_inv && fullness_inv 
             && sizes_inv && not_full_inv && entries_find_inv && entries_count_inv;
         ASSERT(is_invariant);
+        PROFILE_END();
         return is_invariant;
     }
     
     EXPORT isize hash_index_find(Hash_Index table, uint64_t hash)
     {
-        return _hash_index_find_from(table, hash, hash);
+        PROFILE_START();
+        isize found = _hash_index_find_from(table, hash, hash);
+        PROFILE_END();
+        return found;
     }
     
     EXPORT isize hash_index_find_next(Hash_Index table, uint64_t hash, isize prev_found)
     {
+        PROFILE_START();
         ASSERT(0 <= prev_found && prev_found < table.entries_count);
-        return _hash_index_find_from(table, hash, (uint64_t) prev_found + 1);
+        isize found = _hash_index_find_from(table, hash, (uint64_t) prev_found + 1);
+        PROFILE_END();
+        return found;
     }
     
     EXPORT void hash_index_deinit(Hash_Index* table)
     {
+        PROFILE_START();
         ASSERT(hash_index_is_invariant(*table, HASH_INDEX_DEBUG));
         allocator_reallocate(table->allocator, 0, table->entries, table->entries_count * (isize) sizeof *table->entries, DEF_ALIGN);
         
         Hash_Index null = {0};
         *table = null;
+        PROFILE_END();
     }
 
     EXPORT void hash_index_copy(Hash_Index* to_table, Hash_Index from_table)
@@ -511,6 +529,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
 
     EXPORT Hash_Index_Entry hash_index_remove(Hash_Index* table, isize found)
     {
+        PROFILE_START();
         Hash_Index_Entry removed = {0};
         if(found >= 0)
         {
@@ -523,6 +542,7 @@ EXPORT void*    hash_index_restore_ptr(uint64_t val); //Restores previously esca
             ASSERT(hash_index_is_invariant(*table, HASH_INDEX_DEBUG));
         }
 
+        PROFILE_END();
         return removed;
     }
     

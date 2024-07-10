@@ -118,7 +118,7 @@
 // of primary concern.
 
 #include "allocator.h"
-#include "new_profile_preinclude.h"
+#include "profile_defs.h"
 
 #define ARENA_DEF_STACK_SIZE   256
 #define ARENA_DEF_RESERVE_SIZE 64 * GIBI_BYTE 
