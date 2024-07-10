@@ -70,6 +70,7 @@ EXPORT void profile_log_all(const char* log_module, Log_Type log_type, Log_Perf_
 EXPORT void log_perf_stats_hdr(const char* log_module, Log_Type log_type, const char* label);
 EXPORT void log_perf_stats_row(const char* log_module, Log_Type log_type, const char* label, Perf_Stats stats);
 
+//@TODO: Move into platform layer
 #include <stdint.h>
 #ifdef _MSC_VER
 # include <intrin.h>
@@ -99,12 +100,8 @@ static inline void profile_submit(Profile_Type type, Profile_Thread_Zone** handl
 	switch(type)
 	{
 		case PROFILE_DEFAULT: {
-			int64_t delta = after - before;
-			int64_t offset_delta = delta - (*handle)->counter.mean_estimate;
-			(*handle)->counter.sum_of_squared_offset_counters += offset_delta*offset_delta;
-			(*handle)->counter.min_counter = MIN((*handle)->counter.min_counter, delta);
-			(*handle)->counter.max_counter = MAX((*handle)->counter.max_counter, delta);
-		}
+			perf_submit_no_init(&(*handle)->counter, after - before); 
+		} break;
 		case PROFILE_FAST: {
 			(*handle)->counter.counter += after - before;
 		}
@@ -207,7 +204,7 @@ EXPORT ATTRIBUTE_INLINE_NEVER void profile_init_thread_zone(Profile_Thread_Zone*
 		}
 
 		(*handle)->thread = platform_thread_get_current();
-		perf_init(&(*handle)->counter, zone->mean_estimate);
+		(*handle)->counter = perf_counter_init(zone->mean_estimate);
 		platform_mutex_unlock(&gprofile_data.mutex);
 	}
 	else

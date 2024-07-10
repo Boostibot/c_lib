@@ -57,10 +57,10 @@ typedef struct Perf_Benchmark {
 EXPORT int64_t		perf_now();
 EXPORT int64_t		perf_freq(); //returns the frequency of the perf counter
 EXPORT int64_t		perf_submit(Perf_Counter* counter, int64_t measured);
-EXPORT int64_t		perf_submit_atomic(Perf_Counter* counter, int64_t measured, bool detailed);
+EXPORT int64_t		perf_submit_no_init(Perf_Counter* counter, int64_t measured);
 EXPORT Perf_Stats	perf_get_stats(Perf_Counter counter, int64_t batch_size);
 EXPORT Perf_Counter perf_counter_merge(Perf_Counter a, Perf_Counter b, bool* could_combine_everything_or_null);
-EXPORT void			perf_init(Perf_Counter* counter, int64_t mean_estimate);
+EXPORT Perf_Counter	perf_counter_init(int64_t mean_estimate);
 
 //Maintains a benchmark. See example below for how to use this.
 EXPORT bool perf_benchmark(Perf_Benchmark* bench, double time);
@@ -74,11 +74,6 @@ EXPORT void perf_benchmark_submit(Perf_Benchmark* bench, int64_t measured);
 //Needs implementation:
 int64_t platform_perf_counter();
 int64_t platform_perf_counter_frequency();
-inline static bool    platform_atomic_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value);
-inline static int32_t platform_atomic_add32(volatile int32_t* target, int32_t value);
-inline static int64_t platform_atomic_add64(volatile int64_t* target, int64_t value);
-inline static int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value);
-inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value);
 
 #include <stdlib.h>
 static void perf_benchmark_example() 
@@ -129,20 +124,18 @@ static void perf_benchmark_example()
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PERF_IMPL)) && !defined(JOT_PERF_HAS_IMPL)
 #define JOT_PERF_HAS_IMPL
 
-	EXPORT void perf_init(Perf_Counter* counter, int64_t mean_estimate)
+	EXPORT Perf_Counter perf_counter_init(int64_t mean_estimate)
 	{
-		counter->frquency = platform_perf_counter_frequency();
-		counter->max_counter = INT64_MIN;
-		counter->min_counter = INT64_MAX;
-		counter->mean_estimate = mean_estimate;
+		Perf_Counter out = {0};
+		out.frquency = platform_perf_counter_frequency();
+		out.max_counter = INT64_MIN;
+		out.min_counter = INT64_MAX;
+		out.mean_estimate = mean_estimate;
+		return out;
 	}
 	
-	EXPORT int64_t perf_submit(Perf_Counter* counter, int64_t delta)
+	EXPORT int64_t perf_submit_no_init(Perf_Counter* counter, int64_t delta)
 	{
-		ASSERT(counter != NULL && delta >= 0 && "invalid Global_Perf_Counter_Running submitted");
-		if(counter->frquency == 0)
-			perf_init(counter, delta);
-	
 		int64_t offset_delta = delta - counter->mean_estimate;
 		counter->counter += delta;
 		counter->sum_of_squared_offset_counters += offset_delta*offset_delta;
@@ -151,37 +144,17 @@ static void perf_benchmark_example()
 		counter->runs += 1; 
 		return counter->runs - 1;
 	}
-	
-	EXPORT int64_t perf_submit_atomic(Perf_Counter* counter, int64_t delta, bool detailed)
+
+	EXPORT int64_t perf_submit(Perf_Counter* counter, int64_t delta)
 	{
-		ASSERT(counter != NULL && delta >= 0 && "invalid Global_Perf_Counter_Running submitted");
-		int64_t runs = platform_atomic_add64(&counter->runs, 1); 
-		
-		//only save the stats that dont need to be updated on the first run
+		ASSERT(counter != NULL && delta >= 0 && "invalid submit");
 		if(counter->frquency == 0)
-			perf_init(counter, delta);
+			*counter = perf_counter_init(delta);
 	
-		platform_atomic_add64(&counter->counter, delta);
-
-		if(detailed)
-		{
-			int64_t offset_delta = delta - counter->mean_estimate;
-			platform_atomic_add64(&counter->sum_of_squared_offset_counters, offset_delta*offset_delta);
-
-			do {
-				if(counter->min_counter <= delta)
-					break;
-			} while(platform_atomic_compare_and_swap64(&counter->min_counter, counter->min_counter, delta) == false);
-
-			do {
-				if(counter->max_counter >= delta)
-					break;
-			} while(platform_atomic_compare_and_swap64(&counter->max_counter, counter->max_counter, delta) == false);
-		}
-
-		return runs;
+		return perf_submit_no_init(counter, delta);
 	}
 	
+	//@TODO: RDTSC!
 	EXPORT int64_t perf_now()
 	{
 		return platform_perf_counter();

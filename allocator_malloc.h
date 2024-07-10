@@ -35,30 +35,20 @@ typedef struct Malloc_Allocator {
 } Malloc_Allocator;
 
 #define ALLOCATION_LIST_DEBUG
-#define ALLOCATION_LIST_MAGIC           "Allocll"
+#define ALLOCATION_LIST_MAGIC "MallocA"
 
 typedef struct Allocation_List_Block {
     Allocation_List_Block* next_block; 
     Allocation_List_Block* prev_block;
 
-    //uses bits [63       ][62....46][45............0]
-    //          [is_offset][align   ][size           ]
-    u64 packed_info;
+    u64 is_offset   : 1;
+    u64 align       : 16;
+    u64 size        : 45;
 
     #ifdef ALLOCATION_LIST_DEBUG
     char magic[8];
     #endif
 } Allocation_List_Block;
-
-typedef struct Allocation_List_Info {
-    i64 size;
-    i64 align;
-    bool is_offset;
-    bool _padding[7];
-} Allocation_List_Info;
-
-EXPORT Allocation_List_Info allocation_list_info_unpack(u64 size_and_align);
-EXPORT u64 allocation_list_info_pack(Allocation_List_Info info);
 
 EXPORT void  allocation_list_free_all(Allocation_List* self, Allocator* parent_or_null);
 EXPORT void* allocation_list_allocate(Allocation_List* self, Allocator* parent_or_null, isize new_size, void* old_ptr, isize old_size, isize align);
@@ -102,28 +92,6 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
     #define ALLOCATION_LIST_SIZE_MASK       (((u64) 1 << ALLOCATION_LIST_SIZE_BITS) - 1)
     #define ALLOCATION_LIST_ALIGN_MASK      (((u64) 1 << ALLOCATION_LIST_ALIGN_BITS) - 1)
 
-    EXPORT Allocation_List_Info allocation_list_info_unpack(u64 size_and_align)
-    {
-        Allocation_List_Info out = {0};
-        out.size = size_and_align & ALLOCATION_LIST_SIZE_MASK; 
-        out.align = (size_and_align >> ALLOCATION_LIST_SIZE_BITS) & ALLOCATION_LIST_ALIGN_MASK;
-        out.is_offset = (size_and_align >> ALLOCATION_LIST_IS_OFFSET_BIT) > 0;
-
-        return out;
-    }
-    
-    EXPORT u64 allocation_list_info_pack(Allocation_List_Info info)
-    {
-        isize max_align = ((isize) 1 << ALLOCATION_LIST_ALIGN_BITS) - 1;
-        ASSERT(is_power_of_two(info.align) && info.align <= max_align);
-
-        u64 size_and_align = ((u64) info.is_offset << ALLOCATION_LIST_IS_OFFSET_BIT) 
-            |  ((u64) info.align << ALLOCATION_LIST_SIZE_BITS) 
-            | ((u64) info.size & ALLOCATION_LIST_SIZE_MASK);
-
-        return size_and_align;
-    }
-
     INTERNAL void _allocation_list_assert_block_coherency(Allocation_List* self, Allocation_List_Block* block)
     {
         (void) self;
@@ -150,8 +118,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
             Allocation_List_Block* prev_block = block->prev_block;
             _allocation_list_assert_block_coherency(self, block);
             
-            Allocation_List_Info info = allocation_list_info_unpack(block->packed_info);
-            allocation_list_allocate(self, parent_or_null, 0, block + 1, info.size, info.align);
+            allocation_list_allocate(self, parent_or_null, 0, block + 1, block->size, block->align);
             block = prev_block;
         }
 
@@ -193,13 +160,9 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
                 *offset = (u64) new_allocation - (u64) new_block_ptr;
             }
 
-            //Fill stats
-            Allocation_List_Info info = {0};
-            info.size = new_size;
-            info.align = align;
-            info.is_offset = is_offset;
-
-            new_block_ptr->packed_info = allocation_list_info_pack(info); 
+            new_block_ptr->is_offset = is_offset; 
+            new_block_ptr->align = align; 
+            new_block_ptr->size = new_size; 
             #ifdef ALLOCATION_LIST_DEBUG
                 memcpy(new_block_ptr->magic, ALLOCATION_LIST_MAGIC, sizeof ALLOCATION_LIST_MAGIC);
             #endif
@@ -221,9 +184,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         {
             Allocation_List_Block* old_block_ptr = (Allocation_List_Block*) old_ptr - 1;
             _allocation_list_assert_block_coherency(self, old_block_ptr);
-
-            Allocation_List_Info info = allocation_list_info_unpack(old_block_ptr->packed_info);
-            ASSERT((isize) info.size == old_size && (isize) info.align == align);
+            ASSERT((isize) old_block_ptr->size == old_size && (isize) old_block_ptr->align == align);
 
             //Unlink the block from the list
             if(old_block_ptr->next_block != NULL)
@@ -242,7 +203,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
             //Calculate the pointer from which the allocation occcured. 
             //This is just the block pointer if it is not offset.
             void* old_allocation = old_block_ptr;
-            if(info.is_offset)
+            if(old_block_ptr->is_offset)
             {
                 u64* offset = ((u64*) old_allocation) - 1;
                 old_allocation = (u8*) old_allocation - *offset;
@@ -270,8 +231,7 @@ EXPORT Allocator_Stats malloc_allocator_get_stats(Allocator* self);
     EXPORT isize allocation_list_get_block_size(Allocation_List* self, void* old_ptr)
     {
         Allocation_List_Block* block = allocation_list_get_block_header(self, old_ptr);
-        Allocation_List_Info info = allocation_list_info_unpack(block->packed_info);
-        return info.size;
+        return block->size;
     }
 
     EXPORT void malloc_allocator_init(Malloc_Allocator* self, const char* name)
