@@ -85,9 +85,15 @@ typedef struct Path_Info {
     // renormalizing again already normalized path.
 } Path_Info;
 
-typedef struct Path {
-    String string;
-    Path_Info info;
+typedef union Path {
+    struct {
+        String string;
+        Path_Info info;
+    };
+    struct {
+        const char* data;
+        isize size;
+    };
 } Path;
 
 EXTERNAL bool is_path_sep(char c);
@@ -101,7 +107,7 @@ EXTERNAL void   path_parse_rest(String path, Path_Info* info);
 EXTERNAL bool   path_is_empty(Path path);
 EXTERNAL String path_get_prefix(Path path);
 EXTERNAL String path_get_root(Path path);
-EXTERNAL String path_get_directories(Path path);
+EXTERNAL String path_get_directory(Path path);
 EXTERNAL String path_get_extension(Path path);
 EXTERNAL String path_get_filename(Path path);
 EXTERNAL String path_get_root_content(Path path);
@@ -135,7 +141,13 @@ typedef union Path_Builder {
     struct {
         Allocator* allocator;
         isize capacity;
-        String string;
+        union {
+            String string;
+            struct {
+                char* data;
+                isize size;
+            };
+        };
     };
     
     struct {
@@ -152,7 +164,7 @@ enum {
     PATH_FLAG_BACK_SLASH = 16,              //Changes to use '\' instead of '/'
     PATH_FLAG_TRANSFORM_TO_DIR = 32,        //Adds trailing /
     PATH_FLAG_TRANSFORM_TO_FILE = 64,       //Removes trailing /
-    PATH_FLAG_NO_ROOT = 128,                //Does not append root (for normalize this meens the result will not have root)
+    PATH_FLAG_NO_ROOT = 128,                //Does not append root (for normalize this meens the result will not have root). 
     PATH_FLAG_NO_PREFIX = 256,              //Does not append prefix (for normalize this meens the result will not have prefix)
 };
 
@@ -162,6 +174,11 @@ EXTERNAL Path_Builder path_builder_make(Allocator* alloc_or_null, isize initial_
 EXTERNAL bool         path_builder_append(Path_Builder* into, Path path, int flags);
 EXTERNAL void         path_builder_clear(Path_Builder* builder);
 EXTERNAL void         path_normalize_in_place(Path_Builder* path, int flags);
+
+//Normalizes the given path removing '..', '.', double slashes, converting slashes to '/'. 
+//When given relative resp. absolute path the output is relative resp. absolute.
+//When given path with prefx output path will have the same prefix.
+//Accepts additional flags to tweak some of the behaviour.
 EXTERNAL Path_Builder path_normalize(Allocator* alloc, Path path, int flags);
 EXTERNAL Path_Builder path_concat(Allocator* alloc, Path a, Path b);
 EXTERNAL Path_Builder path_concat_many(Allocator* alloc, const Path* paths, isize path_count);
@@ -410,7 +427,7 @@ EXTERNAL String path_get_root_content(Path path)
     return string_range(path.string, path.info.root_content_from, path.info.root_content_to);
 }
 
-EXTERNAL String path_get_directories(Path path)
+EXTERNAL String path_get_directory(Path path)
 {
     isize from = path.info.prefix_size + path.info.root_size;
     return string_range(path.string, from, from + path.info.directories_size);
@@ -1044,7 +1061,7 @@ EXTERNAL Path path_relative_ephemeral(Path relative_to, Path path)
 #if (defined(JOT_ALL_TEST) || defined(JOT_PATH_TEST)) && !defined(JOT_PATH_HAS_TEST)
 #define JOT_PATH_HAS_TEST
 
-#define TEST_STRING_EQ(str1, str2) TEST(string_is_equal((str1), (str2)), "'%.*s' == '%.*s'", STRING_PRINT(str1), STRING_PRINT(str2))
+#define TEST_STRING_EQ(str1, str2) TEST(string_is_equal((str1), (str2)), "'%.*s' == '%.*s'", (int) str1.size, str1.data, (int) str2.size, str2.data)
 
 enum {
     TEST_PATH_IS_DIR = 1,
@@ -1059,7 +1076,7 @@ void test_single_path(const char* path, const char* prefix, const char* root, co
     Path parsed = path_parse(_path);
     String _prefix = path_get_prefix(parsed);
     String _root = path_get_root(parsed);
-    String _directories = path_get_directories(parsed);
+    String _directories = path_get_directory(parsed);
     String _filename = path_get_filename(parsed);
     String _extension = path_get_extension(parsed);
     

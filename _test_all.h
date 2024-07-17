@@ -56,7 +56,7 @@ INTERNAL void test_all(f64 total_time)
     else
         LOG_WARN("TEST", "TESTING FINISHED! passed %i of %i tests", total_count, passed_count);
 
-    profile_log_all("TEST", LOG_INFO, PERF_SORT_BY_NAME);
+    profile_log_all(log_info("TEST"), PERF_SORT_BY_NAME);
 }
 
 

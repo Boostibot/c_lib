@@ -27,7 +27,7 @@ typedef Array(String)         String_Array;
 typedef Array(String_Builder) String_Builder_Array;
 
 //Constructs a String out of a string literal
-#define STRING(cstring) BRACE_INIT(String){cstring "", sizeof(cstring) - 1}
+#define STRING(cstring) BRACE_INIT(String){cstring "", sizeof(cstring "") - 1}
 
 EXTERNAL String string_of(const char* str); //Constructs a string from null terminated str
 EXTERNAL String string_make(const char* data, isize size); //Constructs a string
@@ -69,6 +69,7 @@ EXTERNAL void builder_clear(String_Builder* builder);
 EXTERNAL void builder_push(String_Builder* builder, char c);             
 EXTERNAL char builder_pop(String_Builder* builder);             
 EXTERNAL void builder_append(String_Builder* builder, String string); //Appends a string
+EXTERNAL void builder_append_line(String_Builder* builder, String string); //Appends a string followed by newline
 EXTERNAL void builder_assign(String_Builder* builder, String string); //Sets the contents of the builder to be equal to string
 EXTERNAL bool builder_is_equal(String_Builder a, String_Builder b); //Returns true if the contents and sizes of the strings match
 EXTERNAL int  builder_compare(String_Builder a, String_Builder b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
@@ -184,6 +185,7 @@ EXTERNAL bool char_is_id(char c);
       
     EXTERNAL isize string_find_last_from(String in_str, String search_for, isize from)
     {
+        ASSERT(false, "UNTESTED! @TODO: test!");
         ASSERT(from >= 0);
         if(from + search_for.size > in_str.size)
             return -1;
@@ -191,7 +193,6 @@ EXTERNAL bool char_is_id(char c);
         if(search_for.size == 0)
             return from;
 
-        ASSERT(false, "UNTESTED! @TODO: test!");
         ASSERT(from >= 0);
         isize start = from;
         if(in_str.size - start < search_for.size)
@@ -490,6 +491,16 @@ EXTERNAL bool char_is_id(char c);
         builder_reserve(builder, builder->size+string.size);
         memcpy(builder->data + builder->size, string.data, (size_t) string.size);
         builder->size += string.size;
+        ASSERT(_builder_is_invariant(builder));
+    }
+
+    EXTERNAL void builder_append_line(String_Builder* builder, String string)
+    {
+        ASSERT(string.size >= 0);
+        builder_reserve(builder, builder->size+string.size + 1);
+        memcpy(builder->data + builder->size, string.data, (size_t) string.size);
+        builder->data[builder->size + string.size] = '\n';
+        builder->size += string.size + 1;
         ASSERT(_builder_is_invariant(builder));
     }
 

@@ -162,9 +162,13 @@ JMAPI float vec2_len(Vec2 a) { return sqrtf(vec2_dot(a, a)); }
 JMAPI float vec3_len(Vec3 a) { return sqrtf(vec3_dot(a, a)); }
 JMAPI float vec4_len(Vec4 a) { return sqrtf(vec4_dot(a, a)); }
 
+JMAPI float vec2_dist(Vec2 a, Vec2 b) { return vec2_len(vec2_sub(a, b)); }
+JMAPI float vec3_dist(Vec3 a, Vec3 b) { return vec3_len(vec3_sub(a, b)); }
+JMAPI float vec4_dist(Vec4 a, Vec4 b) { return vec4_len(vec4_sub(a, b)); }
+
 JMAPI Vec2 vec2_norm(Vec2 a) { float len = vec2_len(a); return len > 0 ? vec2_scale(a, 1/len) : vec2_of(0); }
-JMAPI Vec3 vec3_norm(Vec3 a) { float len = vec3_len(a); return len > 0 ? vec3_scale(a, 1.0f/len) : vec3_of(0); }
-JMAPI Vec4 vec4_norm(Vec4 a) { float len = vec4_len(a); return len > 0 ? vec4_scale(a, 1.0f/len) : vec4_of(0); }
+JMAPI Vec3 vec3_norm(Vec3 a) { float len = vec3_len(a); return len > 0 ? vec3_scale(a, 1/len) : vec3_of(0); }
+JMAPI Vec4 vec4_norm(Vec4 a) { float len = vec4_len(a); return len > 0 ? vec4_scale(a, 1/len) : vec4_of(0); }
 
 JMAPI bool vec2_is_equal(Vec2 a, Vec2 b) { return memcmp(&a, &b, sizeof a) == 0; }
 JMAPI bool vec3_is_equal(Vec3 a, Vec3 b) { return memcmp(&a, &b, sizeof a) == 0; }
@@ -356,8 +360,12 @@ JMAPI Vec3 vec3_slerp_around(Vec3 from, Vec3 to, Vec3 center, float t)
 //This is also the maximum norm
 JMAPI float vec3_max_len(Vec3 vec)
 {
-    float max1 = vec.x > vec.y ? vec.x : vec.y;
-    float max = max1 > vec.z ? max1 : vec.z;
+    float x = fabsf(vec.x);
+    float y = fabsf(vec.y);
+    float z = fabsf(vec.z);
+
+    float max1 = x > y ? x : y;
+    float max = max1 > z ? max1 : z;
 
     return max;
 }
@@ -813,15 +821,15 @@ JMAPI Mat4 mat4_inverse_nonuniform_scale(Mat4 mat)
 }
 
 //Makes a perspective projection matrix so that the output is in ranage [-1, 1] in all dimensions (OpenGL standard)
-JMAPI Mat4 mat4_perspective_projection(float fov_radians, float aspect_ratio, float near, float far) 
+JMAPI Mat4 mat4_perspective_projection(float fov_radians, float width_over_height, float near, float far) 
 { 
     ASSERT(fov_radians != 0);
     ASSERT(near != far);
-    ASSERT(aspect_ratio != 0);
+    ASSERT(width_over_height != 0);
 
     //https://ogldev.org/www/tutorial12/tutorial12.html
 	float fo = 1.0f / tanf(fov_radians / 2.0f);
-	float ar = aspect_ratio, n = near, f = far;
+	float ar = width_over_height, n = near, f = far;
 	Mat4 result = mat4(
 		 fo / ar,     0,           0,            0,
 		 0,           fo,          0,            0,

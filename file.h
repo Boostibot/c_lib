@@ -4,16 +4,16 @@
 #include "string.h"
 #include "path.h"
 
-EXTERNAL bool file_read_entire_append_into(String file_path, String_Builder* append_into);
-EXTERNAL bool file_read_entire(String file_path, String_Builder* data);
-EXTERNAL bool file_append_entire(String file_path, String data);
-EXTERNAL bool file_write_entire(String file_path, String data);
+EXTERNAL bool file_read_entire_append_into(String file_path, String_Builder* append_into, Log log);
+EXTERNAL bool file_read_entire(String file_path, String_Builder* data, Log log);
+EXTERNAL bool file_append_entire(String file_path, String data, Log log);
+EXTERNAL bool file_write_entire(String file_path, String data, Log log);
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_FILE_IMPL)) && !defined(JOT_FILE_HAS_IMPL)
 #define JOT_FILE_HAS_IMPL
 
-EXTERNAL bool file_read_entire_append_into(String file_path, String_Builder* append_into)
+EXTERNAL bool file_read_entire_append_into(String file_path, String_Builder* append_into, Log log)
 {
     PROFILE_START();
     Platform_File_Info info = {0};
@@ -32,8 +32,8 @@ EXTERNAL bool file_read_entire_append_into(String file_path, String_Builder* app
 
     if(error != 0)
     {
-        builder_resize(append_into, append_into->size);
-        LOG_ERROR("file.h", "error reading file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
+        builder_resize(append_into, size_before);
+        LOG(log, "error reading file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
     }
 
     platform_file_close(&file);
@@ -41,12 +41,12 @@ EXTERNAL bool file_read_entire_append_into(String file_path, String_Builder* app
     return error == 0;
 }
 
-EXTERNAL bool file_read_entire(String file_path, String_Builder* data)
+EXTERNAL bool file_read_entire(String file_path, String_Builder* data, Log log)
 {
     builder_clear(data);
-    return file_read_entire_append_into(file_path, data);
+    return file_read_entire_append_into(file_path, data, log);
 }
-EXTERNAL bool file_append_entire(String file_path, String data)
+EXTERNAL bool file_append_entire(String file_path, String data, Log log)
 {
     PROFILE_START();
     Platform_File file = {0};
@@ -59,12 +59,12 @@ EXTERNAL bool file_append_entire(String file_path, String data)
     }
 
     if(error != 0)
-        LOG_ERROR("file.h", "error appending file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
+        LOG(log, "error appending file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
     platform_file_close(&file);
     PROFILE_END();
     return error == 0;
 }
-EXTERNAL bool file_write_entire(String file_path, String data)
+EXTERNAL bool file_write_entire(String file_path, String data, Log log)
 {
     PROFILE_START();
     Platform_File file = {0};
@@ -74,12 +74,10 @@ EXTERNAL bool file_write_entire(String file_path, String data)
         error = platform_file_write(&file, data.data, data.size);
 
     if(error != 0)
-        LOG_ERROR("file.h", "error writing file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
+        LOG(log, "error writing file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
 
     platform_file_close(&file);
     PROFILE_END();
     return error == 0;
 }
-#endif
-
 #endif

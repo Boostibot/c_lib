@@ -10,11 +10,11 @@
 
 // The syntax is: 
 // LOG_INFO("ANIM", "iterating all entities");
-// log_group();
+// log_indent();
 // for(int i = 0; i < 10; i++)
 //     LOG_INFO("anim", "entity id:%d found", i);
 // 
-// log_ungroup();
+// log_outdent();
 // LOG_FATAL("ANIM", 
 //    "Fatal error encountered!\n"
 //    "Some more info\n" 
@@ -57,7 +57,6 @@
 typedef bool(*File_Logger_Print)(const void* data, isize size, void* context); 
 
 EXTERNAL typedef struct File_Logger {
-    Logger logger;
     Allocator* default_allocator;
     String_Builder buffer;
     Platform_Mutex mutex;
@@ -91,11 +90,24 @@ EXTERNAL typedef struct File_Logger {
     bool open_failed;
     bool has_prev_logger;
     bool _padding[6];
-    Logger* prev_logger;
+    Log* prev_logger;
+
+    Log_Set prev;
 } File_Logger;
 
-EXTERNAL void file_logger_log(Logger* logger_, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args);
+typedef enum File_Logger_Type{
+    FILE_LOGGER_INFO , 
+    FILE_LOGGER_OKAY , 
+    FILE_LOGGER_WARN , 
+    FILE_LOGGER_ERROR, 
+    FILE_LOGGER_FATAL, 
+    FILE_LOGGER_DEBUG, 
+    FILE_LOGGER_TRACE,
+} File_Logger_Type;
+
+EXTERNAL void file_logger_log(void* context, int indent, int custom, int is_flush, const char* name, const char* format, va_list args);
 EXTERNAL bool file_logger_flush(File_Logger* logger);
+EXTERNAL Log_Set file_logger_log_set(File_Logger* logger);
 
 EXTERNAL void file_logger_deinit(File_Logger* logger);
 EXTERNAL void file_logger_init_custom(File_Logger* logger, Allocator* def_alloc, isize flush_every_bytes, f64 flush_every_seconds, String folder, String prefix, String postfix);
@@ -107,131 +119,122 @@ EXTERNAL void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, co
 #if (defined(JOT_ALL_IMPL) || defined(JOT_LOGGER_FILE_IMPL)) && !defined(JOT_LOGGER_FILE_HAS_IMPL)
 #define JOT_LOGGER_FILE_HAS_IMPL
 
-EXTERNAL void file_logger_log_append_into(Allocator* scratch, String_Builder* append_to, i32 depth, const Log* log)
+EXTERNAL void file_logger_log_append_into(Allocator* scratch, String_Builder* append_to, int indent, int custom, const char* name, String message, i64 now)
 {       
-    isize indentation = depth;
     PROFILE_START();
+    const isize module_field_size = 8;
+    String module = string_of(name);
 
-    for(const Log* it = log; it != NULL; it = it->next)
-    {
-        const isize module_field_size = 8;
-        String module = string_of(it->module);
-        //String subject = string_of(it->subject);
-
-        isize size_before = append_to->size;
-        String group_separator = STRING("    ");
-        String message = it->message;
+    isize size_before = append_to->size;
+    String group_separator = STRING("    ");
     
-        String_Builder formatted_module = builder_make(scratch, 0);
+    String_Builder formatted_module = builder_make(scratch, 0);
 
-        //formats module: "module name" -> "MODULE_NAME    "
-        //                                 <--------------->
-        //                                 module_field_size
-        builder_resize(&formatted_module, MAX(module.size, module_field_size));
+    //formats module: "module name" -> "MODULE_NAME    "
+    //                                 <--------------->
+    //                                 module_field_size
+    builder_resize(&formatted_module, MAX(module.size, module_field_size));
+    {
+        isize written = 0;
+        for(isize i = 0; i < module_field_size - module.size; i++)
+            formatted_module.data[written++] = ' ';
+
+        for(isize i = 0; i < module.size; i++)
         {
+            //to ascii uppercase
+            char c = module.data[i];
+            if('a' <= c && c <= 'z')
+                c = c - 'a' + 'A';
 
-            isize written = 0;
-            for(isize i = 0; i < module_field_size - module.size; i++)
-                formatted_module.data[written++] = ' ';
-
-            for(isize i = 0; i < module.size; i++)
-            {
-                //to ascii uppercase
-                char c = module.data[i];
-                if('a' <= c && c <= 'z')
-                    c = c - 'a' + 'A';
-
-                CHECK_BOUNDS(written, formatted_module.size);
-                if(c == '\n' || c == ' ' || c == '\f' || c == '\t' || c == '\r' || c == '\v')
-                    formatted_module.data[written++] = '_'; 
-                else
-                    formatted_module.data[written++] = c; 
-            }
+            CHECK_BOUNDS(written, formatted_module.size);
+            if(c == '\n' || c == ' ' || c == '\f' || c == '\t' || c == '\r' || c == '\v')
+                formatted_module.data[written++] = '_'; 
+            else
+                formatted_module.data[written++] = c; 
         }
+    }
 
-
-        //Skip all trailing newlines
-        for(isize message_size = message.size; message_size > 0; message_size --)
+    //Skip all trailing newlines
+    for(isize message_size = message.size; message_size > 0; message_size --)
+    {
+        if(message.data[message_size - 1] != '\n')
         {
-            if(message.data[message_size - 1] != '\n')
-            {
-                message = string_head(message, message_size);
-                break;
-            }
+            message = string_head(message, message_size);
+            break;
         }
+    }
 
-        //Convert type to string
-        //Platform_Calendar_Time c = platform_epoch_time_to_calendar_time(epoch_time);
-        Posix_Date c = local_date_from_epoch_time(it->time);
+    //Convert type to string
+    //Platform_Calendar_Time c = platform_epoch_time_to_calendar_time(epoch_time);
+    Posix_Date c = local_date_from_epoch_time(now);
         
-        //Try to guess size
-        builder_reserve(append_to, size_before + message.size + 100 + module.size);
+    //Try to guess size
+    builder_reserve(append_to, size_before + message.size + 100 + module.size);
+    
+    const char* type_str = "";
+    switch(custom)
+    {
+        case FILE_LOGGER_INFO: type_str = "INFO"; break;
+        case FILE_LOGGER_OKAY: type_str = "SUCC"; break;
+        case FILE_LOGGER_WARN: type_str = "WARN"; break;
+        case FILE_LOGGER_ERROR: type_str = "ERROR"; break;
+        case FILE_LOGGER_FATAL: type_str = "FATAL"; break;
+        case FILE_LOGGER_DEBUG: type_str = "DEBUG"; break;
+        case FILE_LOGGER_TRACE: type_str = "TRACE"; break;
+    }
 
-        const char* type_str = log_type_to_string(it->type);
-        if(strlen(type_str) > 0)
+    format_append_into(append_to, "%02i-%02i-%02i %-5s ", 
+        (int) c.tm_hour, (int) c.tm_min, (int) c.tm_sec, type_str);
+    
+    isize header_size = append_to->size - size_before;
+
+    isize curr_line_pos = 0;
+    for(bool run = true; run;)
+    {
+        isize next_line_pos = -1;
+        if(curr_line_pos >= message.size)
         {
-            format_append_into(append_to, "%02i-%02i-%02i %-5s ", 
-                (int) c.tm_hour, (int) c.tm_min, (int) c.tm_sec, type_str);
+            if(message.size != 0)
+                break;
         }
         else
         {
-            format_append_into(append_to, "%02i-%02i-%02i %-5i ", 
-                (int) c.tm_hour, (int) c.tm_min, (int) c.tm_sec, (int) it->type);
+            next_line_pos = string_find_first_char(message, '\n', curr_line_pos);
         }
-    
-        isize header_size = append_to->size - size_before;
 
-        isize curr_line_pos = 0;
-        for(bool run = true; run;)
+        if(next_line_pos == -1)
         {
-            isize next_line_pos = -1;
-            if(curr_line_pos >= message.size)
-            {
-                if(message.size != 0)
-                    break;
-            }
-            else
-            {
-                next_line_pos = string_find_first_char(message, '\n', curr_line_pos);
-            }
-
-            if(next_line_pos == -1)
-            {
-                next_line_pos = message.size;
-                run = false;
-            }
-        
-            ASSERT(curr_line_pos <= message.size);
-            ASSERT(next_line_pos <= message.size);
-
-            String curr_line = string_range(message, curr_line_pos, next_line_pos);
-
-            //if is first line do else insert header-sized amountof spaces
-            if(curr_line_pos != 0)
-            {
-                isize before_padding = append_to->size;
-                builder_resize(append_to, before_padding + header_size);
-                memset(append_to->data + before_padding, ' ', (size_t) header_size);
-            }
-        
-            builder_append(append_to, formatted_module.string);
-
-            //insert n times group separator
-            for(isize i = 0; i < indentation; i++)
-                builder_append(append_to, group_separator);
-        
-            builder_append(append_to, STRING(": "));
-            builder_append(append_to, curr_line);
-            builder_push(append_to, '\n');
-
-            curr_line_pos = next_line_pos + 1;
+            next_line_pos = message.size;
+            run = false;
         }
-    
-        builder_deinit(&formatted_module);
-    
-        if(it->first_child)
-            file_logger_log_append_into(scratch, append_to, depth + 1, it->first_child);
+        
+        ASSERT(curr_line_pos <= message.size);
+        ASSERT(next_line_pos <= message.size);
+
+        String curr_line = string_range(message, curr_line_pos, next_line_pos);
+
+        //if is first line do else insert header-sized amountof spaces
+        if(curr_line_pos != 0)
+        {
+            isize before_padding = append_to->size;
+            builder_resize(append_to, before_padding + header_size);
+            memset(append_to->data + before_padding, ' ', (size_t) header_size);
+        }
+        
+        builder_append(append_to, formatted_module.string);
+
+        //insert n times group separator
+        for(isize i = 0; i < indent; i++)
+            builder_append(append_to, group_separator);
+        
+        builder_push(append_to, ' ');
+        builder_append(append_to, curr_line);
+        builder_push(append_to, '\n');
+
+        curr_line_pos = next_line_pos + 1;
     }
+    
+    builder_deinit(&formatted_module);
     PROFILE_END();
 }
 
@@ -243,7 +246,7 @@ EXTERNAL void file_logger_deinit(File_Logger* logger)
     builder_deinit(&logger->file_postfix);
 
     if(logger->has_prev_logger)
-        log_set_logger(logger->prev_logger);
+        set_log_set(logger->prev);
 
     if(logger->file)
         fclose(logger->file);
@@ -265,7 +268,6 @@ EXTERNAL void file_logger_init_custom(File_Logger* logger, Allocator* alloc, isi
     builder_init(&logger->file_prefix, alloc);
     builder_init(&logger->file_postfix, alloc);
 
-    logger->logger.log = file_logger_log;
     logger->flush_every_bytes = flush_every_bytes;
     logger->flush_every_seconds = flush_every_seconds;
     logger->file_type_filter = 0xFFFFFFFFFFFFFFFF;
@@ -285,7 +287,7 @@ EXTERNAL void file_logger_init(File_Logger* logger, Allocator* def_alloc, const 
 EXTERNAL void file_logger_init_use(File_Logger* logger, Allocator* def_alloc, const char* folder)
 {
     file_logger_init(logger, def_alloc, folder);
-    logger->prev_logger = log_set_logger(&logger->logger);
+    logger->prev = set_log_set(file_logger_log_set(logger));
     logger->has_prev_logger = true;
 }
 
@@ -354,51 +356,62 @@ EXTERNAL bool file_logger_flush(File_Logger* logger)
     return state;
 }
 
-
-EXTERNAL void file_logger_log(Logger* logger_, i32 group_depth, int actions, const char* module, const char* subject, Log_Type type, Source_Info source, const Log* child, const char* format, va_list args)
+INTERNAL Log _file_logger_make_log(File_Logger* logger, int custom)
 {
+    Log out = {0};
+    out.log = file_logger_log;
+    out.context = logger;
+    out.name = "";
+    out.custom = custom;
+    out.indent = 0;
+    return out;
+}
+
+EXTERNAL Log_Set file_logger_log_set(File_Logger* logger)
+{
+    Log_Set out = {0};
+    out.info = _file_logger_make_log(logger, FILE_LOGGER_INFO);
+    out.okay = _file_logger_make_log(logger, FILE_LOGGER_OKAY);
+    out.warn = _file_logger_make_log(logger, FILE_LOGGER_WARN);
+    out.error = _file_logger_make_log(logger, FILE_LOGGER_ERROR);
+    out.fatal = _file_logger_make_log(logger, FILE_LOGGER_FATAL);
+    out.debug = _file_logger_make_log(logger, FILE_LOGGER_DEBUG);
+    out.trace = _file_logger_make_log(logger, FILE_LOGGER_TRACE);
+    return out;
+}
+
+EXTERNAL void file_logger_log(void* context, int indent, int custom, int is_flush, const char* name, const char* format, va_list args)
+{
+    i64 now = platform_epoch_time();
     PROFILE_START();
-    File_Logger* self = (File_Logger*) (void*) logger_;
+    File_Logger* self = (File_Logger*) context;
     
     platform_mutex_lock(&self->mutex);
-    bool did_flush = false;
-    Log log_list = {0};
-    if(actions & LOG_ACTION_LOG)
+    if(is_flush)
     {
-        log_list.module = module;
-        log_list.subject = subject;
-        log_list.message = vformat_ephemeral(format, args);
-        log_list.type = type;
-        log_list.time = platform_epoch_time();
-        log_list.source = source;
-        log_list.first_child = (Log*) child;
-        log_list.last_child = (Log*) child;
+        file_logger_flush(self);
     }
     else
     {
-        log_list = *child;
-    }
-
-    if(actions & (LOG_ACTION_LOG | LOG_ACTION_CHILD))
-    {
         Arena_Frame arena = scratch_arena_acquire();
         {
+            String_Builder message = vformat(&arena.allocator, format, args);
             String_Builder formatted_log = builder_make(&arena.allocator, 1024);
-            file_logger_log_append_into(&arena.allocator, &formatted_log, group_depth, &log_list);
+            file_logger_log_append_into(&arena.allocator, &formatted_log, indent, custom, name, message.string, now);
 
-            bool print_to_console = (type > LOG_TYPE_MAX) || (((Log_Filter) 1 << type) & self->console_type_filter);
-            bool print_to_file = (type > LOG_TYPE_MAX) || (((Log_Filter) 1 << type) & self->file_type_filter);
+            bool print_to_console = !!((1ULL << custom) & self->console_type_filter);
+            bool print_to_file = !!((1ULL << custom) & self->file_type_filter);
 
             if(print_to_console)
             {
                 const char* color_mode = ANSI_COLOR_NORMAL;
-                if(type == LOG_ERROR || type == LOG_FATAL)
+                if(custom == FILE_LOGGER_ERROR || custom == FILE_LOGGER_FATAL)
                     color_mode = ANSI_COLOR_BRIGHT_RED;
-                else if(type == LOG_WARN)
+                else if(custom == FILE_LOGGER_WARN)
                     color_mode = ANSI_COLOR_YELLOW;
-                else if(type == LOG_OKAY)
+                else if(custom == FILE_LOGGER_OKAY)
                     color_mode = ANSI_COLOR_GREEN;
-                else if(type == LOG_TRACE || type == LOG_DEBUG)
+                else if(custom == FILE_LOGGER_TRACE || custom == FILE_LOGGER_DEBUG)
                     color_mode = ANSI_COLOR_GRAY;
 
                 if(self->console_print_func)
@@ -412,17 +425,9 @@ EXTERNAL void file_logger_log(Logger* logger_, i32 group_depth, int actions, con
     
             f64 time_since_last_flush = clock_s() - self->last_flush_time;
             if(self->buffer.size > self->flush_every_bytes || time_since_last_flush > self->flush_every_seconds)
-            {
                 file_logger_flush(self);
-                did_flush = true;
-            }
         }
         arena_frame_release(&arena);
-    }
-    
-    if((actions & LOG_ACTION_FLUSH) && did_flush == false)
-    {
-        file_logger_flush(self);
     }
 
     platform_mutex_unlock(&self->mutex);

@@ -7,11 +7,15 @@
 
 EXTERNAL void vformat_append_into(String_Builder* append_to, const char* format, va_list args);
 EXTERNAL void format_append_into_no_check(String_Builder* append_to, const char* format, ...);
-#define     format_append_into(append_to, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_append_into_no_check((append_to), (format), ##__VA_ARGS__))
+#define  format_append_into(append_to, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_append_into_no_check((append_to), (format), ##__VA_ARGS__))
 
 EXTERNAL void vformat_into(String_Builder* into, const char* format, va_list args);
 EXTERNAL void format_into_no_check(String_Builder* into, const char* format, ...);
-#define     format_into(into, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_append_into_no_check((into), (format), ##__VA_ARGS__))
+#define  format_into(into, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_append_into_no_check((into), (format), ##__VA_ARGS__))
+
+EXTERNAL String_Builder vformat(Allocator* alloc, const char* format, va_list args);
+EXTERNAL String_Builder format_no_check(Allocator* alloc, const char* format, ...);
+#define  format(alloc, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_no_check((alloc), (format), ##__VA_ARGS__))
 
 EXTERNAL String format_ephemeral(const char* format, ...);
 EXTERNAL String vformat_ephemeral(const char* format, va_list args);
@@ -87,6 +91,22 @@ EXTERNAL const char* cstring_ephemeral(String string);
         va_end(args);
     }
     
+    EXTERNAL String_Builder vformat(Allocator* alloc, const char* format, va_list args)
+    {
+        String_Builder builder = builder_make(alloc, 0);
+        vformat_append_into(&builder, format, args);
+        return builder;
+    }
+    
+    EXTERNAL String_Builder format_no_check(Allocator* alloc, const char* format, ...)
+    {   
+        va_list args;
+        va_start(args, format);
+        String_Builder builder = vformat(alloc, format, args);
+        va_end(args);
+        return builder;
+    }
+
     EXTERNAL String vformat_ephemeral(const char* format, va_list args)
     {
         PROFILE_START();

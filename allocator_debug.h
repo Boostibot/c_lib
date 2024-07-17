@@ -133,7 +133,7 @@ EXTERNAL Debug_Allocation       debug_allocator_get_allocation(const Debug_Alloc
 EXTERNAL Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debug_Allocator allocator, isize print_max);
 
 //Prints up to get_max currectly alive allocations sorted by their time of allocation. If get_max <= 0 returns all
-EXTERNAL void debug_allocator_print_alive_allocations(const char* log_module, Log_Type log_type, const Debug_Allocator allocator, isize print_max); 
+EXTERNAL void debug_allocator_print_alive_allocations(Log log, const Debug_Allocator allocator, isize print_max); 
 
 //Converts a panic reason to string
 EXTERNAL const char* debug_allocator_panic_reason_to_string(Debug_Allocator_Panic_Reason reason);
@@ -416,9 +416,9 @@ INTERNAL void* _debug_allocator_panic(Debug_Allocator* self, Debug_Allocator_Pan
         const char* reason_str = debug_allocator_panic_reason_to_string(reason);
 
         LOG_FATAL("MEMORY", "PANIC because of %s at pointer 0x%08llx (penetration: %lli)", reason_str, (lli) allocation.ptr, interpenetration);
-        debug_allocator_print_alive_allocations("MEMORY", LOG_TRACE, *self, 0);
+        debug_allocator_print_alive_allocations(log_trace("MEMORY"), *self, 0);
     
-        log_flush();
+        log_flush_all();
         abort();
     }
 
@@ -485,9 +485,7 @@ EXTERNAL Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debu
     return out;
 }
 
-
-
-EXTERNAL void debug_allocator_print_alive_allocations(const char* log_module, Log_Type log_type, const Debug_Allocator allocator, isize print_max)
+EXTERNAL void debug_allocator_print_alive_allocations(Log log, const Debug_Allocator allocator, isize print_max)
 {
     _debug_allocator_is_invariant(&allocator);
     
@@ -495,24 +493,19 @@ EXTERNAL void debug_allocator_print_alive_allocations(const char* log_module, Lo
     if(print_max > 0)
         ASSERT(alive.size <= print_max);
 
-    LOG(log_module, log_type, "printing ALIVE allocations (%lli) below:", (lli)alive.size);
-    log_group();
-
+    LOG(log, "printing ALIVE allocations (%lli) below:", (lli)alive.size);
     for(isize i = 0; i < alive.size; i++)
     {
         Debug_Allocation curr = alive.data[i];
-        LOG(log_module, log_type, "%-3lli - size %-8lli ptr: 0x%08llx align: %-2lli",
+        LOG(log, "%-3lli - size %-8lli ptr: 0x%08llx align: %-2lli",
             (lli) i, (lli) curr.size, (lli) curr.ptr, (lli) curr.align);
      
         if(allocator.captured_callstack_size > 0)
         {
-            log_group();
-            log_captured_callstack(log_module, log_type, curr.allocation_trace, allocator.captured_callstack_size);
-            log_ungroup();
+            log_captured_callstack(log_indented(log), curr.allocation_trace, allocator.captured_callstack_size);
         }
     }
 
-    log_ungroup();
     array_deinit(&alive);
 }
 

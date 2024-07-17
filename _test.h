@@ -76,7 +76,7 @@ EXTERNAL void _run_test_recover(void* context, Platform_Sandbox_Error error)
     if(error.exception != PLATFORM_EXCEPTION_ABORT)
     {
         LOG_ERROR("TEST", "Exception occurred in test '%s': %s", c->name, platform_exception_to_string(error.exception));
-        log_captured_callstack(">TEST", LOG_TRACE, error.call_stack, error.call_stack_size);
+        log_captured_callstack(log_trace(">TEST"), error.call_stack, error.call_stack_size);
     }
 }
 
@@ -97,9 +97,9 @@ EXTERNAL bool run_test(void* func, const char* name, Test_Func_Type type, f64 ma
         default: UNREACHABLE();
     }
 
-    log_group();
+    log_indent();
     bool success = platform_exception_sandbox(_run_test_try, &context, _run_test_recover, &context) == 0;
-    log_ungroup();
+    log_outdent();
     if(success)
         LOG_OKAY("TEST", "%s OK", name);
     else

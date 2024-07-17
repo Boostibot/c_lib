@@ -66,9 +66,9 @@ typedef enum Log_Perf_Sort_By{
 	PERF_SORT_BY_RUNS,
 } Log_Perf_Sort_By;
 
-EXTERNAL void profile_log_all(const char* log_module, Log_Type log_type, Log_Perf_Sort_By sort_by);
-EXTERNAL void log_perf_stats_hdr(const char* log_module, Log_Type log_type, const char* label);
-EXTERNAL void log_perf_stats_row(const char* log_module, Log_Type log_type, const char* label, Perf_Stats stats);
+EXTERNAL void profile_log_all(Log log, Log_Perf_Sort_By sort_by);
+EXTERNAL void log_perf_stats_hdr(Log log, const char* label);
+EXTERNAL void log_perf_stats_row(Log log, const char* label, Perf_Stats stats);
 
 //@TODO: Move into platform layer
 #include <stdint.h>
@@ -226,10 +226,10 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 			Perf_Counter combined = {0};
 			for(Profile_Thread_Zone* thread_zone = zone->first; thread_zone != NULL; thread_zone = thread_zone->next)
 			{
-				if(thread_zone == zone->first)
-					combined = thread_zone->counter;
-				else
-					combined = perf_counter_merge(combined, thread_zone->counter, NULL);
+				//if(thread_zone == zone->first)
+				//	combined = thread_zone->counter;
+				//else
+				//	combined = perf_counter_merge(combined, thread_zone->counter, NULL);
 			}
 			
 			Profile_Zone_Stats* out_stats = &stats->data[i];
@@ -247,13 +247,13 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 	}
 }
 
-	EXTERNAL void log_perf_stats_hdr(const char* log_module, Log_Type log_type, const char* label)
+	EXTERNAL void log_perf_stats_hdr(Log log, const char* label)
 	{
-		LOG(log_module, log_type, "%s     time |        runs |   σ/μ", label);
+		LOG(log, "%s     time |        runs |   σ/μ", label);
 	}
-	EXTERNAL void log_perf_stats_row(const char* log_module, Log_Type log_type, const char* label, Perf_Stats stats)
+	EXTERNAL void log_perf_stats_row(Log log, const char* label, Perf_Stats stats)
 	{
-		LOG(log_module, log_type, "%s%s | %11lli | %5.2lf", label, format_seconds(stats.average_s, 5).data, stats.runs, stats.normalized_standard_deviation_s);
+		LOG(log, "%s%s | %11lli | %5.2lf", label, format_seconds(stats.average_s, 5).data, stats.runs, stats.normalized_standard_deviation_s);
 	}
 	
 	INTERNAL int _profile_compare_runs(const void* a_, const void* b_)
@@ -292,7 +292,7 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 		return res;
 	}
 
-	EXTERNAL void profile_log_all(const char* log_module, Log_Type log_type, Log_Perf_Sort_By sort_by)
+	EXTERNAL void profile_log_all(Log stream, Log_Perf_Sort_By sort_by)
 	{
 		(void) sort_by;
 		Arena_Frame arena = scratch_arena_acquire();
@@ -324,9 +324,8 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 			case PERF_SORT_BY_RUNS: qsort(all_stats.data, (size_t) all_stats.size, sizeof *all_stats.data, _profile_compare_runs); break;
 		}
 
-		LOG(log_module, log_type, "Logging perf counters (still running %lli):", (lli) 0);
-		log_group();
-			LOG(log_module, log_type, "    total ms | average ms |  runs  |  σ/μ  | [min max] ms        | source");
+		LOG(stream, "Logging perf counters (still running %lli):", (lli) 0);
+			LOG(stream, "    total ms | average ms |  runs  |  σ/μ  | [min max] ms        | source");
 			for(isize i = 0; i < all_stats.size; i++)
 			{
 				Profile_Zone_Stats single = all_stats.data[i];
@@ -337,7 +336,7 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 
 				if(single.id.type == PROFILE_DEFAULT)
 				{
-					LOG(log_module, log_type, "%s %s %12lli %5.2lf [%s %s] %25s %-4lli %s %s", 
+					LOG(stream, "%s %s %12lli %5.2lf [%s %s] %25s %-4lli %s %s", 
 						format_seconds(single.stats.total_s,9).data,
 						format_seconds(single.stats.average_s, 7).data,
 						(lli) single.stats.runs,
@@ -352,7 +351,7 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 				}
 				if(single.id.type == PROFILE_FAST)
 				{
-					LOG(log_module, log_type, "%s %s %8lli %25s %-4lli %s %s", 
+					LOG(stream, "%s %s %8lli %25s %-4lli %s %s", 
 						format_seconds(single.stats.total_s, 9).data,
 						format_seconds(single.stats.average_s, 7).data,
 						(lli) single.stats.runs,
@@ -365,7 +364,7 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 				
 				if(single.id.type == PROFILE_COUNTER)
 				{
-					LOG(log_module, log_type, "%8lli %25s %-4lli %s %s", 
+					LOG(stream, "%8lli %25s %-4lli %s %s", 
 						(lli) single.stats.runs,
 						single.id.file + common_prefix.size,
 						(lli) single.id.line,
@@ -374,7 +373,6 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 					);
 				}
 			}
-		log_ungroup();
 
 		arena_frame_release(&arena);
 	}
