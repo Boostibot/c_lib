@@ -1,19 +1,20 @@
-This is a perpetually ongoing development C codebase I use for personal projects. It reflects my current opinions of what is desirable but that does not mean the solutions given here are the absolute best. If you have any suggestions I will be more than happy to hear them.
+This is a perpetually ongoing development C codebase I use for personal projects. It reflects my current opinions of what is desirable but that does not mean the solutions given here are optimal. If you have any remarks I will be more than happy to hear them.
 
 # Most important files
 - `array.h` **(freestanding)**: Generic, type-safe array in pure C. This mostly works like `std::vector`.
 - `hash_index.h` **(freestanding)**: Small and very performant hash table building block. This is not a fully fledged hash table, but just a 64 -> 62 bit hash mapping. All other tables can be implemented using this. Read the comment for more rationale.
-- `platform.h` **(freestanding)**: A fully fledged platform layer supporting windows and linux. Contains code for threading, intrinsics, virtual memory, filesystem (reading, writing, listing observing changes), debug facilities (callstack capturing, printing, sandboxing) and many more.  
-- `perf.h` **(freestanding)**: Small set of functions for timing/benchmarking code and evaluating results. Reports average times, standard deviation, min max times and more. Has additional atomic interface for measuring multithreaded code.
-- `random.h` **(freestanding)**: Convenient fast, non-cryptographic random number generation. Has both global state and local state interface.
-- `deprecated/unicode.h` **(freestanding)**: Conversion between UTF8, UTF16, UTF32 with proper error checking. Extensively tested.
-- `path.h`: Robust path parsing, normalization and mutation algorithms. Correctly parses linux and all kinds of strange windows paths.
-- `profile.h`: Very basic atomic global profiler. Does not require any initialization. Uses `perf.h`.
-- `stable_array.h`: O(1) Fast, memory efficient free-list like structure keeping stable pointers. Accessible through handles. Is suitable for storing large amounts of data or implementing SQL-like tables. 
-- `allocator.h`: Interface for generic allocators with special fast path for arenas.
-- `arena.h` **(freestanding)**: "Safe" arena implementation. Works like regular arena but contains code that cheaply check & prevents bad usage. 
+- `allocator_tlsf.h`: **(freestanding)** A TLSF style allocator on top of a given memory block. All operations are hard O(1). All book-keeping is done in seperate memory, allowing interface for allocation on the GPU. Is about 25% faster then malloc.
+- `slz4.h`: **(freestanding)** Simple but quite fast LZ4 compressor/decompressor. On the enwik8 dataset achieves compression speed of 130MB/s, 2.10 compression ratio and decompression speed of 2.7GB/s. Tested for safety and full standard compliance.
 - `allocator_debug.h`: Wrapper around generic allocator that verifies correct handling and detects leaks. Can capture callstack to print exactly where the leak occurred.
-- `pool_allocator.h`: A fully general allocator on top of a given memory block. All operations are hard O(1). Behaves like malloc but gives me much more control. Is only about 25% faster then malloc (to be improved).
+- `allocator.h`: Interface for generic allocators with special fast path for arenas.
+- `deprecated/unicode.h` **(freestanding)**: Conversion between UTF8, UTF16, UTF32 with proper error checking. Extensively tested.
+- `platform.h` **(freestanding)**: A fully fledged platform layer supporting windows and linux. Contains code for threading, intrinsics, virtual memory, filesystem (reading, writing, listing observing changes), debug facilities (callstack capturing, printing, sandboxing) and many more.  
+- `random.h` **(freestanding)**: Convenient fast, non-cryptographic random number generation. Has both global state and local state interface.
+- `path.h`: Robust path parsing, normalization and mutation algorithms. Correctly parses linux and all kinds of strange windows paths.
+- `arena.h` **(freestanding)**: "Safe" arena implementation. Works like regular arena but contains code that cheaply check & prevents bad usage. 
+- `perf.h` **(freestanding)**: Small set of functions for timing/benchmarking code and evaluating results. Reports average times, standard deviation, min max times and more. 
+- `profile.h`: Extremely low overhead averaging profiler. Uses a combination of thread local storage and lazy initialization to only require a single branch worth of overhead. Captures total runtime, runs, min/max runtime and standard deviation.
+- `stable_array.h`: O(1) Fast, memory efficient free-list like structure keeping stable pointers. Accessible through handles. Is suitable for storing large amounts of data or implementing SQL-like tables. 
 - `math.h` **(freestanding)**: Float vector math operations.
   
 # Code structure
@@ -30,10 +31,9 @@ Most files contain a large comment at the top giving a high level overview. This
 3. Why has the implementation chosen to be like this and not some other way
 4. Specific tricky implementation details and oddities
 
-
 # Goals
 The main goal of this project is to develop a fully sufficient environment in which I can be productive. Additional goal is to be as transparent as possible and help others learn more. Essentially "what I would liked to have when I was figuring this out". The most important qualities are in order:
-1. **Simplicity**: As both the total number of meaningful lines of code and number of instructions the processor fundamentally needs to execute for the desired effect to happen
-2. **Hardware informed**: The code must be designed in an amenable way to what the hardware is good at. This does not mean being necessarily optimal in terms of performance (as that is impossible for generic code such as this) but rather not being oblivious to the machine. 
-3. **Observability**: It must be easy to observe what the code is doing, what is should be doing at any point in time. It must be trivial to inspect, print, debug and change.
-4. **Trustworthy**: The code needs to be properly tested and hard invariants about behavior need to be formulated and enforced.
+1. **Simplicity**: The total number of meaningful lines of code and/or number of instructions the processor has to execute, needs to be kept proportional to the problem complexity.
+2. **Hardware informed**: The code must be designed in an amenable way to what the hardware is good at. This does not mean being necessarily optimal in terms of performance but rather not being oblivious to the machine. 
+3. **Observability**: It must be easy to observe what the code is doing and what it should be doing at any point in time. It must be trivial to inspect, print, debug and change.
+4. **Trustworthy**: The code needs to be properly tested. Hard invariants about behavior need to be formulated and enforced.
