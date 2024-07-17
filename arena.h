@@ -121,8 +121,8 @@
 #include "profile_defs.h"
 
 #define ARENA_DEF_STACK_SIZE   256
-#define ARENA_DEF_RESERVE_SIZE 64 * GIBI_BYTE 
-#define ARENA_DEF_COMMIT_SIZE  8 * MEBI_BYTE 
+#define ARENA_DEF_RESERVE_SIZE 64 * GB 
+#define ARENA_DEF_COMMIT_SIZE  8 * MB 
 
 //Contiguous chunk of virtual memory.
 typedef struct Arena {

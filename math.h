@@ -39,10 +39,12 @@
     #define ATTRIBUTE_ALIGNED(align)            _Alignas(align)
 #endif
 
-#ifdef __cplusplus
-    #define BINIT(Struct) Struct
-#else
-    #define BINIT(Struct) (Struct)
+#ifndef BINIT
+    #ifdef __cplusplus
+        #define BINIT(Struct) Struct
+    #else
+        #define BINIT(Struct) (Struct)
+    #endif
 #endif
 
 typedef union Vec2 {

@@ -42,7 +42,7 @@ typedef struct Serialize_Enum {
     i64 value;
 } Serialize_Enum;
 
-#define SERIALIZE_ENUM_VALUE(ENUM_VALUE) BRACE_INIT(Serialize_Enum){STRING(#ENUM_VALUE), ENUM_VALUE}
+#define SERIALIZE_ENUM_VALUE(ENUM_VALUE) BINIT(Serialize_Enum){STRING(#ENUM_VALUE), ENUM_VALUE}
 
 EXTERNAL void base16_encode_append_into(String_Builder* into, const void* data, isize len);
 EXTERNAL isize base16_decode_append_into(String_Builder* into, const void* data, isize len);

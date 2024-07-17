@@ -11,8 +11,7 @@ typedef struct Discrete_Distribution {
     Random_State state;
 	i32_Array prob_table;
 	i32 prob_sum;
-    bool use_state;
-    bool _padding[3];
+    b32 use_state;
 } Discrete_Distribution;
 
 EXTERNAL Discrete_Distribution random_discrete_make(const i32 probabilities[], isize probabilities_size);

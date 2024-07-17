@@ -27,7 +27,7 @@ typedef Array(String)         String_Array;
 typedef Array(String_Builder) String_Builder_Array;
 
 //Constructs a String out of a string literal
-#define STRING(cstring) BRACE_INIT(String){cstring "", sizeof(cstring "") - 1}
+#define STRING(cstring) BINIT(String){cstring "", sizeof(cstring "") - 1}
 
 EXTERNAL String string_of(const char* str); //Constructs a string from null terminated str
 EXTERNAL String string_make(const char* data, isize size); //Constructs a string

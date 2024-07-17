@@ -22,7 +22,7 @@ EXTERNAL bool hash_string_is_equal(Hash_String a, Hash_String b);         //Comp
 EXTERNAL bool hash_string_is_equal_approx(Hash_String a, Hash_String b);  //Compares two hash strings using only hash and size. Can be forced to compare data by defining DISSABLE_APPROXIMATE_EQUAL
 
 //Makes a hashed string out of string literal, with optimizations evaluating the hash at compile time (except on GCC). Fails for anything but string literals
-#define HSTRING(string_literal) BRACE_INIT(Hash_String){string_literal "", sizeof(string_literal) - 1, hash64_fnv_inline(string_literal, sizeof(string_literal) - 1)}
+#define HSTRING(string_literal) BINIT(Hash_String){string_literal "", sizeof(string_literal) - 1, hash64_fnv_inline(string_literal, sizeof(string_literal) - 1)}
 
 //@NOTE: We use fnv because of its extreme simplicity making it very likely to be inlined
 //       and thus for static strings be evaluated at compile time. Truly, both MSVC and 

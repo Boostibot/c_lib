@@ -86,8 +86,7 @@ typedef struct Debug_Allocator
     bool do_deinit_leak_check;   //If the memory use on initialization and deinitialization does not match panics.
                                  //can be toggled during runtime. 
     bool is_init;                //prevents double init
-    bool is_within_allocation;   //prevents infinite recursion on logging functions
-    bool _padding[3];
+    b32 is_within_allocation;   //prevents infinite recursion on logging functions
 
     isize captured_callstack_size; //number of stack frames to capture on each allocation. Defaults to 0.
                                    //If this is greater than 0 replaces passed source info in reports

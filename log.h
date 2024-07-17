@@ -206,11 +206,6 @@ EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format,
 
     EXTERNAL String_Buffer_16 format_bytes(int64_t bytes, int width)
     {
-        int64_t TB = (int64_t) 1024*1024*1024*1024;
-        int64_t GB = (int64_t) 1024*1024*1024;
-        int64_t MB = (int64_t) 1024*1024;
-        int64_t KB = (int64_t) 1024;
-
         int64_t abs = bytes > 0 ? bytes : -bytes;
         String_Buffer_16 out = {0};
         if(abs >= TB)

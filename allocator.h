@@ -56,8 +56,7 @@ typedef struct Allocator_Stats {
     //Optional human readable name of this specific allocator
     const char* name;
     //if doesnt use any other allocator to obtain its memory. For example malloc allocator or VM memory allocator have this set.
-    bool is_top_level; 
-	bool _padding[7];
+    b64 is_top_level; 
 
     //The number of bytes given out to the program by this allocator. (does NOT include book keeping bytes).
     //Might not be totally accurate but is required to be locally stable - if we allocate 100B and then deallocate 100B this should not change.
@@ -130,13 +129,6 @@ EXTERNAL bool  is_power_of_two_or_zero(isize num);
 EXTERNAL void* align_forward(void* ptr, isize align_to);
 EXTERNAL void* align_backward(void* ptr, isize align_to);
 EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void) bytes; return NULL;}
-
-#define CACHE_LINE  ((int64_t) 64)
-#define PAGE_BYTES  ((int64_t) 4096)
-#define KIBI_BYTE   ((int64_t) 1 << 10)
-#define MEBI_BYTE   ((int64_t) 1 << 20)
-#define GIBI_BYTE   ((int64_t) 1 << 30)
-#define TEBI_BYTE   ((int64_t) 1 << 40)
 
 //move to platform!
 #ifdef _MSC_VER

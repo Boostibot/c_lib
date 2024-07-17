@@ -604,10 +604,10 @@ Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t siz
         
         for(; total_read < size;)
         {
-            int64_t GB = 1 << 30;
+            int64_t _GB = 1 << 30;
             int64_t to_read = size - total_read;
-            if(to_read > GB)
-                to_read = GB;
+            if(to_read > _GB)
+                to_read = _GB;
 
             DWORD bytes_read = 0;
             state = !!ReadFile((HANDLE) file->handle.windows, (unsigned char*) buffer + total_read, (DWORD) to_read, &bytes_read, NULL);
@@ -644,10 +644,10 @@ Platform_Error platform_file_write(Platform_File* file, const void* buffer, int6
 
         for(int64_t total_written = 0; total_written < size;)
         {
-            int64_t GB = 1 << 30;
+            int64_t _GB = 1 << 30;
             int64_t to_write = size - total_written;
-            if(to_write > GB)
-                to_write = GB;
+            if(to_write > _GB)
+                to_write = _GB;
 
             DWORD bytes_written = 0;
             state = !!WriteFile((HANDLE) file->handle.windows, (unsigned char*) buffer + total_written, (DWORD) to_write, &bytes_written, NULL);

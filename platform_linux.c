@@ -738,7 +738,7 @@ Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String 
 {
     const char* to = _ephemeral_null_terminate(copy_to_path);
     const char* from = _ephemeral_null_terminate(copy_from_path);
-    size_t GB = 1 << (30);
+    size_t _GB = 1 << (30);
 
     int to_fd = -1;
     int from_fd = -1;
@@ -761,7 +761,7 @@ Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String 
 
     while(state)
     {
-        ssize_t bytes_copied = copy_file_range(from_fd, NULL, to_fd, NULL, GB, 0);
+        ssize_t bytes_copied = copy_file_range(from_fd, NULL, to_fd, NULL, _GB, 0);
         if(bytes_copied == -1)
             state = false;
         //If no more to read stop
