@@ -12,7 +12,7 @@
 #include <stdbool.h>
 
 #if !defined(ASSERT) && !defined(JOT_ASSERT)
-#define ASSERT(x) assert(x)
+    #define ASSERT(x) assert(x)
 #endif // !ASSERT
 
 #ifndef PI
@@ -31,25 +31,63 @@
     #define JMAPI static inline
 #endif
 
-typedef struct Vec2 {
-    float x;
-    float y;
+#if defined(_MSC_VER)
+    #define ATTRIBUTE_ALIGNED(bytes)            __declspec(align(bytes))
+#elif defined(__GNUC__) || defined(__clang__)
+    #define ATTRIBUTE_ALIGNED(bytes)            __attribute__((aligned(bytes)))
+#else
+    #define ATTRIBUTE_ALIGNED(align)            _Alignas(align)
+#endif
+
+#ifdef __cplusplus
+    #define BINIT(Struct) Struct
+#else
+    #define BINIT(Struct) (Struct)
+#endif
+
+typedef union Vec2 {
+    struct { float x, y; };
+    float floats[2];
 } Vec2;
 
-typedef struct Vec3 {
-    float x;
-    float y;
-    float z;
+typedef union Vec3 {
+    struct { Vec2 xy; float _pad1; };
+    struct { float _pad2; Vec2 yz; };
+    struct { float x, y, z; };
+    float floats[3];
 } Vec3;
 
-typedef struct Vec4 {
-    float x;
-    float y;
-    float z;
-    float w;
+ATTRIBUTE_ALIGNED(16) typedef union Vec4 {
+    struct { Vec3 xyz; float _pad1; };
+    struct { float _pad2; Vec3 yzw; };
+    struct { Vec2 xy; Vec2 zw; };
+    struct { float _pad3; Vec2 yz; float _pad4; };
+    struct { float x, y, z, w; };
+    float floats[4];
 } Vec4;
 
-typedef struct Quat {
+typedef union iVec2 {
+    struct { int x, y; };
+    int ints[2];
+} iVec2;
+
+typedef union iVec3 {
+    struct { iVec2 xy; int _pad1; };
+    struct { int _pad2; iVec2 yz; };
+    struct { int x, y, z; };
+    int ints[3];
+} iVec3;
+
+ATTRIBUTE_ALIGNED(16) typedef union iVec4 {
+    struct { iVec3 xyz; int _pad1; };
+    struct { int _pad2; iVec3 yzw; };
+    struct { iVec2 xy; iVec2 zw; };
+    struct { int _pad3; iVec2 yz; int _pad4; };
+    struct { int x, y, z, w; };
+    float ints[4];
+} iVec4;
+
+ATTRIBUTE_ALIGNED(16) typedef struct Quat {
     float x;
     float y;
     float z;
@@ -58,85 +96,47 @@ typedef struct Quat {
 
 typedef union Mat2 {
     Vec2 col[2];
-    
     float m[2][2];
-
     struct {
         float m11, m21;
         float m12, m22;
     };
+    float floats[4];
 } Mat2;
 
 typedef union Mat3 {
     Vec3 col[3];
-
     float m[3][3];
-
     struct {
         float m11, m21, m31;
         float m12, m22, m32;
         float m13, m23, m33;
     };
+    float floats[9];
 } Mat3;
 
 typedef union Mat4 {
     Vec4 col[4];
-
     float m[4][4];
-
     struct {
         float m11, m21, m31, m41;
         float m12, m22, m32, m42;
         float m13, m23, m33, m43;
         float m14, m24, m34, m44;
     };
+    float floats[16];
 } Mat4;
 
-#define AS_FLOATS(vector_or_other_math_struct) ((float*) (void*) &(vector_or_other_math_struct))
+    
+#define vec2(...) BINIT(Vec2){__VA_ARGS__}
+#define vec3(...) BINIT(Vec3){__VA_ARGS__}
+#define vec4(...) BINIT(Vec4){__VA_ARGS__}
+#define ivec2(...) BINIT(iVec2){__VA_ARGS__}
+#define ivec3(...) BINIT(iVec3){__VA_ARGS__}
+#define ivec4(...) BINIT(iVec4){__VA_ARGS__}
 
-JMAPI float to_radiansf(float degrees)
-{
-    float radians = degrees / 180.0f * PI;
-    return radians;
-}
-
-JMAPI float to_degreesf(float radians)
-{
-    float degrees = radians * 180.0f / PI;
-    return degrees;
-}
-
-JMAPI float lerpf(float lo, float hi, float t) 
-{
-    return lo * (1.0f - t) + hi * t;
-}
-
-JMAPI float remapf(float value, float input_from, float input_to, float output_from, float output_to)
-{
-    float result = (value - input_from)/(input_to - input_from)*(output_to - output_from) + output_from;
-    return result;
-}
-
-JMAPI bool is_nearf(float a, float b, float epsilon)
-{
-    //this form guarantees that is_nearf(NAN, NAN, 1) == true
-    return !(fabsf(a - b) > epsilon);
-}
-
-//Returns true if x and y are within epsilon distance of each other.
-//If |x| and |y| are less than 1 uses epsilon directly
-//else scales epsilon to account for growing floating point inaccuracy
-JMAPI bool is_near_scaledf(float x, float y, float epsilon)
-{
-    //This is the form that produces the best assembly
-    float calced_factor = fabsf(x) + fabsf(y);
-    float factor = 2 > calced_factor ? 2 : calced_factor;
-    return is_nearf(x, y, factor * epsilon / 2);
-}
-
-JMAPI Vec2 vec2(float x, float y)                   { Vec2 out = {x, y}; return out; }
-JMAPI Vec3 vec3(float x, float y, float z)          { Vec3 out = {x, y, z}; return out; }
-JMAPI Vec4 vec4(float x, float y, float z, float w) { Vec4 out = {x, y, z, w}; return out; }
+#define m(a, b) a < b ? a : b
+#define M(a, b) a > b ? a : b
 
 JMAPI Vec2 vec2_of(float s) { return vec2(s, s); }
 JMAPI Vec3 vec3_of(float s) { return vec3(s, s, s); }
@@ -173,6 +173,134 @@ JMAPI Vec4 vec4_norm(Vec4 a) { float len = vec4_len(a); return len > 0 ? vec4_sc
 JMAPI bool vec2_is_equal(Vec2 a, Vec2 b) { return memcmp(&a, &b, sizeof a) == 0; }
 JMAPI bool vec3_is_equal(Vec3 a, Vec3 b) { return memcmp(&a, &b, sizeof a) == 0; }
 JMAPI bool vec4_is_equal(Vec4 a, Vec4 b) { return memcmp(&a, &b, sizeof a) == 0; }
+
+JMAPI Vec2 vec2_mul(Vec2 a, Vec2 b) { return vec2(a.x * b.x, a.y * b.y);                                }
+JMAPI Vec3 vec3_mul(Vec3 a, Vec3 b) { return vec3(a.x * b.x, a.y * b.y, a.z * b.z);                     }
+JMAPI Vec4 vec4_mul(Vec4 a, Vec4 b) { return vec4(a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w);          }
+
+JMAPI Vec2 vec2_div(Vec2 a, Vec2 b) { return vec2(a.x / b.x, a.y / b.y);                                }
+JMAPI Vec3 vec3_div(Vec3 a, Vec3 b) { return vec3(a.x / b.x, a.y / b.y, a.z / b.z);                     }
+JMAPI Vec4 vec4_div(Vec4 a, Vec4 b) { return vec4(a.x / b.x, a.y / b.y, a.z / b.z, a.w / b.w);          }
+
+JMAPI Vec2 vec2_min(Vec2 a, Vec2 b) { return vec2(m(a.x, b.x), m(a.y, b.y));                            }
+JMAPI Vec3 vec3_min(Vec3 a, Vec3 b) { return vec3(m(a.x, b.x), m(a.y, b.y), m(a.z, b.z));               }
+JMAPI Vec4 vec4_min(Vec4 a, Vec4 b) { return vec4(m(a.x, b.x), m(a.y, b.y), m(a.z, b.z), m(a.w, b.w));  }
+
+JMAPI Vec2 vec2_max(Vec2 a, Vec2 b) { return vec2(M(a.x, b.x), M(a.y, b.y));                            }
+JMAPI Vec3 vec3_max(Vec3 a, Vec3 b) { return vec3(M(a.x, b.x), M(a.y, b.y), M(a.z, b.z));               }
+JMAPI Vec4 vec4_max(Vec4 a, Vec4 b) { return vec4(M(a.x, b.x), M(a.y, b.y), M(a.z, b.z), M(a.w, b.w));  }
+
+JMAPI Vec2 vec2_clamp(Vec2 clamped, Vec2 low, Vec2 high) { return vec2_max(low, vec2_min(clamped, high)); }
+JMAPI Vec3 vec3_clamp(Vec3 clamped, Vec3 low, Vec3 high) { return vec3_max(low, vec3_min(clamped, high)); }
+JMAPI Vec4 vec4_clamp(Vec4 clamped, Vec4 low, Vec4 high) { return vec4_max(low, vec4_min(clamped, high)); }
+
+JMAPI Vec2 vec2_lerp(Vec2 a, Vec2 b, float t) { return vec2_add(vec2_scale(a, 1 - t), vec2_scale(b, t)); }
+JMAPI Vec3 vec3_lerp(Vec3 a, Vec3 b, float t) { return vec3_add(vec3_scale(a, 1 - t), vec3_scale(b, t)); }
+JMAPI Vec4 vec4_lerp(Vec4 a, Vec4 b, float t) { return vec4_add(vec4_scale(a, 1 - t), vec4_scale(b, t)); }
+
+//integer
+JMAPI iVec2 ivec2_of(int s) { return ivec2(s, s); }
+JMAPI iVec3 ivec3_of(int s) { return ivec3(s, s, s); }
+JMAPI iVec4 ivec4_of(int s) { return ivec4(s, s, s, s); }
+
+JMAPI iVec2 ivec2_add(iVec2 a, iVec2 b) { return ivec2(a.x + b.x, a.y + b.y); }
+JMAPI iVec3 ivec3_add(iVec3 a, iVec3 b) { return ivec3(a.x + b.x, a.y + b.y, a.z + b.z); }
+JMAPI iVec4 ivec4_add(iVec4 a, iVec4 b) { return ivec4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w); }
+
+JMAPI iVec2 ivec2_sub(iVec2 a, iVec2 b) { return ivec2(a.x - b.x, a.y - b.y); }
+JMAPI iVec3 ivec3_sub(iVec3 a, iVec3 b) { return ivec3(a.x - b.x, a.y - b.y, a.z - b.z); }
+JMAPI iVec4 ivec4_sub(iVec4 a, iVec4 b) { return ivec4(a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w); }
+
+JMAPI iVec2 ivec2_scale(iVec2 a, int s) { return ivec2(s * a.x, s * a.y); }
+JMAPI iVec3 ivec3_scale(iVec3 a, int s) { return ivec3(s * a.x, s * a.y, s * a.z); }
+JMAPI iVec4 ivec4_scale(iVec4 a, int s) { return ivec4(s * a.x, s * a.y, s * a.z, s * a.w); }
+
+JMAPI int ivec2_dot(iVec2 a, iVec2 b) { return a.x*b.x + a.y*b.y; }
+JMAPI int ivec3_dot(iVec3 a, iVec3 b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
+JMAPI int ivec4_dot(iVec4 a, iVec4 b) { return a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w; }
+
+JMAPI bool ivec2_is_equal(iVec2 a, iVec2 b) { return memcmp(&a, &b, sizeof a) == 0; }
+JMAPI bool ivec3_is_equal(iVec3 a, iVec3 b) { return memcmp(&a, &b, sizeof a) == 0; }
+JMAPI bool ivec4_is_equal(iVec4 a, iVec4 b) { return memcmp(&a, &b, sizeof a) == 0; }
+
+JMAPI iVec2 ivec2_mul(iVec2 a, iVec2 b) { return ivec2(a.x * b.x, a.y * b.y);                                }
+JMAPI iVec3 ivec3_mul(iVec3 a, iVec3 b) { return ivec3(a.x * b.x, a.y * b.y, a.z * b.z);                     }
+JMAPI iVec4 ivec4_mul(iVec4 a, iVec4 b) { return ivec4(a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w);          }
+
+JMAPI iVec2 ivec2_div(iVec2 a, iVec2 b) { return ivec2(a.x / b.x, a.y / b.y);                                }
+JMAPI iVec3 ivec3_div(iVec3 a, iVec3 b) { return ivec3(a.x / b.x, a.y / b.y, a.z / b.z);                     }
+JMAPI iVec4 ivec4_div(iVec4 a, iVec4 b) { return ivec4(a.x / b.x, a.y / b.y, a.z / b.z, a.w / b.w);          }
+
+JMAPI iVec2 ivec2_min(iVec2 a, iVec2 b) { return ivec2(m(a.x, b.x), m(a.y, b.y));                            }
+JMAPI iVec3 ivec3_min(iVec3 a, iVec3 b) { return ivec3(m(a.x, b.x), m(a.y, b.y), m(a.z, b.z));               }
+JMAPI iVec4 ivec4_min(iVec4 a, iVec4 b) { return ivec4(m(a.x, b.x), m(a.y, b.y), m(a.z, b.z), m(a.w, b.w));  }
+
+JMAPI iVec2 ivec2_max(iVec2 a, iVec2 b) { return ivec2(M(a.x, b.x), M(a.y, b.y));                            }
+JMAPI iVec3 ivec3_max(iVec3 a, iVec3 b) { return ivec3(M(a.x, b.x), M(a.y, b.y), M(a.z, b.z));               }
+JMAPI iVec4 ivec4_max(iVec4 a, iVec4 b) { return ivec4(M(a.x, b.x), M(a.y, b.y), M(a.z, b.z), M(a.w, b.w));  }
+
+JMAPI iVec2 ivec2_clamp(iVec2 clamped, iVec2 low, iVec2 high) { return ivec2_max(low, ivec2_min(clamped, high)); }
+JMAPI iVec3 ivec3_clamp(iVec3 clamped, iVec3 low, iVec3 high) { return ivec3_max(low, ivec3_min(clamped, high)); }
+JMAPI iVec4 ivec4_clamp(iVec4 clamped, iVec4 low, iVec4 high) { return ivec4_max(low, ivec4_min(clamped, high)); }
+
+JMAPI iVec2 ivec2_lerp(iVec2 a, iVec2 b, int t) { return ivec2_add(ivec2_scale(a, 1 - t), ivec2_scale(b, t)); }
+JMAPI iVec3 ivec3_lerp(iVec3 a, iVec3 b, int t) { return ivec3_add(ivec3_scale(a, 1 - t), ivec3_scale(b, t)); }
+JMAPI iVec4 ivec4_lerp(iVec4 a, iVec4 b, int t) { return ivec4_add(ivec4_scale(a, 1 - t), ivec4_scale(b, t)); }
+
+#undef m
+#undef M
+
+//Conversions
+JMAPI iVec2 ivec2_from_vec(Vec2 a)    { return ivec2((int)a.x, (int)a.y); }
+JMAPI iVec3 ivec3_from_vec(Vec3 a)    { return ivec3((int)a.x, (int)a.y, (int)a.z); }
+JMAPI iVec4 ivec4_from_vec(Vec4 a)    { return ivec4((int)a.x, (int)a.y, (int)a.z, (int)a.w); }
+
+JMAPI Vec2 vec2_from_ivec(iVec2 a)    { return vec2((float)a.x, (float)a.y); }
+JMAPI Vec3 vec3_from_ivec(iVec3 a)    { return vec3((float)a.x, (float)a.y, (float)a.z); }
+JMAPI Vec4 vec4_from_ivec(iVec4 a)    { return vec4((float)a.x, (float)a.y, (float)a.z, (float)a.w); }
+
+JMAPI Vec4 vec4_homo_from_vec3(Vec3 a)  { return vec4(a.x, a.y, a.z, 1); }
+JMAPI Vec3 vec3_from_vec4_homo(Vec4 a)  { return vec3(a.x/a.w, a.y/a.w, a.z/a.w); }
+
+JMAPI float to_radiansf(float degrees)
+{
+    float radians = degrees / 180 * PI;
+    return radians;
+}
+
+JMAPI float to_degreesf(float radians)
+{
+    float degrees = radians * 180 / PI;
+    return degrees;
+}
+
+JMAPI float lerpf(float lo, float hi, float t) 
+{
+    return lo * (1 - t) + hi * t;
+}
+
+JMAPI float remapf(float value, float input_from, float input_to, float output_from, float output_to)
+{
+    float result = (value - input_from)/(input_to - input_from)*(output_to - output_from) + output_from;
+    return result;
+}
+
+JMAPI bool is_nearf(float a, float b, float epsilon)
+{
+    //this form guarantees that is_nearf(NAN, NAN, 1) == true
+    return !(fabsf(a - b) > epsilon);
+}
+
+//Returns true if x and y are within epsilon distance of each other.
+//If |x| and |y| are less than 1 uses epsilon directly
+//else scales epsilon to account for growing floating point inaccuracy
+JMAPI bool is_near_scaledf(float x, float y, float epsilon)
+{
+    //This is the form that produces the best assembly
+    float calced_factor = fabsf(x) + fabsf(y);
+    float factor = 2 > calced_factor ? 2 : calced_factor;
+    return is_nearf(x, y, factor * epsilon / 2);
+}
 
 JMAPI bool vec2_is_near(Vec2 a, Vec2 b, float epsilon) 
 {
@@ -216,85 +344,10 @@ JMAPI bool vec4_is_near_scaled(Vec4 a, Vec4 b, float epsilon)
         && is_near_scaledf(a.w, b.w, epsilon);
 }
 
-//Conversions
-JMAPI Vec2 vec2_from_vec3(Vec3 a)       { return vec2(a.x, a.y); }
-JMAPI Vec3 vec3_from_vec2(Vec2 a)       { return vec3(a.x, a.y, 0); }
-
-JMAPI Vec2 vec2_from_vec4(Vec4 a)       { return vec2(a.x, a.y); }
-JMAPI Vec4 vec4_from_vec2(Vec2 a)       { return vec4(a.x, a.y, 0, 0); }
-
-JMAPI Vec3 vec3_from_vec4(Vec4 a)       { return vec3(a.x, a.y, a.z); }
-JMAPI Vec4 vec4_from_vec3(Vec3 a)       { return vec4(a.x, a.y, a.z, 0); }
-
-//For homogenous coords
-JMAPI Vec4 vec4_homo_from_vec3(Vec3 a)  { return vec4(a.x, a.y, a.z, 1); }
-JMAPI Vec3 vec3_from_vec4_homo(Vec4 a)  { return vec3(a.x/a.w, a.y/a.w, a.z/a.w); }
-
-//Pairwise
-#define m(a, b) a < b ? a : b
-#define M(a, b) a > b ? a : b
-
-JMAPI Vec2 vec2_pairwise_mul(Vec2 a, Vec2 b) { return vec2(a.x * b.x, a.y * b.y);                                }
-JMAPI Vec3 vec3_pairwise_mul(Vec3 a, Vec3 b) { return vec3(a.x * b.x, a.y * b.y, a.z * b.z);                     }
-JMAPI Vec4 vec4_pairwise_mul(Vec4 a, Vec4 b) { return vec4(a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w);          }
-
-JMAPI Vec2 vec2_pairwise_div(Vec2 a, Vec2 b) { return vec2(a.x / b.x, a.y / b.y);                                }
-JMAPI Vec3 vec3_pairwise_div(Vec3 a, Vec3 b) { return vec3(a.x / b.x, a.y / b.y, a.z / b.z);                     }
-JMAPI Vec4 vec4_pairwise_div(Vec4 a, Vec4 b) { return vec4(a.x / b.x, a.y / b.y, a.z / b.z, a.w / b.w);          }
-
-JMAPI Vec2 vec2_pairwise_min(Vec2 a, Vec2 b) { return vec2(m(a.x, b.x), m(a.y, b.y));                            }
-JMAPI Vec3 vec3_pairwise_min(Vec3 a, Vec3 b) { return vec3(m(a.x, b.x), m(a.y, b.y), m(a.z, b.z));               }
-JMAPI Vec4 vec4_pairwise_min(Vec4 a, Vec4 b) { return vec4(m(a.x, b.x), m(a.y, b.y), m(a.z, b.z), m(a.w, b.w));  }
-
-JMAPI Vec2 vec2_pairwise_max(Vec2 a, Vec2 b) { return vec2(M(a.x, b.x), M(a.y, b.y));                            }
-JMAPI Vec3 vec3_pairwise_max(Vec3 a, Vec3 b) { return vec3(M(a.x, b.x), M(a.y, b.y), M(a.z, b.z));               }
-JMAPI Vec4 vec4_pairwise_max(Vec4 a, Vec4 b) { return vec4(M(a.x, b.x), M(a.y, b.y), M(a.z, b.z), M(a.w, b.w));  }
-
-#undef m
-#undef M
-
-JMAPI Vec2 vec2_pairwise_clamp(Vec2 clamped, Vec2 low, Vec2 high) 
-{ 
-    Vec2 capped = vec2_pairwise_min(clamped, high);
-    return vec2_pairwise_max(low, capped); 
-}
-JMAPI Vec3 vec3_pairwise_clamp(Vec3 clamped, Vec3 low, Vec3 high) 
-{ 
-    Vec3 capped = vec3_pairwise_min(clamped, high);
-    return vec3_pairwise_max(low, capped); 
-}
-
-JMAPI Vec4 vec4_pairwise_clamp(Vec4 clamped, Vec4 low, Vec4 high) 
-{ 
-    Vec4 capped = vec4_pairwise_min(clamped, high);
-    return vec4_pairwise_max(low, capped); 
-}
-
-JMAPI Vec2 vec2_lerp(Vec2 a, Vec2 b, float t)
-{
-    Vec2 result = vec2_add(vec2_scale(a, 1.0f - t), vec2_scale(b, t)); 
-    return result;
-}
-
-JMAPI Vec3 vec3_lerp(Vec3 a, Vec3 b, float t)
-{
-    Vec3 result = vec3_add(vec3_scale(a, 1.0f - t), vec3_scale(b, t)); 
-    return result;
-}
-
-JMAPI Vec4 vec4_lerp(Vec4 a, Vec4 b, float t)
-{
-    Vec4 result = vec4_add(vec4_scale(a, 1.0f - t), vec4_scale(b, t)); 
-    return result;
-}
-
 JMAPI Vec3 vec3_cross(Vec3 a, Vec3 b)
 {
-    Vec3 result = {a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x};
-    return result;
+    return vec3(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x);
 }
-
-
 
 JMAPI float vec2_angle_between(Vec2 a, Vec2 b)
 {
@@ -307,18 +360,6 @@ JMAPI float vec2_angle_between(Vec2 a, Vec2 b)
     return result;
 }
 
-#if 0
-JMAPI float vec3_angle_between(Vec3 a, Vec3 b)
-{
-    float len2a = vec3_dot(a, a);
-    float len2b = vec3_dot(b, b);
-    float den = sqrtf(len2a*len2b);
-    float num = vec3_dot(a, b);
-    float result = acosf(num/den);
-
-    return result;
-}
-#else
 JMAPI float vec3_angle_between(Vec3 a, Vec3 b)
 {
     //@NOTE: this implementation is a lot more accurate than the one above
@@ -330,7 +371,6 @@ JMAPI float vec3_angle_between(Vec3 a, Vec3 b)
 
     return result;
 }
-#endif
 
 JMAPI float slerpf_coeficient(float t, float arc_angle)
 {
@@ -507,10 +547,8 @@ JMAPI bool mat4_is_equal(Mat4 a, Mat4 b)
 
 JMAPI bool mat4_is_near(Mat4 a, Mat4 b, float epsilon) 
 {
-    const float* a_ptr = AS_FLOATS(a);
-    const float* b_ptr = AS_FLOATS(b);
     for(int i = 0; i < 4*4; i++)
-        if(is_nearf(a_ptr[i], b_ptr[i], epsilon) == false)
+        if(is_nearf(a.floats[i], b.floats[i], epsilon) == false)
             return false;
 
     return true;
@@ -518,10 +556,8 @@ JMAPI bool mat4_is_near(Mat4 a, Mat4 b, float epsilon)
 
 JMAPI bool mat4_is_near_scaled(Mat4 a, Mat4 b, float epsilon) 
 {
-    const float* a_ptr = AS_FLOATS(a);
-    const float* b_ptr = AS_FLOATS(b);
     for(int i = 0; i < 4*4; i++)
-        if(is_near_scaledf(a_ptr[i], b_ptr[i], epsilon) == false)
+        if(is_near_scaledf(a.floats[i], b.floats[i], epsilon) == false)
             return false;
 
     return true;
@@ -631,7 +667,6 @@ JMAPI Mat3 mat3_inverse(Mat3 matrix)
     
     return result;
 }
-
 
 JMAPI Mat4 mat4_identity() 
 {
@@ -888,35 +923,6 @@ JMAPI Mat4 mat4_look_at(Vec3 camera_pos, Vec3 camera_target, Vec3 camera_up_dir)
         n.x, n.y, n.z, -vec3_dot(camera_pos, n), 
         0,   0,   0,   1
     );
-}
-
-//Represents a physics convention spehircal coordinates
-// where phi is rotation from X axis towards Z axis
-// and theta is rotation from the Y axis (up) to the hypot
-typedef struct Spherical_Vec
-{
-    float r;
-    float phi;
-    float theta;
-} Spherical_Vec;
-
-JMAPI Spherical_Vec vec3_to_spherical(Vec3 vec)
-{
-    Spherical_Vec result = {0};
-    result.r = vec3_len(vec);
-    result.phi = atan2f(vec.x,vec.z);
-    result.theta = atan2f(vec.y, hypotf(vec.x,vec.z));
-    return result;
-}
-
-JMAPI Vec3 vec3_from_spherical(Spherical_Vec spherical)
-{
-    Vec3 result = {0};
-    result.z = cosf(spherical.phi) * cosf(spherical.theta) * spherical.r;
-    result.y = sinf(spherical.theta) * spherical.r;
-    result.x = sinf(spherical.phi) * cosf(spherical.theta) * spherical.r;
-
-    return result;
 }
 
 #endif
