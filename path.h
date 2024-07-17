@@ -92,7 +92,7 @@ typedef union Path {
     };
     struct {
         const char* data;
-        isize size;
+        isize len;
     };
 } Path;
 
@@ -145,7 +145,7 @@ typedef union Path_Builder {
             String string;
             struct {
                 char* data;
-                isize size;
+                isize len;
             };
         };
     };
@@ -201,7 +201,7 @@ EXTERNAL Path path_relative_ephemeral(Path relative_to, Path path);
 
 EXTERNAL bool path_is_empty(Path path)
 {
-    return path.string.size <= path.info.prefix_size;
+    return path.string.len <= path.info.prefix_size;
 }
 
 EXTERNAL bool is_path_sep(char c)
@@ -211,7 +211,7 @@ EXTERNAL bool is_path_sep(char c)
 
 EXTERNAL isize string_find_first_path_separator(String string, isize from)
 {
-    for(isize i = from; i < string.size; i++)
+    for(isize i = from; i < string.len; i++)
         if(string.data[i] == '/' || string.data[i] == '\\')
             return i;
 
@@ -245,16 +245,16 @@ EXTERNAL void path_parse_root(String path, Path_Info* info)
     //Attempt to parse windows prefixes 
     if(string_is_prefixed_with(prefix_path, win32_file_namespace)) 
     {
-        info->prefix_size = (i32) win32_file_namespace.size;
+        info->prefix_size = (i32) win32_file_namespace.len;
     }
     else if(string_is_prefixed_with(prefix_path, win32_device_namespace))
     {
-        info->prefix_size = (i32) win32_device_namespace.size;
+        info->prefix_size = (i32) win32_device_namespace.len;
     }
 
     i32 root_from = info->prefix_size;
     String root_path = string_tail(prefix_path, info->prefix_size);
-    if(root_path.size == 0)
+    if(root_path.len == 0)
     {
         info->is_absolute = false;
         info->is_normalized = true;
@@ -262,9 +262,9 @@ EXTERNAL void path_parse_root(String path, Path_Info* info)
     else
     {
         //Windows UNC server path //My_Root
-        if(root_path.size >= 2 && is_path_sep(root_path.data[0]) && is_path_sep(root_path.data[1]))
+        if(root_path.len >= 2 && is_path_sep(root_path.data[0]) && is_path_sep(root_path.data[1]))
         {
-            if(root_path.size == 2)
+            if(root_path.len == 2)
             {
                 info->root_content_from = 0;
                 info->root_content_to = 0;
@@ -277,8 +277,8 @@ EXTERNAL void path_parse_root(String path, Path_Info* info)
                 if(root_end == -1)
                 {
                     info->root_content_from = root_from + 2;
-                    info->root_content_to = (i32) root_path.size;
-                    info->root_size = (i32) root_path.size;
+                    info->root_content_to = (i32) root_path.len;
+                    info->root_size = (i32) root_path.len;
                 }
                 else
                 {
@@ -293,7 +293,7 @@ EXTERNAL void path_parse_root(String path, Path_Info* info)
             info->is_absolute = true;
         }
         //unix style root
-        else if(root_path.size >= 1 && is_path_sep(root_path.data[0]))
+        else if(root_path.len >= 1 && is_path_sep(root_path.data[0]))
         {
             info->root_content_from = root_from;
             info->root_content_to = root_from;
@@ -303,14 +303,14 @@ EXTERNAL void path_parse_root(String path, Path_Info* info)
             info->root_kind = PATH_ROOT_SLASH;
         }
         //Windows style root
-        else if(root_path.size >= 2 && char_is_alphabetic(root_path.data[0]) && root_path.data[1] == ':')
+        else if(root_path.len >= 2 && char_is_alphabetic(root_path.data[0]) && root_path.data[1] == ':')
         {
             info->root_content_from = root_from;
             info->root_content_to = root_from + 1;
 
             //In windows "C:some_file" means relative path on the drive C
             // while "C:/some_file" is absolute path starting from root C
-            if(root_path.size >= 3 && is_path_sep(root_path.data[2]))
+            if(root_path.len >= 3 && is_path_sep(root_path.data[2]))
             {
                 info->is_absolute = true;
                 info->root_size = 3;
@@ -338,24 +338,24 @@ EXTERNAL void path_parse_rest(String path, Path_Info* info)
     String root_path = string_tail(path, info->prefix_size);
     String directory_path = string_tail(path, info->prefix_size + info->root_size);
 
-    if(root_path.size <= 0)
+    if(root_path.len <= 0)
     {
         info->is_directory = true; //empty path is sometimes current directory. Thus is a directory
         info->is_normalized = true; //Empty path is invarinat
     }
-    if(directory_path.size <= 0)
+    if(directory_path.len <= 0)
     {
         info->is_directory = true; //just root is considered a directory
     }
     else
     {
         //We consider path a directory path if it ends with slash. This incldues just "/" directory
-        isize last = root_path.size - 1;
+        isize last = root_path.len - 1;
         ASSERT(last >= 0);
         info->is_directory = is_path_sep(root_path.data[last]);
         if(info->is_directory)
         {
-            info->directories_size = (i32) directory_path.size - 1;
+            info->directories_size = (i32) directory_path.len - 1;
             info->has_trailing_slash = true;
         }
     }
@@ -364,7 +364,7 @@ EXTERNAL void path_parse_rest(String path, Path_Info* info)
     {
         //Find the last directory segment
         isize file_i = 0;
-        isize dir_i = string_find_last_path_separator(directory_path, directory_path.size);
+        isize dir_i = string_find_last_path_separator(directory_path, directory_path.len);
         if(dir_i < 0)
             dir_i = 0;
         else
@@ -375,25 +375,25 @@ EXTERNAL void path_parse_rest(String path, Path_Info* info)
 
         //Parse filename
         String filename_path = string_safe_tail(directory_path, file_i);
-        if(filename_path.size > 0)
+        if(filename_path.len > 0)
         {
             //If is . or .. then is actually a directory
             if(string_is_equal(filename_path, STRING(".")) || string_is_equal(filename_path, STRING("..")))
             {
                 info->is_directory = true;
-                info->directories_size = (i32) directory_path.size;
+                info->directories_size = (i32) directory_path.len;
             }
             else
             {
                 //find the extension if any    
                 isize dot_i = string_find_last_char(filename_path, '.');
                 if(dot_i == -1)
-                    dot_i = filename_path.size;
+                    dot_i = filename_path.len;
                 else
                     dot_i += 1;
 
-                info->filename_size = (i32) filename_path.size;
-                info->extension_size = (i32) (filename_path.size - dot_i);
+                info->filename_size = (i32) filename_path.len;
+                info->extension_size = (i32) (filename_path.len - dot_i);
             }
         }
     }
@@ -438,13 +438,13 @@ EXTERNAL String path_get_without_trailing_slash(Path path)
     if(path.info.has_trailing_slash)
         return path.string;
     else
-        return string_head(path.string, path.string.size - 1);
+        return string_head(path.string, path.string.len - 1);
 }
 
 EXTERNAL String path_get_segments(Path path)
 {
     isize from = path.info.prefix_size + path.info.root_size;
-    isize to = path.string.size;
+    isize to = path.string.len;
     if(path.info.has_trailing_slash)
         to -= 1;
 
@@ -453,21 +453,21 @@ EXTERNAL String path_get_segments(Path path)
 
 EXTERNAL String path_get_filename(Path path)
 {
-    return string_range(path.string, path.string.size - path.info.filename_size, path.string.size);
+    return string_range(path.string, path.string.len - path.info.filename_size, path.string.len);
 }
 
 EXTERNAL String path_get_filename_without_extension(Path path)
 {
     String filename = path_get_filename(path);
     if(path.info.extension_size > 0)
-        filename = string_head(filename, filename.size - path.info.extension_size - 1); 
+        filename = string_head(filename, filename.len - path.info.extension_size - 1); 
 
     return filename;
 }
 
 EXTERNAL String path_get_extension(Path path)
 {
-    return string_range(path.string, path.string.size - path.info.extension_size, path.string.size);
+    return string_range(path.string, path.string.len - path.info.extension_size, path.string.len);
 }
 
 EXTERNAL Path path_strip_prefix(Path path)
@@ -495,7 +495,7 @@ EXTERNAL Path path_strip_trailing_slash(Path path)
     Path out = path;
     if(path.info.has_trailing_slash)
     {
-        out.string.size = MAX(out.string.size - 1, 0);
+        out.string.len = MAX(out.string.len - 1, 0);
         path_parse_rest(out.string, &out.info);
     }
     return out;
@@ -506,7 +506,7 @@ EXTERNAL Path path_strip_trailing_slash(Path path)
 EXTERNAL Path path_strip_last_segment(Path path, String* last_segment_or_null)
 {
     Path no_trailing = path_strip_trailing_slash(path);
-    isize split_i = string_find_last_path_separator(no_trailing.string, no_trailing.string.size);
+    isize split_i = string_find_last_path_separator(no_trailing.string, no_trailing.string.len);
     isize root_till = path.info.root_size + path.info.prefix_size;
     if(split_i < root_till)
         split_i = root_till;
@@ -529,7 +529,7 @@ EXTERNAL Path path_strip_first_segment(Path path, Path* first_segment_or_null)
     isize root_till = path.info.root_size + path.info.prefix_size;
     isize split_i = string_find_first_path_separator(path.string, root_till);
     if(split_i == -1)
-        split_i = path.string.size;
+        split_i = path.string.len;
     else
         split_i += 1;
 
@@ -560,13 +560,13 @@ EXTERNAL bool path_segment_iterate_string(Path_Segement_Iterator* it, String pat
     if(it->segment_number != 0)
         segment_from = it->segment_to + 1;
 
-    if(segment_from >= path.size)
+    if(segment_from >= path.len)
         return false;
         
     isize segment_to = string_find_first_path_separator(path, segment_from);
         
     if(segment_to == -1)
-        segment_to = path.size;
+        segment_to = path.len;
         
     it->segment_number += 1;
     it->segment_from = segment_from;
@@ -608,7 +608,7 @@ EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
 {
     //@NOTE: this function is the main normalization function. It expects 
     // into to be in a valid state.
-    builder_reserve(&into->builder, path.string.size*9/8 + 5);
+    builder_reserve(&into->builder, path.string.len*9/8 + 5);
 
     char slash = (flags & PATH_FLAG_BACK_SLASH) ? '\\' : '/';
     bool remove_dot = (flags & PATH_FLAG_NO_REMOVE_DOT) == 0;
@@ -622,7 +622,7 @@ EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
     #ifdef DO_ASSERTS_SLOW
     bool has_trailing_slash = false;
     String except_root = path_strip_root(into->path).string;
-    if(except_root.size > 0 && is_path_sep(except_root.data[except_root.size - 1]))
+    if(except_root.len > 0 && is_path_sep(except_root.data[except_root.len - 1]))
         has_trailing_slash = true;
 
     ASSERT(into->info.has_trailing_slash == has_trailing_slash);
@@ -631,7 +631,7 @@ EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
     if(into->info.has_trailing_slash)
     {
         ASSERT(into->info.segment_count > 0);
-        builder_resize(&into->builder, into->builder.size - 1);        
+        builder_resize(&into->builder, into->builder.len - 1);        
         into->info.has_trailing_slash = false;
     }
 
@@ -642,7 +642,7 @@ EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
     {
         String prefix = path_get_prefix(path);
         builder_append(&into->builder, prefix);
-        into->info.prefix_size = (i32) prefix.size;
+        into->info.prefix_size = (i32) prefix.len;
     }
 
     if(path_is_empty(path) == false)
@@ -687,7 +687,7 @@ EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
 
                     case PATH_ROOT_WIN: {
                         char c = 'C';
-                        if(root_content.size > 0 && char_is_alphabetic(root_content.data[0]))
+                        if(root_content.len > 0 && char_is_alphabetic(root_content.data[0]))
                             c = root_content.data[0];
                         else
                             LOG_WARN("path", "Strange prefix '%s' with PATH_ROOT_WIN", cstring_ephemeral(root_content));
@@ -734,7 +734,7 @@ EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
                 bool push_segment = true;
                 String segment = it.segment;
                 //Multiple separators next to each otehr
-                if(segment.size == 0)
+                if(segment.len == 0)
                     push_segment = false;
                 //Single dot segment
                 else if(remove_dot && string_is_equal(segment, STRING(".")))
@@ -750,7 +750,7 @@ EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
                     //If there was no segment to pop push the ".." segment
                     if(into->info.segment_count > 0)
                     {
-                        isize last_segment_i = string_find_last_path_separator(into->string, into->string.size);
+                        isize last_segment_i = string_find_last_path_separator(into->string, into->string.len);
                         if(last_segment_i < root_till)
                            last_segment_i = root_till;
                         String last_segement = string_tail(into->string, last_segment_i);
@@ -844,7 +844,7 @@ EXTERNAL Path_Builder path_concat_many(Allocator* alloc, const Path* paths, isiz
     //A simple heuristic to try to guess the needed capacity
     isize combined_cap = 10;
     for(isize i = 0; i < path_count; i++)
-        combined_cap += paths->string.size*9/8;
+        combined_cap += paths->string.len*9/8;
 
     Path_Builder builder = path_builder_make(alloc, combined_cap);
     for(isize i = 0; i < path_count; i++)
@@ -1061,7 +1061,7 @@ EXTERNAL Path path_relative_ephemeral(Path relative_to, Path path)
 #if (defined(JOT_ALL_TEST) || defined(JOT_PATH_TEST)) && !defined(JOT_PATH_HAS_TEST)
 #define JOT_PATH_HAS_TEST
 
-#define TEST_STRING_EQ(str1, str2) TEST(string_is_equal((str1), (str2)), "'%.*s' == '%.*s'", (int) str1.size, str1.data, (int) str2.size, str2.data)
+#define TEST_STRING_EQ(str1, str2) TEST(string_is_equal((str1), (str2)), "'%.*s' == '%.*s'", (int) str1.len, str1.data, (int) str2.len, str2.data)
 
 enum {
     TEST_PATH_IS_DIR = 1,

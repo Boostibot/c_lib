@@ -68,7 +68,7 @@ EXTERNAL void _log_global_call(Log stream, const char* log_module, const char* f
 
 #define LOG_HERE             LOG_TRACE("HERE %15s() %25s:%i", __func__, __FILE__, __LINE__);
 
-#define STRING_PRINT(str) (int) (str).size, (str).data
+#define STRING_PRINT(str) (int) (str).len, (str).data
 
 typedef struct String_Buffer_16 {
     char data[16];

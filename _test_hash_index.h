@@ -8,7 +8,7 @@
 
 INTERNAL isize u64_array_find(u64_Array array, u64 looking_for)
 {
-	for(isize i = 0; i < array.size; i++)
+	for(isize i = 0; i < array.len; i++)
 	{
 		if(array.data[i] == looking_for)
 			return i;
@@ -19,7 +19,7 @@ INTERNAL isize u64_array_find(u64_Array array, u64 looking_for)
 
 INTERNAL isize u32_array_find(u32_Array array, u32 looking_for)
 {
-	for(isize i = 0; i < array.size; i++)
+	for(isize i = 0; i < array.len; i++)
 	{
 		if(array.data[i] == looking_for)
 			return i;
@@ -157,18 +157,18 @@ INTERNAL void test_hash_index_stress(f64 max_seconds)
 				}
 
 				case REMOVE: {
-					if(truth_val_array.size != 0)
+					if(truth_val_array.len != 0)
 					{
 						if(i == 31664)
 						{
 							int k = 0; (void) k;
 						}
 
-						u64 removed_index = (u64) random_range(0, truth_val_array.size);
-						u64 last_index = (u64) truth_val_array.size - 1;
+						u64 removed_index = (u64) random_range(0, truth_val_array.len);
+						u64 last_index = (u64) truth_val_array.len - 1;
 
-						CHECK_BOUNDS((isize) removed_index, truth_key_array.size);
-						CHECK_BOUNDS((isize) removed_index, truth_val_array.size);
+						CHECK_BOUNDS((isize) removed_index, truth_key_array.len);
+						CHECK_BOUNDS((isize) removed_index, truth_val_array.len);
 						u64 key = truth_key_array.data[removed_index];
 						u64 val = truth_val_array.data[removed_index];
 
@@ -238,16 +238,16 @@ INTERNAL void test_hash_index_stress(f64 max_seconds)
 				}
 			}
 
-			if(max_size < table.size)
-				max_size = table.size;
+			if(max_size < table.len)
+				max_size = table.len;
 			if(max_capacity < table.entries_count)
 				max_capacity = table.entries_count;
 
 			//Test integrity of all current keys
 			//for(isize z = 0; z < 2; z++)
 			{
-				ASSERT(truth_key_array.size == truth_val_array.size);
-				for(isize j = 0; j < truth_key_array.size; j++)
+				ASSERT(truth_key_array.len == truth_val_array.len);
+				for(isize j = 0; j < truth_key_array.len; j++)
 				{
 					u64 key = truth_key_array.data[j];
 					u64 val = truth_val_array.data[j];
@@ -344,8 +344,8 @@ Benchmark_Hash_Index_Context benchmark_hash_index_prepare(Allocator* arena, isiz
     }
         
     //Prepare the lookup sequence
-    isize non_existant_lookups = (isize) (keys.size * percentage_of_non_existant);
-    isize existant_lookups = keys.size - non_existant_lookups;
+    isize non_existant_lookups = (isize) (keys.len * percentage_of_non_existant);
+    isize existant_lookups = keys.len - non_existant_lookups;
 
     u64_Array lookup = {arena};
     array_append(&lookup, keys.data, existant_lookups);
@@ -353,7 +353,7 @@ Benchmark_Hash_Index_Context benchmark_hash_index_prepare(Allocator* arena, isiz
     for(isize i = 0; i < non_existant_lookups; i++)
         array_push(&lookup, random_u64());
 
-    random_shuffle(lookup.data, lookup.size, sizeof(u64));
+    random_shuffle(lookup.data, lookup.len, sizeof(u64));
     
     Benchmark_Hash_Index_Context out = {0};
     out.keys = keys;
@@ -361,7 +361,7 @@ Benchmark_Hash_Index_Context benchmark_hash_index_prepare(Allocator* arena, isiz
     out.lookup = lookup;
     out.percentage_of_non_existant = percentage_of_non_existant;
     out.load_factor = load_factor;
-    out.size = size;
+    out.len = size;
     out.capacity = capacity;
 
     return out;
@@ -380,10 +380,10 @@ bool benchmark_hash_index_fifo_bench(isize iter, void* _context)
     Hash_Index* index = &context->index;
     u64_Array* keys = &context->keys;
     u64_Array* vals = &context->vals;
-    isize to_size = keys->size / 2;
+    isize to_size = keys->len / 2;
 
     //u64_Array* lookup = &context->lookup;
-    if(iter > 0 && index->size + index->gravestone_count + BENCH_HASH_INDEX_FIFO_BATCH <= keys->size)
+    if(iter > 0 && index->len + index->gravestone_count + BENCH_HASH_INDEX_FIFO_BATCH <= keys->len)
     {
         for(isize i = 0; i < BENCH_HASH_INDEX_FIFO_BATCH; i++)
         {
@@ -413,7 +413,7 @@ bool benchmark_hash_index_fifo_bench(isize iter, void* _context)
 
             ASSERT(index->entries_count <= context->capacity);
             context->fifo_sum_probe_length += hash_index_get_hash_collision_count(*index);
-            context->fifo_sum_item_count += index->size;
+            context->fifo_sum_item_count += index->len;
             context->fifo_sum_removed_count += index->gravestone_count;
             context->fifo_iterations += 1;
         }
@@ -436,13 +436,13 @@ bool benchmark_hash_index_fifo_bench(isize iter, void* _context)
         context->arena = scratch_arena_acquire();
 
         hash_index_init_load_factor(index, context->arena, context->load_factor, context->load_factor);
-        hash_index_reserve(index, keys->size);
+        hash_index_reserve(index, keys->len);
 
         isize before = index->entries_count;
         for(isize i = 0; i < to_size; i++)
             hash_index_insert(index, keys->data[i], vals->data[i]);
             
-        context->average_probe_length = (f64) hash_index_get_hash_collision_count(*index) / index->size;
+        context->average_probe_length = (f64) hash_index_get_hash_collision_count(*index) / index->len;
         ASSERT(before == index->entries_count);
         return false;
 

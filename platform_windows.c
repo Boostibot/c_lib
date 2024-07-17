@@ -445,7 +445,7 @@ const wchar_t* _ephemeral_wstring_convert(Platform_String path, bool normalize_p
 
     buffer_reserve(curr, MIN_SIZE);
     *slot = (*slot + 1) % _EPHEMERAL_STRING_SIMULTANEOUS;
-    _utf8_to_utf16(curr, path.data, path.size);
+    _utf8_to_utf16(curr, path.data, path.len);
     if(normalize_path)
     {
         for(int64_t i = 0; i < curr->size; i++)
@@ -1385,7 +1385,7 @@ Platform_Error platform_file_watch(Platform_File_Watch* file_watch_or_null, Plat
     context.buffer = (uint8_t*) malloc(context.buffer_size);
     buffer_reserve(&context.change_path, _LOCAL_BUFFER_SIZE);
     buffer_reserve(&context.change_old_path, _LOCAL_BUFFER_SIZE);
-    buffer_append(&context.watched_path, file_path.data, file_path.size);
+    buffer_append(&context.watched_path, file_path.data, file_path.len);
 
     context.directory = CreateFileW(_ephemeral_path(file_path),
         FILE_LIST_DIRECTORY,
@@ -1570,7 +1570,7 @@ void* platform_dll_get_function(Platform_DLL* dll, Platform_String name)
 {
     String_Buffer temp = {0};
     buffer_init_backed(&temp, 256);
-    buffer_append(&temp, name.data, name.size);
+    buffer_append(&temp, name.data, name.len);
     HMODULE hmodule = (HMODULE)dll->handle;
     void* result = (void*) GetProcAddress(hmodule, temp.data);
 

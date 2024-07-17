@@ -122,7 +122,7 @@ EXTERNAL Discrete_Distribution random_discrete_make(const i32 probabilities[], i
 		i32 end = k + probabilities[i];
 		for(; k < end; k++)
 		{
-			CHECK_BOUNDS(k, prob_table.size);
+			CHECK_BOUNDS(k, prob_table.len);
 			prob_table.data[k] = i;
 		}
 	}
@@ -147,7 +147,7 @@ EXTERNAL i32 random_discrete(Discrete_Distribution* distribution)
     Random_State* state = distribution->use_state ? &distribution->state : random_state();
 	
     i64 random = random_state_range(state, 0, distribution->prob_sum);
-	CHECK_BOUNDS(random, distribution->prob_table.size);
+	CHECK_BOUNDS(random, distribution->prob_table.len);
 
 	i32 index = distribution->prob_table.data[random];
 	return index;

@@ -119,7 +119,7 @@ typedef struct Hash_Index_Entry {
 typedef struct Hash_Index {
     Allocator* allocator;                
     Hash_Index_Entry* entries;                          
-    int32_t size;                   //The number of key-value pairs in the hash            
+    int32_t len;                   //The number of key-value pairs in the hash            
     int32_t entries_count;          //The size of the underlaying Hash_Index_Entry array
     int32_t gravestone_count;
     int32_t info_rehash_count;      //Purely informative. The number of rehashes that occurred so far.
@@ -178,7 +178,7 @@ EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously es
         if(table.entries_count <= 0)
             return (isize) -1;
 
-        ASSERT(table.size + table.gravestone_count < table.entries_count && "must not be completely full!");
+        ASSERT(table.len + table.gravestone_count < table.entries_count && "must not be completely full!");
         uint64_t mod = (uint64_t) table.entries_count - 1;
         uint64_t counter = 0;
         uint64_t i = start_from & mod;
@@ -201,7 +201,7 @@ EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously es
     INTERNAL isize _hash_index_find_or_insert(Hash_Index* table, uint64_t hash, uint64_t value, bool stop_if_found) 
     {
         PROFILE_START();
-        ASSERT(table->size + table->gravestone_count < table->entries_count && "there must be space for insertion");
+        ASSERT(table->len + table->gravestone_count < table->entries_count && "there must be space for insertion");
         ASSERT(table->entries_count > 0);
 
         uint64_t mod = (uint64_t) table->entries_count - 1;
@@ -251,7 +251,7 @@ EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously es
         //Clear the empty and gravestone bits so that it does not interfere with bookkeeping
         table->entries[insert_index].value = value & ~(HASH_INDEX_EMPTY | HASH_INDEX_GRAVESTONE);
         table->entries[insert_index].hash = hash;
-        table->size += 1;
+        table->len += 1;
 
         //Saturating add of new_counter
         table->info_extra_probes += (int32_t) counter;
@@ -274,7 +274,7 @@ EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously es
 
         to_table->info_extra_probes = 0;
         to_table->gravestone_count = 0;
-        to_table->size = 0;
+        to_table->len = 0;
         PROFILE_END();
     }
     
@@ -320,7 +320,7 @@ EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously es
 
         _hash_index_init_if_not_init(to_table, to_table->allocator, to_table->load_factor, to_table->load_factor_gravestone);
 
-        isize required = to_size > from_table.size ? to_size : from_table.size;
+        isize required = to_size > from_table.len ? to_size : from_table.len;
         isize rehash_to = required;
         if(size_is_capacity == false)
         {
@@ -360,8 +360,8 @@ EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously es
     {
         PROFILE_START();
         bool ptr_size_inv = (table.entries == NULL) == (table.entries_count == 0);
-        bool sizes_inv = table.size >= 0 && table.entries_count >= 0 && table.gravestone_count >= 0; 
-        bool not_full_inv = (table.size + table.gravestone_count < table.entries_count) || table.entries_count == 0;
+        bool sizes_inv = table.len >= 0 && table.entries_count >= 0 && table.gravestone_count >= 0; 
+        bool not_full_inv = (table.len + table.gravestone_count < table.entries_count) || table.entries_count == 0;
         bool entries_find_inv = true;
         bool entries_count_inv = true;
         bool allocator_inv = true;
@@ -376,10 +376,10 @@ EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously es
             load_factor_inv = 0 < table.load_factor && table.load_factor <= 100;
             load_factor_gravestone_inv = 0 < table.load_factor_gravestone && table.load_factor_gravestone <= 100;
             capacity_inv = _hash_is_power_of_two(table.entries_count);
-            fullness_inv = _hash_index_needs_rehash(table.entries_count, table.size, table.load_factor) == false;
+            fullness_inv = _hash_index_needs_rehash(table.entries_count, table.len, table.load_factor) == false;
         }
 
-        int32_t used_count = table.size;
+        int32_t used_count = table.len;
         int32_t gravestone_count = table.gravestone_count;
         if(slow_check)
         {
@@ -400,7 +400,7 @@ EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously es
             }
         }
 
-        entries_count_inv = used_count == table.size && gravestone_count == table.gravestone_count;
+        entries_count_inv = used_count == table.len && gravestone_count == table.gravestone_count;
         bool is_invariant = ptr_size_inv && allocator_inv && capacity_inv 
             && load_factor_inv && load_factor_gravestone_inv && fullness_inv 
             && sizes_inv && not_full_inv && entries_find_inv && entries_count_inv;
@@ -439,7 +439,7 @@ EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously es
 
     EXTERNAL void hash_index_copy(Hash_Index* to_table, Hash_Index from_table)
     {
-        _hash_index_rehash_copy(to_table, from_table, from_table.size, false);
+        _hash_index_rehash_copy(to_table, from_table, from_table.len, false);
     }
     
     EXTERNAL void hash_index_rehash_in_place(Hash_Index* table)
@@ -478,7 +478,7 @@ EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously es
     {
         _hash_index_init_if_not_init(table, table->allocator, table->load_factor, table->load_factor_gravestone);
 
-        isize required = to_size > table->size ? to_size : table->size;
+        isize required = to_size > table->len ? to_size : table->len;
         isize rehash_to = 16;
         while(_hash_index_needs_rehash(rehash_to, required, table->load_factor))
             rehash_to *= 2;
@@ -517,13 +517,13 @@ EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously es
     
     EXTERNAL isize hash_index_find_or_insert(Hash_Index* table, uint64_t hash, uint64_t value_if_inserted)
     {
-        hash_index_reserve(table, table->size + 1);
+        hash_index_reserve(table, table->len + 1);
         return _hash_index_find_or_insert(table, hash, value_if_inserted, true);
     }
 
     EXTERNAL isize hash_index_insert(Hash_Index* table, uint64_t hash, uint64_t value)
     {
-        hash_index_reserve(table, table->size + 1);
+        hash_index_reserve(table, table->len + 1);
         return _hash_index_find_or_insert(table, hash, value, false);
     }
 
@@ -533,11 +533,11 @@ EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously es
         Hash_Index_Entry removed = {0};
         if(found >= 0)
         {
-            ASSERT(table->size > 0);
+            ASSERT(table->len > 0);
             ASSERT(found < table->entries_count);
             removed = table->entries[found];
             table->entries[found].value = HASH_INDEX_GRAVESTONE;
-            table->size -= 1;
+            table->len -= 1;
             table->gravestone_count += 1;
             ASSERT(hash_index_is_invariant(*table, HASH_INDEX_DEBUG));
         }

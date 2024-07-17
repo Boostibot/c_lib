@@ -162,10 +162,10 @@ EXTERNAL Lpf_Entry* lpf_entry_push_child(Arena_Frame* arena, Lpf_Entry* parent, 
 
 EXTERNAL String lpf_string_duplicate(Arena_Frame* arena, String string)
 {
-    char* str = (char*) arena_frame_push_nonzero(arena, string.size + 1, 1);
-    memcpy(str, string.data, (size_t) string.size);
-    str[string.size] = '\0';
-    return string_make(str, string.size);
+    char* str = (char*) arena_frame_push_nonzero(arena, string.len + 1, 1);
+    memcpy(str, string.data, (size_t) string.len);
+    str[string.len] = '\0';
+    return string_make(str, string.len);
 }
 
 INTERNAL void _lpf_commit_entry(Lpf_Entry_Array* entries_stack, Lpf_Entry* queued, String_Builder* queued_value, Arena_Frame* arena)
@@ -186,7 +186,7 @@ INTERNAL void _lpf_commit_collection(Lpf_Entry_Array* entries_stack, i32_Array* 
     ASSERT(collection_from > 0);
 
     Lpf_Entry* parent = &entries_stack->data[collection_from - 1];
-    parent->children_count = (i32) (entries_stack->size - collection_from);
+    parent->children_count = (i32) (entries_stack->len - collection_from);
     parent->children_capacity = parent->children_count;
     parent->children = (Lpf_Entry*) arena_frame_push_nonzero(arena, parent->children_count*isizeof(Lpf_Entry), 8);
     memcpy(parent->children, entries_stack->data + collection_from, (size_t) parent->children_count*sizeof(Lpf_Entry));
@@ -250,7 +250,7 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
             Lpf_Token token = {BLANK};
             
             //Skip Whitespace before label and count indentation
-            for(; i < it.line.size; i++)
+            for(; i < it.line.len; i++)
             {
                 char c = it.line.data[i];
                 ASSERT(c != '\n');
@@ -264,7 +264,7 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
         
             //match label (any not of ":;,#{} \t")
             token.label_from = i;
-            for(; i < it.line.size; i++)
+            for(; i < it.line.len; i++)
             {
                 if(_lpf_is_label_invalid_char(it.line.data[i]))
                     break;
@@ -272,17 +272,17 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
             token.label_to = i;
         
             //Skip whitespace after label
-            for(; i < it.line.size; i++)
+            for(; i < it.line.len; i++)
             {
                 char c = it.line.data[i];
                 if(c != ' ' && c != '\t')
                     break;
             }
             token.value_from = i;
-            token.value_to = it.line.size;
+            token.value_to = it.line.len;
 
             //Match marker character (determine entry type)
-            if(i < it.line.size)
+            if(i < it.line.len)
             {
                 char c = it.line.data[i];
                 token.value_from = i + 1;
@@ -296,7 +296,7 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
 
                     //{ can be just { or {}
                     case '{': {
-                        if(i + 1 < it.line.size && it.line.data[i + 1] == '}')
+                        if(i + 1 < it.line.len && it.line.data[i + 1] == '}')
                         {
                             token.type = COLLECTION_EMPTY;
                             token.value_from = i + 2;
@@ -310,7 +310,7 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
 
                 //If value starts with ' ' remove it
                 // so: "key: value" has value just "value"
-                if(token.value_from < it.line.size)
+                if(token.value_from < it.line.len)
                 {
                     if(it.line.data[token.value_from] == ' ')
                         token.value_from += 1;
@@ -336,10 +336,10 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
         
         //add the root and its collection
         array_push(&entries_stack, root);
-        array_push(&collections_from, (i32) entries_stack.size);
+        array_push(&collections_from, (i32) entries_stack.len);
 
         i32 blanks_before = 0;
-        for(isize i = 0; i < token_array.size; i++)
+        for(isize i = 0; i < token_array.len; i++)
         {
             Lpf_Token token = token_array.data[i];
             String label = string_range(source, token.label_from, token.label_to); 
@@ -355,14 +355,14 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
                     if(queued.line)
                         _lpf_commit_entry(&entries_stack, &queued, &queued_value, arena);
 
-                    if(label.size > 0)
+                    if(label.len > 0)
                     {
                         LOG_ERROR("lpf", "Parsing error at line %i: Missing format specifier (':', '[', '#', ...) after '%s'. Dicarding.", line, cstring_ephemeral(label));
                         had_error = true; break;
                     }
 
                     blanks_before += 1;
-                    ASSERT(value.size == 0, "shouldnt be possible to have a value while staying blank!");
+                    ASSERT(value.len == 0, "shouldnt be possible to have a value while staying blank!");
                 } break;
 
                 case ENTRY: {
@@ -379,7 +379,7 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
 
                 case ENTRY_CONTINUATION_ESCAPED:
                 case ENTRY_CONTINUATION: {
-                    if(label.size > 0)
+                    if(label.len > 0)
                     {
                         LOG_ERROR("lpf", "Parsing error at line %i: Continuations cannot have labels. Label found '%s'. Ignoring.", line, cstring_ephemeral(label));
                     }
@@ -401,7 +401,7 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
 
                     if(options.discard_comments == false)
                     {
-                        if(label.size > 0)
+                        if(label.len > 0)
                             LOG_ERROR("lpf", "Parsing error at line %i: Comments cannot have labels. Label found '%s'. Ignoring.", line, cstring_ephemeral(label));
                     
                         if(queued.line == 0)
@@ -425,17 +425,17 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
                     if(queued.line)
                         _lpf_commit_entry(&entries_stack, &queued, &queued_value, arena);
 
-                    if(token.type == COLLECTION_END && label.size > 0)
+                    if(token.type == COLLECTION_END && label.len > 0)
                         LOG_ERROR("lpf", "Parsing error at line %i: Collection ends cannot have labels. Label found '%s'. Ignoring.", line, cstring_ephemeral(label));
 
                     String trimmed_whitespace_value = string_trim_whitespace(value);
-                    if(trimmed_whitespace_value.size > 0)
+                    if(trimmed_whitespace_value.len > 0)
                         LOG_ERROR("lpf", "Parsing error at line %i: Collections cannot have values. Value found '%s'. Ignoring.", line, cstring_ephemeral(trimmed_whitespace_value));
                     
                     if(token.type == COLLECTION_END)
                     {
                         blanks_before = 0;
-                        if(collections_from.size <= 1)
+                        if(collections_from.len <= 1)
                             LOG_ERROR("lpf", "Parsing error at line %i: Extra collection end. Ignoring.", line);
                         else
                             _lpf_commit_collection(&entries_stack, &collections_from, arena);
@@ -450,7 +450,7 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
                         _lpf_commit_entry(&entries_stack, &queued, &queued_value, arena);
 
                         if(token.type == COLLECTION_START)
-                            array_push(&collections_from, (i32) entries_stack.size);
+                            array_push(&collections_from, (i32) entries_stack.len);
                     }
                 } break;
 
@@ -464,15 +464,15 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
         if(queued.line)
             _lpf_commit_entry(&entries_stack, &queued, &queued_value, arena);
 
-        ASSERT(collections_from.size >= 1);
-        if(collections_from.size != 1)
-            LOG_ERROR("lpf", "Parsing error at line %i: Missing %i collection end(s). Ignoring.", (i32) token_array.size, (i32) collections_from.size - 1);
+        ASSERT(collections_from.len >= 1);
+        if(collections_from.len != 1)
+            LOG_ERROR("lpf", "Parsing error at line %i: Missing %i collection end(s). Ignoring.", (i32) token_array.len, (i32) collections_from.len - 1);
 
         //Commit the remaining open collections (including root)
-        while(collections_from.size > 0)
+        while(collections_from.len > 0)
             _lpf_commit_collection(&entries_stack, &collections_from, arena);
 
-        ASSERT(entries_stack.size == 1);
+        ASSERT(entries_stack.len == 1);
         root = entries_stack.data[0];
 
         arena_frame_release(&scratch);
@@ -551,7 +551,7 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
         //first_it.pad_labels_to = 
 
         array_push(&iterators, first_it);
-        while(iterators.size > 0)
+        while(iterators.len > 0)
         {
             Iterator* it = array_last(iterators);
             for(; it->i < it->parent->children_count; )
@@ -565,8 +565,8 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
                     for(isize i = it->i; i < iterate_to; i++)
                     {
                         Lpf_Entry entry = it->parent->children[i];
-                        if(max < entry.label.size && entry.kind == LPF_ENTRY)
-                            max = entry.label.size;
+                        if(max < entry.label.len && entry.kind == LPF_ENTRY)
+                            max = entry.label.len;
                     }
 
                     it->pad_labels_to = (i32) max;
@@ -592,8 +592,8 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
 
                 if(entry->kind == LPF_COMMENT)
                 {
-                    if(label.size > 0)
-                        LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Collections may not have values. Found '%s'. Ignoring", (int) tokens.size, (i32) entry->line, cstring_ephemeral(value));
+                    if(label.len > 0)
+                        LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Collections may not have values. Found '%s'. Ignoring", (int) tokens.len, (i32) entry->line, cstring_ephemeral(value));
 
                     label = STRING("");
                 }
@@ -605,7 +605,7 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
                     isize token_counter = 0;
                     for(Line_Iterator line_it = {0}; line_iterator_get_line(&line_it, value);)
                     {
-                        for(isize segment_from = 0; segment_from < line_it.line.size; segment_from += options.max_line_width, token_counter++)
+                        for(isize segment_from = 0; segment_from < line_it.line.len; segment_from += options.max_line_width, token_counter++)
                         {
                             String segment = string_safe_head(string_tail(line_it.line, segment_from), options.max_line_width);
                             
@@ -619,7 +619,7 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
                             else
                             {
                                 if(options.align_continuations)
-                                    token.pad_labels_to = (i32) MAX(it->pad_labels_to, label.size);
+                                    token.pad_labels_to = (i32) MAX(it->pad_labels_to, label.len);
                                 
                                 if(token_counter == 0)
                                 {
@@ -640,8 +640,8 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
                 // setup the iterator to iterate through it
                 if(entry->kind == LPF_COLLECTION)
                 {
-                    if(value.size > 0)
-                        LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Comments may not have values. Found '%s'. Ignoring", (int) tokens.size, (i32) entry->line, cstring_ephemeral(value));
+                    if(value.len > 0)
+                        LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Comments may not have values. Found '%s'. Ignoring", (int) tokens.len, (i32) entry->line, cstring_ephemeral(value));
 
                     value = STRING("");
                     
@@ -673,7 +673,7 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
             if(it->i >= it->parent->children_count)
             {
                 array_pop(&iterators);
-                if(iterators.size > 0)
+                if(iterators.len > 0)
                 {
                     Iterator* deeper_it = array_last(iterators);
                     Lpf_Token token = {COLLECTION_END};
@@ -690,9 +690,9 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
         //We only pad up to 127 chars. If thats not enough too bad.
         String_Builder label_padding_buffer = builder_make(&scratch.allocator, 127);
         builder_resize(&label_padding_buffer, 127);
-        memset(label_padding_buffer.data, ' ', (size_t) label_padding_buffer.size);
+        memset(label_padding_buffer.data, ' ', (size_t) label_padding_buffer.len);
 
-        for(isize token_i = 0; token_i < tokens.size; token_i ++)
+        for(isize token_i = 0; token_i < tokens.len; token_i ++)
         {
             Lpf_Token token = tokens.data[token_i];
             if(token.type == BLANK)
@@ -721,10 +721,10 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
             builder_append(&out, indentation.string);
 
             //Escape label
-            if(label.size > 0)
+            if(label.len > 0)
             {
                 isize label_from = 0;
-                for(; label_from < label.size; label_from ++)
+                for(; label_from < label.len; label_from ++)
                 {
                     char c = label.data[label_from];
                     if(char_is_space(c) == false)
@@ -732,7 +732,7 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
                 }
 
                 isize label_to = label_from;
-                for(; label_to < label.size; label_to ++)
+                for(; label_to < label.len; label_to ++)
                 {
                     char c = label.data[label_to];
                     if(char_is_space(c) || _lpf_is_label_invalid_char(c))
@@ -740,11 +740,11 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
                 }
 
                 String escaped_label = string_range(label, label_from, label_to);
-                if(label_from != 0 || label_to != label.size)
+                if(label_from != 0 || label_to != label.len)
                     LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Label contains invalid characters. Trimming '%s' to '%s'", (int) token_i + 1, token.original_line, cstring_ephemeral(label), cstring_ephemeral(escaped_label));
             }
 
-            isize label_padding_ammount = CLAMP(token.pad_labels_to - label.size, 0, label_padding_buffer.size);
+            isize label_padding_ammount = CLAMP(token.pad_labels_to - label.len, 0, label_padding_buffer.len);
             String label_padding = string_head(label_padding_buffer.string, label_padding_ammount);
             
             //Append each token according to its own desired styling. 
@@ -766,7 +766,7 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
                 if(options.align_collection_labels)
                     builder_append(&out, label_padding);
 
-                if(label.size > 0)
+                if(label.len > 0)
                     builder_push(&out, ' ');
 
                 if(token.type == COLLECTION_START)

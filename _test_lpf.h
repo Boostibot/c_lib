@@ -26,10 +26,10 @@ static void test_lpf_print_compariosn(String left, String right)
     isize max_right = 0;
 
     for(Line_Iterator it = {0}; line_iterator_get_line(&it, left); )
-        max_left = MAX(max_left, it.line.size);
+        max_left = MAX(max_left, it.line.len);
         
     for(Line_Iterator it = {0}; line_iterator_get_line(&it, right); )
-        max_right = MAX(max_right, it.line.size);
+        max_right = MAX(max_right, it.line.len);
     
     String_Builder builder_left = {0};
     String_Builder builder_right = {0};
@@ -54,14 +54,14 @@ static void test_lpf_print_compariosn(String left, String right)
         //builder_push(&builder_left, '"');
         builder_append(&builder_left, line_left);
         //builder_push(&builder_left, '"');
-        while(builder_left.size < max_left)
+        while(builder_left.len < max_left)
             builder_push(&builder_left, ' ');
             
         builder_clear(&builder_right);
         //builder_push(&builder_right, '"');
         builder_append(&builder_right, line_right);
         //builder_push(&builder_right, '"');
-        while(builder_right.size < max_right)
+        while(builder_right.len < max_right)
             builder_push(&builder_right, ' ');
 
         if(string_is_equal(line_left, line_right))
@@ -69,7 +69,7 @@ static void test_lpf_print_compariosn(String left, String right)
         else
         {
             printf("%s != %s\n", builder_left.data, builder_right.data);
-            for(isize i = 0; i < line_left.size; i++)
+            for(isize i = 0; i < line_left.len; i++)
             {
                 if(builder_left.data[i] == ' ')
                     builder_left.data[i] = '.';
@@ -78,7 +78,7 @@ static void test_lpf_print_compariosn(String left, String right)
                     builder_left.data[i] = '/';
             }
             
-            for(isize i = 0; i < line_right.size; i++)
+            for(isize i = 0; i < line_right.len; i++)
             {
                 if(builder_right.data[i] == ' ')
                     builder_right.data[i] = '.';

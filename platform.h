@@ -278,7 +278,7 @@ int64_t platform_perf_counter_startup();
 //=========================================
 typedef struct Platform_String {
     const char* data;
-    int64_t size;
+    int64_t len;
 } Platform_String;
 
 typedef enum Platform_File_Type {
@@ -980,8 +980,8 @@ static void platform_test_file_io()
         Platform_File write_file = {0};
         PTEST_ERROR(platform_file_open(&write_file, write_file_path, PLATFORM_FILE_MODE_WRITE | PLATFORM_FILE_MODE_CREATE | PLATFORM_FILE_MODE_REMOVE_CONTENT));
         PTEST(write_file.is_open);
-        PTEST_ERROR(platform_file_write(&write_file, PUGLY_STRING.data, PUGLY_STRING.size));
-        PTEST_ERROR(platform_file_write(&write_file, PUGLY_STRING.data, PUGLY_STRING.size));
+        PTEST_ERROR(platform_file_write(&write_file, PUGLY_STRING.data, PUGLY_STRING.len));
+        PTEST_ERROR(platform_file_write(&write_file, PUGLY_STRING.data, PUGLY_STRING.len));
         PTEST_ERROR(platform_file_flush(&write_file));
         
         platform_test_file_content_equality(write_file_path, test_file_content);
@@ -997,7 +997,7 @@ static void platform_test_file_io()
         platform_test_file_content_equality(move_file_path, test_file_content);
 
         //Trim the file and 
-        PTEST_ERROR(platform_file_resize(move_file_path, PUGLY_STRING.size));
+        PTEST_ERROR(platform_file_resize(move_file_path, PUGLY_STRING.len));
         platform_test_file_content_equality(move_file_path, PUGLY_STRING);
 
         //Cleanup the directory so it can be deleted.
@@ -1046,7 +1046,7 @@ static void platform_test_directory_list()
 
         Platform_File first = {0};
         PTEST_ERROR(platform_file_open(&first, temp_file1, PLATFORM_FILE_MODE_WRITE | PLATFORM_FILE_MODE_CREATE | PLATFORM_FILE_MODE_REMOVE_CONTENT));
-        PTEST_ERROR(platform_file_write(&first, PUGLY_STRING.data, PUGLY_STRING.size));
+        PTEST_ERROR(platform_file_write(&first, PUGLY_STRING.data, PUGLY_STRING.len));
         PTEST_ERROR(platform_file_close(&first));
 
         PTEST_ERROR(platform_file_copy(temp_file2, temp_file1, true));
@@ -1163,7 +1163,7 @@ static void platform_test_file_content_equality(Platform_String path, Platform_S
 
     PTEST(info.type == PLATFORM_FILE_TYPE_FILE);
     PTEST(info.link_type == PLATFORM_LINK_TYPE_NOT_LINK);
-    PTEST(info.size == content.size);
+    PTEST(info.size == content.len);
     
     //Read the entire file and check content for equality
     void* buffer = malloc((size_t) info.size + 10); 
@@ -1174,8 +1174,8 @@ static void platform_test_file_content_equality(Platform_String path, Platform_S
     PTEST_ERROR(platform_file_open(&file, path, PLATFORM_FILE_MODE_READ));
     PTEST_ERROR(platform_file_read(&file, buffer, info.size, &bytes_read));
     PTEST(bytes_read == info.size);
-    PTEST(memcmp(buffer, content.data, (size_t) content.size) == 0, "Content must match! Content: \n'%.*s' \nExpected: \n'%.*s'\n",
-        (int) content.size, (char*) buffer, (int) content.size, content.data
+    PTEST(memcmp(buffer, content.data, (size_t) content.len) == 0, "Content must match! Content: \n'%.*s' \nExpected: \n'%.*s'\n",
+        (int) content.len, (char*) buffer, (int) content.len, content.data
     );
 
     //Also verify there really is nothing more
@@ -1187,16 +1187,16 @@ static void platform_test_file_content_equality(Platform_String path, Platform_S
 }
 static void platform_test_dir_entry(Platform_Directory_Entry* entries, int64_t entries_count, Platform_String entry_path, Platform_File_Type type, int64_t directory_depth)
 {
-    int64_t concatenated_size = entry_path.size;
+    int64_t concatenated_size = entry_path.len;
     char* concatenated = (char*) calloc(1, (size_t) concatenated_size + 1);
     PTEST(concatenated);
-    memcpy(concatenated, entry_path.data, (size_t) entry_path.size);
+    memcpy(concatenated, entry_path.data, (size_t) entry_path.len);
 
     Platform_Directory_Entry* entry = NULL;
     for(int64_t i = 0; i < entries_count; i++)
     {
         Platform_String curr_path = {entries[i].path, (int64_t) strlen(entries[i].path)};
-        if(curr_path.size == concatenated_size && memcmp(curr_path.data, concatenated, (size_t) concatenated_size) == 0)
+        if(curr_path.len == concatenated_size && memcmp(curr_path.data, concatenated, (size_t) concatenated_size) == 0)
         {
             entry = &entries[i];
             break;

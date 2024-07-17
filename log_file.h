@@ -125,7 +125,7 @@ EXTERNAL void file_logger_log_append_into(Allocator* scratch, String_Builder* ap
     const isize module_field_size = 8;
     String module = string_of(name);
 
-    isize size_before = append_to->size;
+    isize size_before = append_to->len;
     String group_separator = STRING("    ");
     
     String_Builder formatted_module = builder_make(scratch, 0);
@@ -133,20 +133,20 @@ EXTERNAL void file_logger_log_append_into(Allocator* scratch, String_Builder* ap
     //formats module: "module name" -> "MODULE_NAME    "
     //                                 <--------------->
     //                                 module_field_size
-    builder_resize(&formatted_module, MAX(module.size, module_field_size));
+    builder_resize(&formatted_module, MAX(module.len, module_field_size));
     {
         isize written = 0;
-        for(isize i = 0; i < module_field_size - module.size; i++)
+        for(isize i = 0; i < module_field_size - module.len; i++)
             formatted_module.data[written++] = ' ';
 
-        for(isize i = 0; i < module.size; i++)
+        for(isize i = 0; i < module.len; i++)
         {
             //to ascii uppercase
             char c = module.data[i];
             if('a' <= c && c <= 'z')
                 c = c - 'a' + 'A';
 
-            CHECK_BOUNDS(written, formatted_module.size);
+            CHECK_BOUNDS(written, formatted_module.len);
             if(c == '\n' || c == ' ' || c == '\f' || c == '\t' || c == '\r' || c == '\v')
                 formatted_module.data[written++] = '_'; 
             else
@@ -155,7 +155,7 @@ EXTERNAL void file_logger_log_append_into(Allocator* scratch, String_Builder* ap
     }
 
     //Skip all trailing newlines
-    for(isize message_size = message.size; message_size > 0; message_size --)
+    for(isize message_size = message.len; message_size > 0; message_size --)
     {
         if(message.data[message_size - 1] != '\n')
         {
@@ -169,7 +169,7 @@ EXTERNAL void file_logger_log_append_into(Allocator* scratch, String_Builder* ap
     Posix_Date c = local_date_from_epoch_time(now);
         
     //Try to guess size
-    builder_reserve(append_to, size_before + message.size + 100 + module.size);
+    builder_reserve(append_to, size_before + message.len + 100 + module.len);
     
     const char* type_str = "";
     switch(custom)
@@ -186,15 +186,15 @@ EXTERNAL void file_logger_log_append_into(Allocator* scratch, String_Builder* ap
     format_append_into(append_to, "%02i-%02i-%02i %-5s ", 
         (int) c.tm_hour, (int) c.tm_min, (int) c.tm_sec, type_str);
     
-    isize header_size = append_to->size - size_before;
+    isize header_size = append_to->len - size_before;
 
     isize curr_line_pos = 0;
     for(bool run = true; run;)
     {
         isize next_line_pos = -1;
-        if(curr_line_pos >= message.size)
+        if(curr_line_pos >= message.len)
         {
-            if(message.size != 0)
+            if(message.len != 0)
                 break;
         }
         else
@@ -204,19 +204,19 @@ EXTERNAL void file_logger_log_append_into(Allocator* scratch, String_Builder* ap
 
         if(next_line_pos == -1)
         {
-            next_line_pos = message.size;
+            next_line_pos = message.len;
             run = false;
         }
         
-        ASSERT(curr_line_pos <= message.size);
-        ASSERT(next_line_pos <= message.size);
+        ASSERT(curr_line_pos <= message.len);
+        ASSERT(next_line_pos <= message.len);
 
         String curr_line = string_range(message, curr_line_pos, next_line_pos);
 
         //if is first line do else insert header-sized amountof spaces
         if(curr_line_pos != 0)
         {
-            isize before_padding = append_to->size;
+            isize before_padding = append_to->len;
             builder_resize(append_to, before_padding + header_size);
             memset(append_to->data + before_padding, ' ', (size_t) header_size);
         }
@@ -310,10 +310,10 @@ EXTERNAL bool file_logger_flush(File_Logger* logger)
     File_Logger* self = (File_Logger*) (void*) logger;
 
     bool state = true;
-    if(self->buffer.size > 0)
+    if(self->buffer.len > 0)
     {
         if(self->file_print_func)
-            self->file_print_func(self->buffer.data, self->buffer.size, self->file_print_context);
+            self->file_print_func(self->buffer.data, self->buffer.len, self->file_print_context);
         else
         {
             if(self->file == NULL)
@@ -345,7 +345,7 @@ EXTERNAL bool file_logger_flush(File_Logger* logger)
             }
 
             if(self->file)
-                fwrite(self->buffer.data, 1, (size_t) self->buffer.size, self->file);
+                fwrite(self->buffer.data, 1, (size_t) self->buffer.len, self->file);
         }
 
         self->last_flush_time = clock_s();
@@ -415,7 +415,7 @@ EXTERNAL void file_logger_log(void* context, int indent, int custom, int is_flus
                     color_mode = ANSI_COLOR_GRAY;
 
                 if(self->console_print_func)
-                    self->console_print_func(formatted_log.data, formatted_log.size, self->console_print_context);
+                    self->console_print_func(formatted_log.data, formatted_log.len, self->console_print_context);
                 else
                     printf("%s%s" ANSI_COLOR_NORMAL, color_mode, formatted_log.data);
             }
@@ -424,7 +424,7 @@ EXTERNAL void file_logger_log(void* context, int indent, int custom, int is_flus
                 builder_append(&self->buffer, formatted_log.string);
     
             f64 time_since_last_flush = clock_s() - self->last_flush_time;
-            if(self->buffer.size > self->flush_every_bytes || time_since_last_flush > self->flush_every_seconds)
+            if(self->buffer.len > self->flush_every_bytes || time_since_last_flush > self->flush_every_seconds)
                 file_logger_flush(self);
         }
         arena_frame_release(&arena);

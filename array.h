@@ -58,7 +58,7 @@
 typedef struct Untyped_Array {        
     Allocator* allocator;                
     uint8_t* data;                      
-    isize size;                        
+    isize len;                        
     isize capacity;                    
 } Untyped_Array;
 
@@ -74,7 +74,7 @@ typedef struct Generic_Array {
         struct {                                 \
             Allocator* allocator;                \
             Type* data;                          \
-            isize size;                          \
+            isize len;                          \
             isize capacity;                      \
         };                                       \
         uint8_t (*ALIGN)[align];                 \
@@ -167,29 +167,29 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
     
 //Copies from from_arr into to_arr_ptr overriding its elements. 
 #define array_copy(to_arr_ptr, from_arr) \
-    array_assign((to_arr_ptr), (from_arr).data, (from_arr).size)
+    array_assign((to_arr_ptr), (from_arr).data, (from_arr).len)
 
 //Appends a single item to the end of the array
 #define array_push(array_ptr, item_value) (           \
-        generic_array_reserve(array_make_generic(array_ptr), (array_ptr)->size + 1), \
-        (array_ptr)->data[(array_ptr)->size++] = (item_value) \
+        generic_array_reserve(array_make_generic(array_ptr), (array_ptr)->len + 1), \
+        (array_ptr)->data[(array_ptr)->len++] = (item_value) \
     ) \
 
 //Removes a single item from the end of the array
 #define array_pop(array_ptr) (\
-        ASSERT((array_ptr)->size > 0 && "cannot pop from empty array!"), \
-        (array_ptr)->data[--(array_ptr)->size] \
+        ASSERT((array_ptr)->len > 0 && "cannot pop from empty array!"), \
+        (array_ptr)->data[--(array_ptr)->len] \
     ) \
     
 //Returns the value of the last item. The array must not be empty!
 #define array_last(array) (\
-        ASSERT((array).size > 0 && "cannot get last from empty array!"), \
-        &(array).data[(array).size - 1] \
+        ASSERT((array).len > 0 && "cannot get last from empty array!"), \
+        &(array).data[(array).len - 1] \
     ) \
 
 //Returns the total size of the array in bytes
 #define array_byte_size(array) \
-    ((array).size * isizeof *(array).data)
+    ((array).len * isizeof *(array).data)
 
 #endif
 
@@ -200,7 +200,7 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
 EXTERNAL bool generic_array_is_invariant(Generic_Array gen)
 {
     bool is_capacity_correct = 0 <= gen.array->capacity;
-    bool is_size_correct = (0 <= gen.array->size && gen.array->size <= gen.array->capacity);
+    bool is_size_correct = (0 <= gen.array->len && gen.array->len <= gen.array->capacity);
     #ifndef JOT_INLINE_ALLOCATOR
     if(gen.array->capacity > 0)
         is_capacity_correct = is_capacity_correct && gen.array->allocator != NULL;
@@ -247,8 +247,8 @@ EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity)
 
     //trim the size if too big
     gen.array->capacity = capacity;
-    if(gen.array->size > gen.array->capacity)
-        gen.array->size = gen.array->capacity;
+    if(gen.array->len > gen.array->capacity)
+        gen.array->len = gen.array->capacity;
         
     ASSERT(generic_array_is_invariant(gen));
 }
@@ -256,10 +256,10 @@ EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity)
 EXTERNAL void generic_array_resize(Generic_Array gen, isize to_size, bool zero_new)
 {
     generic_array_reserve(gen, to_size);
-    if(zero_new && to_size > gen.array->size)
-        memset(gen.array->data + gen.array->size*gen.item_size, 0, (size_t) ((to_size - gen.array->size)*gen.item_size));
+    if(zero_new && to_size > gen.array->len)
+        memset(gen.array->data + gen.array->len*gen.item_size, 0, (size_t) ((to_size - gen.array->len)*gen.item_size));
         
-    gen.array->size = to_size;
+    gen.array->len = to_size;
     ASSERT(generic_array_is_invariant(gen));
 }
 
@@ -281,9 +281,9 @@ EXTERNAL void generic_array_reserve(Generic_Array gen, isize to_fit)
 EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize data_count)
 {
     ASSERT(data_count >= 0);
-    generic_array_reserve(gen, gen.array->size+data_count);
-    memcpy(gen.array->data + gen.item_size * gen.array->size, data, (size_t) (gen.item_size * data_count));
-    gen.array->size += data_count;
+    generic_array_reserve(gen, gen.array->len+data_count);
+    memcpy(gen.array->data + gen.item_size * gen.array->len, data, (size_t) (gen.item_size * data_count));
+    gen.array->len += data_count;
     ASSERT(generic_array_is_invariant(gen));
 }
 #endif

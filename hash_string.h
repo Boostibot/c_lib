@@ -8,7 +8,7 @@ typedef struct Hash_String {
     union {
         struct {
             const char* data;
-            isize size;
+            isize len;
         };
         String string;
     };
@@ -55,15 +55,15 @@ EXTERNAL Hash_String hash_string_from_cstring(const char* cstr)
 
 EXTERNAL u64 hash_string(String string)
 {
-    return _hash64_fnv_inline(string.data, string.size);
+    return _hash64_fnv_inline(string.data, string.len);
 }
 
 EXTERNAL bool hash_string_is_equal(Hash_String a, Hash_String b)
 {
-    if(a.hash != b.hash || a.size != b.size)
+    if(a.hash != b.hash || a.len != b.len)
         return false;
 
-    return memcmp(a.data, b.data, a.size) == 0;
+    return memcmp(a.data, b.data, a.len) == 0;
 }
 
 EXTERNAL bool hash_string_is_equal_approx(Hash_String a, Hash_String b)
@@ -71,7 +71,7 @@ EXTERNAL bool hash_string_is_equal_approx(Hash_String a, Hash_String b)
     #ifndef DISSABLE_APPROXIMATE_EQUAL
         return hash_string_is_equal(a, b);
     #else
-        return a.hash == b.hash && a.size == b.size;
+        return a.hash == b.hash && a.len == b.len;
     #endif
 }
 #endif

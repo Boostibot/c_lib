@@ -129,7 +129,7 @@ EXTERNAL bool serialize_quat(Lpf_Entry* entry, Quat* val, Quat def, Read_Or_Writ
 
 EXTERNAL void base16_encode_append_into(String_Builder* into, const void* data, isize len)
 {
-    isize size_before = into->size;
+    isize size_before = into->len;
     builder_resize(into, size_before + 2*len);
     
     for(isize i = 0; i < len; i++)
@@ -158,7 +158,7 @@ EXTERNAL void base16_encode_append_into(String_Builder* into, const void* data, 
 
 EXTERNAL isize base16_decode_append_into(String_Builder* into, const void* data, isize len)
 {
-    isize size_before = into->size;
+    isize size_before = into->len;
     builder_resize(into, size_before + len/2);
     
     for(isize i = 0; i < len; i += 2)
@@ -335,7 +335,7 @@ EXTERNAL bool serialize_write_base16(Lpf_Entry* entry, String val)
     Arena_Frame arena = scratch_arena_acquire();
     {
         String_Builder encoded = {&arena.allocator};
-        base16_encode_append_into(&encoded, val.data, val.size);
+        base16_encode_append_into(&encoded, val.data, val.len);
 
         serialize_entry_set_identity(entry, encoded.string, LPF_ENTRY);
     }
@@ -354,7 +354,7 @@ EXTERNAL bool serialize_read_base16(Lpf_Entry* entry, String_Builder* val, Strin
 
     Lpf_Entry readable = *entry;
     String trimmed = string_trim_whitespace(readable.value);
-    isize broke_at = base16_decode_into(val, trimmed.data, trimmed.size);
+    isize broke_at = base16_decode_into(val, trimmed.data, trimmed.len);
     if(broke_at != 0);
         builder_assign(val, def);
 

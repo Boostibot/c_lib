@@ -41,7 +41,7 @@ EXTERNAL const char* cstring_ephemeral(String string);
         // a big difference.
         isize format_size = (isize) strlen(format);
         isize estimated_size = format_size + 64 + format_size/4;
-        isize base_size = append_to->size; 
+        isize base_size = append_to->len; 
         // array_resize(append_to, base_size + estimated_size);
         isize first_resize_size = MAX(base_size + estimated_size, append_to->capacity - 1);
         builder_resize(append_to, first_resize_size);
@@ -49,13 +49,13 @@ EXTERNAL const char* cstring_ephemeral(String string);
         //gcc modifies va_list on use! make sure to copy it!
         va_list args_copy;
         va_copy(args_copy, args);
-        isize count = vsnprintf(append_to->data + base_size, (size_t) (append_to->size - base_size), format, args);
+        isize count = vsnprintf(append_to->data + base_size, (size_t) (append_to->len - base_size), format, args);
         
         if(count > estimated_size)
         {
             PROFILE_START(format_twice);
             builder_resize(append_to, base_size + count + 3);
-            count = vsnprintf(append_to->data + base_size, (size_t) (append_to->size - base_size), format, args_copy);
+            count = vsnprintf(append_to->data + base_size, (size_t) (append_to->len - base_size), format, args_copy);
             PROFILE_END(format_twice);
         }
     
@@ -151,7 +151,7 @@ EXTERNAL const char* cstring_ephemeral(String string);
         PROFILE_START();
 
         enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256, PAGE_MIN_SIZE = 1024};
-        const char* string_end = string.data + string.size;
+        const char* string_end = string.data + string.len;
         const char* out = NULL;
 
         //If string end is not on different memory page we cannot cause segfault and thus we can 
@@ -175,7 +175,7 @@ EXTERNAL const char* cstring_ephemeral(String string);
                 if(curr->capacity == 0 || curr->capacity > KEPT_SIZE)
                 {
                     PROFILE_COUNTER(reset);
-                    isize required_capacity = MAX(string.size, KEPT_SIZE);
+                    isize required_capacity = MAX(string.len, KEPT_SIZE);
                     builder_init_with_capacity(curr, allocator_get_static(), required_capacity);
                 }
             }

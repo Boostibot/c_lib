@@ -69,7 +69,7 @@ typedef struct Stable_Array {
     u32 blocks_size;
     u32 blocks_capacity;
 
-    isize size;
+    isize len;
     u32 first_not_filled_i1;
     u32 item_size;
     u32 item_align; //Needs to satisfy because of allocation strategy: item_align divides item_size*STABLE_ARRAY_BLOCK_SIZE 
@@ -251,8 +251,8 @@ EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out)
 {
     PROFILE_START();
     _stable_array_check_invariants(stable);
-    if(stable->size + 1 > stable_array_capacity(stable))
-        stable_array_reserve(stable, stable->size + 1);
+    if(stable->len + 1 > stable_array_capacity(stable))
+        stable_array_reserve(stable, stable->len + 1);
 
     ASSERT(stable->first_not_filled_i1 != 0, "needs to have a place thats not filled when we reserved one!");
     isize block_i = stable->first_not_filled_i1 - 1;
@@ -276,7 +276,7 @@ EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out)
     if(stable->fill_empty_with != STABLE_ARRAY_KEEP_DATA_FLAG)
         memset(out_ptr, 0, (size_t) stable->item_size);
 
-    stable->size += 1;
+    stable->len += 1;
     _stable_array_check_invariants(stable);
 
     if(out)
@@ -308,7 +308,7 @@ EXTERNAL void stable_array_remove(Stable_Array* stable, isize index)
     if(stable->fill_empty_with != STABLE_ARRAY_KEEP_DATA_FLAG)
         memset(lookup.item, stable->fill_empty_with, (size_t) stable->item_size);
 
-    stable->size -= 1;
+    stable->len -= 1;
     block->filled_mask = block->filled_mask & ~bit;
     _stable_array_check_invariants(stable);
     PROFILE_END();
@@ -377,7 +377,7 @@ EXTERNAL void stable_array_test_invariants(const Stable_Array* stable, bool slow
     #define IS_IN_RANGE(lo, a, hi) ((lo) <= (a) && (a) < (hi))
     TEST((stable->allocator != NULL));
     TEST(stable->blocks_size <= stable->blocks_capacity);
-    TEST(stable->size <= stable_array_capacity(stable));
+    TEST(stable->len <= stable_array_capacity(stable));
 
     TEST(stable->item_size > 0 && is_power_of_two(stable->item_align), 
         "The item size and item align are those of a valid C type");
@@ -430,7 +430,7 @@ EXTERNAL void stable_array_test_invariants(const Stable_Array* stable, bool slow
 
             computed_size += item_count_in_block;
         }
-        TEST(computed_size == stable->size, 
+        TEST(computed_size == stable->len, 
             "The size retrieved from the used masks form all blocks needs to be exactly the tracked size");
             
         TEST(alloacted_count <= stable->blocks_size, 

@@ -17,7 +17,7 @@ typedef struct String_Builder {
     union {
         struct {
             char* data;
-            isize size;
+            isize len;
         };
         String string;
     };
@@ -32,10 +32,10 @@ typedef Array(String_Builder) String_Builder_Array;
 EXTERNAL String string_of(const char* str); //Constructs a string from null terminated str
 EXTERNAL String string_make(const char* data, isize size); //Constructs a string
 EXTERNAL String string_head(String string, isize to); //keeps only characters to to ( [0, to) interval )
-EXTERNAL String string_tail(String string, isize from); //keeps only characters from from ( [from, string.size) interval )
+EXTERNAL String string_tail(String string, isize from); //keeps only characters from from ( [from, string.len) interval )
 EXTERNAL String string_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
-EXTERNAL String string_safe_head(String string, isize to); //returns string_head using to. If to is outside the range [0, string.size] clamps it to the range. 
-EXTERNAL String string_safe_tail(String string, isize from); //returns string_tail using from. If from is outside the range [0, string.size] clamps it to the range. 
+EXTERNAL String string_safe_head(String string, isize to); //returns string_head using to. If to is outside the range [0, string.len] clamps it to the range. 
+EXTERNAL String string_safe_tail(String string, isize from); //returns string_tail using from. If from is outside the range [0, string.len] clamps it to the range. 
 EXTERNAL String string_safe_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
 EXTERNAL bool   string_is_equal(String a, String b); //Returns true if the contents and sizes of the strings match
 EXTERNAL bool   string_is_prefixed_with(String string, String prefix); 
@@ -112,15 +112,15 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL String string_head(String string, isize to)
     {
-        CHECK_BOUNDS(to, string.size + 1);
+        CHECK_BOUNDS(to, string.len + 1);
         String head = {string.data, to};
         return head;
     }
 
     EXTERNAL String string_tail(String string, isize from)
     {
-        CHECK_BOUNDS(from, string.size + 1);
-        String tail = {string.data + from, string.size - from};
+        CHECK_BOUNDS(from, string.len + 1);
+        String tail = {string.data + from, string.len - from};
         return tail;
     }
     
@@ -131,18 +131,18 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL String string_safe_head(String string, isize to)
     {
-        return string_head(string, CLAMP(to, 0, string.size));
+        return string_head(string, CLAMP(to, 0, string.len));
     }
     
     EXTERNAL String string_safe_tail(String string, isize from)
     {
-        return string_tail(string, CLAMP(from, 0, string.size));
+        return string_tail(string, CLAMP(from, 0, string.len));
     }
 
     EXTERNAL String string_safe_range(String string, isize from, isize to)
     {
-        isize escaped_from = CLAMP(from, 0, string.size);
-        isize escaped_to = CLAMP(to, 0, string.size);
+        isize escaped_from = CLAMP(from, 0, string.len);
+        isize escaped_to = CLAMP(to, 0, string.len);
         return string_range(string, escaped_from, escaped_to);
     }
 
@@ -150,31 +150,31 @@ EXTERNAL bool char_is_id(char c);
     {
         ASSERT(from >= 0);
 
-        if(from + search_for.size > in_str.size)
+        if(from + search_for.len > in_str.len)
             return -1;
         
-        if(search_for.size == 0)
+        if(search_for.len == 0)
             return from;
 
-        if(search_for.size == 1)
+        if(search_for.len == 1)
             return string_find_first_char(in_str, search_for.data[0], from);
 
         const char* found = in_str.data + from;
-        char last_char = search_for.data[search_for.size - 1];
+        char last_char = search_for.data[search_for.len - 1];
         char first_char = search_for.data[0];
 
         while (true)
         {
-            isize remaining_length = in_str.size - (found - in_str.data) - search_for.size + 1;
+            isize remaining_length = in_str.len - (found - in_str.data) - search_for.len + 1;
             ASSERT(remaining_length >= 0);
 
             found = (const char*) memchr(found, first_char, remaining_length);
             if(found == NULL)
                 return -1;
                 
-            char last_char_of_found = found[search_for.size - 1];
+            char last_char_of_found = found[search_for.len - 1];
             if (last_char_of_found == last_char)
-                if (memcmp(found + 1, search_for.data + 1, search_for.size - 2) == 0)
+                if (memcmp(found + 1, search_for.data + 1, search_for.len - 2) == 0)
                     return found - in_str.data;
 
             found += 1;
@@ -187,23 +187,23 @@ EXTERNAL bool char_is_id(char c);
     {
         ASSERT(false, "UNTESTED! @TODO: test!");
         ASSERT(from >= 0);
-        if(from + search_for.size > in_str.size)
+        if(from + search_for.len > in_str.len)
             return -1;
 
-        if(search_for.size == 0)
+        if(search_for.len == 0)
             return from;
 
         ASSERT(from >= 0);
         isize start = from;
-        if(in_str.size - start < search_for.size)
-            start = in_str.size - search_for.size;
+        if(in_str.len - start < search_for.len)
+            start = in_str.len - search_for.len;
 
         for(isize i = start; i-- > 0; )
         {
             bool found = true;
-            for(isize j = 0; j < search_for.size; j++)
+            for(isize j = 0; j < search_for.len; j++)
             {
-                CHECK_BOUNDS(i + j, in_str.size);
+                CHECK_BOUNDS(i + j, in_str.len);
                 if(in_str.data[i + j] != search_for.data[j])
                 {
                     found = false;
@@ -220,13 +220,13 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL isize string_find_last(String in_str, String search_for)
     {
-        isize from = MAX(in_str.size - 1, 0);
+        isize from = MAX(in_str.len - 1, 0);
         return string_find_last_from(in_str, search_for, from);
     }
     
     EXTERNAL isize string_find_first_char(String string, char search_for, isize from)
     {
-        char* ptr = (char*) memchr(string.data + from, search_for, string.size - from);
+        char* ptr = (char*) memchr(string.data + from, search_for, string.len - from);
         return ptr ? (isize) (ptr - string.data) : -1; 
     }
     
@@ -267,59 +267,59 @@ EXTERNAL bool char_is_id(char c);
     
     EXTERNAL isize string_find_last_char(String string, char search_for)
     {
-        return string_find_last_char_from(string, search_for, string.size - 1);
+        return string_find_last_char_from(string, search_for, string.len - 1);
     }
 
     EXTERNAL int string_compare(String a, String b)
     {
-        if(a.size > b.size)
+        if(a.len > b.len)
             return -1;
-        if(a.size < b.size)
+        if(a.len < b.len)
             return 1;
 
-        int res = memcmp(a.data, b.data, (u64) a.size);
+        int res = memcmp(a.data, b.data, (u64) a.len);
         return res;
     }
     
     EXTERNAL bool string_is_equal(String a, String b)
     {
-        if(a.size != b.size)
+        if(a.len != b.len)
             return false;
 
-        bool eq = memcmp(a.data, b.data, (u64) a.size) == 0;
+        bool eq = memcmp(a.data, b.data, (u64) a.len) == 0;
         return eq;
     }
 
     EXTERNAL bool string_is_prefixed_with(String string, String prefix)
     {
-        if(string.size < prefix.size)
+        if(string.len < prefix.len)
             return false;
 
-        String trimmed = string_head(string, prefix.size);
+        String trimmed = string_head(string, prefix.len);
         return string_is_equal(trimmed, prefix);
     }
 
     EXTERNAL bool string_is_postfixed_with(String string, String postfix)
     {
-        if(string.size < postfix.size)
+        if(string.len < postfix.len)
             return false;
 
-        String trimmed = string_tail(string, postfix.size);
+        String trimmed = string_tail(string, postfix.len);
         return string_is_equal(trimmed, postfix);
     }
 
     EXTERNAL bool string_has_substring_at(String larger_string, isize from_index, String smaller_string)
     {
-        if(larger_string.size - from_index < smaller_string.size)
+        if(larger_string.len - from_index < smaller_string.len)
             return false;
 
-        String portion = string_range(larger_string, from_index, from_index + smaller_string.size);
+        String portion = string_range(larger_string, from_index, from_index + smaller_string.len);
         return string_is_equal(portion, smaller_string);
     }
     
     EXTERNAL String_Builder string_concat(Allocator* allocator, String a, String b)
     {
-        String_Builder out = builder_make(allocator, a.size + b.size);
+        String_Builder out = builder_make(allocator, a.len + b.len);
         builder_append(&out, a);
         builder_append(&out, b);
         return out;
@@ -327,7 +327,7 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL String_Builder string_concat3(Allocator* allocator, String a, String b, String c)
     {
-        String_Builder out = builder_make(allocator, a.size + b.size + c.size);
+        String_Builder out = builder_make(allocator, a.len + b.len + c.len);
         builder_append(&out, a);
         builder_append(&out, b);
         builder_append(&out, c);
@@ -336,8 +336,8 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL void string_deallocate(Allocator* alloc, String* string)
     {
-        if(string->size != 0)
-            allocator_deallocate(alloc, (void*) string->data, string->size + 1, 1);
+        if(string->len != 0)
+            allocator_deallocate(alloc, (void*) string->data, string->len + 1, 1);
         String nil = {0};
         *string = nil;
     }
@@ -346,7 +346,7 @@ EXTERNAL bool char_is_id(char c);
     EXTERNAL bool _builder_is_invariant(const String_Builder* builder)
     {
         bool is_capacity_correct = 0 <= builder->capacity;
-        bool is_size_correct = (0 <= builder->size && builder->size <= builder->capacity);
+        bool is_size_correct = (0 <= builder->len && builder->len <= builder->capacity);
         //Data is default iff capacity is zero
         bool is_data_correct = (builder->data == NULL || builder->data == _builder_null_termination) == (builder->capacity == 0);
 
@@ -357,7 +357,7 @@ EXTERNAL bool char_is_id(char c);
         //If is not in 0 state must be null terminated (both right after and after the whole capacity for safety)
         bool is_null_terminated = true;
         if(builder->data != NULL)
-            is_null_terminated = builder->data[builder->size] == '\0' && builder->data[builder->capacity] == '\0';
+            is_null_terminated = builder->data[builder->len] == '\0' && builder->data[builder->capacity] == '\0';
         
         bool result = is_capacity_correct && is_size_correct && is_data_correct && is_null_terminated;
         ASSERT(result);
@@ -440,15 +440,15 @@ EXTERNAL bool char_is_id(char c);
 
         //trim the size if too big
         builder->capacity = capacity;
-        if(builder->size > builder->capacity)
-            builder->size = builder->capacity;
+        if(builder->len > builder->capacity)
+            builder->len = builder->capacity;
         
         //Restore null termination
         if(capacity == 0)
             builder->data = _builder_null_termination;
         else
         {
-            builder->data[builder->size] = '\0'; 
+            builder->data[builder->len] = '\0'; 
             builder->data[builder->capacity] = '\0'; 
         }
         ASSERT(_builder_is_invariant(builder));
@@ -470,13 +470,13 @@ EXTERNAL bool char_is_id(char c);
     EXTERNAL void builder_resize(String_Builder* builder, isize to_size)
     {
         builder_reserve(builder, to_size);
-        if(to_size >= builder->size)
-            memset(builder->data + builder->size, 0, (size_t) ((to_size - builder->size)));
+        if(to_size >= builder->len)
+            memset(builder->data + builder->len, 0, (size_t) ((to_size - builder->len)));
         else
             //We clear the memory when shrinking so that we dont have to clear it when pushing!
-            memset(builder->data + to_size, 0, (size_t) ((builder->size - to_size)));
+            memset(builder->data + to_size, 0, (size_t) ((builder->len - to_size)));
         
-        builder->size = to_size;
+        builder->len = to_size;
         ASSERT(_builder_is_invariant(builder));
     }
 
@@ -487,47 +487,47 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL void builder_append(String_Builder* builder, String string)
     {
-        ASSERT(string.size >= 0);
-        builder_reserve(builder, builder->size+string.size);
-        memcpy(builder->data + builder->size, string.data, (size_t) string.size);
-        builder->size += string.size;
+        ASSERT(string.len >= 0);
+        builder_reserve(builder, builder->len+string.len);
+        memcpy(builder->data + builder->len, string.data, (size_t) string.len);
+        builder->len += string.len;
         ASSERT(_builder_is_invariant(builder));
     }
 
     EXTERNAL void builder_append_line(String_Builder* builder, String string)
     {
-        ASSERT(string.size >= 0);
-        builder_reserve(builder, builder->size+string.size + 1);
-        memcpy(builder->data + builder->size, string.data, (size_t) string.size);
-        builder->data[builder->size + string.size] = '\n';
-        builder->size += string.size + 1;
+        ASSERT(string.len >= 0);
+        builder_reserve(builder, builder->len+string.len + 1);
+        memcpy(builder->data + builder->len, string.data, (size_t) string.len);
+        builder->data[builder->len + string.len] = '\n';
+        builder->len += string.len + 1;
         ASSERT(_builder_is_invariant(builder));
     }
 
     EXTERNAL void builder_assign(String_Builder* builder, String string)
     {
-        builder_resize(builder, string.size);
-        memcpy(builder->data, string.data, (size_t) string.size);
+        builder_resize(builder, string.len);
+        memcpy(builder->data, string.data, (size_t) string.len);
         ASSERT(_builder_is_invariant(builder));
     }
 
     EXTERNAL void builder_push(String_Builder* builder, char c)
     {
-        builder_reserve(builder, builder->size+1);
-        builder->data[builder->size++] = c;
+        builder_reserve(builder, builder->len+1);
+        builder->data[builder->len++] = c;
     }
 
     EXTERNAL char builder_pop(String_Builder* builder)
     {
-        ASSERT(builder->size > 0);
-        char popped = builder->data[--builder->size];
-        builder->data[builder->size] = '\0';
+        ASSERT(builder->len > 0);
+        char popped = builder->data[--builder->len];
+        builder->data[builder->len] = '\0';
         return popped;
     }
     
     EXTERNAL void builder_array_deinit(String_Builder_Array* array)
     {
-        for(isize i = 0; i < array->size; i++)
+        for(isize i = 0; i < array->len; i++)
             builder_deinit(&array->data[i]);
 
         array_deinit(array);
@@ -535,8 +535,8 @@ EXTERNAL bool char_is_id(char c);
     
     EXTERNAL String_Builder builder_from_string(Allocator* allocator, String string)
     {
-        String_Builder builder = builder_make(allocator, string.size);
-        if(string.size)
+        String_Builder builder = builder_make(allocator, string.len);
+        if(string.len)
             builder_assign(&builder, string);
         return builder;
     }

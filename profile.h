@@ -164,14 +164,14 @@ INTERNAL isize profile_find_zone(Profile_Global_Data* profile_data, uint64_t has
 
 INTERNAL isize profile_add_zone(Profile_Global_Data* profile_data, uint64_t hash, Profile_ID zone_id, uint64_t mean_estimate)
 {
-	hash_index_insert(&profile_data->zone_hash, hash, profile_data->zones.size);
+	hash_index_insert(&profile_data->zone_hash, hash, profile_data->zones.len);
 
 	Profile_Zone zone = {PROFILE_UNINIT};
 	zone.id = zone_id;
 	zone.mean_estimate = mean_estimate;
 
 	array_push(&profile_data->zones, zone);
-	return profile_data->zones.size - 1;
+	return profile_data->zones.len - 1;
 }
 
 EXTERNAL ATTRIBUTE_INLINE_NEVER void profile_init_thread_zone(Profile_Thread_Zone** handle, const Profile_ID* zone_id, uint64_t mean_estimate)
@@ -218,9 +218,9 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 	if(gprofile_data.is_init)
 	{
 		platform_mutex_lock(&gprofile_data.mutex);
-		array_resize(stats, gprofile_data.zones.size);
+		array_resize(stats, gprofile_data.zones.len);
 		
-		for(isize i = 0; i < gprofile_data.zones.size; i++)
+		for(isize i = 0; i < gprofile_data.zones.len; i++)
 		{
 			Profile_Zone* zone = &gprofile_data.zones.data[i];
 			Perf_Counter combined = {0};
@@ -300,7 +300,7 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 		profile_get_stats(&all_stats);
 		
 		String common_prefix = {0};
-		for(isize i = 0; i < all_stats.size; i++)
+		for(isize i = 0; i < all_stats.len; i++)
 		{
 			String file = string_of(all_stats.data[i].id.file);
 			if(i == 0)
@@ -308,7 +308,7 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 			else
 			{
 				isize k = 0;
-				for(; k < MIN(common_prefix.size, file.size); k++)
+				for(; k < MIN(common_prefix.len, file.len); k++)
 					if(common_prefix.data[k] != file.data[k])
 						break;
 
@@ -319,19 +319,19 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 		switch(sort_by)
 		{
 			default:
-			case PERF_SORT_BY_NAME: qsort(all_stats.data, (size_t) all_stats.size, sizeof *all_stats.data, _profile_compare_file_func); break;
-			case PERF_SORT_BY_TIME: qsort(all_stats.data, (size_t) all_stats.size, sizeof *all_stats.data, _profile_compare_total_time_func); break;
-			case PERF_SORT_BY_RUNS: qsort(all_stats.data, (size_t) all_stats.size, sizeof *all_stats.data, _profile_compare_runs); break;
+			case PERF_SORT_BY_NAME: qsort(all_stats.data, (size_t) all_stats.len, sizeof *all_stats.data, _profile_compare_file_func); break;
+			case PERF_SORT_BY_TIME: qsort(all_stats.data, (size_t) all_stats.len, sizeof *all_stats.data, _profile_compare_total_time_func); break;
+			case PERF_SORT_BY_RUNS: qsort(all_stats.data, (size_t) all_stats.len, sizeof *all_stats.data, _profile_compare_runs); break;
 		}
 
 		LOG(stream, "Logging perf counters (still running %lli):", (lli) 0);
 			LOG(stream, "    total ms | average ms |  runs  |  σ/μ  | [min max] ms        | source");
-			for(isize i = 0; i < all_stats.size; i++)
+			for(isize i = 0; i < all_stats.len; i++)
 			{
 				Profile_Zone_Stats single = all_stats.data[i];
 
 				const char* name = "";
-				if(string_of(single.id.name).size > 0)
+				if(string_of(single.id.name).len > 0)
 					name = format_ephemeral("'%s'", single.id.name).data;
 
 				if(single.id.type == PROFILE_DEFAULT)
@@ -343,7 +343,7 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 						single.stats.normalized_standard_deviation_s,
 						format_seconds(single.stats.min_s, 7).data,
 						format_seconds(single.stats.max_s, 7).data,
-						single.id.file + common_prefix.size,
+						single.id.file + common_prefix.len,
 						(lli) single.id.line,
 						single.id.function,
 						name
@@ -355,7 +355,7 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 						format_seconds(single.stats.total_s, 9).data,
 						format_seconds(single.stats.average_s, 7).data,
 						(lli) single.stats.runs,
-						single.id.file + common_prefix.size,
+						single.id.file + common_prefix.len,
 						(lli) single.id.line,
 						single.id.function,
 						name
@@ -366,7 +366,7 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 				{
 					LOG(stream, "%8lli %25s %-4lli %s %s", 
 						(lli) single.stats.runs,
-						single.id.file + common_prefix.size,
+						single.id.file + common_prefix.len,
 						(lli) single.id.line,
 						single.id.function,
 						name
