@@ -225,7 +225,7 @@ EXTERNAL void debug_allocator_init(Debug_Allocator* allocator, Allocator* parent
 EXTERNAL void debug_allocator_init_use(Debug_Allocator* debug, Allocator* parent, u64 flags)
 {
     debug_allocator_init(debug, parent, flags);
-    debug->allocator_backup = allocator_set_both(&debug->allocator, &debug->allocator);
+    debug->allocator_backup = allocator_set_default(&debug->allocator);
 }
 
 typedef struct Debug_Allocation_Header {
