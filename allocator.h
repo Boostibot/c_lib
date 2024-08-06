@@ -17,19 +17,8 @@
 // 
 // that for example logs all allocations and checks their correctness.
 //
-// We also keep two global allocator pointers. These are called 'default' and 'scratch' allocators. Each system requiring memory
+// We also keep two global allocator pointers. These are called 'default' and 'static' allocators. Each system requiring memory
 // should use one of these two allocators for initialization (and then continue using that saved off pointer). 
-// By convention scratch allocator is used for "internal" allocation and default allocator is used for communicating with the outside world.
-// Given a function that does some useful computation and returns an allocated result it typically uses a fast scratch allocator internally
-// and only allocates using the default allocator the returned result.
-//
-// This convention ensures that all allocation is predictable and fast (scratch allocators are most often stack allocators that 
-// are perfectly suited for fast allocation - deallocation pairs). This approach also stacks. In each function we can simply upon entry
-// install the scratch allocator as the default allocator so that all internal functions will also communicate to us using the fast scratch 
-// allocator.
-
-// @TODO: Get rid of default and scratch allocator since we need explicitness! If a function needs a general allocator for its internal use thats a scratch allocation and
-// it should ask for it or create it right there. If a function wants to allocate something for the caller, the caller should really know where to find it (thus they should pass it as an argument).
 
 #include "defines.h"
 #include "assert.h"
@@ -72,14 +61,11 @@ typedef struct Allocator_Stats {
 
 typedef struct Allocator_Set {
     Allocator* allocator_default;
-    Allocator* allocator_scratch;
     Allocator* allocator_static;
 
     bool set_default;
-    bool set_scratch;
     bool set_static;
-    
-	bool _padding[5];
+	bool _padding[6];
 } Allocator_Set;
 
 #define DEF_ALIGN PLATFORM_MAX_ALIGN
@@ -109,7 +95,6 @@ EXTERNAL Allocator_Stats allocator_get_stats(Allocator* self);
 EXTERNAL void allocator_out_of_memory(Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align);
 
 EXTERNAL Allocator* allocator_get_default(); //returns the default allocator used for returning values from a function
-EXTERNAL Allocator* allocator_get_scratch(); //returns the scratch allocator used for temp often stack order allocations inside a function
 EXTERNAL Allocator* allocator_get_static(); //returns the static allocator used for allocations with potentially unbound lifetime. This includes things that will never be deallocated.
 EXTERNAL Allocator* allocator_or_default(Allocator* allocator_or_null); //Returns the passed in allocator_or_null. If allocator_or_null is NULL returns the current set default allocator
 
@@ -119,9 +104,7 @@ EXTERNAL bool allocator_is_arena(Allocator* allocator);
 
 //All of these return the previously used Allocator_Set. This enables simple set/restore pair. 
 EXTERNAL Allocator_Set allocator_set_default(Allocator* new_default);
-EXTERNAL Allocator_Set allocator_set_scratch(Allocator* new_scratch);
-EXTERNAL Allocator_Set allocator_set_static(Allocator* new_scratch);
-EXTERNAL Allocator_Set allocator_set_both(Allocator* new_default, Allocator* new_scratch);
+EXTERNAL Allocator_Set allocator_set_static(Allocator* new_static);
 EXTERNAL Allocator_Set allocator_set(Allocator_Set backup); 
 
 EXTERNAL bool  is_power_of_two(isize num);
@@ -146,7 +129,6 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
 
     typedef struct Global_Allocator_State {
         Allocator* default_allocator;
-        Allocator* scratch_allocator;
         Allocator* static_allocator;
     } Global_Allocator_State;
 
@@ -214,10 +196,6 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
     {
         return _allocator_state.default_allocator;
     }
-    EXTERNAL Allocator* allocator_get_scratch()
-    {
-        return _allocator_state.scratch_allocator;
-    }
     EXTERNAL Allocator* allocator_get_static()
     {
         return _allocator_state.static_allocator;
@@ -236,27 +214,11 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
         return allocator_set(set_to);
     }
 
-    EXTERNAL Allocator_Set allocator_set_scratch(Allocator* new_scratch)
-    {
-        Allocator_Set set_to = {0};
-        set_to.allocator_scratch = new_scratch;
-        set_to.set_scratch = true;
-        return allocator_set(set_to);
-    }
-
     EXTERNAL Allocator_Set allocator_set_static(Allocator* new_static)
     {
         Allocator_Set set_to = {0};
         set_to.allocator_static = new_static;
         set_to.set_static = true;
-        return allocator_set(set_to);
-    }
-
-    EXTERNAL Allocator_Set allocator_set_both(Allocator* new_default, Allocator* new_scratch)
-    {
-        Allocator_Set set_to = {new_default, new_scratch};
-        set_to.set_default = true;
-        set_to.set_scratch = true;
         return allocator_set(set_to);
     }
 
@@ -270,13 +232,6 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
             prev.allocator_default = state->default_allocator;
             prev.set_default = true;
             state->default_allocator = set_to.allocator_default;
-        }
-
-        if(set_to.set_scratch)
-        {
-            prev.allocator_scratch = state->scratch_allocator;
-            prev.set_scratch = true;
-            state->scratch_allocator = set_to.allocator_scratch;
         }
         
         if(set_to.set_static)

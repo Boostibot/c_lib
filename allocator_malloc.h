@@ -200,7 +200,7 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
             isize smaller_size = new_size < old_size ? new_size : old_size;
             memcpy(out_ptr, old_ptr, (size_t) smaller_size);
 
-            //Calculate the pointer from which the allocation occcured. 
+            //Calculate the pointer from which the allocation occurred. 
             //This is just the block pointer if it is not offset.
             void* old_allocation = old_block_ptr;
             if(old_block_ptr->is_offset)
@@ -249,9 +249,9 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
     {
         (void) flags;
         malloc_allocator_init(self, name);
-        self->allocator_backup = allocator_set_both(&self->allocator, &self->allocator);
+        self->allocator_backup = allocator_set_default(&self->allocator);
     }
-
+    
     EXTERNAL void malloc_allocator_deinit(Malloc_Allocator* self)
     {
         allocation_list_free_all(&self->list, self->parent);

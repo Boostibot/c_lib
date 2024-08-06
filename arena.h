@@ -426,10 +426,8 @@ EXTERNAL void arena_frame_release(Arena_Frame* arena)
         stack->stack_depth = arena->level - 1;
         stack->release_count += 1;
 
-        //@TODO: we have memory corruption in file logger somewhere as this check
-        //keeps firing but only for it. FIX THIS!
-        _arena_debug_fill_data(stack, old_used_to - new_used_to);
-        //_arena_debug_fill_data(stack, old_used_to - new_used_to + ARENA_DEBUG_DATA_SIZE);
+        //_arena_debug_fill_data(stack, old_used_to - new_used_to);
+        _arena_debug_fill_data(stack, old_used_to - new_used_to + ARENA_DEBUG_DATA_SIZE);
         _arena_debug_check_invariants(stack);
         memset(arena, 0, sizeof* arena);
     }
