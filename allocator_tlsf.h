@@ -1317,7 +1317,7 @@ void test_allocator_tlsf(double seconds)
         };
     
         Arena arena = {0};
-        TEST(arena_init(&arena, 0, 0));
+        TEST(arena_init(&arena, "tlsf_arena", 0, 0, NULL));
         isize memory_size = 1024*1024*1024;
         arena_commit(&arena, memory_size);
 

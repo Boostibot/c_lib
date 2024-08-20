@@ -56,9 +56,9 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats);
 EXTERNAL void profile_init(Allocator* alloc);
 EXTERNAL ATTRIBUTE_INLINE_NEVER void profile_init_thread_zone(Profile_Thread_Zone** handle, const Profile_ID* zone_id, uint64_t mean_estimate);
 
-static inline int64_t fenced_now();
-static inline int64_t profile_now();
-static inline void profile_submit(Profile_Type type, Profile_Thread_Zone** handle_ptr, const Profile_ID* zone_id, int64_t before, int64_t after);
+static _PROFILE_INLINE_ALWAYS int64_t fenced_now();
+static _PROFILE_INLINE_ALWAYS int64_t profile_now();
+static _PROFILE_INLINE_ALWAYS void profile_submit(Profile_Type type, Profile_Thread_Zone** handle_ptr, const Profile_ID* zone_id, int64_t before, int64_t after);
 
 typedef enum Log_Perf_Sort_By{
 	PERF_SORT_BY_NAME,
@@ -78,20 +78,20 @@ EXTERNAL void log_perf_stats_row(Log log, const char* label, Perf_Stats stats);
 # include <x86intrin.h>
 #endif
 
-static inline int64_t fenced_now()
+static _PROFILE_INLINE_ALWAYS int64_t fenced_now()
 { 
 	_ReadWriteBarrier(); 
     _mm_lfence();
 	return (int64_t) __rdtsc();
 }
 
-static inline int64_t profile_now()
+static _PROFILE_INLINE_ALWAYS int64_t profile_now()
 {
 	_ReadWriteBarrier(); 
 	return (int64_t) __rdtsc();
 }
 
-static inline void profile_submit(Profile_Type type, Profile_Thread_Zone** handle, const Profile_ID* zone_id, int64_t before, int64_t after)
+static _PROFILE_INLINE_ALWAYS void profile_submit(Profile_Type type, Profile_Thread_Zone** handle, const Profile_ID* zone_id, int64_t before, int64_t after)
 {
 	ASSERT(zone_id->type == type);
 	if(*handle == NULL)

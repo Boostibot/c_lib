@@ -18,23 +18,37 @@ typedef struct Profile_ID {
 	const char* comment;
 } Profile_ID;
 
-typedef struct Profile_Thread_Zone Profile_Thread_Zone;
-static inline void profile_submit(Profile_Type type, Profile_Thread_Zone** handle_ptr, const Profile_ID* zone_id, int64_t before, int64_t after);
-static inline int64_t profile_now();
 
 #if defined(_MSC_VER)
     #define _PROFILE_THREAD_LOCAL  __declspec(thread)
+    #define _PROFILE_INLINE_ALWAYS                                 __forceinline
 #else
 	#define _PROFILE_THREAD_LOCAL  __thread
+    #define _PROFILE_INLINE_ALWAYS                                 __attribute__((always_inline)) inline
 #endif
 
-#define _PROFILE_START(TYPE, id, comment, ...) \
-	static Profile_ID __prof_id_##id = {TYPE, __LINE__, __FILE__, __func__, #id, "" comment}; \
-	static _PROFILE_THREAD_LOCAL Profile_Thread_Zone* __prof_handle_##id = 0; \
-	int64_t __prof_before_##id = profile_now() \
+typedef struct Profile_Thread_Zone Profile_Thread_Zone;
+static _PROFILE_INLINE_ALWAYS void profile_submit(Profile_Type type, Profile_Thread_Zone** handle_ptr, const Profile_ID* zone_id, int64_t before, int64_t after);
+static _PROFILE_INLINE_ALWAYS int64_t profile_now();
+
+
+#ifndef DO_PROFILE
+	#define DO_PROFILE 1
+#endif
+
+#if DO_PROFILE
+	#define _PROFILE_START(TYPE, id, comment, ...) \
+		static Profile_ID __prof_id_##id = {TYPE, __LINE__, __FILE__, __func__, #id, "" comment}; \
+		static _PROFILE_THREAD_LOCAL Profile_Thread_Zone* __prof_handle_##id = 0; \
+		int64_t __prof_before_##id = profile_now() \
 	
-#define _PROFILE_END(TYPE, id, ...) \
-	profile_submit(TYPE, &__prof_handle_##id, &__prof_id_##id, __prof_before_##id, profile_now()) \
+	#define _PROFILE_END(TYPE, id, ...) \
+		profile_submit(TYPE, &__prof_handle_##id, &__prof_id_##id, __prof_before_##id, profile_now()) \
+
+#else
+	#define _PROFILE_START(TYPE, id, comment, ...) 
+	#define _PROFILE_END(TYPE, id, ...) 
+#endif
 
 #define PROFILE_START(...) _PROFILE_START(PROFILE_DEFAULT,__VA_ARGS__,,,)
 #define PROFILE_END(...) _PROFILE_END(PROFILE_DEFAULT,__VA_ARGS__,,,)

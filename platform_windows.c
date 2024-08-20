@@ -30,8 +30,8 @@
 #include <direct.h>
 #include <dwmapi.h>
 
-#pragma warning(disable:4255) //Dissable "no function prototype given: converting '()' to '(void)"  
-#pragma warning(disable:5045) //Dissable "Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified"  
+#pragma warning(disable:4255) //Disable "no function prototype given: converting '()' to '(void)"  
+#pragma warning(disable:5045) //Disable "Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified"  
 
 #undef near
 #undef far
@@ -39,41 +39,65 @@
 //=========================================
 // Virtual memory
 //=========================================
-void* platform_virtual_reallocate(void* address, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection)
+
+Platform_Error _platform_error_code(bool state)
 {
+    Platform_Error err = PLATFORM_ERROR_OK;
+    if(!state)
+    {
+        err = (Platform_Error) GetLastError();
+        //If we failed yet there is no error 
+        // set to custom error.
+        if(err == 0)
+            err = PLATFORM_ERROR_OTHER;
+    }
+    return err;
+}
+
+Platform_Error platform_virtual_reallocate(void** output_adress_or_null, void* address, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection)
+{
+    void* out_addr = NULL;
+    Platform_Error out = PLATFORM_ERROR_OK;
+    
     if(action == PLATFORM_VIRTUAL_ALLOC_RELEASE)
-    {
-        (void) VirtualFree(address, 0, MEM_RELEASE);  
-        return NULL;
-    }
+        out = _platform_error_code(!!VirtualFree(address, 0, MEM_RELEASE));  
 
-    if(action == PLATFORM_VIRTUAL_ALLOC_DECOMMIT)
+    else if(action == PLATFORM_VIRTUAL_ALLOC_DECOMMIT)
     {
-        //Dissable warning about MEM_DECOMMIT without MEM_RELEASE because thats the whole point of this opperation we are doing here.
+        out_addr = address;
+        //Disable warning about MEM_DECOMMIT without MEM_RELEASE because thats the whole point of this operation we are doing here.
         #pragma warning(disable:6250)
-        (void) VirtualFree(address, bytes, MEM_DECOMMIT);  
+        out = _platform_error_code(!!VirtualFree(address, bytes, MEM_DECOMMIT));  
         #pragma warning(default:6250)
-        return NULL;
+    }
+    else 
+    {
+        int prot = 0;
+        if(protection == PLATFORM_MEMORY_PROT_READ)
+            prot = PAGE_READONLY;
+        if(protection & PLATFORM_MEMORY_PROT_WRITE)
+            prot = PAGE_READWRITE;
+        if(protection == PLATFORM_MEMORY_PROT_EXECUTE)
+            prot = PAGE_EXECUTE;
+        if(protection == (PLATFORM_MEMORY_PROT_READ | PLATFORM_MEMORY_PROT_EXECUTE))
+            prot = PAGE_EXECUTE_READ;
+        if(protection & (PLATFORM_MEMORY_PROT_WRITE | PLATFORM_MEMORY_PROT_EXECUTE))
+            prot = PAGE_EXECUTE_READWRITE;
+        else
+            prot = PAGE_NOACCESS;
+
+        if(bytes > 0)
+        {
+            int action_code = action == PLATFORM_VIRTUAL_ALLOC_RESERVE ? MEM_RESERVE : MEM_COMMIT;
+            out_addr = VirtualAlloc(address, bytes, action_code, prot);
+            out = _platform_error_code(out_addr != NULL);
+        }
     }
 
-    int prot = 0;
-    if(protection == PLATFORM_MEMORY_PROT_READ)
-        prot = PAGE_READONLY;
-    if(protection & PLATFORM_MEMORY_PROT_WRITE)
-        prot = PAGE_READWRITE;
-    if(protection == PLATFORM_MEMORY_PROT_EXECUTE)
-        prot = PAGE_EXECUTE;
-    if(protection == (PLATFORM_MEMORY_PROT_READ | PLATFORM_MEMORY_PROT_EXECUTE))
-        prot = PAGE_EXECUTE_READ;
-    if(protection & (PLATFORM_MEMORY_PROT_WRITE | PLATFORM_MEMORY_PROT_EXECUTE))
-        prot = PAGE_EXECUTE_READWRITE;
-    else
-        prot = PAGE_NOACCESS;
+    if(output_adress_or_null)
+        *output_adress_or_null = out_addr;
 
-    if(action == PLATFORM_VIRTUAL_ALLOC_RESERVE)
-        return VirtualAlloc(address, bytes, MEM_RESERVE, prot);
-    else
-        return VirtualAlloc(address, bytes, MEM_COMMIT, prot);
+    return out;
 }
 
 void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align)
@@ -96,6 +120,19 @@ int64_t platform_page_size()
     {
         SYSTEM_INFO info = {0};
         GetSystemInfo(&info);
+        page_size = info.dwPageSize;
+    }
+
+    return page_size;
+}
+
+int64_t platform_allocation_granularity()
+{
+    static int64_t page_size = -1;
+    if(page_size == -1)
+    {
+        SYSTEM_INFO info = {0};
+        GetSystemInfo(&info);
         page_size = info.dwAllocationGranularity;
     }
 
@@ -111,19 +148,6 @@ int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
 }
 
 
-Platform_Error _platform_error_code(bool state)
-{
-    Platform_Error err = PLATFORM_ERROR_OK;
-    if(!state)
-    {
-        err = (Platform_Error) GetLastError();
-        //If we failed yet there is no errror 
-        // set to custom error.
-        if(err == 0)
-            err = PLATFORM_ERROR_OTHER;
-    }
-    return err;
-}
 
 //=========================================
 // Threading
@@ -236,6 +260,23 @@ bool platform_mutex_try_lock(Platform_Mutex* mutex)
     assert(mutex->handle != NULL);
     return (bool) TryEnterCriticalSection((CRITICAL_SECTION*) mutex->handle);
 }   
+
+#include <process.h>
+//bool platform_futex_wait(volatile int32_t* futex, int32_t value, int64_t ms_or_negative_if_infinite)
+//{
+//    DWORD wait = (DWORD) ms_or_negative_if_infinite;
+//    if(ms_or_negative_if_infinite < 0)
+//        wait = INFINITE;
+//    return WaitOnAddress(futex, &value, sizeof value, wait);
+//}
+//void platform_futex_wake(volatile int32_t* futex)
+//{
+//    WakeByAddressSingle((void*) futex);
+//}
+//void platform_futex_wake_all(volatile int32_t* futex)
+//{
+//    WakeByAddressAll((void*) futex);
+//}
 
 //=========================================
 // Timings
@@ -1579,7 +1620,7 @@ void* platform_dll_get_function(Platform_DLL* dll, Platform_String name)
 }
 
 //=========================================
-// Window managmenet
+// Window management
 //=========================================
 Platform_Window_Popup_Controls platform_window_make_popup(Platform_Window_Popup_Style desired_style, Platform_String message, Platform_String title)
 {

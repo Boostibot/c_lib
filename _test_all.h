@@ -31,7 +31,7 @@ INTERNAL void test_all(f64 total_time)
     int passed_count = 0;
 
     #define INCR total_count += 1, passed_count += (int)
-    
+
     INCR RUN_TEST(test_arena);
     INCR RUN_TEST(platform_test_all);
     INCR RUN_TEST(test_list);

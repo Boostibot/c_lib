@@ -111,6 +111,21 @@ void platform_init();
 void platform_deinit();
 
 //=========================================
+// Errors 
+//=========================================
+
+typedef uint32_t Platform_Error;
+enum {
+    PLATFORM_ERROR_OK = 0, 
+    //... errno codes
+    PLATFORM_ERROR_OTHER = INT32_MAX, //Is used when the OS reports no error yet there was clearly an error.
+};
+
+//Returns a translated error message. The returned pointer is not static and shall NOT be stored as further calls to this functions will invalidate it. 
+//The returned string should be immediately printed or copied into a different buffer
+const char* platform_translate_error(Platform_Error error);
+
+//=========================================
 // Virtual memory
 //=========================================
 
@@ -130,31 +145,15 @@ typedef enum Platform_Memory_Protection {
     PLATFORM_MEMORY_PROT_READ_WRITE_EXECUTE = PLATFORM_MEMORY_PROT_READ_WRITE | PLATFORM_MEMORY_PROT_EXECUTE,
 } Platform_Memory_Protection;
 
-void* platform_virtual_reallocate(void* allocate_at, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection);
-int64_t platform_page_size(); //@TODO: allocation granularity
+Platform_Error platform_virtual_reallocate(void** output_adress_or_null, void* address, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection);
+int64_t platform_page_size();
+int64_t platform_allocation_granularity();
 
 void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align);
 //Returns the size in bytes of an allocated block. 
 //old_ptr needs to be value returned from platform_heap_reallocate. Align must be the one supplied to platform_heap_reallocate.
 //If old_ptr is NULL returns 0.
 int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align); 
-
-
-//=========================================
-// Errors 
-//=========================================
-
-typedef uint32_t Platform_Error;
-enum {
-    PLATFORM_ERROR_OK = 0, 
-    //... errno codes
-    PLATFORM_ERROR_OTHER = INT32_MAX, //Is used when the OS reports no error yet there was clearly an error.
-};
-
-//Returns a translated error message. The returned pointer is not static and shall NOT be stored as further calls to this functions will invalidate it. 
-//The returned string should be immediately printed or copied into a different buffer
-const char* platform_translate_error(Platform_Error error);
-
 
 //=========================================
 // Threading
@@ -168,6 +167,10 @@ typedef struct Platform_Thread {
 typedef struct Platform_Mutex {
     void* handle;
 } Platform_Mutex;
+
+typedef struct Platform_Futex {
+    volatile uint32_t value;
+} Platform_Futex;
 
 //@TODO: thread processor affinity!
 
@@ -202,6 +205,11 @@ void            platform_mutex_deinit(Platform_Mutex* mutex);
 void            platform_mutex_lock(Platform_Mutex* mutex);
 void            platform_mutex_unlock(Platform_Mutex* mutex);
 bool            platform_mutex_try_lock(Platform_Mutex* mutex); //Tries to lock a mutex. Returns true if mutex was locked successfully. If it was not returns false without waiting.
+
+bool            platform_futex_wait(volatile int32_t* futex, int32_t value, int64_t ms_or_negative_if_infinite);
+void            platform_futex_wake(volatile int32_t* futex);
+void            platform_futex_wake_all(volatile int32_t* futex);
+
 void            platform_mutex_global_lock(uint64_t id);
 void            platform_mutex_global_unlock(uint64_t id);
 

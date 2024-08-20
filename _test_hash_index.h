@@ -88,8 +88,8 @@ INTERNAL void test_hash_index_stress(f64 max_seconds)
 		Array(Action) history = {0};
 
 		//uint64_t random_seed = random_clock_seed();
-		uint64_t random_seed = 0x6b3979953b41cf7d;
-		*random_state() = random_state_from_seed(random_seed);
+		//uint64_t random_seed = 0x6b3979953b41cf7d;
+		//*random_state() = random_state_from_seed(random_seed);
 
 		i32 max_size = 0;
 		i32 max_capacity = 0;

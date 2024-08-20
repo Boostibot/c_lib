@@ -93,4 +93,5 @@ EXTERNAL void assertion_report(const char* expression, int line, const char* fil
 //Pre-Processor (PP) utils
 #define _PP_CONCAT(a, b)        a ## b
 #define PP_CONCAT(a, b)         _PP_CONCAT(a, b)
+#define PP_UNIQ(a) PP_CONCAT(a, __LINE__)
 #endif
