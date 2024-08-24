@@ -166,7 +166,7 @@ typedef struct Arena_Stack {
 //Models a single lifetime of allocations done from an arena. 
 // Also can be though of as representing a ScratchBegin()/ScratchEnd() pair.
 typedef struct Arena_Frame {
-    Allocator allocator;
+    Allocator alloc[1];
     Arena_Stack* stack;
     i32 level;
     i32 _padding;
@@ -194,7 +194,7 @@ EXTERNAL Arena_Frame scratch_arena_acquire();
 //Can be used to make certain data structures stable in memory without any change.
 // An example of this includes Array, Hash_Index, String_Builder, Path... 
 typedef struct Arena_Single_Allocator {
-    Allocator allocator;
+    Allocator alloc[1];
     Arena arena;
     
     const char* name;

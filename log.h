@@ -66,7 +66,7 @@ EXTERNAL void _log_global_call(Log stream, const char* log_module, const char* f
 #define LOG_ERROR(name, ...) GLOBAL_LOG(get_log_set()->error, (name), ##__VA_ARGS__)
 #define LOG_FATAL(name, ...) GLOBAL_LOG(get_log_set()->fatal, (name), ##__VA_ARGS__)
 
-#define LOG_HERE             LOG_TRACE("HERE %15s() %25s:%i", __func__, __FILE__, __LINE__);
+#define LOG_HERE             LOG_TRACE("HERE", "HERE %15s() %25s:%i", __func__, __FILE__, __LINE__);
 
 #define STRING_PRINT(str) (int) (str).len, (str).data
 
@@ -316,7 +316,7 @@ EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format,
     EXTERNAL Allocator_Stats log_allocator_stats(Log log, Allocator* allocator)
     {
         Allocator_Stats stats = {0};
-        if(allocator != NULL && allocator->get_stats != NULL)
+        if(allocator != NULL && allocator->func != NULL)
         {
             stats = allocator_get_stats(allocator);
             if(stats.type_name == NULL)
@@ -342,24 +342,24 @@ EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format,
     }
 
     #ifndef ALLOCATOR_CUSTOM_OUT_OF_MEMORY
-        EXTERNAL void allocator_out_of_memory(Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align)
+        EXTERNAL void allocator_panic(Allocator_Error error)
         {
             Allocator_Stats stats = {0};
-            if(allocator != NULL && allocator->get_stats != NULL)
-                stats = allocator_get_stats(allocator);
+            if(error.alloc != NULL && error.alloc->func != NULL)
+                stats = allocator_get_stats(error.alloc);
         
             if(stats.type_name == NULL)
-                stats.type_name = "<no log_type name>";
+                stats.type_name = "<no type name>";
 
             if(stats.name == NULL)
                 stats.name = "<no name>";
 
-            LOG_FATAL("memory", "Allocator %s %s reported out of memory!", stats.type_name, stats.name);
+            LOG_FATAL("memory", "Allocator %s of type %s reported out of memory! Message: '%s'", stats.type_name, stats.name, error.message);
 
-            LOG_INFO(">memory", "new_size:    %s", format_bytes(new_size, 0).data);
-            LOG_INFO(">memory", "old_size:    %s", format_bytes(old_size, 0).data);
-            LOG_INFO(">memory", "old_ptr:     %s", format_ptr(old_ptr).data);
-            LOG_INFO(">memory", "align:       %lli", (lli) align);
+            LOG_INFO(">memory", "new_size:    %s", format_bytes(error.new_size, 0).data);
+            LOG_INFO(">memory", "old_size:    %s", format_bytes(error.old_size, 0).data);
+            LOG_INFO(">memory", "old_ptr:     %s", format_ptr(error.old_ptr).data);
+            LOG_INFO(">memory", "align:       %lli", (lli) error.align);
 
             LOG_INFO(">memory", "Allocator_Stats:");
             LOG_INFO(">>memory", "bytes_allocated:     %s", format_bytes(stats.bytes_allocated, 0).data);

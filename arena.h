@@ -124,14 +124,7 @@
 #define ARENA_DEF_RESERVE_SIZE 64 * GB 
 #define ARENA_DEF_COMMIT_SIZE  8 * MB 
 
-typedef enum Arena_Panic_Reason {
-    ARENA_PANIC_RESERVE_FAILED = 0,
-    ARENA_PANIC_COMMIT_FAILED = 1,
-    ARENA_PANIC_COMMIT_PAST_RESERVE = 2,
-} Arena_Panic_Reason;
-
 typedef struct Arena Arena;
-typedef bool (*Arena_Panic_Func)(Arena* arena, Arena_Panic_Reason reason, isize requested_size, Platform_Error virtual_alloc_error);
 
 //Contiguous chunk of virtual memory. 
 // This struct is combination of 3 separate concepts (for simplicity of implementation):
@@ -145,7 +138,7 @@ typedef bool (*Arena_Panic_Func)(Arena* arena, Arena_Panic_Reason reason, isize 
 //      This allows us to catch & prevent certain bugs associated with Arena reseting
 //      This is detailed in the long comment at the top of this file. 
 typedef struct Arena {
-    Allocator allocator;
+    Allocator alloc[1];
 
     u8* data;
     u8* used_to;
@@ -154,21 +147,18 @@ typedef struct Arena {
     isize commit_granularity;
 
     const char* name;
-    Arena_Panic_Func panic_func;
 } Arena;
 
-EXTERNAL Platform_Error arena_init(Arena* arena, const char* name, isize reserve_size_or_zero, isize commit_granularity_or_zero, Arena_Panic_Func panic_func_or_null);
+EXTERNAL Platform_Error arena_init(Arena* arena, const char* name, isize reserve_size_or_zero, isize commit_granularity_or_zero);
 EXTERNAL void arena_deinit(Arena* arena);
-EXTERNAL void* arena_push_nonzero_unaligned(Arena* arena, isize size);
-EXTERNAL void* arena_push_nonzero(Arena* arena, isize size, isize align);
+EXTERNAL void* arena_push_nonzero(Arena* arena, isize size, isize align, Allocator_Error* error_or_null);
 EXTERNAL void* arena_push(Arena* arena, isize size, isize align);
 EXTERNAL void arena_reset_ptr(Arena* arena, const void* position);
-EXTERNAL void arena_commit_ptr(Arena* arena, const void* position);
+EXTERNAL void arena_commit_ptr(Arena* arena, const void* position, Allocator_Error* error_or_null);
 EXTERNAL void arena_reset(Arena* arena, isize to);
 EXTERNAL void arena_commit(Arena* arena, isize to);
-
-EXTERNAL void* arena_single_allocator_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
-EXTERNAL Allocator_Stats arena_single_allocator_get_allocator_stats(Allocator* self);
+EXTERNAL void* arena_single_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* stats);
+EXTERNAL Allocator_Stats arena_single_allocator_get_stats(Allocator* self);
 
 typedef struct Arena_Stack {
     Arena arena;
@@ -181,14 +171,14 @@ typedef struct Arena_Stack {
 //Models a single lifetime of allocations done from an arena. 
 // Also can be though of as representing a ScratchBegin()/ScratchEnd() pair.
 typedef struct Arena_Frame {
-    Allocator allocator;
+    Allocator alloc[1];
     Arena_Stack* arena;
     i32 level;
     i32 pad;
 } Arena_Frame;
 
 EXTERNAL Arena_Frame arena_frame_acquire(Arena_Stack* arena);
-EXTERNAL Platform_Error arena_stack_init(Arena_Stack* arena, const char* name, isize reserve_size_or_zero, isize commit_granularity_or_zero, isize stack_max_depth_or_zero, Arena_Panic_Func panic_func_or_null);
+EXTERNAL Platform_Error arena_stack_init(Arena_Stack* arena, const char* name, isize reserve_size_or_zero, isize commit_granularity_or_zero, isize stack_max_depth_or_zero);
 EXTERNAL void arena_stack_test_invariants(Arena_Stack* stack);
 EXTERNAL void arena_stack_deinit(Arena_Stack* arena);
 EXTERNAL void arena_frame_release(Arena_Frame* arena);
@@ -198,11 +188,11 @@ EXTERNAL void* arena_frame_push_nonzero(Arena_Frame* arena, isize size, isize al
 #define ARENA_PUSH(arena_ptr, count, Type) ((Type*) arena_push((arena_ptr), (count) * sizeof(Type), __alignof(Type)))
 #define ARENA_FRAME_PUSH(arena_ptr, count, Type) ((Type*) arena_frame_push((arena_ptr), (count) * sizeof(Type), __alignof(Type)))
 
-EXTERNAL void* arena_frame_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
-EXTERNAL Allocator_Stats arena_frame_get_allocator_stats(Allocator* self);
+EXTERNAL void* arena_frame_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
+EXTERNAL Allocator_Stats arena_frame_allocator_get_stats(Allocator* self);
 
 EXTERNAL Arena_Stack* scratch_arena();
-EXTERNAL ATTRIBUTE_INLINE_ALWAYS Arena_Frame scratch_arena_acquire();
+EXTERNAL Arena_Frame scratch_arena_acquire();
 #define SCRATCH_ARENA(frame_name) \
     /* Because the compiler cannot really know the value returned by scratch_arena_acquire(), it does a poor job */ \
     /* of eliminating the defer loop. We need to ensure that it has all the variables used in the logic of the defer */ \
@@ -216,7 +206,7 @@ EXTERNAL ATTRIBUTE_INLINE_ALWAYS Arena_Frame scratch_arena_acquire();
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ARENA_IMPL)) && !defined(JOT_ARENA_HAS_IMPL)
 #define JOT_ARENA_HAS_IMPL
 
-EXTERNAL Platform_Error arena_init(Arena* arena, const char* name, isize reserve_size_or_zero, isize commit_granularity_or_zero, Arena_Panic_Func panic_func_or_null)
+EXTERNAL Platform_Error arena_init(Arena* arena, const char* name, isize reserve_size_or_zero, isize commit_granularity_or_zero)
 {
     arena_deinit(arena);
     isize alloc_granularity = platform_allocation_granularity();
@@ -235,15 +225,14 @@ EXTERNAL Platform_Error arena_init(Arena* arena, const char* name, isize reserve
     Platform_Error error = platform_virtual_reallocate((void**) &data, NULL, reserve_size, PLATFORM_VIRTUAL_ALLOC_RESERVE, PLATFORM_MEMORY_PROT_NO_ACCESS);
     if(error == 0)
     {
-        arena->allocator.allocate = arena_single_allocator_reallocate;
-        arena->allocator.get_stats = arena_single_allocator_get_allocator_stats;
+        arena->alloc[0].func = arena_single_allocator_func;
+        arena->alloc[0].get_stats = arena_single_allocator_get_stats;
 
         arena->data = data;
         arena->used_to = data;
         arena->commit_to = data;
         arena->reserved_to = data + reserve_size;
         arena->commit_granularity = commit_granularity;
-        arena->panic_func = panic_func_or_null;
         arena->name = name;
     }
     return error;
@@ -257,51 +246,55 @@ EXTERNAL void arena_deinit(Arena* arena)
     memset(arena, 0, sizeof *arena);
 }
 
-INTERNAL ATTRIBUTE_INLINE_NEVER void _arena_commit_no_inline(Arena* arena, const void* to)
+INTERNAL ATTRIBUTE_INLINE_NEVER void _arena_commit_no_inline(Arena* arena, const void* to, Allocator_Error* error_or_null)
 {
     PROFILE_START();
-    isize size = (u8*) to - arena->commit_to;
-    isize commit = DIV_CEIL(size, arena->commit_granularity)*arena->commit_granularity;
+    {
+        isize size = (u8*) to - arena->commit_to;
+        isize commit = DIV_CEIL(size, arena->commit_granularity)*arena->commit_granularity;
 
-    u8* new_commit_to = arena->used_to + commit;
-    if(new_commit_to > arena->reserved_to)
-        arena->panic_func(arena, ARENA_PANIC_COMMIT_PAST_RESERVE, size, PLATFORM_ERROR_OK);
+        u8* new_commit_to = arena->used_to + commit;
+        if(new_commit_to > arena->reserved_to)
+        {
+            allocator_error(error_or_null, ALLOCATOR_ERROR_OUT_OF_MEM, arena->alloc, size, NULL, 0, 1, 
+                "More memory is needed then reserved! Reserved: %.2lf MB, commit: %.2lf MB", 
+                (double) (arena->reserved_to - arena->data)/MB, (double) (arena->commit_to - arena->data)/MB);
+            goto end;
+        }
             
-    Platform_Error error = platform_virtual_reallocate(NULL, arena->commit_to, new_commit_to - arena->commit_to, PLATFORM_VIRTUAL_ALLOC_COMMIT, PLATFORM_MEMORY_PROT_READ_WRITE);
-    if(error)
-        arena->panic_func(arena, ARENA_PANIC_COMMIT_PAST_RESERVE, size, error);
+        Platform_Error platform_error = platform_virtual_reallocate(NULL, arena->commit_to, new_commit_to - arena->commit_to, PLATFORM_VIRTUAL_ALLOC_COMMIT, PLATFORM_MEMORY_PROT_READ_WRITE);
+        if(platform_error)
+        {
+            allocator_error(error_or_null, ALLOCATOR_ERROR_OUT_OF_MEM, arena->alloc, size, NULL, 0, 1, 
+                "Virtual memory commit failed! Error: %s", platform_translate_error(platform_error));
+            goto end;
+        }
 
-    arena->commit_to = new_commit_to;
+        arena->commit_to = new_commit_to;
+    }
+    end:
     PROFILE_END();
 }
 
-EXTERNAL void arena_commit_ptr(Arena* arena, const void* to)
+EXTERNAL void arena_commit_ptr(Arena* arena, const void* to, Allocator_Error* error_or_null)
 {
     //If + function call to not pollute the call site with code that will 
     // get executed extremely rarely (probably about twice)
     if((u8*) to > arena->commit_to)
-        _arena_commit_no_inline(arena, to);
+        _arena_commit_no_inline(arena, to, error_or_null);
 }
 
-EXTERNAL void* arena_push_nonzero_unaligned(Arena* arena, isize size)
-{
-    u8* out = arena->used_to;
-    arena_commit_ptr(arena, out + size);
-    arena->used_to = out + size;
-    return out;
-}
-
-EXTERNAL void* arena_push_nonzero(Arena* arena, isize size, isize align)
+EXTERNAL void* arena_push_nonzero(Arena* arena, isize size, isize align, Allocator_Error* error_or_null)
 {
     u8* out = (u8*) align_forward(arena->used_to, align);
-    arena_commit_ptr(arena, out + size);
+    arena_commit_ptr(arena, out + size, error_or_null);
     arena->used_to = out + size;
     return out;
 }
 
 EXTERNAL void* arena_push(Arena* arena, isize size, isize align)
 {
-    void* out = arena_push_nonzero(arena, size, align);
+    void* out = arena_push_nonzero(arena, size, align, NULL);
     memset(out, 0, size);
     return out;
 }
@@ -317,34 +310,32 @@ EXTERNAL void arena_reset(Arena* arena, isize to)
 }
 EXTERNAL void arena_commit(Arena* arena, isize to)
 {
-    arena_commit_ptr(arena, arena->data + to);
+    arena_commit_ptr(arena, arena->data + to, NULL);
 }
 
-EXTERNAL void* arena_single_allocator_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
+EXTERNAL void* arena_single_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
 {
-    Arena* alloc = (Arena*) (void*) self;
-    ASSERT(old_ptr == alloc->data);
-    ASSERT(old_size == alloc->used_to - alloc->data);
+    Arena* arena = (Arena*) (void*) self;
+
+    ASSERT(old_ptr == arena->data);
+    ASSERT(old_size == arena->used_to - arena->data);
     ASSERT(is_power_of_two(align));
 
-    arena_reset_ptr(alloc, alloc->data);
-    return arena_push_nonzero_unaligned(alloc, new_size);
+    arena_reset_ptr(arena, arena->data);
+    return arena_push_nonzero(arena, new_size, align, error);
 }
 
-EXTERNAL Allocator_Stats arena_single_allocator_get_allocator_stats(Allocator* self)
+EXTERNAL Allocator_Stats arena_single_allocator_get_stats(Allocator* self)
 {
     Arena* arena = (Arena*) (void*) self;
     Allocator_Stats stats = {0};
     stats.is_top_level = true;
     stats.type_name = "Arena";
     stats.name = arena->name;
+    stats.fixed_memory_pool_size = arena->reserved_to - arena->data; 
     stats.bytes_allocated = arena->used_to - arena->data;
-    stats.max_bytes_allocated = arena->reserved_to - arena->data;
-
     return stats;
 }
-
-//Arena stack things....
 
 #ifndef ARENA_DEBUG
     #ifdef NDEBUG
@@ -354,7 +345,7 @@ EXTERNAL Allocator_Stats arena_single_allocator_get_allocator_stats(Allocator* s
     #endif
 #endif
 
-#define ARENA_DEBUG_DATA_SIZE     64*2
+#define ARENA_DEBUG_DATA_SIZE     128
 #define ARENA_DEBUG_DATA_PATTERN  0x55
 #define ARENA_DEBUG_STACK_PATTERN 0x6666666666666666
 
@@ -369,10 +360,10 @@ EXTERNAL void arena_stack_deinit(Arena_Stack* arena)
     memset(arena, 0, sizeof *arena);
 }
 
-EXTERNAL Platform_Error arena_stack_init(Arena_Stack* stack, const char* name, isize reserve_size_or_zero, isize commit_granularity_or_zero, isize stack_max_depth_or_zero, Arena_Panic_Func panic_func_or_null)
+EXTERNAL Platform_Error arena_stack_init(Arena_Stack* stack, const char* name, isize reserve_size_or_zero, isize commit_granularity_or_zero, isize stack_max_depth_or_zero)
 {
     arena_stack_deinit(stack);
-    Platform_Error error = arena_init(&stack->arena, name, reserve_size_or_zero, commit_granularity_or_zero, panic_func_or_null);
+    Platform_Error error = arena_init(&stack->arena, name, reserve_size_or_zero, commit_granularity_or_zero);
     if(error == 0)
     {
         isize stack_max_depth = stack_max_depth_or_zero;
@@ -383,7 +374,7 @@ EXTERNAL Platform_Error arena_stack_init(Arena_Stack* stack, const char* name, i
         if(stack_max_depth > stack_max_depth_that_fits)
             stack_max_depth = stack_max_depth_that_fits;
 
-        arena_push_nonzero(&stack->arena, stack_max_depth*isizeof(isize), isizeof(isize)); 
+        arena_push_nonzero(&stack->arena, stack_max_depth*isizeof(isize), isizeof(isize), NULL); 
         stack->max_level = (i32) stack_max_depth;
 
         _arena_debug_fill_stack(stack);
@@ -393,49 +384,79 @@ EXTERNAL Platform_Error arena_stack_init(Arena_Stack* stack, const char* name, i
     return error;
 }
 
-EXTERNAL ATTRIBUTE_INLINE_NEVER void _arena_handle_unusual_push(Arena_Stack* stack, Arena_Frame* frame, const void* commit_to)
+EXTERNAL ATTRIBUTE_INLINE_NEVER void* _arena_handle_unusual_push(Arena_Stack* stack, i32 frame_level, isize size, isize align, Allocator_Error* error)
 {
     PROFILE_START();
     _arena_debug_check_invariants(stack);
-
-    const char* why = "stall";
-    if(frame->level > stack->write_level)
-        why = "rise";
-    if(frame->level < stack->write_level)
-        why = "fall";
-
-    printf("unusual push: %s %i -> %i \n", why, stack->write_level, frame->level);
         
-    void** levels = (void**) stack->arena.data;
-    for(i32 i = stack->write_level; i < frame->level; i++)
-        levels[i] = stack->arena.used_to;
+    u8* out = (u8*) align_forward(stack->arena.used_to, align);
+    u8* commit_to = out + size;
+    if((u8*) commit_to > stack->arena.commit_to)
+    {
+        Arena* arena = &stack->arena;
+        isize commit = DIV_CEIL(size, arena->commit_granularity)*arena->commit_granularity;
 
-    stack->write_level = frame->level;
-    arena_commit_ptr(&stack->arena, commit_to);
+        u8* new_commit_to = arena->used_to + commit;
+        if(new_commit_to > arena->reserved_to)
+        {
+            out = NULL;
+            allocator_error(error, ALLOCATOR_ERROR_OUT_OF_MEM, stack->arena.alloc, size, NULL, 0, align, 
+                "More memory is needed then reserved! Reserved: %.2lf MB, commit: %.2lf MB", 
+                (double) (arena->reserved_to - arena->data)/MB, (double) (arena->commit_to - arena->data)/MB);
+            goto end;
+        }
+            
+        Platform_Error platform_error = platform_virtual_reallocate(NULL, arena->commit_to, new_commit_to - arena->commit_to, PLATFORM_VIRTUAL_ALLOC_COMMIT, PLATFORM_MEMORY_PROT_READ_WRITE);
+        if(platform_error)
+        {
+            out = NULL;
+            allocator_error(error, ALLOCATOR_ERROR_OUT_OF_MEM, stack->arena.alloc, size, NULL, 0, align, 
+                "Virtual memory commit failed! Error: %s", platform_translate_error(platform_error));
+            goto end;
+        }
+
+        arena->commit_to = new_commit_to;
+    }
+
+    {
+        void** levels = (void**) stack->arena.data;
+        for(i32 i = stack->write_level; i < frame_level; i++)
+            levels[i] = stack->arena.used_to;
+
+        stack->write_level = frame_level;
+    }
+    
+    stack->arena.used_to = out + size;
     _arena_debug_fill_data(stack, INT64_MAX);
     _arena_debug_fill_stack(stack);
     _arena_debug_check_invariants(stack);
 
+    end:
     PROFILE_END();
+    return out;
 }
 
-EXTERNAL ATTRIBUTE_INLINE_ALWAYS void* arena_frame_push_nonzero(Arena_Frame* frame, isize size, isize align)
+EXTERNAL ATTRIBUTE_INLINE_ALWAYS void* arena_frame_push_nonzero_error(Arena_Frame* frame, isize size, isize align, Allocator_Error* error)
 {
     PROFILE_START();
     ASSERT(frame->arena && 0 < frame->level && frame->level <= frame->arena->frame_level, 
         "Using an invalid frame! Its not initialized or it was used after it or a parent frame was released!");
     Arena_Stack* stack = frame->arena;
     _arena_debug_check_invariants(stack);
-    
 
     u8* out = (u8*) align_forward(stack->arena.used_to, align);
     if(stack->write_level != frame->level || out + size > stack->arena.commit_to)
-        _arena_handle_unusual_push(stack, frame, out + size);
+        return _arena_handle_unusual_push(stack, frame->level, size, align, error);
         
     stack->arena.used_to = out + size;
     _arena_debug_check_invariants(stack);
     PROFILE_END();
     return out;
+}
+
+EXTERNAL ATTRIBUTE_INLINE_ALWAYS void* arena_frame_push_nonzero(Arena_Frame* frame, isize size, isize align)
+{
+    return arena_frame_push_nonzero_error(frame, size, align, NULL);
 }
 
 EXTERNAL ATTRIBUTE_INLINE_ALWAYS void* arena_frame_push(Arena_Frame* frame, isize size, isize align)
@@ -461,8 +482,10 @@ EXTERNAL ATTRIBUTE_INLINE_ALWAYS Arena_Frame arena_frame_acquire(Arena_Stack* st
     levels[stack->write_level++] = stack->arena.used_to;
 
     Arena_Frame out = {0};
-    out.allocator.allocate = arena_frame_reallocate;
-    out.allocator.get_stats = arena_frame_get_allocator_stats; //@TODO: merge
+    //Assign the arena frame. Fill the allocator part. 
+    // For simple cases (acquire frame, push, release frame) this gets optimized away.
+    out.alloc[0].func = arena_frame_allocator_func;
+    out.alloc[0].get_stats = arena_frame_allocator_get_stats;
     out.level = stack->frame_level;
     out.arena = stack;
 
@@ -496,7 +519,6 @@ EXTERNAL ATTRIBUTE_INLINE_ALWAYS void arena_frame_release(Arena_Frame* frame)
     stack->frame_level = frame->level - 1;
     _arena_debug_fill_stack(stack);
     _arena_debug_check_invariants(stack);
-
     PROFILE_END();
     
     //Set the frame to zero so that if someone tries to allocate from this frame
@@ -505,35 +527,29 @@ EXTERNAL ATTRIBUTE_INLINE_ALWAYS void arena_frame_release(Arena_Frame* frame)
         memset(frame, 0, sizeof* frame);
 }
 
-//Compatibility function for the allocator interface
-EXTERNAL void* arena_frame_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
+EXTERNAL void* arena_frame_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
 {
-    void* out = NULL;
-    if(new_size > old_size)
-    {
-        Arena_Frame* frame = (Arena_Frame*) (void*) self;
-        out = arena_frame_push_nonzero(frame, new_size, align);
-        memcpy(out, old_ptr, (size_t) old_size);
-    }
-
+    Arena_Frame* frame = (Arena_Frame*) (void*) self;
+    void* out = arena_frame_push_nonzero_error(frame, new_size, align, error);
+    if(out)
+        memcpy(out, old_ptr, (size_t) MIN(old_size, new_size));
+    
     return out;
 }
 
-EXTERNAL Allocator_Stats arena_frame_get_allocator_stats(Allocator* self)
+EXTERNAL Allocator_Stats arena_frame_allocator_get_stats(Allocator* self)
 {
     Arena_Frame* frame = (Arena_Frame*) (void*) self;
-    ASSERT(frame->arena && 0 < frame->level && frame->level <= frame->arena->frame_level, 
-        "Using an invalid frame! Its not initialized or it was used after it or a parent frame was released!");
+    Allocator_Stats stats = {0};
 
     Arena* arena = &frame->arena->arena;
-    
     void** levels = (void**) arena->data;
     u8* start = (u8*) levels[frame->level - 1];
-    Allocator_Stats stats = {0};
     stats.type_name = "Arena_Frame";
     stats.name = arena->name;
-    stats.is_top_level = false;
-    stats.parent = &arena->allocator;
+    stats.is_capable_of_free_all = true;
+    stats.fixed_memory_pool_size = arena->reserved_to - start;
+    stats.parent = &arena->alloc[1];
     stats.bytes_allocated = arena->used_to - start;
     stats.max_bytes_allocated = arena->reserved_to - start;
     return stats;

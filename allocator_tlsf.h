@@ -690,14 +690,31 @@ EXTERNAL void tlsf_grow_nodes(Tlsf_Allocator* allocator, void* new_node_memory, 
 }
 
 #ifdef JOT_ALLOCATOR
-    INTERNAL void* _tlsf_allocator_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align)
+    INTERNAL void* _tlsf_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
     {
         Tlsf_Allocator* allocator = (Tlsf_Allocator*) (void*) self;
-        void* new_ptr = tlsf_malloc(allocator, new_size, align, 0);
-        if(new_ptr && old_ptr)
+        void* new_ptr = NULL;
+        if(new_size > 0)
+        {
+            new_ptr = tlsf_malloc(allocator, new_size, align, 0);
+            if(new_ptr == NULL)
+            {
+                if(allocator->last_fail_reason & TLSF_FAIL_REASON_NEED_MORE_MEMORY)
+                    allocator_error(error, ALLOCATOR_ERROR_OUT_OF_MEM, self, new_size, old_ptr, old_size, align, "Out of memory");
+                else if(allocator->last_fail_reason & TLSF_FAIL_REASON_NEED_MORE_NODES)
+                    allocator_error(error, ALLOCATOR_ERROR_OUT_OF_MEM, self, new_size, old_ptr, old_size, align, "Maximum number of allocations %i reached", (int) allocator->node_capacity);
+                else if(allocator->last_fail_reason & TLSF_FAIL_REASON_UNSUPPORTED_SIZE)
+                    allocator_error(error, ALLOCATOR_ERROR_INVALID_PARAMS, self, new_size, old_ptr, old_size, align, 
+                        "Invalid arguments. Size %lli is more then TLSF_MAX_SIZE (%lli) or less then 0.", (long long) new_size, (long long) TLSF_MAX_SIZE);
+            }
+        }
+        if(new_ptr && old_size > 0)
+        {
+            ASSERT(old_ptr);
             memcpy(new_ptr, old_ptr, old_size < new_size ? old_size : new_size);
+        }
 
-        if(old_ptr)
+        if(old_size > 0)
             tlsf_free(allocator, old_ptr);
         
         return new_ptr;
@@ -735,7 +752,7 @@ EXTERNAL bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize m
     allocator->node_count = 0;
     
     #ifdef JOT_ALLOCATOR
-        allocator->allocator.allocate = _tlsf_allocator_reallocate;
+        allocator->allocator.func = _tlsf_allocator_func;
         allocator->allocator.get_stats = _tlsf_allocator_get_stats;
     #endif
     
@@ -1317,7 +1334,7 @@ void test_allocator_tlsf(double seconds)
         };
     
         Arena arena = {0};
-        TEST(arena_init(&arena, "tlsf_arena", 0, 0, NULL));
+        TEST(arena_init(&arena, "tlsf_arena", 0, 0));
         isize memory_size = 1024*1024*1024;
         arena_commit(&arena, memory_size);
 
@@ -1426,7 +1443,7 @@ void test_allocator_tlsf(double seconds)
                     allocs[i].ptr = tlsf.memory + tlsf_allocate(&tlsf, &allocs[i].node, random.size, random.align, 0);
                 }
                 if(j == DO_ARENA) 
-                    allocs[i].ptr = arena_push_nonzero(&arena, random.size, random.align);
+                    allocs[i].ptr = arena_push_nonzero(&arena, random.size, random.align, NULL);
 
                 if(allocs[i].ptr == NULL)
                     failed += 1;

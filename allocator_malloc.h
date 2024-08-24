@@ -51,7 +51,7 @@ typedef struct Allocation_List_Block {
 } Allocation_List_Block;
 
 EXTERNAL void  allocation_list_free_all(Allocation_List* self, Allocator* parent_or_null);
-EXTERNAL void* allocation_list_allocate(Allocation_List* self, Allocator* parent_or_null, isize new_size, void* old_ptr, isize old_size, isize align);
+EXTERNAL void* allocation_list_allocate(Allocation_List* self, Allocator* parent_or_null, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
 
 EXTERNAL isize allocation_list_get_block_size(Allocation_List* self, void* old_ptr);
 EXTERNAL Allocation_List_Block* allocation_list_get_block_header(Allocation_List* self, void* old_ptr);
@@ -64,7 +64,7 @@ EXTERNAL void* malloc_allocator_malloc(Malloc_Allocator* self, isize size);
 EXTERNAL void* malloc_allocator_realloc(Malloc_Allocator* self, void* old_ptr, isize new_size);
 EXTERNAL void malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
 
-EXTERNAL void* malloc_allocator_allocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
+EXTERNAL void* malloc_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
 EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
 
 #endif
@@ -118,14 +118,14 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
             Allocation_List_Block* prev_block = block->prev_block;
             _allocation_list_assert_block_coherency(self, block);
             
-            allocation_list_allocate(self, parent_or_null, 0, block + 1, block->size, block->align);
+            allocation_list_allocate(self, parent_or_null, 0, block + 1, block->size, block->align, NULL);
             block = prev_block;
         }
 
         memset(self, 0, sizeof *self);
     }
 
-    EXTERNAL void* allocation_list_allocate(Allocation_List* self, Allocator* parent_or_null, isize new_size, void* old_ptr, isize old_size, isize align)
+    EXTERNAL void* allocation_list_allocate(Allocation_List* self, Allocator* parent_or_null, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
     {
         PROFILE_START();
         isize capped_align = MAX(align, DEF_ALIGN);
@@ -136,7 +136,7 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
             isize new_allocation_size = new_size + capped_align - DEF_ALIGN + (isize) sizeof(Allocation_List_Block);
             void* new_allocation = NULL;
             if(parent_or_null != NULL)
-                new_allocation = parent_or_null->allocate(parent_or_null, new_allocation_size, NULL, 0, DEF_ALIGN);
+                new_allocation = allocator_try_reallocate(parent_or_null, new_allocation_size, NULL, 0, DEF_ALIGN, error);
             else
                 new_allocation = MALLOC_ALLOCATOR_MALLOC(new_allocation_size);
 
@@ -211,13 +211,18 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
 
             isize old_allocation_size = old_size + capped_align - DEF_ALIGN + (isize) sizeof(Allocation_List_Block);
             if(parent_or_null != NULL)
-                parent_or_null->allocate(parent_or_null, 0, old_allocation, old_allocation_size, DEF_ALIGN);
+                allocator_try_reallocate(parent_or_null, 0, old_allocation, old_allocation_size, DEF_ALIGN, error);
             else
                 MALLOC_ALLOCATOR_FREE(old_allocation);
         }
             
         PROFILE_END();
+        return out_ptr;
+
         error:
+        //@TODO: make better!
+        if(parent_or_null == NULL)
+            allocator_error(error, ALLOCATOR_ERROR_OUT_OF_MEM, NULL, new_size, old_ptr, old_size, align, "malloc failed");
         return out_ptr;
     }
 
@@ -240,7 +245,7 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
             return;
 
         malloc_allocator_deinit(self);
-        self->allocator.allocate = malloc_allocator_allocate;
+        self->allocator.func = malloc_allocator_func;
         self->allocator.get_stats = malloc_allocator_get_stats;
         self->name = name;
     }
@@ -259,12 +264,12 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         memset(self, 0, sizeof *self);
     }
 
-    EXTERNAL void* malloc_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr, isize old_size, isize align)
+    EXTERNAL void* malloc_allocator_func(Allocator* self_, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
     {
         Malloc_Allocator* self = (Malloc_Allocator*) (void*) self_;
-        void* out = allocation_list_allocate(&self->list, self->parent, new_size, old_ptr, old_size, align);
+        void* out = allocation_list_allocate(&self->list, self->parent, new_size, old_ptr, old_size, align, error);
 
-        if(old_ptr == NULL)
+        if(old_size == 0)
             self->allocation_count += 1;
         else if(new_size == 0)
             self->deallocation_count += 1;
@@ -286,6 +291,9 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         out.name = self->name;
         out.parent = NULL;
         out.is_top_level = true;
+        out.is_growing = true;
+        out.is_capable_of_resize = true;
+        out.is_capable_of_free_all = true;
         out.max_bytes_allocated = self->max_bytes_allocated;
         out.bytes_allocated = self->bytes_allocated;
         out.allocation_count = self->allocation_count;
@@ -297,13 +305,13 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
 
     EXTERNAL void* malloc_allocator_malloc(Malloc_Allocator* self, isize size)
     {
-        return allocation_list_allocate(&self->list, self->parent, size, NULL, 0, DEF_ALIGN);
+        return allocation_list_allocate(&self->list, self->parent, size, NULL, 0, DEF_ALIGN, NULL);
     }
 
     EXTERNAL void* malloc_allocator_realloc(Malloc_Allocator* self, void* old_ptr, isize new_size)
     {
         isize old_size = allocation_list_get_block_size(&self->list, old_ptr);
-        void* out = allocation_list_allocate(&self->list, self->parent, new_size, old_ptr, old_size, DEF_ALIGN);
+        void* out = allocation_list_allocate(&self->list, self->parent, new_size, old_ptr, old_size, DEF_ALIGN, NULL);
         return out;
     }
 
@@ -312,7 +320,7 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         if(old_ptr != NULL)
         {
             isize old_size = allocation_list_get_block_size(&self->list, old_ptr);
-            allocation_list_allocate(&self->list, self->parent, 0, old_ptr, old_size, DEF_ALIGN);
+            allocation_list_allocate(&self->list, self->parent, 0, old_ptr, old_size, DEF_ALIGN, NULL);
         }
     }
 #endif

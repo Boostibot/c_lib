@@ -1,5 +1,6 @@
 #pragma once
 #include "arena.h"
+#include "_test.h"
 
 static char* arena_push_string(Arena_Frame* arena, const char* string)
 {
@@ -18,7 +19,7 @@ static void test_arena_unit()
     const char PATTERN3[] = ">****(Pattern3)";
     
     Arena_Stack arena_stack = {0};
-    arena_stack_init(&arena_stack, "test_arena", 0, 0, 0, NULL);
+    arena_stack_init(&arena_stack, "test_arena", 0, 0, 0);
 
     {
         Arena_Frame level1 = arena_frame_acquire(&arena_stack);
@@ -103,7 +104,7 @@ static void test_arena_stress(f64 time)
 	Discrete_Distribution dist = random_discrete_make(probabilities, ACTION_ENUM_COUNT);
 
     Arena_Stack arena_stack = {0};
-    arena_stack_init(&arena_stack, "test_arena", 0, 0, MAX_LEVELS, NULL);
+    arena_stack_init(&arena_stack, "test_arena", 0, 0, MAX_LEVELS);
     
     Arena_Frame frames[MAX_LEVELS] = {0};
     isize levels = 0;
@@ -116,7 +117,9 @@ static void test_arena_stress(f64 time)
 	{
 		if(clock_s() - start >= time && i >= MIN_ITERS)
 			break;
-            
+        if(i == 23)
+            LOG_HERE;
+
 		i32 action = random_discrete(&dist);
         if(levels <= 0)
             action = ACQUIRE;
@@ -153,23 +156,23 @@ static void test_arena_stress(f64 time)
         }
 
         arena_stack_test_invariants(&arena_stack);
+        int k = 0; k = k + 1;
     }
 
     random_discrete_deinit(&dist);
     arena_stack_deinit(&arena_stack);
 }
 
-
 ATTRIBUTE_INLINE_NEVER 
 void test_arena_assembly()
 {
-    SCRATCH_ARENA(level1)
-        arena_push_string(&level1, "hello world!");
+    SCRATCH_ARENA(arena)
+        arena_frame_push_nonzero(&arena, 200, 8);
 }
 
 static void test_arena(f64 time)
 {
-    //test_arena_unit();
-    test_arena_assembly();
+    test_arena_unit();
     test_arena_stress(time);
+    //test_arena_assembly();
 }

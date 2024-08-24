@@ -18,7 +18,7 @@ INTERNAL void test_log()
 
     {
         File_Logger logger = {0};
-        file_logger_init_use(&logger, &debug_allocator.allocator, "logs");
+        file_logger_init_use(&logger, debug_allocator.alloc, "logs");
         LOG_TRACE("TEST_LOG", "trace %s", "?");
         LOG_DEBUG("TEST_LOG", "debug %s", "?");
         LOG_INFO("TEST_LOG", "info %s", ".");

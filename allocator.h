@@ -27,14 +27,33 @@
 
 typedef struct Allocator        Allocator;
 typedef struct Allocator_Stats  Allocator_Stats;
+typedef struct Allocator_Error  Allocator_Error;
 
-typedef void* (*Allocator_Allocate_Func)(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
-typedef Allocator_Stats (*Allocator_Get_Stats_Func)(Allocator* self);
+typedef void* (*Allocator_Func)(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error_or_null);
+typedef Allocator_Stats (*Allocator_Get_Stats)(Allocator* alloc);
 
 typedef struct Allocator {
-    Allocator_Allocate_Func allocate;
-    Allocator_Get_Stats_Func get_stats;
+    Allocator_Func func;
+    Allocator_Get_Stats get_stats;
 } Allocator;
+
+typedef enum Allocator_Error_Type {
+    ALLOCATOR_ERROR_NONE = 0,
+    ALLOCATOR_ERROR_OUT_OF_MEM = 1,
+    ALLOCATOR_ERROR_INVALID_PARAMS = 2,
+    ALLOCATOR_ERROR_UNSUPPORTED = 3,
+} Allocator_Error_Type;
+
+typedef struct Allocator_Error {
+    Allocator* alloc;
+    isize new_size; 
+    void* old_ptr; 
+    isize old_size; 
+    isize align;
+
+    Allocator_Error_Type error;
+    char message[124];
+} Allocator_Error;
 
 typedef struct Allocator_Stats {
     //The allocator used to obtain memory redistributed by this allocator.
@@ -45,7 +64,13 @@ typedef struct Allocator_Stats {
     //Optional human readable name of this specific allocator
     const char* name;
     //if doesnt use any other allocator to obtain its memory. For example malloc allocator or VM memory allocator have this set.
-    b64 is_top_level; 
+    bool is_top_level; 
+    bool is_growing;
+    bool is_capable_of_resize;
+    bool is_capable_of_free_all;
+
+    bool _padding[4];
+    isize fixed_memory_pool_size;
 
     //The number of bytes given out to the program by this allocator. (does NOT include book keeping bytes).
     //Might not be totally accurate but is required to be locally stable - if we allocate 100B and then deallocate 100B this should not change.
@@ -71,34 +96,36 @@ typedef struct Allocator_Set {
 #define DEF_ALIGN PLATFORM_MAX_ALIGN
 #define SIMD_ALIGN PLATFORM_SIMD_ALIGN
 
-//Attempts to call the realloc funtion of the from_allocator. Can return nullptr indicating failiure
+//Attempts to call the realloc funtion of the alloc. Can return nullptr indicating failiure
 EXTERNAL ATTRIBUTE_ALLOCATOR(2, 5) 
-void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
+void* allocator_try_reallocate(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
 
-//Calls the realloc function of from_allocator. If fails calls the currently installed Allocator_Out_Of_Memory_Func (panics). This should be used most of the time
+//Calls the realloc function of alloc. If fails calls the currently installed Allocator_Out_Of_Memory_Func (panics). This should be used most of the time
 EXTERNAL ATTRIBUTE_ALLOCATOR(2, 5) 
-void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align);
+void* allocator_reallocate(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align);
 
-//Calls the realloc function of from_allocator to allocate, if fails panics
+//Calls the realloc function of alloc to allocate, if fails panics
 EXTERNAL ATTRIBUTE_ALLOCATOR(2, 3) 
-void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align);
+void* allocator_allocate(Allocator* alloc, isize new_size, isize align);
 
-//Calls the realloc function of from_allocator to deallocate
+//Calls the realloc function of alloc to deallocate
 EXTERNAL 
-void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize old_size, isize align);
+void allocator_deallocate(Allocator* alloc, void* old_ptr,isize old_size, isize align);
 
 //Retrieves stats from the allocator. The stats can be only partially filled.
-EXTERNAL Allocator_Stats allocator_get_stats(Allocator* self);
+EXTERNAL Allocator_Stats allocator_get_stats(Allocator* alloc);
 
 //Gets called when function requiring to always succeed fails an allocation - most often from allocator_reallocate
 //If ALLOCATOR_CUSTOM_OUT_OF_MEMORY is defines is left unimplemented
-EXTERNAL void allocator_out_of_memory(Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align);
+EXTERNAL void allocator_panic(Allocator_Error error);
+
+EXTERNAL void allocator_error(Allocator_Error* error_or_null, Allocator_Error_Type error_type, Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align, const char* format, ...);
 
 EXTERNAL Allocator* allocator_get_default(); //returns the default allocator used for returning values from a function
 EXTERNAL Allocator* allocator_get_static(); //returns the static allocator used for allocations with potentially unbound lifetime. This includes things that will never be deallocated.
 EXTERNAL Allocator* allocator_or_default(Allocator* allocator_or_null); //Returns the passed in allocator_or_null. If allocator_or_null is NULL returns the current set default allocator
 
-EXTERNAL bool allocator_is_arena(Allocator* allocator);
+EXTERNAL bool allocator_is_arena_frame(Allocator* allocator);
 
 //@NOTE: static is useful for example for static dynamic lookup tables, caches inside functions, quick hacks that will not be deallocated for whatever reason.
 
@@ -131,65 +158,81 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
         Allocator* default_allocator;
         Allocator* static_allocator;
     } Global_Allocator_State;
-
-    void* arena_frame_reallocate(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align);
-
+    
     INTERNAL ATTRIBUTE_THREAD_LOCAL Global_Allocator_State _allocator_state = {0};
+
+    EXTERNAL void* arena_frame_allocator_func(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
+
     EXTERNAL ATTRIBUTE_ALLOCATOR(2, 5) 
-    void* allocator_try_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
+    void* allocator_try_reallocate(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
     {
         PROFILE_START();
         void* out = NULL;
-        ASSERT(new_size >= 0 && old_size >= 0 && is_power_of_two(align) && "provided arguments must be valid!");
+        ASSERT(alloc != NULL && new_size >= 0 && old_size >= 0 && is_power_of_two(align) && "provided arguments must be valid!");
         
         //If is arena use the arena function directly (inlined)
-        if(allocator_is_arena(from_allocator))
-            out = arena_frame_reallocate(from_allocator, new_size, old_ptr, old_size, align);
+        if(allocator_is_arena_frame(alloc))
+            out = arena_frame_allocator_func(alloc, new_size, old_ptr, old_size, align, error);
         else 
-        {
-            //if is dealloc and old_ptr is NULL do nothing. 
-            //This is equivalent to free(NULL)
-            if(new_size != 0 || old_ptr != NULL)
-                out = from_allocator->allocate(from_allocator, new_size, old_ptr, old_size, align);
-        }
+            out = alloc->func(alloc, new_size, old_ptr, old_size, align, error);
             
         PROFILE_END();
         return out;
     }
 
     EXTERNAL ATTRIBUTE_ALLOCATOR(2, 5) 
-    void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
+    void* allocator_reallocate(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align)
     {
-        void* obtained = allocator_try_reallocate(from_allocator, new_size, old_ptr, old_size, align);
-        if(obtained == NULL && new_size != 0)
-            allocator_out_of_memory(from_allocator, new_size, old_ptr, old_size, align);
-
-        return obtained;
+        return allocator_try_reallocate(alloc, new_size, old_ptr, old_size, align, NULL);
     }
 
     EXTERNAL ATTRIBUTE_ALLOCATOR(2, 3) 
-    void* allocator_allocate(Allocator* from_allocator, isize new_size, isize align)
+    void* allocator_allocate(Allocator* alloc, isize new_size, isize align)
     {
-        return allocator_reallocate(from_allocator, new_size, NULL, 0, align);
+        return allocator_try_reallocate(alloc, new_size, NULL, 0, align, NULL);
     }
 
-    EXTERNAL void allocator_deallocate(Allocator* from_allocator, void* old_ptr,isize old_size, isize align)
+    EXTERNAL void allocator_deallocate(Allocator* alloc, void* old_ptr, isize old_size, isize align)
     {
-        allocator_reallocate(from_allocator, 0, old_ptr, old_size, align);
+        PROFILE_START();
+        if(old_size > 0 && allocator_is_arena_frame(alloc) == false)
+            alloc->func(alloc, 0, old_ptr, old_size, align, NULL);
+        PROFILE_END();
     }
 
-    EXTERNAL Allocator_Stats allocator_get_stats(Allocator* self)
+    EXTERNAL Allocator_Stats allocator_get_stats(Allocator* alloc)
     {
-        Allocator_Stats out = {0};
-        if(self && self->get_stats)
-            out = self->get_stats(self);
+        Allocator_Stats stats = {0};
+        if(alloc && alloc->get_stats)
+            stats = alloc->get_stats(alloc);
 
-        return out;
+        return stats;
     }
     
-    EXTERNAL bool allocator_is_arena(Allocator* allocator)
+    EXTERNAL void allocator_error(Allocator_Error* error_or_null, Allocator_Error_Type error_type, Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align, const char* format, ...)
     {
-        return allocator != NULL && allocator->allocate == arena_frame_reallocate;
+        Allocator_Error error = {0};
+        error.alloc = allocator;
+        error.new_size = new_size;
+        error.old_ptr = old_ptr;
+        error.old_size = old_size;
+        error.align = align;
+
+        error.error = error_type;
+        va_list args;
+        va_start(args, format);
+        vsprintf(error.message, format, args);
+        va_end(args);
+
+        if(error_or_null == NULL)
+            allocator_panic(error);
+        else
+            *error_or_null = error;
+    }
+    
+    EXTERNAL bool allocator_is_arena_frame(Allocator* allocator)
+    {
+        return allocator->func == arena_frame_allocator_func;
     }
     
     EXTERNAL Allocator* allocator_get_default()

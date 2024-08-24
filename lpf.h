@@ -237,12 +237,12 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
     Lpf_Entry root = {0};
     root.kind = LPF_COLLECTION;
     
-    Arena_Frame scratch = scratch_arena_acquire();
+    SCRATCH_ARENA(scratch)
     {
         typedef Array(Lpf_Token) Lpf_Token_Array;
 
         Lpf_Token_Array token_array = {0};
-        array_init_with_capacity(&token_array, &scratch.allocator, 1024);
+        array_init_with_capacity(&token_array, scratch.alloc, 1024);
 
         for(Line_Iterator it = {0}; line_iterator_get_line(&it, source); )
         {
@@ -330,9 +330,9 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
         i32_Array collections_from = {0};
         Lpf_Entry_Array entries_stack = {0};
 
-        array_init_with_capacity(&collections_from, &scratch.allocator, 32);
-        array_init_with_capacity(&entries_stack, &scratch.allocator, 1024);
-        builder_init_with_capacity(&queued_value, &scratch.allocator, 512);
+        array_init_with_capacity(&collections_from, scratch.alloc, 32);
+        array_init_with_capacity(&entries_stack, scratch.alloc, 1024);
+        builder_init_with_capacity(&queued_value, scratch.alloc, 512);
         
         //add the root and its collection
         array_push(&entries_stack, root);
@@ -357,7 +357,7 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
 
                     if(label.len > 0)
                     {
-                        LOG_ERROR("lpf", "Parsing error at line %i: Missing format specifier (':', '[', '#', ...) after '%s'. Dicarding.", line, cstring_ephemeral(label));
+                        LOG_ERROR("lpf", "Parsing error at line %i: Missing format specifier (':', '[', '#', ...) after '%.*s'. Dicarding.", line, STRING_PRINT(label));
                         had_error = true; break;
                     }
 
@@ -381,12 +381,12 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
                 case ENTRY_CONTINUATION: {
                     if(label.len > 0)
                     {
-                        LOG_ERROR("lpf", "Parsing error at line %i: Continuations cannot have labels. Label found '%s'. Ignoring.", line, cstring_ephemeral(label));
+                        LOG_ERROR("lpf", "Parsing error at line %i: Continuations cannot have labels. Label found '%.*s'. Ignoring.", line, STRING_PRINT(label));
                     }
 
                     if(queued.line == 0)
                     {
-                        LOG_ERROR("lpf", "Parsing error at line %i: Stray continuation '%s'. All continautions need to be after entries (:). Discarding", line, cstring_ephemeral(value));
+                        LOG_ERROR("lpf", "Parsing error at line %i: Stray continuation '%.*s'. All continautions need to be after entries (:). Discarding", line, STRING_PRINT(value));
                         had_error = true; break;
                     }
 
@@ -402,7 +402,7 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
                     if(options.discard_comments == false)
                     {
                         if(label.len > 0)
-                            LOG_ERROR("lpf", "Parsing error at line %i: Comments cannot have labels. Label found '%s'. Ignoring.", line, cstring_ephemeral(label));
+                            LOG_ERROR("lpf", "Parsing error at line %i: Comments cannot have labels. Label found '%.*s'. Ignoring.", line, STRING_PRINT(label));
                     
                         if(queued.line == 0)
                         {
@@ -426,11 +426,11 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
                         _lpf_commit_entry(&entries_stack, &queued, &queued_value, arena);
 
                     if(token.type == COLLECTION_END && label.len > 0)
-                        LOG_ERROR("lpf", "Parsing error at line %i: Collection ends cannot have labels. Label found '%s'. Ignoring.", line, cstring_ephemeral(label));
+                        LOG_ERROR("lpf", "Parsing error at line %i: Collection ends cannot have labels. Label found '%.*s'. Ignoring.", line, STRING_PRINT(label));
 
                     String trimmed_whitespace_value = string_trim_whitespace(value);
                     if(trimmed_whitespace_value.len > 0)
-                        LOG_ERROR("lpf", "Parsing error at line %i: Collections cannot have values. Value found '%s'. Ignoring.", line, cstring_ephemeral(trimmed_whitespace_value));
+                        LOG_ERROR("lpf", "Parsing error at line %i: Collections cannot have values. Value found '%.*s'. Ignoring.", line, STRING_PRINT(trimmed_whitespace_value));
                     
                     if(token.type == COLLECTION_END)
                     {
@@ -474,8 +474,6 @@ EXTERNAL Lpf_Entry lpf_read(Arena_Frame* arena, String source, const Lpf_Read_Op
 
         ASSERT(entries_stack.len == 1);
         root = entries_stack.data[0];
-
-        arena_frame_release(&scratch);
     }
     return root;
 }
@@ -544,8 +542,8 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
         
         Lpf_Token_Array tokens = {0};
         Iterator_Array iterators = {0};
-        array_init_with_capacity(&iterators, &scratch.allocator, 32);
-        array_init_with_capacity(&tokens, &scratch.allocator, 256);
+        array_init_with_capacity(&iterators, scratch.alloc, 32);
+        array_init_with_capacity(&tokens, scratch.alloc, 256);
         
         Iterator first_it = {&root};
         //first_it.pad_labels_to = 
@@ -593,7 +591,7 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
                 if(entry->kind == LPF_COMMENT)
                 {
                     if(label.len > 0)
-                        LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Collections may not have values. Found '%s'. Ignoring", (int) tokens.len, (i32) entry->line, cstring_ephemeral(value));
+                        LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Collections may not have values. Found '%.*s'. Ignoring", (int) tokens.len, (i32) entry->line, STRING_PRINT(value));
 
                     label = STRING("");
                 }
@@ -641,7 +639,7 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
                 if(entry->kind == LPF_COLLECTION)
                 {
                     if(value.len > 0)
-                        LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Comments may not have values. Found '%s'. Ignoring", (int) tokens.len, (i32) entry->line, cstring_ephemeral(value));
+                        LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Comments may not have values. Found '%.*s'. Ignoring", (int) tokens.len, (i32) entry->line, STRING_PRINT(value));
 
                     value = STRING("");
                     
@@ -683,12 +681,12 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
             }
         }
         
-        String_Builder out = builder_make(&scratch.allocator, 255);
-        String_Builder indentation = builder_make(&scratch.allocator, 127);
+        String_Builder out = builder_make(scratch.alloc, 255);
+        String_Builder indentation = builder_make(scratch.alloc, 127);
         isize indentation_level = -1;
         
         //We only pad up to 127 chars. If thats not enough too bad.
-        String_Builder label_padding_buffer = builder_make(&scratch.allocator, 127);
+        String_Builder label_padding_buffer = builder_make(scratch.alloc, 127);
         builder_resize(&label_padding_buffer, 127);
         memset(label_padding_buffer.data, ' ', (size_t) label_padding_buffer.len);
 
@@ -741,7 +739,7 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
 
                 String escaped_label = string_range(label, label_from, label_to);
                 if(label_from != 0 || label_to != label.len)
-                    LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Label contains invalid characters. Trimming '%s' to '%s'", (int) token_i + 1, token.original_line, cstring_ephemeral(label), cstring_ephemeral(escaped_label));
+                    LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Label contains invalid characters. Trimming '%.*s' to '%.*s'", (int) token_i + 1, token.original_line, STRING_PRINT(label), STRING_PRINT(escaped_label));
             }
 
             isize label_padding_ammount = CLAMP(token.pad_labels_to - label.len, 0, label_padding_buffer.len);

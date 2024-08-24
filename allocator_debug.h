@@ -74,7 +74,7 @@ typedef void (*Debug_Allocator_Panic)(Debug_Allocator* allocator, Debug_Allocato
 
 typedef struct Debug_Allocator
 {
-    Allocator allocator;
+    Allocator alloc[1];
     Allocator* parent;
     const char* name;
     
@@ -123,7 +123,7 @@ EXTERNAL void debug_allocator_init_use(Debug_Allocator* allocator, Allocator* pa
 //Deinits the debug allocator
 EXTERNAL void debug_allocator_deinit(Debug_Allocator* allocator);
 
-EXTERNAL void* debug_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr, isize old_size, isize align);
+EXTERNAL void* debug_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
 EXTERNAL Allocator_Stats debug_allocator_get_stats(Allocator* self_);
 
 //Returns info about the specific alive debug allocation @TODO
@@ -195,8 +195,8 @@ EXTERNAL void debug_allocator_init_custom(Debug_Allocator* debug, Allocator* par
     debug->dead_zone_size = options.dead_zone_size;
     debug->do_printing = options.do_printing;
     debug->parent = parent;
-    debug->allocator.allocate = debug_allocator_allocate;
-    debug->allocator.get_stats = debug_allocator_get_stats;
+    debug->alloc[0].func = debug_allocator_func;
+    debug->alloc[0].get_stats = debug_allocator_get_stats;
     debug->panic_handler = options.panic_handler;
     debug->panic_context = options.panic_context;
 
@@ -225,7 +225,7 @@ EXTERNAL void debug_allocator_init(Debug_Allocator* allocator, Allocator* parent
 EXTERNAL void debug_allocator_init_use(Debug_Allocator* debug, Allocator* parent, u64 flags)
 {
     debug_allocator_init(debug, parent, flags);
-    debug->allocator_backup = allocator_set_default(&debug->allocator);
+    debug->allocator_backup = allocator_set_default(debug->alloc);
 }
 
 typedef struct Debug_Allocation_Header {
@@ -436,7 +436,7 @@ EXTERNAL void debug_allocator_deinit(Debug_Allocator* allocator)
             void* ptr = hash_index_restore_ptr(entry.value);
             
             Debug_Allocation_Pre_Block pre = _debug_allocator_get_pre_block(allocator, ptr);
-            debug_allocator_allocate(&allocator->allocator, 0, ptr, pre.header->size, pre.header->align);
+            debug_allocator_func(allocator->alloc, 0, ptr, pre.header->size, pre.header->align, NULL);
         }
     }
 
@@ -500,15 +500,13 @@ EXTERNAL void debug_allocator_print_alive_allocations(Log log, const Debug_Alloc
             (lli) i, (lli) curr.size, (lli) curr.ptr, (lli) curr.align);
      
         if(allocator.captured_callstack_size > 0)
-        {
             log_captured_callstack(log_indented(log), curr.allocation_trace, allocator.captured_callstack_size);
-        }
     }
 
     array_deinit(&alive);
 }
 
-EXTERNAL void* debug_allocator_allocate(Allocator* self_, isize new_size, void* old_ptr_, isize old_size, isize align)
+EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_ptr_, isize old_size, isize align, Allocator_Error* error)
 {
     Debug_Allocator* self = (Debug_Allocator*) (void*) self_;
     //If is arena just use it and return
@@ -545,7 +543,7 @@ EXTERNAL void* debug_allocator_allocate(Allocator* self_, isize new_size, void* 
         old_block_ptr = (u8*) pre.header - pre.header->block_start_offset;
     }
 
-    new_block_ptr = (u8*) self->parent->allocate(self->parent, new_sizes.total_size, old_block_ptr, old_sizes.total_size, DEF_ALIGN);
+    new_block_ptr = (u8*) self->parent->func(self->parent, new_sizes.total_size, old_block_ptr, old_sizes.total_size, DEF_ALIGN, error);
     
     //if failed return failiure and do nothing
     if(new_block_ptr == NULL && new_size != 0)

@@ -295,85 +295,86 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 	EXTERNAL void profile_log_all(Log stream, Log_Perf_Sort_By sort_by)
 	{
 		(void) sort_by;
-		Arena_Frame arena = scratch_arena_acquire();
-		Profile_Zone_Stats_Array all_stats = {&arena.allocator};
-		profile_get_stats(&all_stats);
-		
-		String common_prefix = {0};
-		for(isize i = 0; i < all_stats.len; i++)
+		SCRATCH_ARENA(arena)
 		{
-			String file = string_of(all_stats.data[i].id.file);
-			if(i == 0)
-				common_prefix = file;
-			else
-			{
-				isize k = 0;
-				for(; k < MIN(common_prefix.len, file.len); k++)
-					if(common_prefix.data[k] != file.data[k])
-						break;
-
-				common_prefix = string_head(common_prefix, k);
-			}
-		}
-
-		switch(sort_by)
-		{
-			default:
-			case PERF_SORT_BY_NAME: qsort(all_stats.data, (size_t) all_stats.len, sizeof *all_stats.data, _profile_compare_file_func); break;
-			case PERF_SORT_BY_TIME: qsort(all_stats.data, (size_t) all_stats.len, sizeof *all_stats.data, _profile_compare_total_time_func); break;
-			case PERF_SORT_BY_RUNS: qsort(all_stats.data, (size_t) all_stats.len, sizeof *all_stats.data, _profile_compare_runs); break;
-		}
-
-		LOG(stream, "Logging perf counters (still running %lli):", (lli) 0);
-			LOG(stream, "    total ms | average ms |  runs  |  σ/μ  | [min max] ms        | source");
+			Profile_Zone_Stats_Array all_stats = {arena.alloc};
+			profile_get_stats(&all_stats);
+			
+			String common_prefix = {0};
 			for(isize i = 0; i < all_stats.len; i++)
 			{
-				Profile_Zone_Stats single = all_stats.data[i];
+				String file = string_of(all_stats.data[i].id.file);
+				if(i == 0)
+					common_prefix = file;
+				else
+				{
+					isize k = 0;
+					for(; k < MIN(common_prefix.len, file.len); k++)
+						if(common_prefix.data[k] != file.data[k])
+							break;
 
-				const char* name = "";
-				if(string_of(single.id.name).len > 0)
-					name = format_ephemeral("'%s'", single.id.name).data;
-
-				if(single.id.type == PROFILE_DEFAULT)
-				{
-					LOG(stream, "%s %s %12lli %5.2lf [%s %s] %25s %-4lli %s %s", 
-						format_seconds(single.stats.total_s,9).data,
-						format_seconds(single.stats.average_s, 7).data,
-						(lli) single.stats.runs,
-						single.stats.normalized_standard_deviation_s,
-						format_seconds(single.stats.min_s, 7).data,
-						format_seconds(single.stats.max_s, 7).data,
-						single.id.file + common_prefix.len,
-						(lli) single.id.line,
-						single.id.function,
-						name
-					);
-				}
-				if(single.id.type == PROFILE_FAST)
-				{
-					LOG(stream, "%s %s %8lli %25s %-4lli %s %s", 
-						format_seconds(single.stats.total_s, 9).data,
-						format_seconds(single.stats.average_s, 7).data,
-						(lli) single.stats.runs,
-						single.id.file + common_prefix.len,
-						(lli) single.id.line,
-						single.id.function,
-						name
-					);
-				}
-				
-				if(single.id.type == PROFILE_COUNTER)
-				{
-					LOG(stream, "%8lli %25s %-4lli %s %s", 
-						(lli) single.stats.runs,
-						single.id.file + common_prefix.len,
-						(lli) single.id.line,
-						single.id.function,
-						name
-					);
+					common_prefix = string_head(common_prefix, k);
 				}
 			}
 
-		arena_frame_release(&arena);
+			switch(sort_by)
+			{
+				default:
+				case PERF_SORT_BY_NAME: qsort(all_stats.data, (size_t) all_stats.len, sizeof *all_stats.data, _profile_compare_file_func); break;
+				case PERF_SORT_BY_TIME: qsort(all_stats.data, (size_t) all_stats.len, sizeof *all_stats.data, _profile_compare_total_time_func); break;
+				case PERF_SORT_BY_RUNS: qsort(all_stats.data, (size_t) all_stats.len, sizeof *all_stats.data, _profile_compare_runs); break;
+			}
+
+			LOG(stream, "Logging perf counters (still running %lli):", (lli) 0);
+				LOG(stream, "    total ms | average ms |  runs  |  σ/μ  | [min max] ms        | source");
+				for(isize i = 0; i < all_stats.len; i++)
+				{
+					Profile_Zone_Stats single = all_stats.data[i];
+
+					const char* name = "";
+					if(string_of(single.id.name).len > 0)
+						name = format(arena.alloc, "'%s'", single.id.name).data;
+
+					if(single.id.type == PROFILE_DEFAULT)
+					{
+						LOG(stream, "%s %s %12lli %5.2lf [%s %s] %25s %-4lli %s %s", 
+							format_seconds(single.stats.total_s,9).data,
+							format_seconds(single.stats.average_s, 7).data,
+							(lli) single.stats.runs,
+							single.stats.normalized_standard_deviation_s,
+							format_seconds(single.stats.min_s, 7).data,
+							format_seconds(single.stats.max_s, 7).data,
+							single.id.file + common_prefix.len,
+							(lli) single.id.line,
+							single.id.function,
+							name
+						);
+					}
+					if(single.id.type == PROFILE_FAST)
+					{
+						LOG(stream, "%s %s %8lli %25s %-4lli %s %s", 
+							format_seconds(single.stats.total_s, 9).data,
+							format_seconds(single.stats.average_s, 7).data,
+							(lli) single.stats.runs,
+							single.id.file + common_prefix.len,
+							(lli) single.id.line,
+							single.id.function,
+							name
+						);
+					}
+					
+					if(single.id.type == PROFILE_COUNTER)
+					{
+						LOG(stream, "%8lli %25s %-4lli %s %s", 
+							(lli) single.stats.runs,
+							single.id.file + common_prefix.len,
+							(lli) single.id.line,
+							single.id.function,
+							name
+						);
+					}
+				}
+
+		}
 	}
 #endif

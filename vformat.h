@@ -15,11 +15,9 @@ EXTERNAL void format_into_no_check(String_Builder* into, const char* format, ...
 
 EXTERNAL String_Builder vformat(Allocator* alloc, const char* format, va_list args);
 EXTERNAL String_Builder format_no_check(Allocator* alloc, const char* format, ...);
-#define  format(alloc, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_no_check((alloc), (format), ##__VA_ARGS__))
 
-EXTERNAL String format_ephemeral(const char* format, ...);
-EXTERNAL String vformat_ephemeral(const char* format, va_list args);
-EXTERNAL const char* cstring_ephemeral(String string);
+#define  format(alloc, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_no_check((alloc), (format), ##__VA_ARGS__))
+#define  formata(allocator, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_no_check((allocator).alloc, (format), ##__VA_ARGS__)).string
 
 #endif // !JOT_VFORMAT
 
@@ -106,89 +104,4 @@ EXTERNAL const char* cstring_ephemeral(String string);
         va_end(args);
         return builder;
     }
-
-    EXTERNAL String vformat_ephemeral(const char* format, va_list args)
-    {
-        PROFILE_START();
-        enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256};
-
-        static ATTRIBUTE_THREAD_LOCAL String_Builder ephemeral_strings[EPHEMERAL_SLOTS] = {0};
-        static ATTRIBUTE_THREAD_LOCAL isize slot = 0;
-
-        String_Builder* curr = &ephemeral_strings[slot % EPHEMERAL_SLOTS];
-        
-        //We periodically shrink the strings so that we can use this
-        //function regularly for small and big strings without fearing that we will
-        //use too much memory
-        if(slot % RESET_EVERY < EPHEMERAL_SLOTS)
-        {
-            if(curr->capacity == 0 || curr->capacity > KEPT_SIZE)
-            {
-                PROFILE_COUNTER(reset);
-                builder_init_with_capacity(curr, allocator_get_static(), KEPT_SIZE);
-            }
-        }
-        
-        vformat_into(curr, format, args);
-
-        slot += 1;
-        PROFILE_END();
-        return curr->string;
-    }
-
-    EXTERNAL String format_ephemeral(const char* format, ...)
-    {
-        va_list args;
-        va_start(args, format);
-        String out = vformat_ephemeral(format, args);
-        va_end(args);
-
-        return out;
-    }
-
-    EXTERNAL const char* cstring_ephemeral(String string)
-    {
-        PROFILE_START();
-
-        enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256, PAGE_MIN_SIZE = 1024};
-        const char* string_end = string.data + string.len;
-        const char* out = NULL;
-
-        //If string end is not on different memory page we cannot cause segfault and thus we can 
-        // freely check if the string is escaped. If it is already escaped we simply return it.
-        if((size_t) string_end % PAGE_MIN_SIZE != 0 && *string_end == '\0')
-            out = string.data;
-        else
-        {
-            PROFILE_START(required_escaping);
-
-            static ATTRIBUTE_THREAD_LOCAL String_Builder ephemeral_strings[EPHEMERAL_SLOTS] = {0};
-            static ATTRIBUTE_THREAD_LOCAL isize slot = 0;
-
-            String_Builder* curr = &ephemeral_strings[slot % EPHEMERAL_SLOTS];
-        
-            //We periodically shrink the strings so that we can use this
-            //function regularly for small and big strings without fearing that we will
-            //use too much memory
-            if(slot % RESET_EVERY < EPHEMERAL_SLOTS)
-            {
-                if(curr->capacity == 0 || curr->capacity > KEPT_SIZE)
-                {
-                    PROFILE_COUNTER(reset);
-                    isize required_capacity = MAX(string.len, KEPT_SIZE);
-                    builder_init_with_capacity(curr, allocator_get_static(), required_capacity);
-                }
-            }
-
-            slot += 1;
-            builder_assign(curr, string);
-            out = curr->data;
-            
-            PROFILE_END(required_escaping);
-        }
-
-        PROFILE_END();
-        return out;
-    }
-
 #endif

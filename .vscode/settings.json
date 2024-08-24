@@ -43,6 +43,7 @@
         "__tuple": "c",
         "limits": "c",
         "unistd.h": "c",
-        "stat.h": "c"
+        "stat.h": "c",
+        "optional": "cpp"
     }
 }

@@ -191,9 +191,6 @@ EXTERNAL Path path_get_executable();
 EXTERNAL Path path_get_executable_directory();
 EXTERNAL Path path_get_current_working_directory();
 
-EXTERNAL Path path_absolute_ephemeral(Path relative_to, Path path);
-EXTERNAL Path path_relative_ephemeral(Path relative_to, Path path);
-
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PATH_IMPL)) && !defined(JOT_PATH_HAS_IMPL)
@@ -682,7 +679,7 @@ EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
                             builder_push(&into->builder, slash);
                         }
                         else
-                            LOG_WARN("path", "Empty prefix '%s' with PATH_ROOT_SERVER", cstring_ephemeral(root_content));
+                            LOG_WARN("path", "Empty prefix '%.*s' with PATH_ROOT_SERVER", STRING_PRINT(root_content));
                     } break;
 
                     case PATH_ROOT_WIN: {
@@ -690,7 +687,7 @@ EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
                         if(root_content.len > 0 && char_is_alphabetic(root_content.data[0]))
                             c = root_content.data[0];
                         else
-                            LOG_WARN("path", "Strange prefix '%s' with PATH_ROOT_WIN", cstring_ephemeral(root_content));
+                            LOG_WARN("path", "Strange prefix '%.*s' with PATH_ROOT_WIN", STRING_PRINT(root_content));
 
                         //to uppercase
                         if('a' <= c && c <= 'z')
@@ -826,7 +823,7 @@ EXTERNAL void path_builder_assign(Path_Builder* into, Path path, int flags)
 EXTERNAL void path_normalize_in_place(Path_Builder* into, int flags)
 {
     Arena_Frame arena = scratch_arena_acquire();
-    String_Builder copy = builder_from_string(&arena.allocator, into->string);
+    String_Builder copy = builder_from_string(arena.alloc, into->string);
     Path path = path_parse(copy.string);
     path_builder_assign(into, path, flags);
     arena_frame_release(&arena);
@@ -889,12 +886,12 @@ EXTERNAL void path_make_relative_into(Path_Builder* into, Path relative_to, Path
         Path_Builder pathi_builder = {0}; 
         if(relative_to.info.is_normalized == false)
         {
-            reli_builder = path_normalize(&arena.allocator, relative_to, 0); 
+            reli_builder = path_normalize(arena.alloc, relative_to, 0); 
             reli = reli_builder.path;
         }
         if(path.info.is_normalized == false)
         {
-            pathi_builder = path_normalize(&arena.allocator, path, 0); 
+            pathi_builder = path_normalize(arena.alloc, path, 0); 
             pathi = pathi_builder.path;
         }
 
@@ -1022,40 +1019,6 @@ EXTERNAL Path path_get_current_working_directory()
     return cached.path;
 }
 
-INTERNAL Path_Builder* _path_ephemeral_builder()
-{
-    enum {EPHEMERAL_SLOTS = 4, RESET_EVERY = 32, KEPT_SIZE = 256};
-    static ATTRIBUTE_THREAD_LOCAL Path_Builder ephemeral_strings[EPHEMERAL_SLOTS] = {0};
-    static ATTRIBUTE_THREAD_LOCAL isize slot = 0;
-
-    Path_Builder* curr = &ephemeral_strings[slot % EPHEMERAL_SLOTS];
-        
-    //We periodacally shrink the strinks so that we can use this
-    //function regulary for small and big strings without fearing that we will
-    //use too much memory
-    if(slot % RESET_EVERY < EPHEMERAL_SLOTS)
-    {
-        if(curr->capacity == 0 || curr->capacity > KEPT_SIZE)
-             path_builder_init(curr, allocator_get_static(), KEPT_SIZE);
-    }
-        
-    slot += 1;
-    return curr;
-}
-
-EXTERNAL Path path_absolute_ephemeral(Path relative_to, Path path)
-{
-    Path_Builder* ephemeral = _path_ephemeral_builder();
-    path_make_absolute_into(ephemeral, relative_to, path);
-    return ephemeral->path;
-}
-EXTERNAL Path path_relative_ephemeral(Path relative_to, Path path)
-{
-    Path_Builder* ephemeral = _path_ephemeral_builder();
-    path_make_relative_into(ephemeral, relative_to, path);
-    return ephemeral->path;
-}
-
 #endif
 
 #if (defined(JOT_ALL_TEST) || defined(JOT_PATH_TEST)) && !defined(JOT_PATH_HAS_TEST)
@@ -1097,13 +1060,13 @@ void test_path_normalize(int flags, const char* cpath, const char* cexpected)
     for(isize i = 0; i < ARRAY_SIZE(prefixes); i++)
     {
         Arena_Frame arena = scratch_arena_acquire();
-        String_Builder prefixed_path = string_concat(&arena.allocator, string_of(prefixes[i]), string_of(cpath));
-        String_Builder prefixed_expected = string_concat(&arena.allocator, string_of(prefixes[i]), string_of(cexpected));
+        String_Builder prefixed_path = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cpath));
+        String_Builder prefixed_expected = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cexpected));
 
         Path path = path_parse(prefixed_path.string);
         Path expected = path_parse(prefixed_expected.string);
 
-        Path_Builder canonical = path_normalize(&arena.allocator, path, flags);
+        Path_Builder canonical = path_normalize(arena.alloc, path, flags);
         TEST_STRING_EQ(canonical.string, expected.string);
         arena_frame_release(&arena);
     }
@@ -1117,8 +1080,8 @@ void test_canonicalize_with_roots_and_prefixes(int flags, const char* cabs_path,
     for(isize i = 0; i < ARRAY_SIZE(roots); i++)
     {
         Arena_Frame arena = scratch_arena_acquire();
-        String_Builder prefixed_path = string_concat(&arena.allocator, string_of(roots[i]), string_of(cabs_path));
-        String_Builder prefixed_expected = string_concat(&arena.allocator, string_of(norm_roots[i]), string_of(cexpected));
+        String_Builder prefixed_path = string_concat(arena.alloc, string_of(roots[i]), string_of(cabs_path));
+        String_Builder prefixed_expected = string_concat(arena.alloc, string_of(norm_roots[i]), string_of(cexpected));
 
         test_path_normalize(flags, prefixed_path.data, prefixed_expected.data);
         arena_frame_release(&arena);
@@ -1137,9 +1100,9 @@ void test_path_make_relative_absolute_with_prefixes(int flags, const char* crela
     {
         Arena_Frame arena = scratch_arena_acquire();
 
-        String_Builder prefixed_relative = string_concat(&arena.allocator, string_of(prefixes[i]), string_of(crelative));
-        String_Builder prefixed_path = string_concat(&arena.allocator, string_of(prefixes[i]), string_of(cpath));
-        String_Builder prefixed_expected = string_concat(&arena.allocator, string_of(prefixes[i]), string_of(cexpected));
+        String_Builder prefixed_relative = string_concat(arena.alloc, string_of(prefixes[i]), string_of(crelative));
+        String_Builder prefixed_path = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cpath));
+        String_Builder prefixed_expected = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cexpected));
 
         Path relative = path_parse(prefixed_relative.string);
         Path path = path_parse(prefixed_path.string);
@@ -1147,9 +1110,9 @@ void test_path_make_relative_absolute_with_prefixes(int flags, const char* crela
 
         Path_Builder transformed = {0};
         if(flags == TEST_PATH_MAKE_RELATIVE)
-            transformed = path_make_relative(&arena.allocator, relative, path);
+            transformed = path_make_relative(arena.alloc, relative, path);
         else
-            transformed = path_make_absolute(&arena.allocator, relative, path);
+            transformed = path_make_absolute(arena.alloc, relative, path);
 
         TEST_STRING_EQ(transformed.string, expected.string);
         int k = 0; (void) k;

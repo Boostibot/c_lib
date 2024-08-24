@@ -318,30 +318,34 @@ EXTERNAL bool file_logger_flush(File_Logger* logger)
         {
             if(self->file == NULL)
             {
-                platform_directory_create(logger->file_directory_path.string, false);
-
-                Posix_Date calendar = local_date_from_epoch_time(logger->init_epoch_time);
-                const char* filename = format_ephemeral("%s/%s%04d-%02d-%02d__%02d-%02d-%02d%s", 
-                    self->file_directory_path.data,
-                    self->file_prefix.data,
-                    (int) calendar.tm_year + 1900, (int) calendar.tm_mon, (int) calendar.tm_mday, 
-                    (int) calendar.tm_hour, (int) calendar.tm_min, (int) calendar.tm_sec,
-                    self->file_postfix.data
-                ).data;
-
-                self->file = fopen(filename, "ab");
-                state = state && self->file != NULL;
-                state = state && setvbuf(self->file , NULL, _IONBF, 0) == 0;
-
-                if(state == false && self->open_failed == false)
+                SCRATCH_ARENA(arena)
                 {
-                    printf(ANSI_COLOR_RED "File logger failed to create/open log file or containing directory '%s' " ANSI_COLOR_NORMAL "\n", filename);
-                    self->open_failed = true;
+                    platform_directory_create(logger->file_directory_path.string, false);
+
+                    Posix_Date calendar = local_date_from_epoch_time(logger->init_epoch_time);
+
+                    const char* filename = format(arena.alloc, "%s/%s%04d-%02d-%02d__%02d-%02d-%02d%s", 
+                        self->file_directory_path.data,
+                        self->file_prefix.data,
+                        (int) calendar.tm_year + 1900, (int) calendar.tm_mon, (int) calendar.tm_mday, 
+                        (int) calendar.tm_hour, (int) calendar.tm_min, (int) calendar.tm_sec,
+                        self->file_postfix.data
+                    ).data;
+
+                    self->file = fopen(filename, "ab");
+                    state = state && self->file != NULL;
+                    state = state && setvbuf(self->file , NULL, _IONBF, 0) == 0;
+
+                    if(state == false && self->open_failed == false)
+                    {
+                        printf(ANSI_COLOR_RED "File logger failed to create/open log file or containing directory '%s' " ANSI_COLOR_NORMAL "\n", filename);
+                        self->open_failed = true;
+                    }
+
+                    if(state == true)
+                        self->open_failed = false;
+
                 }
-
-                if(state == true)
-                    self->open_failed = false;
-
             }
 
             if(self->file)
@@ -395,9 +399,9 @@ EXTERNAL void file_logger_log(void* context, int indent, int custom, int is_flus
     {
         Arena_Frame arena = scratch_arena_acquire();
         {
-            String_Builder message = vformat(&arena.allocator, format, args);
-            String_Builder formatted_log = builder_make(&arena.allocator, 1024);
-            file_logger_log_append_into(&arena.allocator, &formatted_log, indent, custom, name, message.string, now);
+            String_Builder message = vformat(arena.alloc, format, args);
+            String_Builder formatted_log = builder_make(arena.alloc, 1024);
+            file_logger_log_append_into(arena.alloc, &formatted_log, indent, custom, name, message.string, now);
 
             bool print_to_console = !!((1ULL << custom) & self->console_type_filter);
             bool print_to_file = !!((1ULL << custom) & self->file_type_filter);

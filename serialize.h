@@ -334,7 +334,7 @@ EXTERNAL bool serialize_write_base16(Lpf_Entry* entry, String val)
 {
     Arena_Frame arena = scratch_arena_acquire();
     {
-        String_Builder encoded = {&arena.allocator};
+        String_Builder encoded = {arena.alloc};
         base16_encode_append_into(&encoded, val.data, val.len);
 
         serialize_entry_set_identity(entry, encoded.string, LPF_ENTRY);
@@ -470,26 +470,17 @@ EXTERNAL bool serialize_int_count_typed(Lpf_Entry* entry, void* value, isize val
     }
     else
     {
-        if(count == 1)
+        SCRATCH_ARENA(arena)
         {
-            i64 concrete_value = get_variable_sized_int(value, value_type_size);
-            serialize_entry_set_identity(entry, format_ephemeral("%lli", concrete_value), LPF_ENTRY);
-        }
-        else
-        {
-            Arena_Frame arena = scratch_arena_acquire();
+            String_Builder formatted = builder_make(arena.alloc, 256);
+            for(isize i = 0; i < count; i ++)
             {
-                String_Builder formatted = builder_make(&arena.allocator, 256);
-                for(isize i = 0; i < count; i ++)
-                {
-                    if(i != 0)
-                        builder_push(&formatted, ' ');
+                if(i != 0)
+                    builder_push(&formatted, ' ');
                         
-                    i64 concrete_value = get_variable_sized_int((u8*) value + i*value_type_size, value_type_size);
-                    format_append_into(&formatted, "%lli", concrete_value);
-                }
+                i64 concrete_value = get_variable_sized_int((u8*) value + i*value_type_size, value_type_size);
+                format_append_into(&formatted, "%lli", concrete_value);
             }
-            arena_frame_release(&arena);
         }
 
         return true;
@@ -516,7 +507,8 @@ EXTERNAL bool serialize_int_typed(Lpf_Entry* entry, void* int_value, isize int_t
     else
     {
         value = get_variable_sized_int(int_value, int_type_size);
-        serialize_entry_set_identity(entry, format_ephemeral("%lli", value), LPF_ENTRY);
+        SCRATCH_ARENA(arena)
+            serialize_entry_set_identity(entry, formata(arena, "%lli", value), LPF_ENTRY);
         return true;
     }
 }
@@ -541,7 +533,8 @@ EXTERNAL bool serialize_uint_typed(Lpf_Entry* entry, void* int_value, isize int_
     else
     {
         value = (u64) get_variable_sized_int(int_value, int_type_size);
-        serialize_entry_set_identity(entry, format_ephemeral("%llu", value), LPF_ENTRY);
+        SCRATCH_ARENA(arena)
+        serialize_entry_set_identity(entry, formata(arena, "%llu", value), LPF_ENTRY);
         return true;
     }
 }
@@ -582,10 +575,11 @@ EXTERNAL bool serialize_float_typed(Lpf_Entry* entry, void* float_value, isize f
     }
     else
     {
-        if(float_type_size == 8)
-            serialize_entry_set_identity(entry, format_ephemeral("%lf", *(f64*) float_value), LPF_ENTRY);
-        else
-            serialize_entry_set_identity(entry, format_ephemeral("%f", *(f32*) float_value), LPF_ENTRY);
+        SCRATCH_ARENA(arena)
+            if(float_type_size == 8)
+                serialize_entry_set_identity(entry, formata(arena, "%lf", *(f64*) float_value), LPF_ENTRY);
+            else
+                serialize_entry_set_identity(entry, formata(arena, "%f", *(f32*) float_value), LPF_ENTRY);
             
         return true;
     }
@@ -725,7 +719,8 @@ EXTERNAL bool serialize_vec2(Lpf_Entry* entry, Vec2* val, Vec2 def, Read_Or_Writ
     }
     else
     {
-        serialize_entry_set_identity(entry, format_ephemeral("%f %f", val->x, val->y), LPF_ENTRY);
+        SCRATCH_ARENA(arena)
+            serialize_entry_set_identity(entry, formata(arena, "%f %f", val->x, val->y), LPF_ENTRY);
         return true;
     }
 }
@@ -754,7 +749,9 @@ EXTERNAL bool serialize_vec3(Lpf_Entry* entry, Vec3* val, Vec3 def, Read_Or_Writ
     }
     else
     {
-        serialize_entry_set_identity(entry, format_ephemeral("%f %f %f", val->x, val->y, val->z), LPF_ENTRY);
+        
+        SCRATCH_ARENA(arena)
+            serialize_entry_set_identity(entry, formata(arena, "%f %f %f", val->x, val->y, val->z), LPF_ENTRY);
         return true;
     }
 }
@@ -786,7 +783,8 @@ EXTERNAL bool serialize_vec4_typed(Lpf_Entry* entry, Vec4* val, Vec4 def, Read_O
     }
     else
     {
-        serialize_entry_set_identity(entry, format_ephemeral("%f %f %f %f", val->x, val->y, val->z, val->w), LPF_ENTRY);
+        SCRATCH_ARENA(arena)
+            serialize_entry_set_identity(entry, formata(arena, "%f %f %f %f", val->x, val->y, val->z, val->w), LPF_ENTRY);
         return true;
     }
 }
@@ -826,11 +824,13 @@ EXTERNAL bool serialize_mat2(Lpf_Entry* entry, Mat2* val, Mat2 def, Read_Or_Writ
     }
     else
     {
-        serialize_entry_set_identity(entry, format_ephemeral(
-            "%f %f\n"
-            "%f %f", 
-            val->m11, val->m12,
-            val->m21, val->m22
+        
+        SCRATCH_ARENA(arena)
+            serialize_entry_set_identity(entry, formata(arena, 
+                "%f %f\n"
+                "%f %f", 
+                val->m11, val->m12,
+                val->m21, val->m22
             ), LPF_ENTRY);
 
         return true;
@@ -863,13 +863,14 @@ EXTERNAL bool serialize_mat3(Lpf_Entry* entry, Mat3* val, Mat3 def, Read_Or_Writ
     }
     else
     {
-        serialize_entry_set_identity(entry, format_ephemeral(
-            "%f %f %f\n"
-            "%f %f %f\n"
-            "%f %f %f",
-            val->m11, val->m12, val->m13,
-            val->m21, val->m22, val->m23,
-            val->m31, val->m32, val->m33
+        SCRATCH_ARENA(arena)
+            serialize_entry_set_identity(entry, formata(arena, 
+                "%f %f %f\n"
+                "%f %f %f\n"
+                "%f %f %f",
+                val->m11, val->m12, val->m13,
+                val->m21, val->m22, val->m23,
+                val->m31, val->m32, val->m33
             ), LPF_ENTRY);
 
         return true;
@@ -901,16 +902,17 @@ EXTERNAL bool serialize_mat4(Lpf_Entry* entry, Mat4* val, Mat4 def, Read_Or_Writ
         return state;
     }
     else
-    {
-        serialize_entry_set_identity(entry, format_ephemeral(
-            "%f %f %f %f\n"
-            "%f %f %f %f\n"
-            "%f %f %f %f\n"
-            "%f %f %f %f", 
-            val->m11, val->m12, val->m13, val->m14,
-            val->m21, val->m22, val->m23, val->m24,
-            val->m31, val->m32, val->m33, val->m34,
-            val->m41, val->m42, val->m43, val->m44 
+    {   
+        SCRATCH_ARENA(arena)
+            serialize_entry_set_identity(entry, formata(arena, 
+                "%f %f %f %f\n"
+                "%f %f %f %f\n"
+                "%f %f %f %f\n"
+                "%f %f %f %f", 
+                val->m11, val->m12, val->m13, val->m14,
+                val->m21, val->m22, val->m23, val->m24,
+                val->m31, val->m32, val->m33, val->m34,
+                val->m41, val->m42, val->m43, val->m44 
             ), LPF_ENTRY);
 
         return true;

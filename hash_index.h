@@ -430,7 +430,8 @@ EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously es
     {
         PROFILE_START();
         ASSERT(hash_index_is_invariant(*table, HASH_INDEX_DEBUG));
-        allocator_reallocate(table->allocator, 0, table->entries, table->entries_count * (isize) sizeof *table->entries, DEF_ALIGN);
+        if(table->allocator != NULL)
+            allocator_reallocate(table->allocator, 0, table->entries, table->entries_count * (isize) sizeof *table->entries, DEF_ALIGN);
         
         Hash_Index null = {0};
         *table = null;
@@ -447,13 +448,14 @@ EXTERNAL void*    hash_index_restore_ptr(uint64_t val); //Restores previously es
         if(table->entries_count > 0)
         {
             #ifdef JOT_ARENA
-            Arena_Frame arena = scratch_arena_acquire();
-            Hash_Index copy = *table;
-            copy.entries = (Hash_Index_Entry*) arena_push_nonzero_inline(&arena, table->entries_count * isizeof(Hash_Index_Entry), __alignof(Hash_Index_Entry));
-            memcpy(copy.entries, table->entries, (size_t) table->entries_count * sizeof(Hash_Index_Entry));
+            SCRATCH_ARENA(arena)
+            {
+                Hash_Index copy = *table;
+                copy.entries = (Hash_Index_Entry*) arena_frame_push_nonzero(&arena, table->entries_count * isizeof(Hash_Index_Entry), __alignof(Hash_Index_Entry));
+                memcpy(copy.entries, table->entries, (size_t) table->entries_count * sizeof(Hash_Index_Entry));
 
-            _hash_index_rehash_copy(table, copy, table->entries_count, true);
-            arena_frame_release(&arena);
+                _hash_index_rehash_copy(table, copy, table->entries_count, true);
+            }
             #endif
         }
 
