@@ -172,7 +172,7 @@ typedef struct Arena_Stack {
 // Also can be though of as representing a ScratchBegin()/ScratchEnd() pair.
 typedef struct Arena_Frame {
     Allocator alloc[1];
-    Arena_Stack* arena;
+    Arena_Stack* stack;
     i32 level;
     i32 pad;
 } Arena_Frame;
@@ -439,9 +439,9 @@ EXTERNAL ATTRIBUTE_INLINE_NEVER void* _arena_handle_unusual_push(Arena_Stack* st
 EXTERNAL ATTRIBUTE_INLINE_ALWAYS void* arena_frame_push_nonzero_error(Arena_Frame* frame, isize size, isize align, Allocator_Error* error)
 {
     PROFILE_START();
-    ASSERT(frame->arena && 0 < frame->level && frame->level <= frame->arena->frame_level, 
+    ASSERT(frame->stack && 0 < frame->level && frame->level <= frame->stack->frame_level, 
         "Using an invalid frame! Its not initialized or it was used after it or a parent frame was released!");
-    Arena_Stack* stack = frame->arena;
+    Arena_Stack* stack = frame->stack;
     _arena_debug_check_invariants(stack);
 
     u8* out = (u8*) align_forward(stack->arena.used_to, align);
@@ -487,7 +487,7 @@ EXTERNAL ATTRIBUTE_INLINE_ALWAYS Arena_Frame arena_frame_acquire(Arena_Stack* st
     out.alloc[0].func = arena_frame_allocator_func;
     out.alloc[0].get_stats = arena_frame_allocator_get_stats;
     out.level = stack->frame_level;
-    out.arena = stack;
+    out.stack = stack;
 
     _arena_debug_check_invariants(stack);
     PROFILE_END();
@@ -497,10 +497,10 @@ EXTERNAL ATTRIBUTE_INLINE_ALWAYS Arena_Frame arena_frame_acquire(Arena_Stack* st
 EXTERNAL ATTRIBUTE_INLINE_ALWAYS void arena_frame_release(Arena_Frame* frame)
 {
     PROFILE_START();
-    ASSERT(frame->arena && 0 < frame->level && frame->level <= frame->arena->frame_level, 
+    ASSERT(frame->stack && 0 < frame->level && frame->level <= frame->stack->frame_level, 
         "Using an invalid frame! Its not initialized or it was used after it or a parent frame was released!");
 
-    Arena_Stack* stack = frame->arena;
+    Arena_Stack* stack = frame->stack;
     _arena_debug_check_invariants(stack);
 
     if(stack->write_level >= frame->level)
@@ -542,7 +542,7 @@ EXTERNAL Allocator_Stats arena_frame_allocator_get_stats(Allocator* self)
     Arena_Frame* frame = (Arena_Frame*) (void*) self;
     Allocator_Stats stats = {0};
 
-    Arena* arena = &frame->arena->arena;
+    Arena* arena = &frame->stack->arena;
     void** levels = (void**) arena->data;
     u8* start = (u8*) levels[frame->level - 1];
     stats.type_name = "Arena_Frame";
