@@ -52,7 +52,7 @@
 #include "vformat.h"
 #include "time.h"
 #include "log.h"
-#include "arena.h"
+#include "arena_stack.h"
 
 typedef bool(*File_Logger_Print)(const void* data, isize size, void* context); 
 
@@ -397,7 +397,7 @@ EXTERNAL void file_logger_log(void* context, int indent, int custom, int is_flus
     }
     else
     {
-        Arena_Frame arena = scratch_arena_acquire();
+        Arena_Frame arena = scratch_arena_frame_acquire();
         {
             String_Builder message = vformat(arena.alloc, format, args);
             String_Builder formatted_log = builder_make(arena.alloc, 1024);

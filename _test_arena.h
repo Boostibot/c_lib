@@ -1,5 +1,6 @@
 #pragma once
-#include "arena.h"
+#include "arena_stack.h"
+#include "arena_stack.h"
 #include "_test.h"
 
 static char* arena_push_string(Arena_Frame* arena, const char* string)
@@ -38,18 +39,33 @@ static void test_arena_unit()
                 char* pat2 = arena_push_string(&level2, PATTERN2);
                 TEST(memcmp(pat1, PATTERN1, sizeof PATTERN1 - 1) == 0);
 
+                //not a fall (due to multiplex)
+                char* pat1_2 = arena_push_string(&level1, PATTERN1);
+                TEST(memcmp(pat1_2, PATTERN1, sizeof PATTERN1 - 1) == 0);
+                TEST(ARENA_STACK_CHANNELS != 2 || arena_stack.fall_count == 0);
+
                 Arena_Frame level3 = arena_frame_acquire(&arena_stack);
                 {
                     char* pat3 = arena_push_string(&level3, PATTERN3); (void) pat3;
+                    TEST(ARENA_STACK_CHANNELS != 2 || arena_stack.fall_count == 0);
+                    
                     //fall!
-                    char* pat1_2 = arena_push_string(&level1, PATTERN1);
+                    char* pat1_3 = arena_push_string(&level1, PATTERN1);
+                    TEST(ARENA_STACK_CHANNELS != 2 || arena_stack.fall_count == 1);
                 
-                    //Rise at acquisition
                     Arena_Frame level4 = arena_frame_acquire(&arena_stack);
                     {
-                        arena_push_string(&level4, PATTERN3);
-                        TEST(memcmp(pat1, PATTERN1, sizeof PATTERN1 - 1) == 0);
-                        TEST(memcmp(pat1_2, PATTERN1, sizeof PATTERN1 - 1) == 0);
+                        TEST(ARENA_STACK_CHANNELS != 2 || arena_stack.rise_count == 0);
+                        Arena_Frame level5 = arena_frame_acquire(&arena_stack);
+                        {
+                            //Rise!
+                            arena_push_string(&level5, PATTERN3);
+                            TEST(ARENA_STACK_CHANNELS != 2 || arena_stack.rise_count == 1);
+                            TEST(memcmp(pat1,   PATTERN1, sizeof PATTERN1 - 1) == 0);
+                            TEST(memcmp(pat1_2, PATTERN1, sizeof PATTERN1 - 1) == 0);
+                            TEST(memcmp(pat1_3, PATTERN1, sizeof PATTERN1 - 1) == 0);
+                        }
+                        //missing release!
                     }
                     arena_frame_release(&level4);
 
@@ -174,5 +190,5 @@ static void test_arena(f64 time)
 {
     test_arena_unit();
     test_arena_stress(time);
-    //test_arena_assembly();
+    test_arena_assembly();
 }

@@ -299,17 +299,20 @@ EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format,
     #ifndef ASSERT_CUSTOM_REPORT
         EXTERNAL void assertion_report(const char* expression, int line, const char* file, const char* function, const char* format, ...)
         {
-            LOG_FATAL("assert", "TEST(%s) TEST/ASSERT failed! %s() %s:%i", function, expression, file, line);
-            if(format != NULL && strlen(format) > 1)
+            if(0)
             {
-                va_list args;               
-                va_start(args, format);     
-                vlog_local_call(log_fatal(">assert"), format + 1, args);
-                va_end(args);  
-            }
+                LOG_FATAL("assert", "TEST(%s) TEST/ASSERT failed! %s() %s:%i", function, expression, file, line);
+                if(format != NULL && strlen(format) > 1)
+                {
+                    va_list args;               
+                    va_start(args, format);     
+                    vlog_local_call(log_fatal(">assert"), format + 1, args);
+                    va_end(args);  
+                }
 
-            log_callstack(log_trace(">assert"), -1, "");
-            log_flush_all();
+                log_callstack(log_trace(">assert"), -1, "");
+                log_flush_all();
+            }
         }
     #endif
     
@@ -344,34 +347,37 @@ EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format,
     #ifndef ALLOCATOR_CUSTOM_OUT_OF_MEMORY
         EXTERNAL void allocator_panic(Allocator_Error error)
         {
-            Allocator_Stats stats = {0};
-            if(error.alloc != NULL && error.alloc->func != NULL)
-                stats = allocator_get_stats(error.alloc);
+            if(0)
+            {
+                Allocator_Stats stats = {0};
+                if(error.alloc != NULL && error.alloc->func != NULL)
+                    stats = allocator_get_stats(error.alloc);
         
-            if(stats.type_name == NULL)
-                stats.type_name = "<no type name>";
+                if(stats.type_name == NULL)
+                    stats.type_name = "<no type name>";
 
-            if(stats.name == NULL)
-                stats.name = "<no name>";
+                if(stats.name == NULL)
+                    stats.name = "<no name>";
 
-            LOG_FATAL("memory", "Allocator %s of type %s reported out of memory! Message: '%s'", stats.type_name, stats.name, error.message);
+                LOG_FATAL("memory", "Allocator %s of type %s reported out of memory! Message: '%s'", stats.type_name, stats.name, error.message);
 
-            LOG_INFO(">memory", "new_size:    %s", format_bytes(error.new_size, 0).data);
-            LOG_INFO(">memory", "old_size:    %s", format_bytes(error.old_size, 0).data);
-            LOG_INFO(">memory", "old_ptr:     %s", format_ptr(error.old_ptr).data);
-            LOG_INFO(">memory", "align:       %lli", (lli) error.align);
+                LOG_INFO(">memory", "new_size:    %s", format_bytes(error.new_size, 0).data);
+                LOG_INFO(">memory", "old_size:    %s", format_bytes(error.old_size, 0).data);
+                LOG_INFO(">memory", "old_ptr:     %s", format_ptr(error.old_ptr).data);
+                LOG_INFO(">memory", "align:       %lli", (lli) error.align);
 
-            LOG_INFO(">memory", "Allocator_Stats:");
-            LOG_INFO(">>memory", "bytes_allocated:     %s", format_bytes(stats.bytes_allocated, 0).data);
-            LOG_INFO(">>memory", "max_bytes_allocated: %s", format_bytes(stats.max_bytes_allocated, 0).data);
+                LOG_INFO(">memory", "Allocator_Stats:");
+                LOG_INFO(">>memory", "bytes_allocated:     %s", format_bytes(stats.bytes_allocated, 0).data);
+                LOG_INFO(">>memory", "max_bytes_allocated: %s", format_bytes(stats.max_bytes_allocated, 0).data);
 
-            LOG_INFO(">>memory", "allocation_count:    %lli", (lli) stats.allocation_count);
-            LOG_INFO(">>memory", "deallocation_count:  %lli", (lli) stats.deallocation_count);
-            LOG_INFO(">>memory", "reallocation_count:  %lli", (lli) stats.reallocation_count);
+                LOG_INFO(">>memory", "allocation_count:    %lli", (lli) stats.allocation_count);
+                LOG_INFO(">>memory", "deallocation_count:  %lli", (lli) stats.deallocation_count);
+                LOG_INFO(">>memory", "reallocation_count:  %lli", (lli) stats.reallocation_count);
     
-            log_callstack(log_info(">memory"), 1, "callstack:");
+                log_callstack(log_info(">memory"), 1, "callstack:");
 
-            log_flush_all();
+                log_flush_all();
+            }
             abort();
         }
     #endif

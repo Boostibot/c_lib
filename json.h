@@ -1,7 +1,7 @@
 #pragma once
 
 #include "string.h"
-#include "arena.h"
+#include "arena_stack.h"
 
 typedef enum JSON_Type {
     JSON_NONE = 0,

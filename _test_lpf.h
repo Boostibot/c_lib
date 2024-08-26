@@ -98,7 +98,7 @@ static void test_lpf_print_compariosn(String left, String right)
 static void test_lpf()
 {
     {
-        Arena_Frame scratch = scratch_arena_acquire();
+        Arena_Frame scratch = scratch_arena_frame_acquire();
 
         Lpf_Entry root = lpf_read(&scratch, STRING(
             "\n first \t: value "
@@ -126,7 +126,7 @@ static void test_lpf()
     }
 
     {
-        Arena_Frame scratch = scratch_arena_acquire();
+        Arena_Frame scratch = scratch_arena_frame_acquire();
 
         Lpf_Entry root = lpf_read(&scratch, STRING(
             "\n out: value "
@@ -176,7 +176,7 @@ static void test_lpf()
     }
 
     {
-        Arena_Frame scratch = scratch_arena_acquire();
+        Arena_Frame scratch = scratch_arena_frame_acquire();
 
         Lpf_Entry root = lpf_read(&scratch, STRING(
             "\n out :value"

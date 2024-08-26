@@ -822,7 +822,7 @@ EXTERNAL void path_builder_assign(Path_Builder* into, Path path, int flags)
 
 EXTERNAL void path_normalize_in_place(Path_Builder* into, int flags)
 {
-    Arena_Frame arena = scratch_arena_acquire();
+    Arena_Frame arena = scratch_arena_frame_acquire();
     String_Builder copy = builder_from_string(arena.alloc, into->string);
     Path path = path_parse(copy.string);
     path_builder_assign(into, path, flags);
@@ -873,7 +873,7 @@ EXTERNAL void path_make_relative_into(Path_Builder* into, Path relative_to, Path
     }
     else
     {
-        Arena_Frame arena = scratch_arena_acquire();
+        Arena_Frame arena = scratch_arena_frame_acquire();
         
         //Make paths normalized if they are not invarinat already. 
         // It is very likely that at least relative_to will be invarinat since 
@@ -1059,7 +1059,7 @@ void test_path_normalize(int flags, const char* cpath, const char* cexpected)
     const char* prefixes[] = {"", "\\\\?\\", "\\\\.\\"};
     for(isize i = 0; i < ARRAY_SIZE(prefixes); i++)
     {
-        Arena_Frame arena = scratch_arena_acquire();
+        Arena_Frame arena = scratch_arena_frame_acquire();
         String_Builder prefixed_path = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cpath));
         String_Builder prefixed_expected = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cexpected));
 
@@ -1079,7 +1079,7 @@ void test_canonicalize_with_roots_and_prefixes(int flags, const char* cabs_path,
     
     for(isize i = 0; i < ARRAY_SIZE(roots); i++)
     {
-        Arena_Frame arena = scratch_arena_acquire();
+        Arena_Frame arena = scratch_arena_frame_acquire();
         String_Builder prefixed_path = string_concat(arena.alloc, string_of(roots[i]), string_of(cabs_path));
         String_Builder prefixed_expected = string_concat(arena.alloc, string_of(norm_roots[i]), string_of(cexpected));
 
@@ -1098,7 +1098,7 @@ void test_path_make_relative_absolute_with_prefixes(int flags, const char* crela
     const char* prefixes[] = {"", "\\\\?\\", "\\\\.\\"};
     for(isize i = 0; i < ARRAY_SIZE(prefixes); i++)
     {
-        Arena_Frame arena = scratch_arena_acquire();
+        Arena_Frame arena = scratch_arena_frame_acquire();
 
         String_Builder prefixed_relative = string_concat(arena.alloc, string_of(prefixes[i]), string_of(crelative));
         String_Builder prefixed_path = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cpath));

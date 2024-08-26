@@ -529,7 +529,7 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
         options.max_line_width = INT64_MAX;
 
     enum {ALIGN_INDENT_EVERY = 10};
-    Arena_Frame scratch = scratch_arena_acquire();
+    Arena_Frame scratch = scratch_arena_frame_acquire();
     {
         typedef struct Iterator {
             Lpf_Entry* parent;

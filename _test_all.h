@@ -59,7 +59,6 @@ INTERNAL void test_all(f64 total_time)
     profile_log_all(log_info("TEST"), PERF_SORT_BY_NAME);
 }
 
-
 #if defined(TEST_RUNNER)
 
     #include "allocator_malloc.h"
@@ -73,7 +72,7 @@ INTERNAL void test_all(f64 total_time)
         allocator_set_static(&allocator.allocator);
 
         Arena_Stack* global_stack = allocator_get_scratch_arena_stack();
-        arena_init(global_stack, 64*GB, 8*MB, "scratch_arena");
+        arena_init(global_stack, 64*GB, 8*MB, "scratch_arena_stack");
 
         File_Logger logger = {0};
         file_logger_init_use(&logger, NULL, "logs");

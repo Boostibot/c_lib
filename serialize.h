@@ -332,7 +332,7 @@ EXTERNAL bool serialize_read_name(Lpf_Entry* entry, String_Builder* val, String 
 
 EXTERNAL bool serialize_write_base16(Lpf_Entry* entry, String val)
 {
-    Arena_Frame arena = scratch_arena_acquire();
+    Arena_Frame arena = scratch_arena_frame_acquire();
     {
         String_Builder encoded = {arena.alloc};
         base16_encode_append_into(&encoded, val.data, val.len);

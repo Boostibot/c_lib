@@ -86,6 +86,8 @@ EXTERNAL String_Builder string_replace(Allocator* allocator, String source, Stri
 //If the field_size % pattern_size != 0 the last repetition of pattern is trimmed.
 //If pattern_size == 0 field is filled with zeros instead.
 EXTERNAL void memset_pattern(void *field, isize field_size, const void* pattern, isize pattern_size);
+//Behaves like memcmp(ptr, [infinite array of `byte`], size)
+EXTERNAL int  memcmp_byte(const void* ptr, int byte, isize size);
 
 EXTERNAL bool char_is_space(char c);
 EXTERNAL bool char_is_digit(char c);
@@ -254,6 +256,29 @@ EXTERNAL bool char_is_id(char c);
             // copy any remainder
             memcpy((char*) field + cursor, field, (size_t) (field_size - cursor));
         }
+    }
+    
+    EXTERNAL int memcmp_byte(const void* ptr, int byte, isize size)
+    {
+        isize i = 0;
+        char* text = (char*) ptr;
+
+        if((isize) ptr % 8 == 0)
+        {
+            //pattern is 8 repeats of byte
+            u64 pattern = (u64) 0x0101010101010101ULL * (u64) byte;
+            for(isize k = 0; k < size/8; k++)
+                if(*(u64*) ptr != pattern)
+                    return (int) (k*8);
+        
+            i = size/8*8;
+        }
+
+        for(; i < size; i++)
+            if(text[i] != (char) byte)
+                return (int) i;
+        
+        return 0;
     }
 
     EXTERNAL isize string_find_last_char_from(String string, char search_for, isize from)

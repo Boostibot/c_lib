@@ -11,7 +11,7 @@
 #include "log.h"
 #include "string.h"
 #include "vformat.h"
-#include "arena.h"
+#include "arena_stack.h"
 #include <stdlib.h>
 
 typedef struct Profile_Thread_Zone {
