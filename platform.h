@@ -339,7 +339,7 @@ typedef struct Platform_File {
         int linux;
     } handle;
     bool is_open;
-    bool _padding[7];
+    bool _[7];
 } Platform_File;
 
 typedef enum Platform_File_Open_Flags {
@@ -453,7 +453,7 @@ typedef struct Platform_File_Watch {
 
 typedef struct Platform_File_Watch_Event {
     Platform_File_Watch_Flag action;
-    int32_t _padding;
+    int32_t _;
     const char* watched_path;
     const char* path;
     const char* old_path; //only used in case of PLATFORM_FILE_WATCH_RENAMED to store the previous path.

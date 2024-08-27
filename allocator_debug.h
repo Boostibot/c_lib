@@ -161,7 +161,7 @@ typedef struct Debug_Allocator_Options
     bool do_printing;        //prints all allocations/deallocation
     bool do_continual_checks; //continually checks all allocations
     bool do_deinit_leak_check;   //If the memory use on initialization and deinitialization does not match panics.
-    bool _padding[5];
+    bool _[5];
     //Optional name of this allocator for printing and debugging. No default is set
     const char* name;
 } Debug_Allocator_Options;

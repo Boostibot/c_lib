@@ -1569,7 +1569,7 @@ bool platform_file_watch_poll(Platform_File_Watch file_watch, Platform_File_Watc
             {
                 ret = true;
                 user_event->action = (Platform_File_Watch_Flag) modification;
-                user_event->_padding = 0;
+                user_event->_ = 0;
                 user_event->path = context->change_path.data;
                 user_event->old_path = context->change_old_path.data;
                 user_event->watched_path = context->watched_path.data;

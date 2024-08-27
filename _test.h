@@ -46,7 +46,7 @@ typedef struct Test_Run_Context {
     void* func;
     const char* name;
     Test_Func_Type type;
-    u32 _padding;
+    u32 _;
     f64 max_time;
     void* user_data;
 } Test_Run_Context;

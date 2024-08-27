@@ -120,7 +120,7 @@ typedef struct Lpf_Write_Options {
     bool compact_empty_collections;
 
     i32 indentations_per_level;
-    u32 _padding;
+    u32 _;
     isize max_line_width;
 } Lpf_Write_Options;
 
@@ -686,9 +686,9 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
         isize indentation_level = -1;
         
         //We only pad up to 127 chars. If thats not enough too bad.
-        String_Builder label_padding_buffer = builder_make(scratch.alloc, 127);
-        builder_resize(&label_padding_buffer, 127);
-        memset(label_padding_buffer.data, ' ', (size_t) label_padding_buffer.len);
+        String_Builder label__buffer = builder_make(scratch.alloc, 127);
+        builder_resize(&label__buffer, 127);
+        memset(label__buffer.data, ' ', (size_t) label__buffer.len);
 
         for(isize token_i = 0; token_i < tokens.len; token_i ++)
         {
@@ -742,8 +742,8 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
                     LOG_ERROR("lpf", "Writing error at line %i (entry from line %i): Label contains invalid characters. Trimming '%.*s' to '%.*s'", (int) token_i + 1, token.original_line, STRING_PRINT(label), STRING_PRINT(escaped_label));
             }
 
-            isize label_padding_ammount = CLAMP(token.pad_labels_to - label.len, 0, label_padding_buffer.len);
-            String label_padding = string_head(label_padding_buffer.string, label_padding_ammount);
+            isize label__ammount = CLAMP(token.pad_labels_to - label.len, 0, label__buffer.len);
+            String label_ = string_head(label__buffer.string, label__ammount);
             
             //Append each token according to its own desired styling. 
             // This is the part of the code that can be tweaked a lot
@@ -762,7 +762,7 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
             {
                 builder_append(&out, label);
                 if(options.align_collection_labels)
-                    builder_append(&out, label_padding);
+                    builder_append(&out, label_);
 
                 if(label.len > 0)
                     builder_push(&out, ' ');
@@ -779,7 +779,7 @@ EXTERNAL String lpf_write_from_root(Arena_Frame* arena, Lpf_Entry root, const Lp
                 builder_append(&out, label);
                 if((token.type == ENTRY && options.align_entry_labels)
                     || (token.type != ENTRY && options.align_continuations))
-                    builder_append(&out, label_padding);
+                    builder_append(&out, label_);
                     
                 if(token.type == ENTRY)
                     builder_append(&out, STRING(": "));

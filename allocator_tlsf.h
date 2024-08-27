@@ -1185,7 +1185,7 @@ void test_allocator_tlsf_stress(double seconds, isize at_once)
         uint32_t size;
         uint32_t align;
         uint32_t node;
-        uint32_t _padding;
+        uint32_t _;
         void* ptr;
     } Alloc;
 
@@ -1318,7 +1318,7 @@ void test_allocator_tlsf(double seconds)
         typedef struct Alloc {
             void* ptr;
             uint32_t node;
-            uint32_t _padding;
+            uint32_t _;
         } Alloc;
 
         typedef struct Cached_Random {

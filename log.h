@@ -25,7 +25,7 @@ typedef struct Log_Set {
     Log fatal;
     
     int indent;
-    int _padding;
+    int _;
 } Log_Set;
 
 EXTERNAL Log_Set* get_log_set();

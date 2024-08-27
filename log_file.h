@@ -89,7 +89,7 @@ EXTERNAL typedef struct File_Logger {
 
     bool open_failed;
     bool has_prev_logger;
-    bool _padding[6];
+    bool _[6];
     Log* prev_logger;
 
     Log_Set prev;
@@ -216,9 +216,9 @@ EXTERNAL void file_logger_log_append_into(Allocator* scratch, String_Builder* ap
         //if is first line do else insert header-sized amountof spaces
         if(curr_line_pos != 0)
         {
-            isize before_padding = append_to->len;
-            builder_resize(append_to, before_padding + header_size);
-            memset(append_to->data + before_padding, ' ', (size_t) header_size);
+            isize before_ = append_to->len;
+            builder_resize(append_to, before_ + header_size);
+            memset(append_to->data + before_, ' ', (size_t) header_size);
         }
         
         builder_append(append_to, formatted_module.string);

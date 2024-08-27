@@ -69,7 +69,7 @@ typedef struct Allocator_Stats {
     bool is_capable_of_resize;
     bool is_capable_of_free_all;
 
-    bool _padding[4];
+    bool _[4];
     isize fixed_memory_pool_size;
 
     //The number of bytes given out to the program by this allocator. (does NOT include book keeping bytes).
@@ -90,7 +90,7 @@ typedef struct Allocator_Set {
 
     bool set_default;
     bool set_static;
-	bool _padding[6];
+	bool _[6];
 } Allocator_Set;
 
 #define DEF_ALIGN PLATFORM_MAX_ALIGN

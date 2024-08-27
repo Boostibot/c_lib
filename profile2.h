@@ -80,7 +80,7 @@ typedef struct Profile_State {
 	Platform_File file;
 	int32_t has_stuff_to_write;
 	bool is_running;
-	bool _padding[7];
+	bool _[7];
 
 	ATTRIBUTE_ALIGNED(64) Profile_Buffer* free_buffers;
 	ATTRIBUTE_ALIGNED(64) Profile_Buffer* in_write_buffers;

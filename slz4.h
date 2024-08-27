@@ -39,7 +39,7 @@ typedef struct SLZ4_Malloced {
     void* data;
     int size;
     int capacity;
-    int _padding; //pads to mutiple of 8. unused
+    int _; //pads to mutiple of 8. unused
     SLZ4_Status status;
 } SLZ4_Malloced;
 
