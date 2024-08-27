@@ -48,8 +48,8 @@
 
 #include "allocator.h"
 #include "array.h"
-#include "hash_index.h"
 #include "hash.h"
+#include "hash_func.h"
 #include "log.h"
 
 #include "profile_defs.h"
@@ -78,7 +78,7 @@ typedef struct Debug_Allocator
     Allocator* parent;
     const char* name;
     
-    Hash_Index alive_allocations_hash;
+    Hash alive_allocations_hash;
 
     bool do_printing;            //whether each allocations/deallocations should be printed. can be safely toggled during lifetime
     bool do_continual_checks;     //whether it should checks all allocations for overwrites after each allocation.
@@ -180,7 +180,7 @@ typedef struct Debug_Allocator_Options
 EXTERNAL void debug_allocator_init_custom(Debug_Allocator* debug, Allocator* parent, Debug_Allocator_Options options)
 {
     debug_allocator_deinit(debug);
-    hash_index_init(&debug->alive_allocations_hash, parent);
+    hash_init(&debug->alive_allocations_hash, parent);
 
     if(options.dead_zone_size == 0)
         options.dead_zone_size = 16;
@@ -303,8 +303,8 @@ INTERNAL Debug_Allocator_Panic_Reason _debug_allocator_check_block(const Debug_A
 {
     *interpenetration = 0;
     
-    u64 hashed = hash64((u64) user_ptr);
-    *hash_found = hash_index_find(self->alive_allocations_hash, hashed);
+    u64 hashed = hash64_bijective((u64) user_ptr);
+    *hash_found = hash_find(self->alive_allocations_hash, hashed).index;
     if(*hash_found == -1)
         return DEBUG_ALLOC_PANIC_INVALID_PTR;
         
@@ -371,14 +371,13 @@ INTERNAL bool _debug_allocator_is_invariant(const Debug_Allocator* allocator)
         isize size_sum = 0;
         for(isize i = 0; i < allocator->alive_allocations_hash.entries_count; i ++)
         {
-            Hash_Index_Entry curr = allocator->alive_allocations_hash.entries[i];
-            if(hash_index_is_entry_used(curr) == false)
+            Hash_Entry curr = allocator->alive_allocations_hash.entries[i];
+            if(hash_is_entry_used(curr) == false)
                 continue;
         
-            void* user_ptr = hash_index_restore_ptr(curr.value);
-            _debug_allocator_assert_block(allocator, user_ptr);
+            _debug_allocator_assert_block(allocator, curr.value_ptr);
 
-            Debug_Allocation_Pre_Block pre = _debug_allocator_get_pre_block(allocator, user_ptr);
+            Debug_Allocation_Pre_Block pre = _debug_allocator_get_pre_block(allocator, curr.value_ptr);
             size_sum += pre.header->size;
         }
 
@@ -430,18 +429,16 @@ EXTERNAL void debug_allocator_deinit(Debug_Allocator* allocator)
 
     for(isize i = 0; i < allocator->alive_allocations_hash.entries_count; i++)
     {
-        Hash_Index_Entry entry = allocator->alive_allocations_hash.entries[i];
-        if(hash_index_is_entry_used(entry))
+        Hash_Entry entry = allocator->alive_allocations_hash.entries[i];
+        if(hash_is_entry_used(entry))
         {
-            void* ptr = hash_index_restore_ptr(entry.value);
-            
-            Debug_Allocation_Pre_Block pre = _debug_allocator_get_pre_block(allocator, ptr);
-            debug_allocator_func(allocator->alloc, 0, ptr, pre.header->size, pre.header->align, NULL);
+            Debug_Allocation_Pre_Block pre = _debug_allocator_get_pre_block(allocator, entry.value_ptr);
+            debug_allocator_func(allocator->alloc, 0, entry.value_ptr, pre.header->size, pre.header->align, NULL);
         }
     }
 
     allocator_set(allocator->allocator_backup);
-    hash_index_deinit(&allocator->alive_allocations_hash);
+    hash_deinit(&allocator->alive_allocations_hash);
     
     Debug_Allocator null = {0};
     *allocator = null;
@@ -450,7 +447,7 @@ EXTERNAL void debug_allocator_deinit(Debug_Allocator* allocator)
 EXTERNAL Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debug_Allocator allocator, isize print_max)
 {
     isize count = print_max;
-    const Hash_Index* hash = &allocator.alive_allocations_hash;
+    const Hash* hash = &allocator.alive_allocations_hash;
     if(count <= 0)
         count = hash->len;
         
@@ -460,13 +457,13 @@ EXTERNAL Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debu
     Debug_Allocation_Array out = {allocator.parent};
     for(isize k = 0; k < hash->entries_count; k++)
     {
-        if(hash_index_is_entry_used(hash->entries[k]))
+        Hash_Entry entry = allocator.alive_allocations_hash.entries[k];
+        if(hash_is_entry_used(hash->entries[k]))
         {
-            void* user_ptr = hash_index_restore_ptr(hash->entries[k].value);
-            _debug_allocator_assert_block(&allocator, user_ptr);
+            _debug_allocator_assert_block(&allocator, entry.value_ptr);
             
             Debug_Allocation allocation = {allocator.parent};
-            Debug_Allocation_Pre_Block pre = _debug_allocator_get_pre_block(&allocator, user_ptr);
+            Debug_Allocation_Pre_Block pre = _debug_allocator_get_pre_block(&allocator, entry.value_ptr);
             allocation.align = pre.header->align;
             allocation.size = pre.header->size;
 
@@ -556,7 +553,7 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
     if(old_ptr != NULL)
     {
         ASSERT(hash_found != -1 && "must be found!");
-        hash_index_remove(&self->alive_allocations_hash, hash_found);
+        hash_remove_found(&self->alive_allocations_hash, hash_found);
     }
 
     //if allocated/reallocated (new block exists)
@@ -581,10 +578,10 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
         memset(new_post.dead_zone, DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) new_post.dead_zone_size);
         
         new_ptr = (u8*) new_pre.user_ptr;
-        u64 hashed = hash64((u64) new_ptr);
-        ASSERT(hash_index_find(self->alive_allocations_hash, hashed) == -1 && "Must not be added already!");
+        u64 hashed = hash64_bijective((u64) new_ptr);
+        ASSERT(hash_find(self->alive_allocations_hash, hashed).index == -1 && "Must not be added already!");
 
-        hash_index_insert(&self->alive_allocations_hash, hashed, (u64) new_ptr);
+        hash_insert(&self->alive_allocations_hash, hashed, (u64) new_ptr);
         _debug_allocator_assert_block(self, new_ptr);
     }
 

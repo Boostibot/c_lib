@@ -36,12 +36,13 @@
 
     typedef int64_t isize; //can also be usnigned if desired
     typedef struct Allocator Allocator;
+    typedef struct Allocator_Error Allocator_Error;
     
     static Allocator* allocator_get_default() 
     { 
         return NULL; 
     }
-    static void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
+    static void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
     {
         if(new_size != 0)
             return realloc(old_ptr, new_size);

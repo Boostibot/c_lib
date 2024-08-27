@@ -2,7 +2,7 @@ This is a perpetually ongoing development C codebase I use for personal projects
 
 # Most important files
 - `array.h` **(freestanding)**: Generic, type-safe array in pure C. This mostly works like `std::vector`.
-- `hash_index.h` **(freestanding)**: Small and very performant hash table building block. This is not a fully fledged hash table, but just a 64 -> 62 bit hash mapping. All other tables can be implemented using this. Read the comment for more rationale.
+- `hash.h` **(freestanding)**: Small and very performant hash table building block. This is not a fully fledged hash table, but just a 64 -> 62 bit hash mapping. All other tables can be implemented using this. Read the comment for more rationale.
 - `allocator_tlsf.h`: **(freestanding)** A TLSF style allocator on top of a given memory block. All operations are hard O(1). All book-keeping is done in seperate memory, allowing interface for allocation on the GPU. Is about 25% faster then malloc.
 - `slz4.h`: **(freestanding)** Simple but quite fast LZ4 compressor/decompressor. On the enwik8 dataset achieves compression speed of 130MB/s, 2.10 compression ratio and decompression speed of 2.7GB/s. Tested for safety and full standard compliance.
 - `allocator_debug.h`: Wrapper around generic allocator that verifies correct handling and detects leaks. Can capture callstack to print exactly where the leak occurred.

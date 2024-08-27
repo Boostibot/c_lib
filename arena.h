@@ -13,7 +13,7 @@
 //  2: Allocator capable of storing a **SINGLE** growing/shrinking allocation.
 //       Allows the allocation to be reallocated up or down within the arena.
 //       Can be used to make certain data structures stable in memory without any change.
-//       An example of this includes Array, Hash_Index, String_Builder, Path...
+//       An example of this includes Array, Hash, String_Builder, Path...
 typedef struct Arena {
     Allocator alloc[1];
 

@@ -4,8 +4,8 @@
 
 #include "profile_defs.h"
 
+#include "hash_func.h"
 #include "hash.h"
-#include "hash_index.h"
 #include "array.h"
 #include "perf.h"
 #include "log.h"
@@ -43,7 +43,7 @@ typedef Array(Profile_Zone_Stats) Profile_Zone_Stats_Array;
 typedef struct Profile_Global_Data {
 	Platform_Mutex mutex;
 	
-	Hash_Index zone_hash;
+	Hash zone_hash;
 	Profile_Zone_Array zones;
 
 	uint64_t is_init;
@@ -122,7 +122,7 @@ EXTERNAL void profile_init(Allocator* alloc)
 {
 	platform_mutex_init(&gprofile_data.mutex);
 	
-	hash_index_init(&gprofile_data.zone_hash, alloc);
+	hash_init(&gprofile_data.zone_hash, alloc);
 	array_init(&gprofile_data.zones, alloc);
 
 	gprofile_data.init_time = profile_now();
@@ -148,15 +148,11 @@ INTERNAL bool profile_id_compare(Profile_ID id1, Profile_ID id2)
 
 INTERNAL isize profile_find_zone(Profile_Global_Data* profile_data, uint64_t hash, Profile_ID zone_id)
 {
-	isize found = hash_index_find(profile_data->zone_hash, hash);
-	while(found != -1)
+    for(Hash_Found found = hash_find(profile_data->zone_hash, hash); found.index != -1; found = hash_find_next(profile_data->zone_hash, found))
 	{
-		isize index = profile_data->zone_hash.entries[found].value;
-		Profile_Zone* zone = &profile_data->zones.data[index];
+		Profile_Zone* zone = &profile_data->zones.data[found.value];
 		if(profile_id_compare(zone->id, zone_id))
-			return index;
-
-		found = hash_index_find_next(profile_data->zone_hash, hash, found);
+			return found.value;
 	}
 
 	return -1;
@@ -164,7 +160,7 @@ INTERNAL isize profile_find_zone(Profile_Global_Data* profile_data, uint64_t has
 
 INTERNAL isize profile_add_zone(Profile_Global_Data* profile_data, uint64_t hash, Profile_ID zone_id, uint64_t mean_estimate)
 {
-	hash_index_insert(&profile_data->zone_hash, hash, profile_data->zones.len);
+	hash_insert(&profile_data->zone_hash, hash, profile_data->zones.len);
 
 	Profile_Zone zone = {PROFILE_UNINIT};
 	zone.id = zone_id;

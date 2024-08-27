@@ -133,8 +133,6 @@ static void test_arena_stress(f64 time)
 	{
 		if(clock_s() - start >= time && i >= MIN_ITERS)
 			break;
-        if(i == 23)
-            LOG_HERE;
 
 		i32 action = random_discrete(&dist);
         if(levels <= 0)
@@ -172,7 +170,6 @@ static void test_arena_stress(f64 time)
         }
 
         arena_stack_test_invariants(&arena_stack);
-        int k = 0; k = k + 1;
     }
 
     random_discrete_deinit(&dist);
