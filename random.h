@@ -74,7 +74,7 @@ EXTERNAL int64_t  random_state_i64(Random_State* state);
 EXTERNAL int64_t  random_state_range(Random_State* state, int64_t from, int64_t to); 
 //Randomly shuffles the provided array
 EXTERNAL void     random_state_shuffle(Random_State* state, void* elements, int64_t element_count, int64_t element_size); 
-EXTERNAL void	    random_state_bytes(Random_State* state, void* into, int64_t size);
+EXTERNAL void	  random_state_bytes(Random_State* state, void* into, int64_t size);
 
 #endif
 

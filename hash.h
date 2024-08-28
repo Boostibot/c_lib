@@ -86,14 +86,13 @@
 
     typedef int64_t isize; //can also be usnigned if desired
     typedef struct Allocator Allocator;
-    typedef struct Allocator_Error Allocator_Error;
     
     static Allocator* allocator_get_default() 
     { 
         return NULL; 
     }
 
-    static void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
+    static void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         (void) from_allocator; (void) old_size; (void) align;
         if(new_size != 0)
@@ -121,9 +120,15 @@ typedef struct Hash_Entry {
 } Hash_Entry;
 
 typedef struct Hash_Found {
-    int32_t index;
-    int32_t probes;
+    //Index of found entry or -1 if not found
+    int32_t index;  
+    //how many probes it took to find (or not find). 
+    //This is needed for resetting the quadratic probing search!
+    int32_t probes; 
+    //The looked for hash
     uint64_t hash;
+    
+    //Value of the found entry. If not found is zero.
     union {
         uint64_t value;
         int64_t  value_i64;
@@ -131,7 +136,15 @@ typedef struct Hash_Found {
         double   value_f32;
         float    value_f64;
     };
+    //Pointer to the found entry. If not found is zero.
     Hash_Entry* entry;
+
+    //signals wether the found entry was inserted in this function.
+    //This is relevant for `hash_find_or_insert` functions which may or may not insert a value.
+    //Find functions always have this set to false.
+    //Insert functions have this set always
+    bool inserted; 
+    bool _[7];
 } Hash_Found;
 
 typedef struct Hash {
@@ -163,6 +176,8 @@ typedef struct Hash {
     int32_t info_total_extra_probes;
 } Hash;
 
+//The real primitive is probing iteration. We want the ability to specify starting index on all ops. We want insert or assign
+
 EXTERNAL void hash_init(Hash* table, Allocator* allocator); //Initalizes table to use the given allocator and the default load factor (75%) 
 EXTERNAL void hash_init_load_factor(Hash* table, Allocator* allocator, isize load_factor_percent, isize load_factor_gravestone_percent); //Initalizes table to use the given allocator and the provided load factor
 EXTERNAL void hash_deinit(Hash* table); //Deinitializes table
@@ -172,9 +187,14 @@ EXTERNAL Hash_Found hash_find(Hash table, uint64_t hash); //Finds an entry in th
 //Find next entry with the same hash starting from the index of prev_found entry.  
 //This can be used to iterate all entries matching the specifed hash in a multimap.
 EXTERNAL Hash_Found hash_find_next(Hash table, Hash_Found prev_found); 
-//Attempts to find an entry and return reference to it. If fails inserts and returns reference to a newly inserted entry.
+//Attempts to find an entry and return reference to it. If fails inserts a new entry and returns reference to it.
 //The inserted value must be valid according to hash_is_valid_value (asserts).
 EXTERNAL Hash_Found hash_find_or_insert(Hash* table, uint64_t hash, uint64_t value_if_inserted); 
+//Attempts to find next entry with the provided hash and return reference to it. If fails inserts a new entry and returns reference to it.
+//Starts where previous invocation of `hash_find(_next)` or `hash_find_or_insert(_next)` left off. This is useful for
+// implementing 'find or insert' or 'assign or insert' operations in hash tables built on top of this primitive.
+//The inserted value must be valid according to hash_is_valid_value (asserts).
+EXTERNAL Hash_Found hash_find_or_insert_next(Hash* table, Hash_Found prev_found, uint64_t value_if_inserted); 
 //Inserts an entry and returns its index. This happens even if an entry with this hash exists, thus creates a multimap.
 //The inserted value must be valid according to hash_is_valid_value (asserts).
 EXTERNAL Hash_Found hash_insert(Hash* table, uint64_t hash, uint64_t value); 
@@ -242,52 +262,65 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         #define ATTRIBUTE_INLINE_NEVER
     #endif
 
-    INTERNAL int32_t _hash_find_from(Hash table, uint64_t hash, uint64_t start_from, int32_t* probes)
-    {
-        if(table.entries_count <= 0)
-            return -1;
-            
-        ASSERT(probes && *probes >= 0);
-        ASSERT(table.len + table.gravestone_count < table.entries_count && "must not be completely full!");
-        uint64_t mod = (uint64_t) table.entries_count - 1;
-        uint64_t i = start_from & mod;
-
-        for(;;)
-        {
-            if(table.entries[i].value == HASH_EMPTY)
-                return -1;
-
-            if(table.entries[i].value != HASH_GRAVESTONE && table.entries[i].hash == hash)
-                return (int32_t) i;
-                
-            ASSERT(*probes < table.entries_count && "must not be completely full!");
-            *probes += 1; 
-            i = (i + (uint64_t) *probes) & mod;
-        }
-    }
-
-    INTERNAL int32_t _hash_find_or_insert(Hash* table, uint64_t hash, uint64_t value, bool stop_if_found, int32_t* probes) 
+    INTERNAL Hash_Found _hash_find(Hash table, uint64_t hash, uint64_t start_from, int32_t probes)
     {
         PROFILE_START();
+        Hash_Found out = {-1, probes, hash};
+        if(table.entries_count > 0)
+        {
+            ASSERT(table.len + table.gravestone_count < table.entries_count && "must not be completely full!");
+            uint64_t mod = (uint64_t) table.entries_count - 1;
+            uint64_t i = start_from & mod;
+            for(;;)
+            {
+                if(table.entries[i].value == HASH_EMPTY)
+                    break;
+
+                if(table.entries[i].value != HASH_GRAVESTONE && table.entries[i].hash == hash)
+                {
+                    out.index = (int32_t) i;
+                    out.entry = &table.entries[i];
+                    out.value = table.entries[i].value;
+                    break;
+                }
+                
+                ASSERT(out.probes < table.entries_count && "must not be completely full!");
+                out.probes += 1; 
+                i = (i + (uint64_t) out.probes) & mod;
+            }
+        }
+        PROFILE_END();
+        return out;
+    }
+    
+    INTERNAL Hash_Found _hash_find_or_insert(Hash* table, uint64_t hash, uint64_t start_from, uint64_t value, int32_t probes, bool stop_if_found) 
+    {
+        PROFILE_START();
+        
+        Hash_Found out = {-1, probes, hash};
         ASSERT(table->len + table->gravestone_count < table->entries_count && "there must be space for insertion");
         ASSERT(table->entries_count > 0);
-        ASSERT(probes && *probes >= 0);
 
         uint64_t mod = (uint64_t) table->entries_count - 1;
-        uint64_t i = hash & mod;
+        uint64_t i = start_from & mod;
         uint64_t insert_index = (uint64_t) -1;
         for(;;)
         {
             //@NOTE: While stop_if_found we need to traverse even gravestone entries to find the 
             // true entry if there is one. If not found we would then place the entry to the next slot.
             // That would however mean we would never replace any gravestones while using stop_if_found.
-            // We keep insert_index that gets set to the last gravestone. This is most of the fine also the 
+            // We keep insert_index that gets set to the last gravestone. This is most of the tine also the 
             // first and thus optimal gravestone. No matter the case we replace some gravestone which keeps
             // us from rehashing too much.
             if(stop_if_found)
             {
                 if(table->entries[i].hash == hash)
-                    return (int32_t) i;
+                {
+                    out.index = (int32_t) i;
+                    out.entry = &table->entries[i];
+                    out.value = table->entries[i].value;
+                    goto end;
+                }
                 
                 if(table->entries[i].value == HASH_GRAVESTONE)
                     insert_index = i;
@@ -301,65 +334,39 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
                     break;
             }
             
-            ASSERT(*probes < table->entries_count && "must not be completely full!");
-            *probes += 1; 
-            i = (i + (uint64_t) *probes) & mod;
+            ASSERT(out.probes < table->entries_count && "must not be completely full!");
+            out.probes += 1; 
+            i = (i + (uint64_t) out.probes) & mod;
         }
         
         if(insert_index == (uint64_t) -1)
             insert_index = i;
 
-        //If writing over a gravestone reduce the removed counter
-        if(table->entries[insert_index].value == HASH_GRAVESTONE)
-        {
-            ASSERT(table->gravestone_count > 0);
-            table->gravestone_count -= 1;
-        }
+        //If writing over a gravestone reduce the gravestone counter
+        table->gravestone_count -= table->entries[insert_index].value == HASH_GRAVESTONE;
 
-        //Clear the empty and gravestone bits so that it does not interfere with bookkeeping
+        //Push the entry
         table->entries[insert_index].value = value;
         table->entries[insert_index].hash = hash;
         table->len += 1;
-
-        //Saturating add of new_counter
-        table->info_total_extra_probes += *probes;
-        ASSERT(hash_is_invariant(*table, HASH_DEBUG));
+        table->info_total_extra_probes += out.probes;
         
-        PROFILE_END();
-        return (int32_t) insert_index;
-    }
-    
+        ASSERT(hash_is_invariant(*table, HASH_DEBUG));
 
-    EXTERNAL void hash_clear(Hash* to_table)
-    {
-        PROFILE_START();
-        //can also be memset to byte pattern that has HASH_EMPTY.
-        for(int32_t i = 0; i < to_table->entries_count; i++)
-        {
-            to_table->entries[i].hash = 0;
-            to_table->entries[i].value = HASH_EMPTY;
-        }
-
-        to_table->info_total_extra_probes = 0;
-        to_table->gravestone_count = 0;
-        to_table->len = 0;
+        out.inserted = true;
+        out.index = (int32_t) insert_index;
+        out.value = value;
+        out.entry = &table->entries[insert_index];
+        
+        end:
         PROFILE_END();
+        return out;
     }
+
     
     INTERNAL bool _hash_needs_rehash(isize current_size, isize to_size, isize load_factor)
     {
         return to_size * 100 >= current_size * load_factor;
-    }
-    
-    INTERNAL Hash_Found _hash_found_from_index(Hash table, int32_t found, int32_t probes)
-    {
-        Hash_Found out = {0};
-        out.index = found;
-        out.probes = probes;
-        out.entry = found != -1 ? &table.entries[found] : NULL;
-        out.hash  = found != -1 ? table.entries[found].hash  : 0;
-        out.value = found != -1 ? table.entries[found].value : 0;
-        return out;
     }
 
     INTERNAL void _hash_init_if_not_init(Hash* table, Allocator* allocator, isize load_factor_percent, isize load_factor_gravestone_percent)
@@ -378,6 +385,19 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         else
             table->load_factor_gravestone = (int8_t) load_factor_percent;
     }
+    
+    EXTERNAL void hash_deinit(Hash* table)
+    {
+        PROFILE_START();
+        ASSERT(hash_is_invariant(*table, HASH_DEBUG));
+        if(table->allocator != NULL)
+            allocator_reallocate(table->allocator, 0, table->entries, table->entries_count * (isize) sizeof *table->entries, sizeof(Hash_Entry));
+        
+        Hash null = {0};
+        *table = null;
+        PROFILE_END();
+    }
+
     EXTERNAL void hash_init_load_factor(Hash* table, Allocator* allocator, isize load_factor_percent, isize load_factor_gravestone_percent)
     {
         hash_deinit(table);
@@ -420,10 +440,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         {
             Hash_Entry entry = from_table.entries[i];
             if(hash_is_entry_used(entry))
-            {
-                int32_t probes = 0;
-                _hash_find_or_insert(to_table, entry.hash, entry.value, false, &probes);
-            }
+                _hash_find_or_insert(to_table, entry.hash, entry.hash, entry.value, 0, false);
         }
 
         to_table->info_rehash_count += 1;
@@ -432,6 +449,21 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         PROFILE_END();
     }
     
+    EXTERNAL void hash_clear(Hash* to_table)
+    {
+        PROFILE_START();
+        for(int32_t i = 0; i < to_table->entries_count; i++)
+        {
+            to_table->entries[i].hash = 0;
+            to_table->entries[i].value = HASH_EMPTY;
+        }
+
+        to_table->info_total_extra_probes = 0;
+        to_table->gravestone_count = 0;
+        to_table->len = 0;
+        PROFILE_END();
+    }
+
     EXTERNAL bool hash_is_invariant(Hash table, bool slow_check)
     {
         bool is_invariant = false;
@@ -461,7 +493,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
                     Hash_Entry entry = table.entries[i];
                     if(hash_is_entry_used(entry))
                     {
-                        TESTI(hash_find(table, entry.hash).index != (isize) -1);
+                        TESTI(_hash_find(table, entry.hash, entry.hash, 0).index != (isize) -1);
                         used_count += 1;
                     }
 
@@ -483,34 +515,15 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
     
     EXTERNAL Hash_Found hash_find(Hash table, uint64_t hash)
     {
-        PROFILE_START();
-        int32_t probes = 0;
-        int32_t found = _hash_find_from(table, hash, hash, &probes);
-        PROFILE_END();
-        return _hash_found_from_index(table, found, probes);
+        return _hash_find(table, hash, hash, 0);
     }
     
     EXTERNAL Hash_Found hash_find_next(Hash table, Hash_Found prev_found)
     {
-        PROFILE_START();
         ASSERT(0 <= prev_found.index && prev_found.index < table.entries_count);
-        int32_t probes = prev_found.probes + 1;
-        int32_t found = _hash_find_from(table, prev_found.hash, (uint64_t) prev_found.index + probes, &probes);
-        PROFILE_END();
-        return _hash_found_from_index(table, found, probes);
+        return _hash_find(table, prev_found.hash, (uint64_t) prev_found.index + (uint64_t) prev_found.probes + 1, prev_found.probes + 1);
     }
     
-    EXTERNAL void hash_deinit(Hash* table)
-    {
-        PROFILE_START();
-        ASSERT(hash_is_invariant(*table, HASH_DEBUG));
-        if(table->allocator != NULL)
-            allocator_reallocate(table->allocator, 0, table->entries, table->entries_count * (isize) sizeof *table->entries, sizeof(Hash_Entry));
-        
-        Hash null = {0};
-        *table = null;
-        PROFILE_END();
-    }
 
     EXTERNAL void hash_copy(Hash* to_table, Hash from_table)
     {
@@ -590,22 +603,26 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
             _hash_grow(table, to_size);
     }
     
+    EXTERNAL Hash_Found hash_find_or_insert_next(Hash* table, Hash_Found prev_found, uint64_t value_if_inserted)
+    {
+        ASSERT(hash_is_valid_value(value_if_inserted));
+        ASSERT(0 <= prev_found.index && prev_found.index < table->entries_count);
+        hash_reserve(table, table->len + 1);
+        return _hash_find_or_insert(table, prev_found.hash, (uint64_t) prev_found.index + (uint64_t) prev_found.probes + 1, value_if_inserted, prev_found.probes + 1, true);
+    }
+
     EXTERNAL Hash_Found hash_find_or_insert(Hash* table, uint64_t hash, uint64_t value_if_inserted)
     {
         ASSERT(hash_is_valid_value(value_if_inserted));
         hash_reserve(table, table->len + 1);
-        int32_t probes = 0;
-        int32_t found = _hash_find_or_insert(table, hash, value_if_inserted, true, &probes);
-        return _hash_found_from_index(*table, found, probes);
+        return _hash_find_or_insert(table, hash, hash, value_if_inserted, 0, true);
     }
     
     EXTERNAL Hash_Found hash_insert(Hash* table, uint64_t hash, uint64_t value)
     {
         ASSERT(hash_is_valid_value(value));
         hash_reserve(table, table->len + 1);
-        int32_t probes = 0;
-        int32_t found = _hash_find_or_insert(table, hash, value, false, &probes);
-        return _hash_found_from_index(*table, found, probes);
+        return _hash_find_or_insert(table, hash, hash, value, 0, false);
     }
 
     EXTERNAL Hash_Entry hash_remove_found(Hash* table, isize found)

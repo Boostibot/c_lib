@@ -3,7 +3,7 @@
 #include "_test.h"
 #include "vformat.h"
 
-static void test_memset_pattern()
+static void test_memtile()
 {
     typedef struct  {
         const char* pattern;
@@ -34,13 +34,49 @@ static void test_memset_pattern()
         memset(field, 0, sizeof field);
         memset(expected, 0, sizeof expected);
 
-        memset_pattern(field, test_case.field_size, test_case.pattern, pattern_len);
+        memtile(field, test_case.field_size, test_case.pattern, pattern_len);
 
         memcpy(expected, test_case.expected, strlen(test_case.expected));
         TEST(memcmp(field, expected, sizeof field) == 0);
     }
 }
 
+const void* memcheck_trivial(const void* ptr, uint8_t byte, isize size)
+{
+    uint8_t* curr = (uint8_t*) ptr;
+    for(isize i = 0; i < size; i++)
+        if(curr[i] != byte)
+            return &curr[i];
+
+    return NULL;
+}
+
+static void test_memcheck_single(const char* str, char byte)
+{
+    const char* trivial = (const char*) memcheck_trivial(str, (uint8_t) byte, strlen(str));
+    const char* actual = (const char*) memcheck(str, (uint8_t) byte, strlen(str));
+
+    TEST(trivial == actual);
+}
+
+static void test_memcheck()
+{
+    test_memcheck_single("", 'a');
+    test_memcheck_single("b", 'a');
+    test_memcheck_single("a", 'a');
+    test_memcheck_single("ab", 'a');
+    test_memcheck_single("aaaaaaaaa", 'a');
+    test_memcheck_single("aaaaaaaaab", 'a');
+    test_memcheck_single("aaaaaaaaaaaaaaa", 'a');
+    test_memcheck_single("aaaaaaaaaaaaaaa", 'a');
+    test_memcheck_single("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 'a');
+    test_memcheck_single("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab", 'a');
+    test_memcheck_single("aaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab", 'a');
+    test_memcheck_single("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaabaaaaaaaaaaaabaaaa", 'a');
+    test_memcheck_single("baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaabaaaaaaaaaaaabaaaa", 'a');
+    test_memcheck_single("baaaaaaaabbbbbbaaaaaaaaabbbbbaaaaaaaaaaabaaaabaaaaaaaaaaaabaaaa", 'a');
+    test_memcheck_single("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 'a');
+}
 
 static void test_string_find_single(const char* in_string_c, const char* search_for_c)
 {
@@ -71,7 +107,8 @@ static void test_string_find()
 
 static void test_string(f64 time)
 {
+    test_memcheck();
     test_string_find();
-    test_memset_pattern();
+    test_memtile();
     (void) time;
 }

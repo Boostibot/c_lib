@@ -85,9 +85,13 @@ EXTERNAL String_Builder string_replace(Allocator* allocator, String source, Stri
 //The first occurance of pattern is placed at the very start of field and subsequent repetitions follow. 
 //If the field_size % pattern_size != 0 the last repetition of pattern is trimmed.
 //If pattern_size == 0 field is filled with zeros instead.
-EXTERNAL void memset_pattern(void *field, isize field_size, const void* pattern, isize pattern_size);
-//Behaves like memcmp(ptr, [infinite array of `byte`], size)
-EXTERNAL int  memcmp_byte(const void* ptr, int byte, isize size);
+EXTERNAL void memtile(void *field, isize field_size, const void* pattern, isize pattern_size);
+//Returns the address of the first byte in array pointed to by ptr not equal to value. 
+//If all bytes are equal to byte returns NULL. Essentially acts as the opposite of memchr.
+EXTERNAL const void* memcheck(const void* ptr, uint8_t value, isize size);
+//Swaps the contents of the memory blocks a and b
+EXTERNAL void memswap(void* a, void* b, isize size);
+
 
 EXTERNAL bool char_is_space(char c);
 EXTERNAL bool char_is_digit(char c);
@@ -232,8 +236,9 @@ EXTERNAL bool char_is_id(char c);
         return ptr ? (isize) (ptr - string.data) : -1; 
     }
     
-    EXTERNAL void memset_pattern(void *field, isize field_size, const void* pattern, isize pattern_size)
+    EXTERNAL void memtile(void *field, isize field_size, const void* pattern, isize pattern_size)
     {
+	    ASSERT(field_size >= 0 && pattern_size >= 0);
         if (field_size <= pattern_size)
             memcpy(field, pattern, (size_t) field_size);
         else if(pattern_size == 0)
@@ -258,27 +263,68 @@ EXTERNAL bool char_is_id(char c);
         }
     }
     
-    EXTERNAL int memcmp_byte(const void* ptr, int byte, isize size)
+    EXTERNAL const void* memcheck(const void* ptr, uint8_t byte, isize size)
     {
-        isize i = 0;
-        char* text = (char*) ptr;
+	    ASSERT(size >= 0);
 
-        if((isize) ptr % 8 == 0)
+        //pattern is 8 repeats of byte
+        uint64_t pattern = (uint64_t) 0x0101010101010101ULL * (uint64_t) byte;
+        uint8_t* curr = (uint8_t*) ptr;
+        uint8_t* end = curr + size;
+
+        while(end - curr >= 32)
         {
-            //pattern is 8 repeats of byte
-            u64 pattern = (u64) 0x0101010101010101ULL * (u64) byte;
-            for(isize k = 0; k < size/8; k++)
-                if(*(u64*) ptr != pattern)
-                    return (int) (k*8);
-        
-            i = size/8*8;
+            uint64_t copied[4] = {0};
+            memcpy(copied, curr, 32);
+            if(copied[0] != pattern
+                || copied[1] != pattern
+                || copied[2] != pattern
+                || copied[3] != pattern) 
+                break;
+            curr += 32;
         }
 
-        for(; i < size; i++)
-            if(text[i] != (char) byte)
-                return (int) i;
+        while(end - curr >= 8)
+        {
+            uint64_t copied = {0};
+            memcpy(&copied, curr, 8);
+            if(copied != pattern)
+                break; 
+            curr += 8;
+        }
         
-        return 0;
+        for(; end != curr; curr ++)
+        {
+            if(*curr != byte)
+                return curr;
+        }
+
+        return NULL;
+    }
+    
+    EXTERNAL void memswap(void* a, void* b, isize size)
+    {
+	    ASSERT(size >= 0);
+	    enum {LOCAL = 32};
+	    char temp[LOCAL] = {0};
+	
+	    size_t repeats = (size_t) size / LOCAL;
+	    size_t remainder = (size_t) size % LOCAL;
+	    size_t exact = (size_t) size - remainder;
+
+	    char* ac = (char*) a;
+	    char* bc = (char*) b;
+
+	    for(size_t k = 0; k < repeats; k ++)
+	    {
+		    memcpy(temp,         ac + k*LOCAL, LOCAL);
+		    memcpy(ac + k*LOCAL, bc + k*LOCAL, LOCAL);
+		    memcpy(bc + k*LOCAL, temp,             LOCAL);
+	    }
+			
+	    memcpy(temp,         ac + exact, remainder);
+	    memcpy(ac + exact,   bc + exact, remainder);
+	    memcpy(bc + exact,   temp,       remainder);
     }
 
     EXTERNAL isize string_find_last_char_from(String string, char search_for, isize from)
