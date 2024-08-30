@@ -5,9 +5,9 @@
 #include <stddef.h>
 #include <assert.h>
 #include <stdbool.h>
+#include <string.h>
 
 typedef int64_t    isize;
-typedef uint64_t   usize;
 
 typedef uint8_t     u8;
 typedef uint16_t    u16;
@@ -44,13 +44,14 @@ typedef unsigned long long llu;
 #define GB   (1LL << 30)
 #define TB   (1LL << 40)
 
-//@TODO remove
-#define SWAP(a_ptr, b_ptr, Type) \
-    do { \
-         Type temp = *(a_ptr); \
-         *(a_ptr) = *(b_ptr); \
-         *(b_ptr) = temp; \
-    } while(0) \
+#define SWAP_N(a, b, N) do { \
+    char temp[N]; \
+    memcpy(temp, a, N); \
+    memcpy(a, b, N); \
+    memcpy(b, temp, N); \
+} while(0) \
+
+#define SWAP(a, b) SWAP_N((a), (b), sizeof *(a))
 
 #ifdef __cplusplus
     #define BINIT(Struct_Type) Struct_Type

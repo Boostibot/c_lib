@@ -3,6 +3,7 @@
 #define JOT_profile
 
 #include "profile_defs.h"
+#include "allocator.h"
 
 #include "hash_func.h"
 #include "hash.h"

@@ -302,7 +302,7 @@ EXTERNAL bool char_is_id(char c);
         return NULL;
     }
     
-    EXTERNAL void memswap(void* a, void* b, isize size)
+    EXTERNAL void memswap_old(void* a, void* b, isize size)
     {
 	    ASSERT(size >= 0);
 	    enum {LOCAL = 32};
@@ -319,12 +319,65 @@ EXTERNAL bool char_is_id(char c);
 	    {
 		    memcpy(temp,         ac + k*LOCAL, LOCAL);
 		    memcpy(ac + k*LOCAL, bc + k*LOCAL, LOCAL);
-		    memcpy(bc + k*LOCAL, temp,             LOCAL);
+		    memcpy(bc + k*LOCAL, temp,         LOCAL);
 	    }
 			
 	    memcpy(temp,         ac + exact, remainder);
 	    memcpy(ac + exact,   bc + exact, remainder);
 	    memcpy(bc + exact,   temp,       remainder);
+    }
+
+    EXTERNAL void memswap_generic(void* a, void* b, isize size)
+    {
+	    ASSERT(size >= 0);
+        enum {LOCAL = 8};
+        char temp[LOCAL] = {0};
+
+        char* ac = (char*) a;
+        char* bc = (char*) b;
+    
+        size_t repeats = (size_t) size / LOCAL;
+        size_t remainder = (size_t) size % LOCAL;
+        for(size_t k = 0; k < repeats; k ++)
+        {
+	        memcpy(temp,         ac + k*LOCAL, LOCAL);
+	        memcpy(ac + k*LOCAL, bc + k*LOCAL, LOCAL);
+	        memcpy(bc + k*LOCAL, temp,         LOCAL);
+        }
+
+        ac += repeats*LOCAL;
+        bc += repeats*LOCAL;
+        for(size_t i = 0; i < remainder; i++)
+        {
+            char t = ac[i];
+            ac[i] = bc[i];
+            bc[i] = t;         
+        }
+    }
+
+    EXTERNAL void memswap(void* a, void* b, isize size)
+    {
+        char temp[32] = {0};
+        switch(size) {
+            #define SWAP_X(N) \
+                case N: { \
+                    memcpy(temp, a, N); \
+                    memcpy(a, b, N); \
+                    memcpy(b, temp, N); \
+                } break;
+
+            SWAP_X(4)
+            SWAP_X(8)
+            SWAP_X(12)
+            SWAP_X(16)
+            SWAP_X(20)
+            SWAP_X(24)
+            SWAP_X(28)
+            SWAP_X(32)
+            #undef SWAP_X
+
+            default: memswap_generic(a, b, size); break;
+        }
     }
 
     EXTERNAL isize string_find_last_char_from(String string, char search_for, isize from)

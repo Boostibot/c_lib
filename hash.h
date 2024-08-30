@@ -112,41 +112,17 @@ typedef struct Hash_Entry {
     uint64_t hash;
     union {
         uint64_t value;
+        uint64_t value_u64;
+        uint32_t value_u32;
         int64_t  value_i64;
-        void*    value_ptr;
+        int32_t  value_i32;
         double   value_f32;
         float    value_f64;
+        void*    value_ptr;
     };
 } Hash_Entry;
 
-typedef struct Hash_Found {
-    //Index of found entry or -1 if not found
-    int32_t index;  
-    //how many probes it took to find (or not find). 
-    //This is needed for resetting the quadratic probing search!
-    int32_t probes; 
-    //The looked for hash
-    uint64_t hash;
-    
-    //Value of the found entry. If not found is zero.
-    union {
-        uint64_t value;
-        int64_t  value_i64;
-        void*    value_ptr;
-        double   value_f32;
-        float    value_f64;
-    };
-    //Pointer to the found entry. If not found is zero.
-    Hash_Entry* entry;
-
-    //signals wether the found entry was inserted in this function.
-    //This is relevant for `hash_find_or_insert` functions which may or may not insert a value.
-    //Find functions always have this set to false.
-    //Insert functions have this set always
-    bool inserted; 
-    bool _[7];
-} Hash_Found;
-
+//Growing hash table like primitive mapping 64 bit keys to 64 bit values
 typedef struct Hash {
     Allocator* allocator;                
     Hash_Entry* entries;                          
@@ -176,6 +152,38 @@ typedef struct Hash {
     int32_t info_total_extra_probes;
 } Hash;
 
+//A reference to a found or not found Hash entry
+typedef struct Hash_Found {
+    //Index of found entry or -1 if not found
+    int32_t index;  
+    //how many probes it took to find (or not find). 
+    //This is needed for resetting the quadratic probing search!
+    int32_t probes; 
+    //The looked for hash
+    uint64_t hash;
+    
+    //Value of the found entry. If not found is zero.
+    union {
+        uint64_t value;
+        uint64_t value_u64;
+        uint32_t value_u32;
+        int64_t  value_i64;
+        int32_t  value_i32;
+        double   value_f32;
+        float    value_f64;
+        void*    value_ptr;
+    };
+    //Pointer to the found entry. If not found is zero.
+    Hash_Entry* entry;
+
+    //signals wether the found entry was inserted in this function.
+    //This is relevant for `hash_find_or_insert` functions which may or may not insert a value.
+    //Find functions always have this set to false.
+    //Insert functions have this set always
+    bool inserted; 
+    bool _[7];
+} Hash_Found;
+
 //The real primitive is probing iteration. We want the ability to specify starting index on all ops. We want insert or assign
 
 EXTERNAL void hash_init(Hash* table, Allocator* allocator); //Initalizes table to use the given allocator and the default load factor (75%) 
@@ -185,7 +193,7 @@ EXTERNAL void hash_copy(Hash* to_table, Hash from_table); //Clears to_table then
 EXTERNAL void hash_clear(Hash* to_table); //Clears the entire hash index without reallocating.
 EXTERNAL Hash_Found hash_find(Hash table, uint64_t hash); //Finds an entry in the hash index and returns its index. If no such hash is present returns -1.
 //Find next entry with the same hash starting from the index of prev_found entry.  
-//This can be used to iterate all entries matching the specifed hash in a multimap.
+//This can be used to iterate all entries matching the specifed hash in a multihash.
 EXTERNAL Hash_Found hash_find_next(Hash table, Hash_Found prev_found); 
 //Attempts to find an entry and return reference to it. If fails inserts a new entry and returns reference to it.
 //The inserted value must be valid according to hash_is_valid_value (asserts).
@@ -195,7 +203,7 @@ EXTERNAL Hash_Found hash_find_or_insert(Hash* table, uint64_t hash, uint64_t val
 // implementing 'find or insert' or 'assign or insert' operations in hash tables built on top of this primitive.
 //The inserted value must be valid according to hash_is_valid_value (asserts).
 EXTERNAL Hash_Found hash_find_or_insert_next(Hash* table, Hash_Found prev_found, uint64_t value_if_inserted); 
-//Inserts an entry and returns its index. This happens even if an entry with this hash exists, thus creates a multimap.
+//Inserts an entry and returns its index. This happens even if an entry with this hash exists, thus creates a multihash.
 //The inserted value must be valid according to hash_is_valid_value (asserts).
 EXTERNAL Hash_Found hash_insert(Hash* table, uint64_t hash, uint64_t value); 
 //rehashes to the nearest power of two size greater then the size specified and size required to store all entries. Possibly moves the backing memory to a new location.

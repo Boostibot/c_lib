@@ -62,6 +62,9 @@ EXTERNAL Perf_Stats	perf_get_stats(Perf_Counter counter, int64_t batch_size);
 EXTERNAL Perf_Counter perf_counter_merge(Perf_Counter a, Perf_Counter b, bool* could_combine_everything_or_null);
 EXTERNAL Perf_Counter	perf_counter_init(int64_t mean_estimate);
 
+//Prevents the compiler from otpimizing away the variable (and thus its value) pointed to by ptr.
+void perf_do_not_optimize(const void* ptr);
+
 //Maintains a benchmark. See example below for how to use this.
 EXTERNAL bool perf_benchmark(Perf_Benchmark* bench, double time);
 
@@ -139,8 +142,8 @@ static void perf_benchmark_example()
 		int64_t offset_delta = delta - counter->mean_estimate;
 		counter->counter += delta;
 		counter->sum_of_squared_offset_counters += offset_delta*offset_delta;
-		counter->min_counter = MIN(counter->min_counter, delta);
-		counter->max_counter = MAX(counter->max_counter, delta);
+		counter->min_counter = delta < counter->min_counter ? delta : counter->min_counter;
+		counter->max_counter = delta > counter->max_counter ? delta : counter->max_counter;
 		counter->runs += 1; 
 		return counter->runs - 1;
 	}
@@ -339,4 +342,24 @@ static void perf_benchmark_example()
 			perf_submit(&bench->counter, measurement);
 	}
 
+	void perf_do_not_optimize(const void* ptr) 
+	{ 
+		#if defined(__GNUC__) || defined(__clang__)
+			__asm__ __volatile__("" : "+r"(ptr))
+		#else
+			static volatile int __perf_always_zero = 0;
+			if(__perf_always_zero != 0)
+			{
+				volatile int* vol_ptr = (volatile int*) (void*) ptr;
+				//If we would use the following line the compiler could infer that 
+				//we are only really modifying the value at ptr. Thus if we did 
+				// perf_do_not_optimize(long_array) it would gurantee no optimize only at the first element.
+				//The precise version is also not very predictable. Often the compilers decide to only keep the first element
+				// of the array no metter which one we actually request not to optimize. 
+				//
+				// __perf_always_zero = *vol_ptr;
+				__perf_always_zero = vol_ptr[*vol_ptr];
+			}
+		#endif
+	}
 #endif

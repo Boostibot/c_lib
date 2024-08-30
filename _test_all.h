@@ -21,7 +21,9 @@
 #include "_test_stable_array.h"
 #include "_test_lpf.h"
 #include "_test_image.h"
+#include "_test_string_hash.h"
 #include "perf.h"
+#include "sort.h"
 
 #include "profile.h"
 INTERNAL void test_all(f64 total_time)
@@ -32,14 +34,7 @@ INTERNAL void test_all(f64 total_time)
 
     #define INCR total_count += 1, passed_count += (int)
     
-    INCR RUN_TEST_TIMED(test_hash, total_time/7);
-    INCR RUN_TEST_TIMED(test_arena, total_time/7);
-    INCR RUN_TEST_TIMED(test_array, total_time/7);
-    INCR RUN_TEST_TIMED(test_math, total_time/7);
-    INCR RUN_TEST_TIMED(test_string, total_time/7);
-    INCR RUN_TEST_TIMED(test_allocator_tlsf, total_time/7);
-    INCR RUN_TEST_TIMED(slz4_test, total_time/7);
-
+    INCR RUN_TEST(test_string_hash);
     INCR RUN_TEST(platform_test_all);
     INCR RUN_TEST(test_list);
     INCR RUN_TEST(test_image);
@@ -48,7 +43,15 @@ INTERNAL void test_all(f64 total_time)
     INCR RUN_TEST(test_log);
     //INCR RUN_TEST(test_random);
     INCR RUN_TEST(test_path);
-    
+
+    INCR RUN_TEST_TIMED(test_sort, total_time/8);
+    INCR RUN_TEST_TIMED(test_hash, total_time/8);
+    INCR RUN_TEST_TIMED(test_arena, total_time/8);
+    INCR RUN_TEST_TIMED(test_array, total_time/8);
+    INCR RUN_TEST_TIMED(test_math, total_time/8);
+    INCR RUN_TEST_TIMED(test_string, total_time/8);
+    INCR RUN_TEST_TIMED(test_allocator_tlsf, total_time/8);
+    INCR RUN_TEST_TIMED(slz4_test, total_time/8);
     
     #undef INCR
 

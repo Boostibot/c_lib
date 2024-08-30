@@ -23,11 +23,13 @@ EXTERNAL bool hash_string_is_equal_approx(Hash_String a, Hash_String b);  //Comp
 
 //Makes a hashed string out of string literal, with optimizations evaluating the hash at compile time (except on GCC). Fails for anything but string literals
 #define HSTRING(string_literal) BINIT(Hash_String){string_literal "", sizeof(string_literal) - 1, hash64_fnv_inline(string_literal, sizeof(string_literal) - 1)}
+#define HSTRING_FMT "[%08llx]:'%.*s'" 
+#define HSTRING_PRINT(hstring) (hstring).hash, (int) (hstring).len, (hstring).data
 
 //@NOTE: We use fnv because of its extreme simplicity making it very likely to be inlined
 //       and thus for static strings be evaluated at compile time. Truly, both MSVC and 
 //       CLANG evaluate it at compile time. GCC does not.
-ATTRIBUTE_INLINE_ALWAYS static uint64_t _hash64_fnv_inline(const char* data, isize size)
+ATTRIBUTE_INLINE_ALWAYS static uint64_t hash64_fnv_inline(const char* data, isize size)
 {
     uint64_t hash = 0;
     for(int64_t i = 0; i < size; i++)
@@ -55,7 +57,7 @@ EXTERNAL Hash_String hash_string_from_cstring(const char* cstr)
 
 EXTERNAL u64 hash_string(String string)
 {
-    return _hash64_fnv_inline(string.data, string.len);
+    return hash64_fnv_inline(string.data, string.len);
 }
 
 EXTERNAL bool hash_string_is_equal(Hash_String a, Hash_String b)

@@ -43,6 +43,7 @@
     }
     static void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
+        (void) from_allocator; (void) old_size; (void) align;
         if(new_size != 0)
             return realloc(old_ptr, new_size);
         else

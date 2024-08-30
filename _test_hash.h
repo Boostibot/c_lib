@@ -148,8 +148,8 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 						for(isize j = 0; j < truth_key_array.len; j++)
 							if(truth_key_array.data[j] == removed_key)
 							{
-								SWAP(&truth_key_array.data[j], array_last(truth_key_array), u64);
-								SWAP(&truth_val_array.data[j], array_last(truth_val_array), u64);
+								SWAP(&truth_key_array.data[j], array_last(truth_key_array));
+								SWAP(&truth_val_array.data[j], array_last(truth_val_array));
 								array_pop(&truth_key_array);
 								array_pop(&truth_val_array);
 								j -= 1;

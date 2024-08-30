@@ -226,7 +226,7 @@ void platform_thread_detach(Platform_Thread thread)
 Platform_Error platform_mutex_init(Platform_Mutex* mutex)
 {
     platform_mutex_deinit(mutex);
-    CRITICAL_SECTION* section = calloc(1, sizeof *section);
+    CRITICAL_SECTION* section = (CRITICAL_SECTION*) calloc(1, sizeof *section);
     if(section != 0)
         InitializeCriticalSection(section);
 
@@ -1749,7 +1749,7 @@ static void _platform_stack_trace_deinit()
     DeleteCriticalSection(&stack_trace_state.lock);
 }
 
-void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void** stack, int64_t stack_size)
+void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, void const * const * stack, int64_t stack_size)
 {
     if(stack_size == 0)
         return;

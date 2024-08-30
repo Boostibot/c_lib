@@ -921,15 +921,10 @@ const char* platform_exception_to_string(Platform_Exception error);
 
 
 
-
-
-
-
 // ====================================================================================
 //                               UNIT TESTS 
 // ====================================================================================
 
-#define JOT_ALL_TEST
 #if (defined(JOT_ALL_TEST) || defined(JOT_PLATFORM_TEST)) && !defined(JOT_PLATFORM_HAS_TEST)
 #define JOT_PLATFORM_HAS_TEST
 

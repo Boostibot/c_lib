@@ -24,6 +24,7 @@
 #include "assert.h"
 #include "platform.h"
 #include "profile_defs.h"
+#include <stdarg.h>
 
 typedef struct Allocator        Allocator;
 typedef struct Allocator_Stats  Allocator_Stats;
@@ -93,6 +94,7 @@ typedef struct Allocator_Set {
 	bool _[6];
 } Allocator_Set;
 
+
 #define DEF_ALIGN PLATFORM_MAX_ALIGN
 #define SIMD_ALIGN PLATFORM_SIMD_ALIGN
 
@@ -124,6 +126,7 @@ EXTERNAL void allocator_error(Allocator_Error* error_or_null, Allocator_Error_Ty
 EXTERNAL Allocator* allocator_get_default(); //returns the default allocator used for returning values from a function
 EXTERNAL Allocator* allocator_get_static(); //returns the static allocator used for allocations with potentially unbound lifetime. This includes things that will never be deallocated.
 EXTERNAL Allocator* allocator_or_default(Allocator* allocator_or_null); //Returns the passed in allocator_or_null. If allocator_or_null is NULL returns the current set default allocator
+EXTERNAL Allocator* allocator_get_malloc(); //returns the global malloc allocator. This is the default allocator.
 
 EXTERNAL bool allocator_is_arena_frame(Allocator* allocator);
 
@@ -154,12 +157,7 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_IMPL)) && !defined(JOT_ALLOCATOR_HAS_IMPL)
 #define JOT_ALLOCATOR_HAS_IMPL
 
-    typedef struct Global_Allocator_State {
-        Allocator* default_allocator;
-        Allocator* static_allocator;
-    } Global_Allocator_State;
     
-    INTERNAL ATTRIBUTE_THREAD_LOCAL Global_Allocator_State _allocator_state = {0};
 
     EXTERNAL void* arena_frame_allocator_func(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
 
@@ -235,6 +233,106 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
         return allocator->func == arena_frame_allocator_func;
     }
     
+    EXTERNAL bool is_power_of_two_or_zero(isize num) 
+    {
+        uint64_t n = (uint64_t) num;
+        return ((n & (n-1)) == 0);
+    }
+
+    EXTERNAL bool is_power_of_two(isize num) 
+    {
+        return (num>0 && is_power_of_two_or_zero(num));
+    }
+
+    EXTERNAL void* align_forward(void* ptr, isize align_to)
+    {
+        ASSERT(is_power_of_two(align_to));
+
+        //this is a little cryptic but according to the internet should be the fastest way of doing this
+        // my benchmarks support this. 
+        //(its about 50% faster than using div_round_up would be - even if we supply log2 alignment and bitshifts)
+        isize mask = align_to - 1;
+        isize ptr_num = (isize) ptr;
+        ptr_num += (-ptr_num) & mask;
+
+        return (void*) ptr_num;
+    }
+
+    EXTERNAL void* align_backward(void* ptr, isize align_to)
+    {
+        ASSERT(is_power_of_two(align_to));
+
+        uintptr_t mask = ~((uintptr_t) align_to - 1);
+        uintptr_t ptr_num = (uintptr_t) ptr;
+        ptr_num = ptr_num & mask;
+
+        return (void*) ptr_num;
+    }
+
+    
+    INTERNAL void* _malloc_allocator_func(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error_or_null)
+    {
+        (void) alloc; (void) old_size; (void) align; (void) error_or_null;
+        //return platform_heap_reallocate(new_size, old_ptr, align);
+
+        if(align <= 16)
+        {
+            if(new_size != 0)
+                return realloc(old_ptr, new_size);
+            
+            free(old_ptr);
+            return NULL;
+        }
+        //There does not exist anything like aligned_realloc so we have to make one ourselves
+        // and while we are making one why use C11 aligned_alloc anyway? Might as well go all the way...
+        else
+        {
+            u8* new_ptr = NULL;
+            if(new_size > 0)
+            {
+                u8* alloced_new_ptr = (u8*) malloc(new_size + align + sizeof(u32));
+                new_ptr = (u8*) align_forward(alloced_new_ptr + sizeof(u32), align);
+                u32* offset = (u32*) new_ptr - 1;
+                *offset = (u32) (new_ptr - alloced_new_ptr);
+
+                if(old_size > 0)
+                    memcpy(new_ptr, old_ptr, new_size < old_size ? new_size : old_size);
+            }
+
+            if(old_size > 0)
+            {
+                u32* offset = (u32*) old_ptr - 1;
+                u8* alloced_old_ptr = (u8*) old_ptr - *offset;
+                free(alloced_old_ptr);
+            }
+
+            return new_ptr;
+        }
+    }
+    INTERNAL Allocator_Stats _malloc_allocator_get_stats(Allocator* alloc)
+    {
+        (void) alloc;
+        Allocator_Stats stats = {0};
+        stats.is_top_level = true;
+        stats.is_growing = true;
+        stats.is_capable_of_resize = true;
+        stats.type_name = "malloc";
+        return stats;
+    }
+
+    Allocator _malloc_alloc = {_malloc_allocator_func, _malloc_allocator_get_stats};
+    EXTERNAL Allocator* allocator_get_malloc()
+    {
+        return &_malloc_alloc;
+    }
+
+    typedef struct Global_Allocator_State {
+        Allocator* default_allocator;
+        Allocator* static_allocator;
+    } Global_Allocator_State;
+    
+    INTERNAL ATTRIBUTE_THREAD_LOCAL Global_Allocator_State _allocator_state = {&_malloc_alloc, &_malloc_alloc};
+    
     EXTERNAL Allocator* allocator_get_default()
     {
         return _allocator_state.default_allocator;
@@ -286,41 +384,4 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
 
         return prev;
     }
-    
-    EXTERNAL bool is_power_of_two_or_zero(isize num) 
-    {
-        usize n = (usize) num;
-        return ((n & (n-1)) == 0);
-    }
-
-    EXTERNAL bool is_power_of_two(isize num) 
-    {
-        return (num>0 && is_power_of_two_or_zero(num));
-    }
-
-    EXTERNAL void* align_forward(void* ptr, isize align_to)
-    {
-        ASSERT(is_power_of_two(align_to));
-
-        //this is a little cryptic but according to the internet should be the fastest way of doing this
-        // my benchmarks support this. 
-        //(its about 50% faster than using div_round_up would be - even if we supply log2 alignment and bitshifts)
-        isize mask = align_to - 1;
-        isize ptr_num = (isize) ptr;
-        ptr_num += (-ptr_num) & mask;
-
-        return (void*) ptr_num;
-    }
-
-    EXTERNAL void* align_backward(void* ptr, isize align_to)
-    {
-        ASSERT(is_power_of_two(align_to));
-
-        usize mask = ~((usize) align_to - 1);
-        usize ptr_num = (usize) ptr;
-        ptr_num = ptr_num & mask;
-
-        return (void*) ptr_num;
-    }
-    
 #endif

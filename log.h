@@ -78,10 +78,10 @@ typedef struct String_Buffer_64 {
     char data[64];
 } String_Buffer_64;
 
-String_Buffer_16 format_ptr(void* ptr); //returns "0x00000ff76344ae64"
-String_Buffer_16 format_bytes(int64_t bytes, int width); //returns "39B" "64KB", "10.3MB", "5.3GB", "7.531TB" etc.
-String_Buffer_16 format_seconds(double seconds, int width); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
-String_Buffer_16 format_nanoseconds(int64_t ns, int width); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
+EXTERNAL String_Buffer_16 format_ptr(void* ptr); //returns "0x00000ff76344ae64"
+EXTERNAL String_Buffer_16 format_bytes(int64_t bytes, int width); //returns "39B" "64KB", "10.3MB", "5.3GB", "7.531TB" etc.
+EXTERNAL String_Buffer_16 format_seconds(double seconds, int width); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
+EXTERNAL String_Buffer_16 format_nanoseconds(int64_t ns, int width); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
 
 EXTERNAL void log_captured_callstack(Log stream, void** callstack, isize callstack_size);
 EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format, ...);
