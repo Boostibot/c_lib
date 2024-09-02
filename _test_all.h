@@ -21,7 +21,7 @@
 #include "_test_stable_array.h"
 #include "_test_lpf.h"
 #include "_test_image.h"
-#include "_test_string_hash.h"
+#include "_test_string_map.h"
 #include "perf.h"
 #include "sort.h"
 
@@ -34,7 +34,7 @@ INTERNAL void test_all(f64 total_time)
 
     #define INCR total_count += 1, passed_count += (int)
     
-    INCR RUN_TEST(test_string_hash);
+    INCR RUN_TEST(test_string_map);
     INCR RUN_TEST(platform_test_all);
     INCR RUN_TEST(test_list);
     INCR RUN_TEST(test_image);

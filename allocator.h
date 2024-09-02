@@ -268,47 +268,16 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
 
         return (void*) ptr_num;
     }
-
     
     INTERNAL void* _malloc_allocator_func(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error_or_null)
     {
         (void) alloc; (void) old_size; (void) align; (void) error_or_null;
-        //return platform_heap_reallocate(new_size, old_ptr, align);
-
-        if(align <= 16)
-        {
-            if(new_size != 0)
-                return realloc(old_ptr, new_size);
-            
-            free(old_ptr);
-            return NULL;
-        }
-        //There does not exist anything like aligned_realloc so we have to make one ourselves
-        // and while we are making one why use C11 aligned_alloc anyway? Might as well go all the way...
-        else
-        {
-            u8* new_ptr = NULL;
-            if(new_size > 0)
-            {
-                u8* alloced_new_ptr = (u8*) malloc(new_size + align + sizeof(u32));
-                new_ptr = (u8*) align_forward(alloced_new_ptr + sizeof(u32), align);
-                u32* offset = (u32*) new_ptr - 1;
-                *offset = (u32) (new_ptr - alloced_new_ptr);
-
-                if(old_size > 0)
-                    memcpy(new_ptr, old_ptr, new_size < old_size ? new_size : old_size);
-            }
-
-            if(old_size > 0)
-            {
-                u32* offset = (u32*) old_ptr - 1;
-                u8* alloced_old_ptr = (u8*) old_ptr - *offset;
-                free(alloced_old_ptr);
-            }
-
-            return new_ptr;
-        }
+        void* out = platform_heap_reallocate(new_size, old_ptr, align);
+        if(out == NULL && new_size != 0)
+            allocator_error(error_or_null, ALLOCATOR_ERROR_OUT_OF_MEM, alloc, new_size, old_ptr, old_size, align, "malloc failed!");
+        return out;
     }
+
     INTERNAL Allocator_Stats _malloc_allocator_get_stats(Allocator* alloc)
     {
         (void) alloc;

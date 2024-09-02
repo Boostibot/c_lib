@@ -1,6 +1,6 @@
 #pragma once
 #include "_test.h"
-#include "string_hash.h"
+#include "string_map.h"
 #include "arena_stack.h"
 #include "allocator_debug.h"
 
@@ -13,53 +13,55 @@ INTERNAL void test_string_unit()
 		Debug_Allocator debug = {0};
 		debug_allocator_init(&debug, arena.alloc, DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK);
 		{
-			String_Hash table = {0};
-			string_hash_init(&table, debug.alloc, sizeof(i32));
+			String_Map table = {0};
+			string_map_init(&table, debug.alloc, sizeof(i32));
 
 			const Hash_String a = HSTRING("AAAA");
 			const Hash_String b = HSTRING("BBBB");
 			const Hash_String c = HSTRING("CCCC");
 
-			string_hash_assign_or_insert(&table, a, VPTR(i32, 1));
-			string_hash_assign_or_insert(&table, b, VPTR(i32, 2));
-			string_hash_assign_or_insert(&table, a, VPTR(i32, 3));
+			string_map_assign_or_insert(&table, a, VPTR(i32, 1));
+			string_map_assign_or_insert(&table, b, VPTR(i32, 2));
+			string_map_assign_or_insert(&table, a, VPTR(i32, 3));
 
 			TEST(table.len == 2);
 			TEST(table.max_collision_count == 0);
 			{
-				String_Hash_Found af = string_hash_find(&table, a);
-				String_Hash_Found bf = string_hash_find(&table, b);
+				String_Map_Found af = string_map_find(&table, a);
+				String_Map_Found bf = string_map_find(&table, b);
 
 				TEST(af.index != -1 && hash_string_is_equal(af.key, a) && *(i32*) af.value == 3);
 				TEST(bf.index != -1 && hash_string_is_equal(bf.key, b) && *(i32*) bf.value == 2);
 			}
 			
-			string_hash_assign_or_insert(&table, c, VPTR(i32, 3));
-			string_hash_insert(&table, a, VPTR(i32, 3));
-			string_hash_insert(&table, a, VPTR(i32, 4));
-			string_hash_insert(&table, a, VPTR(i32, 6));
-			string_hash_insert(&table, a, VPTR(i32, 7));
+			string_map_assign_or_insert(&table, c, VPTR(i32, 3));
+			string_map_insert(&table, a, VPTR(i32, 3));
+			string_map_insert(&table, a, VPTR(i32, 4));
+			string_map_insert(&table, a, VPTR(i32, 6));
+			string_map_insert(&table, a, VPTR(i32, 7));
 			
 			TEST(table.len == 7);
 			TEST(table.max_collision_count == 4);
 
-			string_hash_assign_or_insert(&table, HSTRING("Hello"), VPTR(i32, 4));
-			string_hash_insert(&table, HSTRING("Hello"), VPTR(i32, 40));
-			string_hash_remove(&table, HSTRING("Hello"));
+			string_map_assign_or_insert(&table, HSTRING("Hello"), VPTR(i32, 4));
+			string_map_insert(&table, HSTRING("Hello"), VPTR(i32, 40));
+			string_map_remove(&table, HSTRING("Hello"));
 
-			string_hash_deinit(&table);
+			string_map_deinit(&table);
 		}
 		debug_allocator_deinit(&debug);
 	}
 }
 
-INTERNAL void test_string_hash(f64 max_seconds)
+INTERNAL void test_string_map(f64 max_seconds)
 {
 	(void) max_seconds;
 	SCRATCH_ARENA(arena)
 	{
-		for(isize i = 0; i < 10; i++)
+		for(isize i = 0; i < 100; i++)
 			LOG_INFO("RAND", "%s", generate_random_text(arena.alloc, 5, STRING(" "), true, STRING(".")).data); 
+
+		LOG_HERE;
 	}
 
 	test_string_unit();
