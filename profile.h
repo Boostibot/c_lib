@@ -74,9 +74,9 @@ EXTERNAL void log_perf_stats_row(Log log, const char* label, Perf_Stats stats);
 //@TODO: Move into platform layer
 #include <stdint.h>
 #ifdef _MSC_VER
-# include <intrin.h>
+	#include <intrin.h>
 #else
-# include <x86intrin.h>
+	#include <x86intrin.h>
 #endif
 
 static _PROFILE_INLINE_ALWAYS int64_t fenced_now()

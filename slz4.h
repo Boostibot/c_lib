@@ -84,7 +84,7 @@ SLZ4_EXPORT size_t slz4_required_size_for_compression_table(int size_exponent, i
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_SLZ4_IMPL)) && !defined(JOT_SLZ4_HAS_IMPL)
-#define JOT_SLZ4_IMPL
+#define JOT_SLZ4_HAS_IMPL
 
 SLZ4_INTERNAL int  _slz4_find_first_set_bit64(uint64_t num);
 SLZ4_INTERNAL bool _slz4_output_token(uint8_t* out, uint32_t* out_i, uint32_t output_size, uint32_t in_i, uint32_t literal_size, const uint8_t* literal_data, uint32_t match_size, uint32_t match_offset, bool is_last_literal);
