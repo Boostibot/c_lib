@@ -1,59 +1,69 @@
 #ifndef JOT_SORT
 #define JOT_SORT
-    #include <stdlib.h>
-    #include <stdint.h>
-    #include <string.h>
-    #include <stdbool.h>
 
-    #ifndef SORT_API
-        #if defined(_MSC_VER)
-            #define SORT_API static __forceinline
-        #elif defined(__GNUC__) || defined(__clang__)
-            #define SORT_API static __attribute__((always_inline)) inline
-        #else
-            #define SORT_API static  
-        #endif
+// This file provides a replacement for the `qsort` stdlib.h function in a form of custom sorting functions. 
+// By abusing __forceinline and compiler optimalizations we achieve similar effect to c++ templates. 
+// The calls to comparison function are fully inlined and replaced with efficient assembly, memcpy calls 
+// are replaced with mov instructions. We implement insertion sort, heap sort, quick sort and merge sort as well
+// as few convenience functions. 
+// The heapsort and quicksort routines are heavily optimized and reach state of the art performance. 
+// On random integers we are about 20% faster tan MSVC std::sort and on par with pdqsort. On large sizes (> 3000)
+// we use our efficient heapsort implementation and consistently outperform pdqsort by about 20%-30% (as of 9/3/2024).
+ 
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <stdbool.h>
 
-        #define JOT_SORT_IMPL
+#ifndef SORT_API
+    #if defined(_MSC_VER)
+        #define SORT_API static __forceinline
+    #elif defined(__GNUC__) || defined(__clang__)
+        #define SORT_API static __attribute__((always_inline)) inline
+    #else
+        #define SORT_API static  
     #endif
 
-    typedef bool (*Is_Less_Func)(const void* a, const void* b, void* context); 
-    typedef int64_t isize;
+    #define JOT_SORT_IMPL
+#endif
 
-    //Sorts items from smallest to biggest using the is_less comparison function. Similar to qsort.
-    SORT_API void  hqsort(void* items, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
+typedef bool (*Is_Less_Func)(const void* a, const void* b, void* context); 
+typedef int64_t isize;
+
+//Sorts items from smallest to biggest using the is_less comparison function. Similar to qsort.
+SORT_API void  hqsort(void* items, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
     
-    //The following 4 functions sort the input items using the is_less comparison function. 
-    //They require a space for X item_size sized items to be provided by the user. Additionally the storage needs to be aligned according to the sorted type.
-    SORT_API void  insertion_sort(void* items, void* space_for_one_item, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
-    SORT_API void  heap_sort(void* items, void* space_for_one_item, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
-    SORT_API void  quick_sort(void* items, void* space_for_two_items, isize heap_sort_from, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
+//The following 4 functions sort the input items using the is_less comparison function. 
+//They require a space for X item_size sized items to be provided by the user. Additionally the storage needs to be aligned according to the sorted type.
+SORT_API void  insertion_sort(void* items, void* space_for_one_item, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
+SORT_API void  heap_sort(void* items, void* space_for_one_item, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
+SORT_API void  quick_sort(void* items, void* space_for_two_items, isize heap_sort_from, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
     
-    // Sorts input just like the previous functions. Uses temp array which needs to have the same size as input to ping-pong data back and forth. 
-    // If dont_copy_back == true then leaves the final sorted result in input or temp, whereever it happened to be resided as a result of teh sorting algorithm. 
-    // Returns pointer to the buffer containing the sorted items (for dont_copy_back == false always returns input).
-    SORT_API void* merge_sort(void* __restrict input, void* __restrict temp, bool dont_copy_back, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
-    //Merges sorted arrays a and b into output in O(n) time such that output is sorted.
-    SORT_API void  merge_sorted(void* __restrict output, const void* a, isize a_len, const void* b, isize b_len, isize item_size, Is_Less_Func is_less, void* context);
+// Sorts input just like the previous functions. Uses temp array which needs to have the same size as input to ping-pong data back and forth. 
+// If dont_copy_back == true then leaves the final sorted result in input or temp, whereever it happened to be resided as a result of teh sorting algorithm. 
+// Returns pointer to the buffer containing the sorted items (for dont_copy_back == false always returns input).
+SORT_API void* merge_sort(void* __restrict input, void* __restrict temp, bool dont_copy_back, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
+//Merges sorted arrays a and b into output in O(n) time such that output is sorted.
+SORT_API void  merge_sorted(void* __restrict output, const void* a, isize a_len, const void* b, isize b_len, isize item_size, Is_Less_Func is_less, void* context);
 
-    //Binary searches for an index I such that `search_for <= sorted_items[I]` where `I = lower_bound(search_for, sorted_items,...)`. 
-    //If no such index exists (search_for is bigger then everything in the sorted_items) then returns item_count.
-    SORT_API isize lower_bound(const void* search_for, const void* sorted_items, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
-    //Same as lower_bound but if the search_for is bigger then everything in the sorted_items, the result is undefined.
-    SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_items, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
+//Binary searches for an index I such that `search_for <= sorted_items[I]` where `I = lower_bound(search_for, sorted_items,...)`. 
+//If no such index exists (search_for is bigger then everything in the sorted_items) then returns item_count.
+SORT_API isize lower_bound(const void* search_for, const void* sorted_items, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
+//Same as lower_bound but if the search_for is bigger then everything in the sorted_items, the result is undefined.
+SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_items, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
 
-    //================= Various settings ==================
-    #ifndef HEAP_SORT_FROM
-        #define HEAP_SORT_FROM 2800
-    #endif
+//================= Various settings ==================
+#ifndef HEAP_SORT_FROM
+    #define HEAP_SORT_FROM 2800
+#endif
 
-    #ifndef INSERTION_SORT_TO
-        #define INSERTION_SORT_TO 32
-    #endif
+#ifndef INSERTION_SORT_TO
+    #define INSERTION_SORT_TO 32
+#endif
 
-    #ifndef HEAP_SORT_TWO_PHASE_BUBBLING_FROM
-        #define HEAP_SORT_TWO_PHASE_BUBBLING_FROM 1300
-    #endif
+#ifndef HEAP_SORT_TWO_PHASE_BUBBLING_FROM
+    #define HEAP_SORT_TWO_PHASE_BUBBLING_FROM 1300
+#endif
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_SORT_IMPL)) && !defined(JOT_SORT_HAS_IMPL)
@@ -67,14 +77,18 @@
     //================= Convenience macros ==================
     #define AT(I)        ((char*) items + (I)*item_size)
     #define SWAP_STAT(a, b) do { \
-        void* x = (a); void* y = (b); char s[sizeof *(a)]; \
+        void* x = (void*) (a); \
+        void* y = (void*) (b); \
+        char s[sizeof *(a)]; (void) s; \
         memcpy(s, x, sizeof *(a)); \
         memcpy(x, y, sizeof *(a)); \
         memcpy(y, s, sizeof *(a)); \
     } while(0) \
 
     #define SWAP_DYN(a, b, temp) do { \
-        void* x = (a); void* y = (b); void* s = (temp); \
+        void* x = (void*) (a); \
+        void* y = (void*) (b); \
+        void* s = (void*) (temp); \
         memcpy(s, x, item_size); \
         memcpy(x, y, item_size); \
         memcpy(y, s, item_size); \
@@ -223,7 +237,7 @@
 
     SORT_API void quick_sort(void* items, void* space_for_two_items, isize heap_sort_from, isize item_count, isize item_size, Is_Less_Func is_less, void* context)
     {
-        //Pretty standarad quicksort implementation. We dont use any fancyness (not even Tukey's ninther) as
+        //Pretty standard quicksort implementation. We dont use any fanciness (not even Tukey's ninther) as
         // I did not find it to impact the running time significantly in the usual case of random data.
         // 
         // Probably the most nonstandard thing here is the explicit stack handling below.

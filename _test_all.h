@@ -23,7 +23,7 @@
 #include "_test_image.h"
 #include "_test_string_map.h"
 #include "perf.h"
-#include "sort2.h"
+#include "sort.h"
 
 #include "profile.h"
 INTERNAL void test_all(f64 total_time)
