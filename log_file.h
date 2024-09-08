@@ -56,7 +56,7 @@
 
 typedef bool(*File_Logger_Print)(const void* data, isize size, void* context); 
 
-EXTERNAL typedef struct File_Logger {
+typedef struct File_Logger {
     Allocator* default_allocator;
     String_Builder buffer;
     Platform_Mutex mutex;

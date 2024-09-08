@@ -51,35 +51,34 @@ EXTERNAL isize  string_find_first_char(String string, char search_for, isize fro
 EXTERNAL isize  string_find_last_char_from(String in_str, char search_for, isize from);
 EXTERNAL isize  string_find_last_char(String string, char search_for); 
 
-EXTERNAL void string_deallocate(Allocator* arena, String* string);
+EXTERNAL void string_to_null_terminated(char* buffer, isize buffer_size, String string);
+EXTERNAL String string_allocate(Allocator* alloc, String string);
+EXTERNAL void   string_deallocate(Allocator* alloc, String* string);
 
 EXTERNAL String_Builder builder_make(Allocator* alloc_or_null, isize capacity_or_zero);
 EXTERNAL String_Builder builder_from_cstring(Allocator* allocator, const char* cstring); //Allocates a String_Builder from cstring.
 EXTERNAL String_Builder builder_from_string(Allocator* allocator, String string);  //Allocates a String_Builder from String using an allocator.
-
-EXTERNAL String_Builder string_concat(Allocator* allocator, String a, String b);
-EXTERNAL String_Builder string_concat3(Allocator* allocator, String a, String b, String c);
 
 EXTERNAL void builder_init(String_Builder* builder, Allocator* alloc);
 EXTERNAL void builder_init_with_capacity(String_Builder* builder, Allocator* alloc, isize capacity_or_zero);
 EXTERNAL void builder_deinit(String_Builder* builder);             
 EXTERNAL void builder_set_capacity(String_Builder* builder, isize capacity);             
 EXTERNAL void builder_resize(String_Builder* builder, isize capacity);             
+EXTERNAL void builder_reserve(String_Builder* builder, isize capacity);
 EXTERNAL void builder_clear(String_Builder* builder);             
 EXTERNAL void builder_push(String_Builder* builder, char c);             
 EXTERNAL char builder_pop(String_Builder* builder);             
 EXTERNAL void builder_append(String_Builder* builder, String string); //Appends a string
 EXTERNAL void builder_append_line(String_Builder* builder, String string); //Appends a string followed by newline
+EXTERNAL void builder_insert_hole(String_Builder* builder, isize at, isize hole_size, int fill_with_char_or_minus_one);
+EXTERNAL void builder_insert(String_Builder* builder, isize at, String string);
 EXTERNAL void builder_assign(String_Builder* builder, String string); //Sets the contents of the builder to be equal to string
 EXTERNAL bool builder_is_equal(String_Builder a, String_Builder b); //Returns true if the contents and sizes of the strings match
 EXTERNAL int  builder_compare(String_Builder a, String_Builder b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
 
 EXTERNAL void builder_array_deinit(String_Builder_Array* array);
-
-//Replaces in source that are equal to some character from to_replace with the character at the same exact position of replace_with.
-//If there is '\0' at the matching position of replace_with, removes the character without substituting"
-//So string_replace(..., "Hello world", "lw", ".\0") -> "He..o or.d"
-EXTERNAL String_Builder string_replace(Allocator* allocator, String source, String to_replace, String replace_with);
+EXTERNAL String_Builder string_concat(Allocator* allocator, String a, String b);
+EXTERNAL String_Builder string_concat3(Allocator* allocator, String a, String b, String c);
 
 //Tiles pattern_size bytes long pattern across field of field_size bytes. 
 //The first occurance of pattern is placed at the very start of field and subsequent repetitions follow. 
@@ -457,6 +456,25 @@ EXTERNAL bool char_is_id(char c);
         builder_append(&out, c);
         return out;
     }
+    
+    EXTERNAL void string_to_null_terminated(char* buffer, isize buffer_size, String string)
+    {
+        if(buffer_size > 0)
+        {
+            isize min_size = MIN(buffer_size - 1, string.len);
+            memcpy(buffer, string.data, min_size);
+            buffer[min_size] = '\0';
+        }
+    }
+
+    EXTERNAL String string_allocate(Allocator* alloc, String string)
+    {
+        char* data = allocator_allocate(alloc, string.len + 1, 1);
+        memcpy(data, string.data, string.len);
+        data[string.len] = '\0';
+        String out = {data, string.len};
+        return out;
+    }
 
     EXTERNAL void string_deallocate(Allocator* alloc, String* string)
     {
@@ -626,6 +644,24 @@ EXTERNAL bool char_is_id(char c);
         builder->data[builder->len + string.len] = '\n';
         builder->len += string.len + 1;
         ASSERT(_builder_is_invariant(builder));
+    }
+    
+    EXTERNAL void builder_insert_hole(String_Builder* builder, isize at, isize hole_size, int fill_with_char_or_minus_one)
+    {
+        ASSERT(0 <= at && at <= builder->len);
+        builder_reserve(builder, builder->len + hole_size);
+        memmove(builder->data + at + hole_size, builder->data + at, hole_size);
+        if(fill_with_char_or_minus_one != -1)
+            memset(builder->data + at, fill_with_char_or_minus_one, hole_size);
+
+        builder->len += hole_size;
+        builder->data[builder->len] = '\0';
+    }
+    
+    EXTERNAL void builder_insert(String_Builder* builder, isize at, String string)
+    {
+        builder_insert_hole(builder, at, string.len, -1);
+        memcpy(builder->data + at, string.data, string.len);
     }
 
     EXTERNAL void builder_assign(String_Builder* builder, String string)

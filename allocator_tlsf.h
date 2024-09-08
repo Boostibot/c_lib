@@ -311,7 +311,7 @@ EXTERNAL void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node
 
 //=========================  IMPLEMENTATION BELOW ==================================================
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_TLSF_IMPL)) && !defined(JOT_ALLOCATOR_TLSF_HAS_IMPL)
-#define JOT_ALLOCATOR_TLSF_IMPL
+#define JOT_ALLOCATOR_TLSF_HAS_IMPL
 
 #if defined(_MSC_VER)
     #include <intrin.h>
@@ -1309,7 +1309,7 @@ void test_allocator_tlsf(double seconds)
     void benchmark_allocator_tlsf_single(double seconds, bool touch, isize at_once, isize min_size, isize max_size, isize min_align_log2, isize max_align_log2)
     {
         LOG_INFO("BENCH", "Running benchmarks for %s with touch:%s at_once:%lli size:[%lli, %lli) align_log:[%lli %lli)", 
-            format_seconds(seconds, 0).data, touch ? "true" : "false", at_once, min_size, max_size, min_align_log2, max_align_log2);
+            format_seconds(seconds).data, touch ? "true" : "false", at_once, min_size, max_size, min_align_log2, max_align_log2);
 
         enum {
             CACHED_COUNT = 1024,

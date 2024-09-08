@@ -206,6 +206,10 @@ EXTERNAL Hash_Found hash_find_or_insert_next(Hash* table, Hash_Found prev_found,
 //Inserts an entry and returns its index. This happens even if an entry with this hash exists, thus creates a multihash.
 //The inserted value must be valid according to hash_is_valid_value (asserts).
 EXTERNAL Hash_Found hash_insert(Hash* table, uint64_t hash, uint64_t value); 
+//Inserts an entry and returns its index. This happens even if an entry with this hash exists, thus creates a multihash.
+//The entry is inserted after the previously found prev_found entry.
+//The inserted value must be valid according to hash_is_valid_value (asserts).
+EXTERNAL Hash_Found hash_insert_next(Hash* table, Hash_Found prev_found, uint64_t value); 
 //rehashes to the nearest power of two size greater then the size specified and size required to store all entries. Possibly moves the backing memory to a new location.
 EXTERNAL void  hash_rehash(Hash* table, isize to_size); 
 //Rehashes to the same size without changing the adress of the backing memory. This is achieved by rehashing to a new location and then copying back.
@@ -617,6 +621,14 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         ASSERT(0 <= prev_found.index && prev_found.index < table->entries_count);
         hash_reserve(table, table->len + 1);
         return _hash_find_or_insert(table, prev_found.hash, (uint64_t) prev_found.index + (uint64_t) prev_found.probes + 1, value_if_inserted, prev_found.probes + 1, true);
+    }
+
+    EXTERNAL Hash_Found hash_insert_next(Hash* table, Hash_Found prev_found, uint64_t value_if_inserted)
+    {
+        ASSERT(hash_is_valid_value(value_if_inserted));
+        ASSERT(0 <= prev_found.index && prev_found.index < table->entries_count);
+        hash_reserve(table, table->len + 1);
+        return _hash_find_or_insert(table, prev_found.hash, (uint64_t) prev_found.index + (uint64_t) prev_found.probes + 1, value_if_inserted, prev_found.probes + 1, false);
     }
 
     EXTERNAL Hash_Found hash_find_or_insert(Hash* table, uint64_t hash, uint64_t value_if_inserted)

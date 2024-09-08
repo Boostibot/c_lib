@@ -278,6 +278,45 @@ bool platform_mutex_try_lock(Platform_Mutex* mutex)
 //    WakeByAddressAll((void*) futex);
 //}
 
+/*
+
+QUEUE [data, data, data, ...growing...]
+        64B   64B   64B
+      
+struct Args {}
+void _file_read_async_func(Args* args)
+{
+    file_read_entire(&args->builder, args->path, &args->info);
+}
+
+Promise file_read_async(String path)
+{   
+    Job job = job_create("file_read_async");
+    Args* args = job_allocate(&job, 1, Args);
+    args->path = path;
+    job_submit(job, args);
+}
+
+Promise file_promise = file_read_async(completion_callback);
+
+
+void main()
+{
+    Sync_queue event_queue = {0};
+    while(should_quit())
+    {
+        if(first_time_around)
+            load_scene("scene.txt", &event_queue);
+        
+        while(event_queue_empty())
+            event_queue_poll();
+
+
+    }
+}
+
+*/
+
 //=========================================
 // Timings
 //=========================================

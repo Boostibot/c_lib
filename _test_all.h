@@ -34,15 +34,6 @@ INTERNAL void test_all(f64 total_time)
 
     #define INCR total_count += 1, passed_count += (int)
     
-    INCR RUN_TEST_TIMED(test_sort, total_time/8);
-    INCR RUN_TEST_TIMED(test_hash, total_time/8);
-    INCR RUN_TEST_TIMED(test_arena, total_time/8);
-    INCR RUN_TEST_TIMED(test_array, total_time/8);
-    INCR RUN_TEST_TIMED(test_math, total_time/8);
-    INCR RUN_TEST_TIMED(test_string, total_time/8);
-    INCR RUN_TEST_TIMED(test_allocator_tlsf, total_time/8);
-    INCR RUN_TEST_TIMED(slz4_test, total_time/8);
-
     INCR RUN_TEST(test_string_map);
     INCR RUN_TEST(platform_test_all);
     INCR RUN_TEST(test_list);
@@ -52,6 +43,16 @@ INTERNAL void test_all(f64 total_time)
     INCR RUN_TEST(test_log);
     //INCR RUN_TEST(test_random);
     INCR RUN_TEST(test_path);
+
+    INCR RUN_TEST_TIMED(test_sort, total_time/8);
+    INCR RUN_TEST_TIMED(test_hash, total_time/8);
+    INCR RUN_TEST_TIMED(test_arena, total_time/8);
+    INCR RUN_TEST_TIMED(test_array, total_time/8);
+    INCR RUN_TEST_TIMED(test_math, total_time/8);
+    INCR RUN_TEST_TIMED(test_string, total_time/8);
+    INCR RUN_TEST_TIMED(test_allocator_tlsf, total_time/8);
+    INCR RUN_TEST_TIMED(slz4_test, total_time/8);
+
 
     
     #undef INCR

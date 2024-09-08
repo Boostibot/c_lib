@@ -79,9 +79,9 @@ typedef struct String_Buffer_64 {
 } String_Buffer_64;
 
 EXTERNAL String_Buffer_16 format_ptr(void* ptr); //returns "0x00000ff76344ae64"
-EXTERNAL String_Buffer_16 format_bytes(int64_t bytes, int width); //returns "39B" "64KB", "10.3MB", "5.3GB", "7.531TB" etc.
-EXTERNAL String_Buffer_16 format_seconds(double seconds, int width); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
-EXTERNAL String_Buffer_16 format_nanoseconds(int64_t ns, int width); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
+EXTERNAL String_Buffer_16 format_bytes(int64_t bytes); //returns "39B" "64KB", "10.3MB", "5.3GB", "7.531TB" etc.
+EXTERNAL String_Buffer_16 format_seconds(double seconds); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
+EXTERNAL String_Buffer_16 format_nanoseconds(int64_t ns); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
 
 EXTERNAL void log_captured_callstack(Log stream, void** callstack, isize callstack_size);
 EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format, ...);
@@ -204,25 +204,25 @@ EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format,
         return out;
     }
 
-    EXTERNAL String_Buffer_16 format_bytes(int64_t bytes, int width)
+    EXTERNAL String_Buffer_16 format_bytes(int64_t bytes)
     {
         int64_t abs = bytes > 0 ? bytes : -bytes;
         String_Buffer_16 out = {0};
         if(abs >= TB)
-            snprintf(out.data, sizeof out.data, "%*.3lfTB", width, (double) bytes / (double) TB);
+            snprintf(out.data, sizeof out.data, "%.3lfTB", (double) bytes / (double) TB);
         else if(abs >= GB)
-            snprintf(out.data, sizeof out.data, "%*.2lfGB", width, (double) bytes / (double) GB);
+            snprintf(out.data, sizeof out.data, "%.2lfGB", (double) bytes / (double) GB);
         else if(abs >= MB)
-            snprintf(out.data, sizeof out.data, "%*.2lfMB", width, (double) bytes / (double) MB);
+            snprintf(out.data, sizeof out.data, "%.2lfMB", (double) bytes / (double) MB);
         else if(abs >= KB)
-            snprintf(out.data, sizeof out.data, "%*.1lfKB", width, (double) bytes / (double) KB);
+            snprintf(out.data, sizeof out.data, "%.1lfKB", (double) bytes / (double) KB);
         else
-            snprintf(out.data, sizeof out.data, "%*lliB", width+1, (long long) bytes);
+            snprintf(out.data, sizeof out.data, "%lliB"+1, (long long) bytes);
 
         return out;
     }
 
-    EXTERNAL String_Buffer_16 format_nanoseconds(int64_t ns, int width)
+    EXTERNAL String_Buffer_16 format_nanoseconds(int64_t ns)
     {
         int64_t sec = (int64_t) 1000*1000*1000;
         int64_t milli = (int64_t) 1000*1000;
@@ -231,20 +231,20 @@ EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format,
         int64_t abs = ns > 0 ? ns : -ns;
         String_Buffer_16 out = {0};
         if(abs >= sec)
-            snprintf(out.data, sizeof out.data, "%*.2lfs", width+1, (double) ns / (double) sec);
+            snprintf(out.data, sizeof out.data, "%.2lfs"+1, (double) ns / (double) sec);
         else if(abs >= milli)
-            snprintf(out.data, sizeof out.data, "%*.2lfms", width, (double) ns / (double) milli);
+            snprintf(out.data, sizeof out.data, "%.2lfms", (double) ns / (double) milli);
         else if(abs >= micro)
-            snprintf(out.data, sizeof out.data, "%*lliμs", width, (long long) (ns / micro));
+            snprintf(out.data, sizeof out.data, "%.2lfμs", (double) ns / (double) micro);
         else
-            snprintf(out.data, sizeof out.data, "%*llins", width, (long long) ns);
+            snprintf(out.data, sizeof out.data, "%llins", (long long) ns);
 
         return out;
     }
 
-    EXTERNAL String_Buffer_16 format_seconds(double seconds, int width)
+    EXTERNAL String_Buffer_16 format_seconds(double seconds)
     {
-        return format_nanoseconds((int64_t) (seconds * 1000*1000*1000), width);
+        return format_nanoseconds((int64_t) (seconds * 1000*1000*1000));
     }
     
     EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format, ...)
@@ -331,8 +331,8 @@ EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format,
             LOG(log, "type_name:           %s", stats.type_name);
             LOG(log, "name:                %s", stats.name);
 
-            LOG(log, "bytes_allocated:     %s", format_bytes(stats.bytes_allocated, 0).data);
-            LOG(log, "max_bytes_allocated: %s", format_bytes(stats.max_bytes_allocated, 0).data);
+            LOG(log, "bytes_allocated:     %s", format_bytes(stats.bytes_allocated).data);
+            LOG(log, "max_bytes_allocated: %s", format_bytes(stats.max_bytes_allocated).data);
 
             LOG(log, "allocation_count:    %lli", stats.allocation_count);
             LOG(log, "deallocation_count:  %lli", stats.deallocation_count);
@@ -361,14 +361,14 @@ EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format,
 
                 LOG_FATAL("memory", "Allocator %s of type %s reported out of memory! Message: '%s'", stats.type_name, stats.name, error.message);
 
-                LOG_INFO(">memory", "new_size:    %s", format_bytes(error.new_size, 0).data);
-                LOG_INFO(">memory", "old_size:    %s", format_bytes(error.old_size, 0).data);
+                LOG_INFO(">memory", "new_size:    %s", format_bytes(error.new_size).data);
+                LOG_INFO(">memory", "old_size:    %s", format_bytes(error.old_size).data);
                 LOG_INFO(">memory", "old_ptr:     %s", format_ptr(error.old_ptr).data);
                 LOG_INFO(">memory", "align:       %lli", (lli) error.align);
 
                 LOG_INFO(">memory", "Allocator_Stats:");
-                LOG_INFO(">>memory", "bytes_allocated:     %s", format_bytes(stats.bytes_allocated, 0).data);
-                LOG_INFO(">>memory", "max_bytes_allocated: %s", format_bytes(stats.max_bytes_allocated, 0).data);
+                LOG_INFO(">>memory", "bytes_allocated:     %s", format_bytes(stats.bytes_allocated).data);
+                LOG_INFO(">>memory", "max_bytes_allocated: %s", format_bytes(stats.max_bytes_allocated).data);
 
                 LOG_INFO(">>memory", "allocation_count:    %lli", (lli) stats.allocation_count);
                 LOG_INFO(">>memory", "deallocation_count:  %lli", (lli) stats.deallocation_count);

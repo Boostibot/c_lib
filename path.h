@@ -47,7 +47,7 @@
 // 3) Includes only / (and not \)
 // 4) Absolute paths do not contain any "." or ".." segments
 // 5) Relative paths are either only "." and nothing more or dont contain "." at all. 
-//    Relative paths contain ".." segments only as a prefix. 
+//    Relative paths contain ".." segments only as the first segment. 
 //
 //@NOTE: We attempt to cover a few edge cases and gain as much insight into the
 //       path as we can but we by no means attempt to be exhaustively correct
@@ -96,7 +96,7 @@ typedef union Path {
     };
 } Path;
 
-EXTERNAL bool is_path_sep(char c);
+EXTERNAL bool  is_path_sep(char c);
 EXTERNAL isize string_find_first_path_separator(String string, isize from);
 EXTERNAL isize string_find_last_path_separator(String string, isize from);
 
@@ -105,6 +105,8 @@ EXTERNAL Path   path_parse_cstring(const char* path);
 EXTERNAL void   path_parse_root(String path, Path_Info* info);
 EXTERNAL void   path_parse_rest(String path, Path_Info* info);
 EXTERNAL bool   path_is_empty(Path path);
+EXTERNAL bool   path_is_equal(Path a, Path b); //Compares the textual representations of a and b for equality. To get more acurate results normalize the paths first.
+EXTERNAL bool   path_is_equal_except_prefix(Path a, Path b); //Compares the textual representations of a and b without prefix for equality. To get more acurate results normalize the paths first.
 EXTERNAL String path_get_prefix(Path path);
 EXTERNAL String path_get_root(Path path);
 EXTERNAL String path_get_directory(Path path);
@@ -172,12 +174,14 @@ EXTERNAL void         path_builder_deinit(Path_Builder* builder);
 EXTERNAL void         path_builder_init(Path_Builder* builder, Allocator* alloc_or_null, isize initial_capacity_or_zero);
 EXTERNAL Path_Builder path_builder_make(Allocator* alloc_or_null, isize initial_capacity_or_zero);
 EXTERNAL bool         path_builder_append(Path_Builder* into, Path path, int flags);
+EXTERNAL void         path_builder_assign(Path_Builder* into, Path path, int flags);
+EXTERNAL Path_Builder path_builder_dup(Allocator* alloc, Path_Builder to_copy);
 EXTERNAL void         path_builder_clear(Path_Builder* builder);
 EXTERNAL void         path_normalize_in_place(Path_Builder* path, int flags);
 
 //Normalizes the given path removing '..', '.', double slashes, converting slashes to '/'. 
 //When given relative resp. absolute path the output is relative resp. absolute.
-//When given path with prefx output path will have the same prefix.
+//When given path with prefix output path will have the same prefix.
 //Accepts additional flags to tweak some of the behaviour.
 EXTERNAL Path_Builder path_normalize(Allocator* alloc, Path path, int flags);
 EXTERNAL Path_Builder path_concat(Allocator* alloc, Path a, Path b);
@@ -196,10 +200,6 @@ EXTERNAL Path path_get_current_working_directory();
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PATH_IMPL)) && !defined(JOT_PATH_HAS_IMPL)
 #define JOT_PATH_HAS_IMPL
 
-EXTERNAL bool path_is_empty(Path path)
-{
-    return path.string.len <= path.info.prefix_size;
-}
 
 EXTERNAL bool is_path_sep(char c)
 {
@@ -394,6 +394,20 @@ EXTERNAL void path_parse_rest(String path, Path_Info* info)
             }
         }
     }
+}
+
+EXTERNAL bool path_is_empty(Path path)
+{
+    return path.string.len <= path.info.prefix_size;
+}
+
+EXTERNAL bool path_is_equal(Path a, Path b)
+{
+    return string_is_equal(a.string, b.string);
+}
+EXTERNAL bool path_is_equal_except_prefix(Path a, Path b)
+{
+    return string_is_equal(path_strip_prefix(a).string, path_strip_prefix(b).string);
 }
 
 EXTERNAL Path path_parse(String path)
@@ -820,6 +834,14 @@ EXTERNAL void path_builder_assign(Path_Builder* into, Path path, int flags)
     path_builder_append(into, path, flags);
 }
 
+EXTERNAL Path_Builder path_builder_dup(Allocator* alloc, Path_Builder to_copy)
+{
+    Path_Builder duped = {0};
+    duped.builder = builder_from_string(alloc, to_copy.string);
+    duped.info = to_copy.info;
+    return duped;
+}
+
 EXTERNAL void path_normalize_in_place(Path_Builder* into, int flags)
 {
     Arena_Frame arena = scratch_arena_frame_acquire();
@@ -912,7 +934,7 @@ EXTERNAL void path_make_relative_into(Path_Builder* into, Path relative_to, Path
                 //If both are present and same do nothing
                 if(has_rel && has_path && are_equal)
                 {
-                    
+                    //nothing
                 }
                 //If they were same and end the same then also do nothing
                 else if(has_rel == false && has_path == false && are_equal)

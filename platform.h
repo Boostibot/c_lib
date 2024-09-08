@@ -199,6 +199,7 @@ void            platform_thread_exit(int code); //Terminates a thread with an ex
 void            platform_thread_yield(); //Yields the remainder of this thread's time slice to the OS
 void            platform_thread_detach(Platform_Thread thread);
 void            platform_thread_join(const Platform_Thread* threads, int64_t count); //Blocks calling thread until all threads finish. Must not join the current calling thread!
+bool            platform_thread_is_running(Platform_Thread thread);
 
 Platform_Error  platform_mutex_init(Platform_Mutex* mutex);
 void            platform_mutex_deinit(Platform_Mutex* mutex);

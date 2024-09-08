@@ -34,7 +34,6 @@ typedef struct String_Map {
     void* value_destructor_context;
 } String_Map;
 
-
 typedef struct String_Map_Found {
     i32 hash_index;
     i32 hash_probe;

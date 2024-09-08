@@ -250,7 +250,7 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 	}
 	EXTERNAL void log_perf_stats_row(Log log, const char* label, Perf_Stats stats)
 	{
-		LOG(log, "%s%s | %11lli | %5.2lf", label, format_seconds(stats.average_s, 5).data, stats.runs, stats.normalized_standard_deviation_s);
+		LOG(log, "%s%5s | %11lli | %5.2lf", label, format_seconds(stats.average_s).data, stats.runs, stats.normalized_standard_deviation_s);
 	}
 	
 	INTERNAL int _profile_compare_runs(const void* a_, const void* b_)
@@ -334,13 +334,13 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 
 					if(single.id.type == PROFILE_DEFAULT)
 					{
-						LOG(stream, "%s %s %12lli %5.2lf [%s %s] %25s %-4lli %s %s", 
-							format_seconds(single.stats.total_s,9).data,
-							format_seconds(single.stats.average_s, 7).data,
+						LOG(stream, "%9s %7s %12lli %5.2lf [%7s %7s] %25s %-4lli %s %s", 
+							format_seconds(single.stats.total_s).data,
+							format_seconds(single.stats.average_s).data,
 							(lli) single.stats.runs,
 							single.stats.normalized_standard_deviation_s,
-							format_seconds(single.stats.min_s, 7).data,
-							format_seconds(single.stats.max_s, 7).data,
+							format_seconds(single.stats.min_s).data,
+							format_seconds(single.stats.max_s).data,
 							single.id.file + common_prefix.len,
 							(lli) single.id.line,
 							single.id.function,
@@ -349,9 +349,9 @@ EXTERNAL bool profile_get_stats(Profile_Zone_Stats_Array* stats)
 					}
 					if(single.id.type == PROFILE_FAST)
 					{
-						LOG(stream, "%s %s %8lli %25s %-4lli %s %s", 
-							format_seconds(single.stats.total_s, 9).data,
-							format_seconds(single.stats.average_s, 7).data,
+						LOG(stream, "%9s %7s %8lli %25s %-4lli %s %s", 
+							format_seconds(single.stats.total_s).data,
+							format_seconds(single.stats.average_s).data,
 							(lli) single.stats.runs,
 							single.id.file + common_prefix.len,
 							(lli) single.id.line,
