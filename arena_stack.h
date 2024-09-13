@@ -176,6 +176,7 @@ EXTERNAL void arena_stack_test_invariants(Arena_Stack* stack);
 EXTERNAL void arena_stack_deinit(Arena_Stack* arena);
 
 EXTERNAL Arena_Frame arena_frame_acquire(Arena_Stack* arena);
+EXTERNAL Arena_Frame arena_frame_top(Arena_Stack* arena);
 EXTERNAL void arena_frame_release(Arena_Frame* arena);
 EXTERNAL void* arena_frame_push(Arena_Frame* arena, isize size, isize align);
 EXTERNAL void* arena_frame_push_nonzero(Arena_Frame* arena, isize size, isize align);
@@ -405,6 +406,29 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
 
         _arena_stack_check_invariants(stack);
         PROFILE_END();
+        return out;
+    }
+    
+    EXTERNAL ATTRIBUTE_INLINE_ALWAYS Arena_Frame arena_frame_top(Arena_Stack* stack)
+    {
+        ASSERT(0 < stack->max_alive_level, "Too little arena levels");
+        _arena_stack_check_invariants(stack);
+
+        u32 alive_level = stack->max_alive_level - 1;
+        
+        u32 level_i   = alive_level / ARENA_STACK_CHANNELS;
+        u32 channel_i = alive_level % ARENA_STACK_CHANNELS;
+        Arena_Stack_Channel* channel = &stack->channels[channel_i];
+
+        Arena_Frame out = {0};
+        out.next_level_ptr = channel->levels + level_i + 1;
+        out.level = alive_level;
+        out.stack = stack;
+        out.channel = channel;
+
+        out.alloc[0].func = arena_frame_allocator_func;
+        out.alloc[0].get_stats = arena_frame_allocator_get_stats;
+
         return out;
     }
 

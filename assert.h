@@ -84,6 +84,7 @@
 
 #define CHECK_BOUNDS(i, to)         CHECK_RANGE_BOUNDS(i, 0, to)
 #define UNREACHABLE(...)            (ASSERT(false, "Unreachable code reached! " __VA_ARGS__), ASSUME_UNREACHABLE())
+#define TODO(...)                   TEST(false, "TODO: " __VA_ARGS__)
 
 //Gets called when assertion fails. 
 //Does not have to terminate process since that is done at call site by the assert macro itself.
@@ -93,5 +94,5 @@ EXTERNAL void assertion_report(const char* expression, int line, const char* fil
 //Pre-Processor (PP) utils
 #define _PP_CONCAT(a, b)        a ## b
 #define PP_CONCAT(a, b)         _PP_CONCAT(a, b)
-#define PP_UNIQ(a) PP_CONCAT(a, __LINE__)
+#define PP_UNIQ(a)              PP_CONCAT(a, __LINE__)
 #endif

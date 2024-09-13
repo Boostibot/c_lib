@@ -141,7 +141,7 @@ typedef struct Hash {
     // the memory used by entries from jumping all over memory 
     // (thus fragmenting or using unlimited ammount of memory when placed in an arena)
     bool    do_in_place_rehash;    
-    bool    _;
+    bool    _; //@TODO: add has collisions!
 
     //Purely informative. The number of rehashes that occurred so far. Only resets on hash_init.
     int32_t info_rehash_count;      
@@ -183,8 +183,6 @@ typedef struct Hash_Found {
     bool inserted; 
     bool _[7];
 } Hash_Found;
-
-//The real primitive is probing iteration. We want the ability to specify starting index on all ops. We want insert or assign
 
 EXTERNAL void hash_init(Hash* table, Allocator* allocator); //Initalizes table to use the given allocator and the default load factor (75%) 
 EXTERNAL void hash_init_load_factor(Hash* table, Allocator* allocator, isize load_factor_percent, isize load_factor_gravestone_percent); //Initalizes table to use the given allocator and the provided load factor

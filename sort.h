@@ -21,7 +21,7 @@
     #elif defined(__GNUC__) || defined(__clang__)
         #define SORT_API static __attribute__((always_inline)) inline
     #else
-        #define SORT_API static  
+        #define SORT_API static inline
     #endif
 
     #define JOT_SORT_IMPL
