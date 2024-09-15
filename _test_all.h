@@ -6,10 +6,13 @@
 #endif
 
 #define JOT_ALL_TEST
+#include "profile.h"
 #include "list.h"
 #include "path.h"
 #include "allocator_tlsf.h"
 #include "slz4.h"
+#include "perf.h"
+#include "sort.h"
 
 #include "_test_string.h"
 #include "_test_random.h"
@@ -22,10 +25,7 @@
 #include "_test_lpf.h"
 #include "_test_image.h"
 #include "_test_string_map.h"
-#include "perf.h"
-#include "sort.h"
 
-#include "profile.h"
 INTERNAL void test_all(f64 total_time)
 {
     LOG_INFO("TEST", "RUNNING ALL TESTS");
@@ -52,8 +52,6 @@ INTERNAL void test_all(f64 total_time)
     INCR RUN_TEST_TIMED(test_string, total_time/8);
     INCR RUN_TEST_TIMED(test_allocator_tlsf, total_time/8);
     INCR RUN_TEST_TIMED(slz4_test, total_time/8);
-
-
     
     #undef INCR
 
@@ -71,24 +69,17 @@ INTERNAL void test_all(f64 total_time)
     #include "log_file.h"
     int main()
     {
-        platform_init(NULL);
-
-        Malloc_Allocator allocator = {0};
-        malloc_allocator_init_use(&allocator, "global", 0);
-        allocator_set_static(&allocator.allocator);
-
-        Arena_Stack* global_stack = allocator_get_scratch_arena_stack();
+        platform_init();
+        
+        Arena_Stack* global_stack = scratch_arena_stack();
         arena_init(global_stack, 64*GB, 8*MB, "scratch_arena_stack");
 
         File_Logger logger = {0};
-        file_logger_init_use(&logger, NULL, "logs");
+        file_logger_init_use(&logger, allocator_get_malloc(), "logs");
 
-        test_all(10);
+        test_all(30);
 
-        file_logger_deinit(&logger);
-        malloc_allocator_deinit(&allocator);
-
-        platform_deinit();
+        //no deinit code!
         return 0;
     }
 

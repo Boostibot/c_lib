@@ -95,17 +95,17 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 			FIND_OR_INSERT,
 			ASSIGN_OR_INSERT,
 			REMOVE,
-			ACTION_ENUM_COUNT
 		} Action;
 
-		i32 probabilities[ACTION_ENUM_COUNT] = {0};
-		probabilities[REINIT]			= 1;
-		probabilities[CLEAR]		= 1;
-		probabilities[INSERT]		= 240;
-		probabilities[INSERT]		= 240;
-		probabilities[FIND_OR_INSERT] = 50;
-		probabilities[ASSIGN_OR_INSERT] = 50;
-		probabilities[REMOVE]		= 60;
+		Discrete_Distribution dist[] = {
+			{REINIT,			1},
+			{CLEAR,				1},
+			{INSERT,			240},
+			{INSERT,			240},
+			{FIND_OR_INSERT,	50},
+			{ASSIGN_OR_INSERT,	50},
+			{REMOVE,			60},
+		};
 
 		enum {
 			MAX_ITERS = 10*1000*1000,
@@ -114,239 +114,225 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 		};
 		
 		typedef Array(Hash_String) Hash_String_Array;
+		random_discrete_make(dist, ARRAY_LEN(dist));
 
-		Discrete_Distribution dist = random_discrete_make(probabilities, ACTION_ENUM_COUNT);
+		//We store everything twice to allow us to test copy operation by coping the current state1 into state2 
+		// (or vice versa) and continuing working with the copied data (by swapping the structs)
+		Hash_String_Array truth_val_array = {debug.alloc};
+		Hash_String_Array truth_key_array = {debug.alloc};
+
+		String_Map map = {0};
+		string_map_init(&map, debug.alloc, strings.alloc, sizeof(Hash_String), DEF_ALIGN, string_map_hash_string_store, string_map_hash_string_deinit, NULL);
+		//uint64_t random_seed = random_clock_seed();
+		uint64_t random_seed = 0;
+		*random_state() = random_state_from_seed(random_seed);
+
+		i32 max_size = 0;
+		i32 max_capacity = 0;
+		f64 start = clock_s();
+		for(isize z = 0; z < MAX_ITERS; z++)
 		{
-			//We store everything twice to allow us to test copy operation by coping the current state1 into state2 
-			// (or vice versa) and continuing working with the copied data (by swapping the structs)
-			Hash_String_Array truth_val_array = {0};
-			Hash_String_Array truth_key_array = {0};
+			if(z == 8)
+				LOG_HERE;
 
-			String_Map map = {0};
-			string_map_init(&map, debug.alloc, strings.alloc, sizeof(Hash_String), DEF_ALIGN, string_map_hash_string_store, string_map_hash_string_deinit, NULL);
-			//uint64_t random_seed = random_clock_seed();
-			uint64_t random_seed = 0;
-			*random_state() = random_state_from_seed(random_seed);
-
-			i32 max_size = 0;
-			i32 max_capacity = 0;
-			f64 start = clock_s();
-			for(isize z = 0; z < MAX_ITERS; z++)
-			{
-				if(z == 8)
-					LOG_HERE;
-
-				Action action = (Action) random_discrete(&dist);
+			Action action = (Action) random_discrete(dist, ARRAY_LEN(dist));
 				
-				if(clock_s() - start >= max_seconds && z >= MIN_ITERS)
-					action = REINIT;
+			if(clock_s() - start >= max_seconds && z >= MIN_ITERS)
+				action = REINIT;
 
-				switch(action)
-				{
-					case REINIT: {
-						string_map_deinit(&map);
-						for(isize i = 0; i < truth_key_array.len; i++)
-						{
-							hash_string_deallocate(strings.alloc, &truth_key_array.data[i]);
-							hash_string_deallocate(strings.alloc, &truth_val_array.data[i]);
-						}
-						array_clear(&truth_key_array);
-						array_clear(&truth_val_array);
+			switch(action)
+			{
+				case REINIT: {
+					string_map_deinit(&map);
+					for(isize i = 0; i < truth_key_array.len; i++)
+					{
+						hash_string_deallocate(strings.alloc, &truth_key_array.data[i]);
+						hash_string_deallocate(strings.alloc, &truth_val_array.data[i]);
+					}
+					array_clear(&truth_key_array);
+					array_clear(&truth_val_array);
 						
-						string_map_init(&map, debug.alloc, strings.alloc, sizeof(Hash_String), DEF_ALIGN, string_map_hash_string_store, string_map_hash_string_deinit, NULL);
-					} break;
+					string_map_init(&map, debug.alloc, strings.alloc, sizeof(Hash_String), DEF_ALIGN, string_map_hash_string_store, string_map_hash_string_deinit, NULL);
+				} break;
 					
-					case CLEAR: {
-						string_map_clear(&map);
+				case CLEAR: {
+					string_map_clear(&map);
 
-						for(isize i = 0; i < truth_key_array.len; i++)
-						{
-							hash_string_deallocate(strings.alloc, &truth_key_array.data[i]);
-							hash_string_deallocate(strings.alloc, &truth_val_array.data[i]);
-						}
-						array_clear(&truth_key_array);
-						array_clear(&truth_val_array);
-					} break;
+					for(isize i = 0; i < truth_key_array.len; i++)
+					{
+						hash_string_deallocate(strings.alloc, &truth_key_array.data[i]);
+						hash_string_deallocate(strings.alloc, &truth_val_array.data[i]);
+					}
+					array_clear(&truth_key_array);
+					array_clear(&truth_val_array);
+				} break;
 
-					case INSERT: {
-						Hash_String val = string_map_generate_random_hstring(strings.alloc);
-						Hash_String key = {0};
+				case INSERT: {
+					Hash_String val = string_map_generate_random_hstring(strings.alloc);
+					Hash_String key = {0};
 						
-						isize index = random_range(0, truth_key_array.len);
-						bool duplicit = (truth_key_array.len > 0) && random_f64() > 0.75;
-						if(duplicit)
-							key = hash_string_allocate(strings.alloc, truth_key_array.data[index]);
-						else
-							key = string_map_generate_random_hstring(strings.alloc);
+					isize index = random_range(0, truth_key_array.len);
+					bool duplicit = (truth_key_array.len > 0) && random_f64() > 0.75;
+					if(duplicit)
+						key = hash_string_allocate(strings.alloc, truth_key_array.data[index]);
+					else
+						key = string_map_generate_random_hstring(strings.alloc);
 
+					array_push(&truth_key_array, key);
+					array_push(&truth_val_array, val);
+
+					isize inserted = string_map_insert(&map, key, &val).index;
+					isize found = string_map_find(&map, key).index;
+				
+					TEST(map.keys != NULL && map.values != NULL && map.len > 0);
+					TEST(found != -1 && inserted != -1 && "The inserted value must be findable");
+				} break;
+					
+				case FIND_OR_INSERT: 
+				case ASSIGN_OR_INSERT: {
+					Hash_String val = string_map_generate_random_hstring(strings.alloc);
+					Hash_String key = {0};
+
+					isize index = random_range(0, truth_key_array.len);
+					bool duplicit = (truth_key_array.len > 0) && random_f64() > 0.75;
+					if(duplicit)
+						key = hash_string_allocate(strings.alloc, truth_key_array.data[index]);
+					else
+						key = string_map_generate_random_hstring(strings.alloc);
+
+					if(duplicit)
+					{
+						if(action == ASSIGN_OR_INSERT)
+						{
+							hash_string_deallocate(strings.alloc, &truth_key_array.data[index]);
+							hash_string_deallocate(strings.alloc, &truth_val_array.data[index]);
+							truth_key_array.data[index] = key;
+							truth_val_array.data[index] = val;
+						}
+					}
+					else
+					{
 						array_push(&truth_key_array, key);
 						array_push(&truth_val_array, val);
+					}
 
-						isize inserted = string_map_insert(&map, key, &val).index;
-						isize found = string_map_find(&map, key).index;
-				
-						TEST(map.keys != NULL && map.values != NULL && map.len > 0);
-						TEST(found != -1 && inserted != -1 && "The inserted value must be findable");
-					} break;
-					
-					case FIND_OR_INSERT: 
-					case ASSIGN_OR_INSERT: {
-						Hash_String val = string_map_generate_random_hstring(strings.alloc);
-						Hash_String key = {0};
+					isize inserted = 0;
+					if(action == FIND_OR_INSERT)
+						inserted = string_map_find_or_insert(&map, key, &val).index;
+					else
+						inserted = string_map_assign_or_insert(&map, key, &val).index;
+							
+					isize found = string_map_find(&map, key).index;
+					TEST(map.keys != NULL && map.values != NULL && map.len > 0);
+					TEST(found != -1 && inserted != -1 && "The inserted value must be findable");
+				}
 
+				case REMOVE: SCRATCH_ARENA(arena) {
+					if(truth_val_array.len > 0)
+					{
 						isize index = random_range(0, truth_key_array.len);
-						bool duplicit = (truth_key_array.len > 0) && random_f64() > 0.75;
-						if(duplicit)
-							key = hash_string_allocate(strings.alloc, truth_key_array.data[index]);
-						else
-							key = string_map_generate_random_hstring(strings.alloc);
+						Hash_String removed_key = hash_string_allocate(arena.alloc, truth_key_array.data[index]);
 
-						if(duplicit)
-						{
-							if(action == ASSIGN_OR_INSERT)
-							{
-								hash_string_deallocate(strings.alloc, &truth_key_array.data[index]);
-								hash_string_deallocate(strings.alloc, &truth_val_array.data[index]);
-								truth_key_array.data[index] = key;
-								truth_val_array.data[index] = val;
-							}
-						}
-						else
-						{
-							array_push(&truth_key_array, key);
-							array_push(&truth_val_array, val);
-						}
-
-						isize inserted = 0;
-						if(action == FIND_OR_INSERT)
-							inserted = string_map_find_or_insert(&map, key, &val).index;
-						else
-							inserted = string_map_assign_or_insert(&map, key, &val).index;
-							
-						isize found = string_map_find(&map, key).index;
-						TEST(map.keys != NULL && map.values != NULL && map.len > 0);
-						TEST(found != -1 && inserted != -1 && "The inserted value must be findable");
-					}
-
-					case REMOVE: SCRATCH_ARENA(arena) {
-						if(truth_val_array.len > 0)
-						{
-							isize index = random_range(0, truth_key_array.len);
-							Hash_String removed_key = hash_string_allocate(arena.alloc, truth_key_array.data[index]);
-
-							i32 removed_truth_count = 0;
-							for(isize j = 0; j < truth_key_array.len; j++)
-								if(hash_string_is_equal(truth_key_array.data[j], removed_key))
-								{
-									SWAP(&truth_key_array.data[j], array_last(truth_key_array));
-									SWAP(&truth_val_array.data[j], array_last(truth_val_array));
-									Hash_String key = array_pop(&truth_key_array);
-									Hash_String val = array_pop(&truth_val_array);
-
-									hash_string_deallocate(strings.alloc, &key);
-									hash_string_deallocate(strings.alloc, &val);
-									j -= 1;
-									removed_truth_count += 1;
-								}
-
-							i32 removed_hash_count = string_map_remove(&map, removed_key);
-							TEST(removed_truth_count == removed_hash_count);
-
-							isize found_after = string_map_find(&map, removed_key).index;
-							TEST(found_after == -1);
-						}
-					} break;
-
-					case ACTION_ENUM_COUNT:
-					default: {
-						UNREACHABLE();
-					} break;
-				}
-
-				if(max_size < map.len)
-					max_size = map.len;
-				if(max_capacity < map.capacity)
-					max_capacity = map.capacity;
-				
-				string_map_test_invariants(&map, true);
-				ASSERT(truth_key_array.len == truth_val_array.len);
-				TEST(truth_key_array.len == map.len);
-				
-				//Find every single key. 
-				for(isize k = 0; k < truth_key_array.len; k++)
-				{
-					Hash_String key = truth_key_array.data[k];
-					SCRATCH_ARENA(arena)
-					{
-						Hash_String_Array truth_found = {arena.alloc};
-						Hash_String_Array hash_found = {arena.alloc};
-						
+						i32 removed_truth_count = 0;
 						for(isize j = 0; j < truth_key_array.len; j++)
-							if(hash_string_is_equal(truth_key_array.data[j], key))
-								array_push(&truth_found, truth_val_array.data[j]);
-
-						for(Map_Found found = string_map_find(&map, key); found.index != -1; found = string_map_find_next(&map, key, found))
-							array_push(&hash_found, *found.value_hstring);
-							
-						TEST(hash_found.len == truth_found.len);
-						if(hash_found.len > 1)
-						{
-							qsort(hash_found.data, hash_found.len, sizeof *hash_found.data, _hash_string_compare_func);
-							qsort(truth_found.data, truth_found.len, sizeof *truth_found.data, _hash_string_compare_func);
-						}
-
-						for(isize l = 0; l < hash_found.len; l++)
-							TEST(hash_string_is_equal(hash_found.data[l], truth_found.data[l]));
-					}
-				}
-
-				//Test integrity of some non existant keys
-				for(isize k = 0; k < NON_EXISTANT_KEYS_CHECKS; k++)
-				{
-					SCRATCH_ARENA(arena)
-					{
-						Hash_String key = string_map_generate_random_hstring(arena.alloc);
-				
-						//Only if the genrated key is unique 
-						//(again extrenely statistically unlikely that it will fail truth_key_array.len/10^19 chance)
-						bool key_found = false;
-						for(isize j = 0; j < truth_key_array.len; j++)
-							if(hash_string_is_equal(truth_key_array.data[j], key))
+							if(hash_string_is_equal(truth_key_array.data[j], removed_key))
 							{
-								key_found = true;
-								break;
+								SWAP(&truth_key_array.data[j], array_last(truth_key_array));
+								SWAP(&truth_val_array.data[j], array_last(truth_val_array));
+								Hash_String key = array_pop(&truth_key_array);
+								Hash_String val = array_pop(&truth_val_array);
+
+								hash_string_deallocate(strings.alloc, &key);
+								hash_string_deallocate(strings.alloc, &val);
+								j -= 1;
+								removed_truth_count += 1;
 							}
 
-						if(key_found == false)
-						{
-							isize found = string_map_find(&map, key).index;
-							TEST(found == -1 && "must not be found");
-						}
-					}
-				}
+						i32 removed_hash_count = string_map_remove(&map, removed_key);
+						TEST(removed_truth_count == removed_hash_count);
 
-				if(clock_s() - start >= max_seconds && z >= MIN_ITERS)
-					break;
+						isize found_after = string_map_find(&map, removed_key).index;
+						TEST(found_after == -1);
+					}
+				} break;
 			}
+
+			if(max_size < map.len)
+				max_size = map.len;
+			if(max_capacity < map.capacity)
+				max_capacity = map.capacity;
+				
+			string_map_test_invariants(&map, true);
+			ASSERT(truth_key_array.len == truth_val_array.len);
+			TEST(truth_key_array.len == map.len);
+				
+			//Find every single key. 
+			for(isize k = 0; k < truth_key_array.len; k++)
+			{
+				Hash_String key = truth_key_array.data[k];
+				SCRATCH_ARENA(arena)
+				{
+					Hash_String_Array truth_found = {arena.alloc};
+					Hash_String_Array hash_found = {arena.alloc};
+						
+					for(isize j = 0; j < truth_key_array.len; j++)
+						if(hash_string_is_equal(truth_key_array.data[j], key))
+							array_push(&truth_found, truth_val_array.data[j]);
+
+					for(Map_Found found = string_map_find(&map, key); found.index != -1; found = string_map_find_next(&map, key, found))
+						array_push(&hash_found, *found.value_hstring);
+							
+					TEST(hash_found.len == truth_found.len);
+					if(hash_found.len > 1)
+					{
+						qsort(hash_found.data, hash_found.len, sizeof *hash_found.data, _hash_string_compare_func);
+						qsort(truth_found.data, truth_found.len, sizeof *truth_found.data, _hash_string_compare_func);
+					}
+
+					for(isize l = 0; l < hash_found.len; l++)
+						TEST(hash_string_is_equal(hash_found.data[l], truth_found.data[l]));
+				}
+			}
+
+			//Test integrity of some non existant keys
+			for(isize k = 0; k < NON_EXISTANT_KEYS_CHECKS; k++)
+			{
+				SCRATCH_ARENA(arena)
+				{
+					Hash_String key = string_map_generate_random_hstring(arena.alloc);
+				
+					//Only if the genrated key is unique 
+					//(again extrenely statistically unlikely that it will fail truth_key_array.len/10^19 chance)
+					bool key_found = false;
+					for(isize j = 0; j < truth_key_array.len; j++)
+						if(hash_string_is_equal(truth_key_array.data[j], key))
+						{
+							key_found = true;
+							break;
+						}
+
+					if(key_found == false)
+					{
+						isize found = string_map_find(&map, key).index;
+						TEST(found == -1 && "must not be found");
+					}
+				}
+			}
+
+			if(clock_s() - start >= max_seconds && z >= MIN_ITERS)
+				break;
 		}
 
-		random_discrete_deinit(&dist);
+		array_deinit(&truth_val_array);
+		array_deinit(&truth_key_array);
 	}
+
 	debug_allocator_deinit(&debug);
 	debug_allocator_deinit(&strings);
 }
 
 INTERNAL void test_string_map(f64 max_seconds)
 {
-	(void) max_seconds;
-	SCRATCH_ARENA(arena)
-	{
-		for(isize i = 0; i < 100; i++)
-			LOG_INFO("RAND", "%s", generate_random_text(arena.alloc, 5, STRING(" "), true, STRING(".")).data); 
-
-		LOG_HERE;
-	}
-
 	test_string_map_unit();
 	test_string_map_stress(max_seconds);
 }

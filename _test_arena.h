@@ -112,12 +112,12 @@ static void test_arena_stress(f64 time)
         ACTION_ENUM_COUNT
     };
     
-	i32 probabilities[ACTION_ENUM_COUNT] = {0};
-	probabilities[ACQUIRE]			= 5;
-	probabilities[RELEASE]          = 1;
-	probabilities[ALLOCATE]			= 5;
-    
-	Discrete_Distribution dist = random_discrete_make(probabilities, ACTION_ENUM_COUNT);
+    Discrete_Distribution dist[] = {
+        {ACQUIRE, 5},
+        {RELEASE, 1},
+        {ALLOCATE, 5},
+    };
+	random_discrete_make(dist, ARRAY_LEN(dist));
 
     Arena_Stack arena_stack = {0};
     arena_stack_init(&arena_stack, "test_arena", 0, 0, MAX_LEVELS);
@@ -134,7 +134,7 @@ static void test_arena_stress(f64 time)
 		if(clock_s() - start >= time && i >= MIN_ITERS)
 			break;
 
-		i32 action = random_discrete(&dist);
+		isize action = random_discrete(dist, ARRAY_LEN(dist));
         if(levels <= 0)
             action = ACQUIRE;
         else if(levels >= MAX_LEVELS && action == ACQUIRE)
@@ -172,7 +172,6 @@ static void test_arena_stress(f64 time)
         arena_stack_test_invariants(&arena_stack);
     }
 
-    random_discrete_deinit(&dist);
     arena_stack_deinit(&arena_stack);
 }
 

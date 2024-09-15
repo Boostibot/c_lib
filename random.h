@@ -2,6 +2,7 @@
 #define JOT_RANDOM
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifndef ASSERT
 #include <assert.h>
@@ -44,7 +45,7 @@ EXTERNAL void     random_shuffle(void* elements, int64_t element_count, int64_t 
 //Swaps two values of the given size
 EXTERNAL void     swap_any(void* a, void* b, int64_t size); 
 
-typedef struct {
+typedef struct Random_State {
 	uint64_t seed;
 	uint64_t state_splitmix[1];
 	uint64_t state_xiroshiro256[4];
@@ -56,25 +57,37 @@ EXTERNAL uint64_t     random_clock_seed();
 EXTERNAL Random_State random_state_from_seed(uint64_t seed); 
 //initialized Random_State using system clock
 EXTERNAL Random_State random_state_from_clock();
-
 //Returns pointer to the global state currently used
 EXTERNAL Random_State* random_state();
 
 //generates random bool
-EXTERNAL bool     random_state_bool(Random_State* state);	
+EXTERNAL bool     random_bool_state(Random_State* state);	
 //generates random float in range [0, 1)
-EXTERNAL float    random_state_f32(Random_State* state);
+EXTERNAL float    random_f32_state(Random_State* state);
 //generates random double in range [0, 1)
-EXTERNAL double   random_state_f64(Random_State* state); 
+EXTERNAL double   random_f64_state(Random_State* state); 
 //generates random u64 in range [0, U64_MAX] 
-EXTERNAL uint64_t random_state_u64(Random_State* state);  
+EXTERNAL uint64_t random_u64_state(Random_State* state);  
 //generates random i64 in range [I64_MIN, U64_MAX] 
-EXTERNAL int64_t  random_state_i64(Random_State* state);  
+EXTERNAL int64_t  random_i64_state(Random_State* state);  
 //generates unbiased random integer in range [from, to)
-EXTERNAL int64_t  random_state_range(Random_State* state, int64_t from, int64_t to); 
+EXTERNAL int64_t  random_range_state(Random_State* state, int64_t from, int64_t to); 
 //Randomly shuffles the provided array
-EXTERNAL void     random_state_shuffle(Random_State* state, void* elements, int64_t element_count, int64_t element_size); 
-EXTERNAL void	  random_state_bytes(Random_State* state, void* into, int64_t size);
+EXTERNAL void     random_shuffle_state(Random_State* state, void* elements, int64_t element_count, int64_t element_size); 
+EXTERNAL void	  random_bytes_state(Random_State* state, void* into, int64_t size);
+
+typedef struct Discrete_Distribution{
+    int64_t user_value;			//set by user. This is what gets returned.
+    int64_t chance;				//set by user. 
+    int64_t _chance_cumulative; //set in random_discrete_make()
+} Discrete_Distribution;
+
+//Fills the remaining values of Discrete_Distribution
+EXTERNAL void    random_discrete_make(Discrete_Distribution distribution[], int64_t distribution_size);
+//Samples the discrete random distribution using provided state. Returns user_value.
+EXTERNAL int64_t random_discrete_state(Random_State* state, const Discrete_Distribution distribution[], int64_t distribution_size);
+//Samples the discrete random distribution using global state. Returns user_value.
+EXTERNAL int64_t random_discrete(const Discrete_Distribution distribution[], int64_t distribution_size);
 
 #endif
 
@@ -208,7 +221,7 @@ EXTERNAL void	  random_state_bytes(Random_State* state, void* into, int64_t size
 		return out;
 	}
 
-	EXTERNAL float random_state_f32(Random_State* state)
+	EXTERNAL float random_f32_state(Random_State* state)
 	{
 		uint64_t random = random_xiroshiro256(state->state_xiroshiro256);
 		uint64_t mantissa = random >> (64 - 23);
@@ -216,7 +229,7 @@ EXTERNAL void	  random_state_bytes(Random_State* state, void* into, int64_t size
 		return random_f32;
 	}
 
-	EXTERNAL double random_state_f64(Random_State* state)
+	EXTERNAL double random_f64_state(Random_State* state)
 	{
 		uint64_t random = random_xiroshiro256(state->state_xiroshiro256);
 		uint64_t mantissa = random >> (64 - 52);
@@ -224,20 +237,20 @@ EXTERNAL void	  random_state_bytes(Random_State* state, void* into, int64_t size
 		return random_f64;
 	}
 
-	EXTERNAL bool random_state_bool(Random_State* state)
+	EXTERNAL bool random_bool_state(Random_State* state)
 	{
 		uint64_t random = random_splitmix(state->state_splitmix);
 		bool out = random % 2 == 0;
 		return out;
 	}
 	
-	EXTERNAL int64_t random_state_i64(Random_State* state)
+	EXTERNAL int64_t random_i64_state(Random_State* state)
 	{
 		int64_t random_i64 = (int64_t) random_splitmix(state->state_splitmix);
 		return random_i64;
 	}
 
-	EXTERNAL uint64_t random_state_u64(Random_State* state)
+	EXTERNAL uint64_t random_u64_state(Random_State* state)
 	{
 		uint64_t random_u64 = random_splitmix(state->state_splitmix);
 		return random_u64;
@@ -257,7 +270,7 @@ EXTERNAL void	  random_state_bytes(Random_State* state, void* into, int64_t size
 		return x;
 	}
 
-	EXTERNAL int64_t random_state_range(Random_State* state, int64_t from, int64_t to)
+	EXTERNAL int64_t random_range_state(Random_State* state, int64_t from, int64_t to)
 	{
 		int64_t out = from;
 		if(from < to)
@@ -294,7 +307,7 @@ EXTERNAL void	  random_state_bytes(Random_State* state, void* into, int64_t size
 		memcpy(elemsj + exact,   temp,           (size_t) remainder);
 	}
 
-	EXTERNAL void random_state_shuffle(Random_State* state, void* elements, int64_t element_count, int64_t element_size)
+	EXTERNAL void random_shuffle_state(Random_State* state, void* elements, int64_t element_count, int64_t element_size)
 	{
 		ASSERT(element_count >= 0 && element_size >= 0);
 		enum {LOCAL = 256};
@@ -326,16 +339,16 @@ EXTERNAL void	  random_state_bytes(Random_State* state, void* into, int64_t size
 		}
 	}
 	
-	EXTERNAL void random_state_bytes(Random_State* state, void* into, int64_t size)
+	EXTERNAL void random_bytes_state(Random_State* state, void* into, int64_t size)
 	{
 		int64_t full_randoms = size / 8;
 		int64_t remainder = size % 8;
 		u64* fulls = (u64*) into;
 	
 		for(int64_t i = 0; i < full_randoms; i++)
-			fulls[i] = random_state_u64(state);
+			fulls[i] = random_u64_state(state);
 
-		u64 last = random_state_u64(state);
+		u64 last = random_u64_state(state);
 		memcpy(&fulls[full_randoms], &last, (size_t) remainder);
 	}
 
@@ -357,15 +370,15 @@ EXTERNAL void	  random_state_bytes(Random_State* state, void* into, int64_t size
 		*state_ptr = state;
 	}
 	
-	EXTERNAL bool     random_bool() { return random_state_bool(random_state()); }	
-	EXTERNAL float    random_f32()  { return random_state_f32(random_state()); }
-	EXTERNAL double   random_f64()  { return random_state_f64(random_state()); } 
-	EXTERNAL uint64_t random_u64()  { return random_state_u64(random_state()); }  
-	EXTERNAL int64_t  random_i64()  { return random_state_i64(random_state()); }  
+	EXTERNAL bool     random_bool() { return random_bool_state(random_state()); }	
+	EXTERNAL float    random_f32()  { return random_f32_state(random_state()); }
+	EXTERNAL double   random_f64()  { return random_f64_state(random_state()); } 
+	EXTERNAL uint64_t random_u64()  { return random_u64_state(random_state()); }  
+	EXTERNAL int64_t  random_i64()  { return random_i64_state(random_state()); }  
 
 	EXTERNAL int64_t random_range(int64_t from, int64_t to) 
 	{ 
-		return random_state_range(random_state(), from, to); 
+		return random_range_state(random_state(), from, to); 
 	}
 	
 	EXTERNAL double random_interval_f64(double from, double to)
@@ -384,11 +397,57 @@ EXTERNAL void	  random_state_bytes(Random_State* state, void* into, int64_t size
 
 	EXTERNAL void random_shuffle(void* elements, int64_t element_count, int64_t element_size) 
 	{ 
-		random_state_shuffle(random_state(), elements, element_count, element_size); 
+		random_shuffle_state(random_state(), elements, element_count, element_size); 
 	}
 
 	EXTERNAL void random_bytes(void* into, int64_t size)
 	{
-		random_state_bytes(random_state(), into, size);
+		random_bytes_state(random_state(), into, size);
+	}
+
+
+	EXTERNAL void random_discrete_make(Discrete_Distribution distribution[], int64_t distribution_size)
+	{
+		int64_t _chance_cumulative = 0;
+		for(int64_t i = 0; i < distribution_size; i++)
+		{
+			_chance_cumulative += distribution[i].chance;
+			distribution[i]._chance_cumulative = _chance_cumulative;
+		}
+	}
+
+	EXTERNAL int64_t random_discrete_state(Random_State* state, const Discrete_Distribution distribution[], int64_t distribution_size)
+	{
+		if(distribution_size <= 0)  
+			return 0;
+
+		int64_t range_lo = distribution[0]._chance_cumulative;
+		int64_t range_hi = distribution[distribution_size - 1]._chance_cumulative;
+		int64_t random = random_range_state(state, range_lo, range_hi);
+
+		int64_t low_i = 0;
+		int64_t count = distribution_size;
+
+		while (count > 0)
+		{
+			int64_t step = count / 2;
+			int64_t curr = low_i + step;
+			if(distribution[curr]._chance_cumulative < random)
+			{
+				low_i = curr + 1;
+				count -= step + 1;
+			}
+			else
+				count = step;
+		}
+		
+		ASSERT(0 <= low_i && low_i < distribution_size);
+		int64_t user_value = distribution[low_i].user_value;
+		return user_value;
+	}
+
+	EXTERNAL int64_t random_discrete(const Discrete_Distribution distribution[], int64_t distribution_size)
+	{
+		return random_discrete_state(random_state(), distribution, distribution_size);
 	}
 #endif

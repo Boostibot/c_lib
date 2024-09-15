@@ -2,18 +2,56 @@
 #define JOT_HASH_FN
 
 #include <stdint.h>
-#include <assert.h>
 #include <string.h>
 
-#ifndef JOT_HASH_FN_API
-    #define JOT_HASH_FN_API static inline
+#ifndef HASH_FN_API
+    #define HASH_FN_API static inline
+    #define JOT_HASH_FN_IMPL
 #endif
 
 //Hashes a 64 bit value to 64 bit hash.
 //Note that this function is bijective meaning it can be reversed.
 //In particular 0 maps to 0.
 //source: https://stackoverflow.com/a/12996028
-JOT_HASH_FN_API uint64_t hash64_bijective(uint64_t x) 
+HASH_FN_API uint64_t hash64_bijective(uint64_t x);
+HASH_FN_API uint64_t unhash64_bijective(uint64_t x);
+
+//Hashes a 32 bit value to 32 bit hash.
+//Note that this function is bijective meaning it can be reversed.
+//In particular 0 maps to 0.
+//source: https://stackoverflow.com/a/12996028
+HASH_FN_API uint32_t hash32_bijective(uint32_t x); 
+HASH_FN_API uint32_t unhash32_bijective(uint32_t x);
+
+//Mixes two prevously hashed values into one. 
+//Yileds good results even when hash1 and hash2 are hashes badly.
+HASH_FN_API uint64_t hash64_mix(uint64_t hash1, uint64_t hash2);
+HASH_FN_API uint32_t hash32_mix(uint32_t hash1, uint32_t hash2);
+
+//Mixes hi and lo bits of hash to produce a good 32 bit hash
+HASH_FN_API uint32_t hash64_fold(uint64_t hash);
+
+//Source: https://github.com/abrandoned/murmur2/blob/master/MurmurHash2.c (modified to not use unaligned pointers since those are UB)
+HASH_FN_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed);
+HASH_FN_API uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed);
+
+//Source: https://github.com/aappleby/smhasher/blob/master/src/Hashes.cpp
+HASH_FN_API uint32_t hash32_fnv(const void* key, int64_t size, uint32_t seed);
+HASH_FN_API uint64_t hash64_fnv(const void* key, int64_t size, uint32_t seed);
+
+HASH_FN_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed);
+
+#endif
+
+#if (defined(JOT_ALL_IMPL) || defined(JOT_HASH_FN_IMPL)) && !defined(JOT_HASH_FN_HAS_IMPL)
+#define JOT_HASH_FN_HAS_IMPL
+
+#ifndef ASSERT
+    #include <assert.h>
+    #define ASSERT(x) assert(x)
+#endif
+
+HASH_FN_API uint64_t hash64_bijective(uint64_t x) 
 {
     x = (x ^ (x >> 30)) * (uint64_t) 0xbf58476d1ce4e5b9;
     x = (x ^ (x >> 27)) * (uint64_t) 0x94d049bb133111eb;
@@ -21,7 +59,7 @@ JOT_HASH_FN_API uint64_t hash64_bijective(uint64_t x)
     return x;
 }
 
-JOT_HASH_FN_API uint64_t unhash64_bijective(uint64_t x) 
+HASH_FN_API uint64_t unhash64_bijective(uint64_t x) 
 {
     x = (x ^ (x >> 31) ^ (x >> 62)) * (uint64_t) 0x319642b2d24d8ec3;
     x = (x ^ (x >> 27) ^ (x >> 54)) * (uint64_t) 0x96de1b173f119089;
@@ -29,11 +67,7 @@ JOT_HASH_FN_API uint64_t unhash64_bijective(uint64_t x)
     return x;
 }
 
-//Hashes a 32 bit value to 32 bit hash.
-//Note that this function is bijective meaning it can be reversed.
-//In particular 0 maps to 0.
-//source: https://stackoverflow.com/a/12996028
-JOT_HASH_FN_API uint32_t hash32_bijective(uint32_t x) 
+HASH_FN_API uint32_t hash32_bijective(uint32_t x) 
 {
     x = ((x >> 16) ^ x) * 0x119de1f3;
     x = ((x >> 16) ^ x) * 0x119de1f3;
@@ -41,7 +75,7 @@ JOT_HASH_FN_API uint32_t hash32_bijective(uint32_t x)
     return x;
 }
 
-JOT_HASH_FN_API uint32_t unhash32_bijective(uint32_t x) 
+HASH_FN_API uint32_t unhash32_bijective(uint32_t x) 
 {
     x = ((x >> 16) ^ x) * 0x119de1f3;
     x = ((x >> 16) ^ x) * 0x119de1f3;
@@ -49,31 +83,28 @@ JOT_HASH_FN_API uint32_t unhash32_bijective(uint32_t x)
     return x;
 }
 
-//Mixes two prevously hashed values into one. 
-//Yileds good results even when hash1 and hash2 are hashes badly.
-JOT_HASH_FN_API uint64_t hash64_mix(uint64_t hash1, uint64_t hash2)
+HASH_FN_API uint64_t hash64_mix(uint64_t hash1, uint64_t hash2)
 {
     hash1 ^= hash2 + 0x517cc1b727220a95 + (hash1 << 6) + (hash1 >> 2);
     return hash1;
 }
 
-JOT_HASH_FN_API uint32_t hash32_mix(uint32_t hash1, uint32_t hash2)
+HASH_FN_API uint32_t hash32_mix(uint32_t hash1, uint32_t hash2)
 {
     hash1 ^= hash2 + 0x9e3779b9 + (hash1 << 6) + (hash1 >> 2);
     return hash1;
 }
 
-JOT_HASH_FN_API uint32_t hash64_fold(uint64_t hash)
+HASH_FN_API uint32_t hash64_fold(uint64_t hash)
 {
     return hash32_mix((uint32_t) hash, (uint32_t)(hash >> 32));
 }
 
-JOT_HASH_FN_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed)
+HASH_FN_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed)
 {
-    //source (modified to not use unaligned pointers since those are UB) https://github.com/abrandoned/murmur2/blob/master/MurmurHash2.c
     uint32_t endian_check = 0x33221100;
-    assert(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
-    assert((key != NULL || size == 0) && size >= 0);
+    ASSERT(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
+    ASSERT((key != NULL || size == 0) && size >= 0);
 
     const uint32_t magic = 0x5bd1e995;
     const int r = 24;
@@ -109,12 +140,11 @@ JOT_HASH_FN_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t s
     return hash;
 } 
 
-JOT_HASH_FN_API uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed)
+HASH_FN_API uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed)
 {
-    //source (modified to not use unaligned pointers since those are UB) https://github.com/abrandoned/murmur2/blob/master/MurmurHash2.c
     uint32_t endian_check = 0x33221100;
-    assert(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
-    assert((key != NULL || size == 0) && size >= 0);
+    ASSERT(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
+    ASSERT((key != NULL || size == 0) && size >= 0);
 
     const uint64_t magic = 0xc6a4a7935bd1e995;
     const int r = 47;
@@ -170,11 +200,11 @@ static inline uint64_t _xxhash64_process_single(uint64_t previous, uint64_t inpu
     return _xxhash64_rotate_left(previous + input * XXHASH_FN64_PRIME_2, 31) * XXHASH_FN64_PRIME_1;
 }
 
-JOT_HASH_FN_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed)
+HASH_FN_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed)
 {
     uint32_t endian_check = 0x33221100;
-    assert(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
-    assert((key != NULL || size == 0) && size >= 0);
+    ASSERT(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
+    ASSERT((key != NULL || size == 0) && size >= 0);
 
     uint8_t* data = (uint8_t*) (void*) key;
     uint8_t* end = data + size;
@@ -236,10 +266,9 @@ JOT_HASH_FN_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed)
     return hash;
 }
 
-JOT_HASH_FN_API uint32_t hash32_fnv(const void* key, int64_t size, uint32_t seed)
+HASH_FN_API uint32_t hash32_fnv(const void* key, int64_t size, uint32_t seed)
 {
-    // Source: https://github.com/aappleby/smhasher/blob/master/src/Hashes.cpp
-    assert((key != NULL || size == 0) && size >= 0);
+    ASSERT((key != NULL || size == 0) && size >= 0);
 
     uint32_t hash = seed ^ 2166136261UL;
     const uint8_t* data = (const uint8_t*) key;
@@ -251,9 +280,9 @@ JOT_HASH_FN_API uint32_t hash32_fnv(const void* key, int64_t size, uint32_t seed
     return hash;
 }
 
-JOT_HASH_FN_API uint64_t hash64_fnv(const void* key, int64_t size, uint32_t seed)
+HASH_FN_API uint64_t hash64_fnv(const void* key, int64_t size, uint32_t seed)
 {
-    assert((key != NULL || size == 0) && size >= 0);
+    ASSERT((key != NULL || size == 0) && size >= 0);
 
     const uint8_t* data = (const uint8_t*) key;
     uint64_t hash = seed ^ 0x27D4EB2F165667C5ULL;

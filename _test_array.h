@@ -19,21 +19,20 @@ INTERNAL void test_array_stress(f64 max_seconds)
 		RESIZE,
 		APPEND,
 		COPY, //when we assign between the two arrays we switch and use the otehr one
-
-		ACTION_ENUM_COUNT,
 	};
 
-	i32 probabilities[ACTION_ENUM_COUNT] = {0};
-	probabilities[INIT]				= 1;
-	probabilities[DEINIT]           = 1;
-	probabilities[CLEAR]			= 2;
-	probabilities[SET_CAPACITY]		= 2;
-	probabilities[PUSH]				= 50;
-	probabilities[POP]				= 10;
-	probabilities[RESERVE]			= 5;
-	probabilities[RESIZE]			= 5;
-	probabilities[APPEND]			= 20;
-	probabilities[COPY]			    = 5;
+	Discrete_Distribution dist[] = {
+		{INIT,			1},
+		{DEINIT,		1},
+		{CLEAR,			2},
+		{SET_CAPACITY,	2},
+		{PUSH,			50},
+		{POP,			10},
+		{RESERVE,		5},
+		{RESIZE,		5},
+		{APPEND,		20},
+		{COPY,			5},
+	};
 	
 	enum {
 		MAX_ITERS = 1000*1000*10,
@@ -47,7 +46,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 	i64_Array* arr = &array1;
 	i64_Array* other_array = &array2;
 	
-	Discrete_Distribution dist = random_discrete_make(probabilities, ACTION_ENUM_COUNT);
+	random_discrete_make(dist, ARRAY_LEN(dist));
 
 	isize max_size = 0;
 	isize max_capacity = 0;
@@ -57,7 +56,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 		if(clock_s() - start >= max_seconds && i >= MIN_ITERS)
 			break;
 
-		i32 action = random_discrete(&dist);
+		isize action = random_discrete(dist, ARRAY_LEN(dist));
 		TEST(generic_array_is_invariant(array_make_generic(arr)));
 		
 		switch(action)
@@ -161,8 +160,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 			
 		TEST(generic_array_is_invariant(array_make_generic(arr)));
 	}
-	
-	random_discrete_deinit(&dist);
+
 	array_deinit(&array1);
 	array_deinit(&array2);
 
