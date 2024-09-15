@@ -44,14 +44,25 @@ typedef unsigned long long llu;
 #define GB   (1LL << 30)
 #define TB   (1LL << 40)
 
-#define SWAP_N(a, b, N) do { \
-    char temp[N]; \
-    memcpy(temp, a, N); \
-    memcpy(a, b, N); \
-    memcpy(b, temp, N); \
+#define SWAP(a, b) do { \
+    void* x = (a); \
+    void* y = (b); \
+    char t[sizeof *(a)]; \
+    size_t N = sizeof *(a); \
+    memcpy(t, x, N); \
+    memcpy(x, y, N); \
+    memcpy(y, t, N); \
 } while(0) \
 
-#define SWAP(a, b) SWAP_N((a), (b), sizeof *(a))
+#define SWAP_N(a, b, n) do { \
+    void* x = (a); \
+    void* y = (b); \
+    size_t N = (n); \
+    void* t = STACK_ALLOC(N); \
+    memcpy(t, x, N); \
+    memcpy(x, y, N); \
+    memcpy(y, t, N); \
+} while(0) \
 
 #ifdef __cplusplus
     #define BINIT(Struct_Type) Struct_Type
@@ -76,6 +87,7 @@ typedef unsigned long long llu;
     #define ATTRIBUTE_ALIGNED(bytes)                                __declspec(align(bytes))
     #define ATTRIBUTE_NORETURN                                      __declspec(noreturn)
     #define ATTRIBUTE_ALLOCATOR(size_arg_index, align_arg_index)    __declspec(restrict)
+    #define STACK_ALLOC(bytes)                                      _alloca(bytes)
 #elif defined(__GNUC__) || defined(__clang__)
     #define ASSUME_UNREACHABLE()                                    __builtin_unreachable() 
     #define ATTRIBUTE_RESTRICT                                      __restrict__
@@ -85,6 +97,7 @@ typedef unsigned long long llu;
     #define ATTRIBUTE_ALIGNED(bytes)                                __attribute__((aligned(bytes)))
     #define ATTRIBUTE_NORETURN                                      __attribute__((noreturn))
     #define ATTRIBUTE_ALLOCATOR(size_arg_index, align_arg_index)    __attribute__((malloc, alloc_size(size_arg_index), alloc_align(align_arg_index)))
+    #define STACK_ALLOC(bytes)                                      __builtin_alloca(bytes)
 #else
     #define ASSUME_UNREACHABLE()                                (*(int*)0 = 0)
     #define ATTRIBUTE_RESTRICT                                  /* C's restrict keyword. see: https://en.cppreference.com/w/c/language/restrict */
@@ -94,6 +107,7 @@ typedef unsigned long long llu;
     #define ATTRIBUTE_ALIGNED(align)                            _Alignas(align) /* Places a variable on the stack aligned to 'align' */
     #define ATTRIBUTE_NORETURN                                  /* Specifices that this function will not return (for example abort, exit ...) . Applied before function declartion. */
     #define ATTRIBUTE_ALLOCATOR(size_arg_index, align_arg_index)
+    #define STACK_ALLOC(bytes)                                  size_t t[(bytes) / sizeof(size_t)]
 #endif
 
 #ifndef EXTERNAL

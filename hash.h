@@ -152,6 +152,16 @@ typedef struct Hash {
     int32_t info_total_extra_probes;
 } Hash;
 
+typedef struct Hash_Iter {
+    //Index of found entry or -1 if not found
+    int32_t index;  
+    //how many probes it took to find (or not find). 
+    //This is needed for resetting the quadratic probing search!
+    int32_t probes; 
+    //The looked for hash
+    uint64_t hash;
+} Hash_Iter;
+ 
 //A reference to a found or not found Hash entry
 typedef struct Hash_Found {
     //Index of found entry or -1 if not found
@@ -324,6 +334,12 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
             // us from rehashing too much.
             if(stop_if_found)
             {
+                if(table->entries[i].value == HASH_GRAVESTONE)
+                    insert_index = i;
+
+                if(table->entries[i].value == HASH_EMPTY)
+                    break;
+                
                 if(table->entries[i].hash == hash)
                 {
                     out.index = (int32_t) i;
@@ -331,12 +347,6 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
                     out.value = table->entries[i].value;
                     goto end;
                 }
-                
-                if(table->entries[i].value == HASH_GRAVESTONE)
-                    insert_index = i;
-
-                if(table->entries[i].value == HASH_EMPTY)
-                    break;
             }
             else
             {

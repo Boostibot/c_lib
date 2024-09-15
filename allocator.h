@@ -143,10 +143,9 @@ EXTERNAL void* align_forward(void* ptr, isize align_to);
 EXTERNAL void* align_backward(void* ptr, isize align_to);
 EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (void) bytes; return NULL;}
 
-//move to platform!
 #ifdef _MSC_VER
     #define stack_allocate(size, align) \
-        ((align) <= 8) ? _alloca((size_t) size) : align_forward(_alloca((size_t) ((size) + (align)), align)
+        ((align) <= 8 ? _alloca((size_t) size) : align_forward(_alloca((size_t) ((size) + (align))), (align)))
 #else
     #define stack_allocate(size, align) \
         __builtin_alloca_with_align((size_t) size, (size_t) align)

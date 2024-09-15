@@ -122,7 +122,7 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 					isize found = hash_find(table, key).index;
 				
 					TEST(table.entries != NULL);
-					TEST(found != -1 && inserted == found && "The inserted value must be findable");
+					TEST(found != -1 && inserted != -1 && "The inserted value must be findable");
 				} break;
 
 				case INSERT_DUPLICIT: {

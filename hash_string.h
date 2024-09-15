@@ -80,6 +80,13 @@ EXTERNAL bool hash_string_is_equal_approx(Hash_String a, Hash_String b)
     #endif
 }
 
+EXTERNAL int hash_string_compare(Hash_String a, Hash_String b)
+{
+    if(a.hash < b.hash) return -1;
+    if(a.hash > b.hash) return 1;
+    else                return string_compare(a.string, b.string);
+}
+
 EXTERNAL Hash_String hash_string_allocate(Allocator* alloc, Hash_String hstring)
 {
     Hash_String out = {0};
@@ -93,4 +100,6 @@ EXTERNAL void hash_string_deallocate(Allocator* alloc, Hash_String* hstring)
     string_deallocate(alloc, &hstring->string);
     hstring->hash = 0;
 }
+
+
 #endif

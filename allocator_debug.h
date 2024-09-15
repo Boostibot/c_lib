@@ -23,9 +23,9 @@
 //
 //  Debug_Allocator
 //  |-------------------------|
-//  | Allocator* parent       |                        |-----------------------------------------------------|
-//  | ...                     |           0----------->| XXX | header | call stack | dead | USER| dead | XXX |
-//  | alive_allocations_hash: |           |            |-----------------------------------------------------|
+//  | Allocator* parent       |                        |------------------------------------------------------|
+//  | ...                     |           0----------->| XXX | header | call stack | dead | USER | dead | XXX |
+//  | alive_allocations_hash: |           |            |------------------------------------------------------|
 //  | |-------------|         |           |
 //  | | 0x8157190a0 | --------------------o
 //  | | 0           |         |
@@ -175,7 +175,6 @@ typedef struct Debug_Allocator_Options
 
 #include <string.h>
 #include <stdlib.h> //qsort
-
 
 EXTERNAL void debug_allocator_init_custom(Debug_Allocator* debug, Allocator* parent, Debug_Allocator_Options options)
 {

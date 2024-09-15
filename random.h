@@ -245,11 +245,9 @@ EXTERNAL void	  random_state_bytes(Random_State* state, void* into, int64_t size
 
 	INTERNAL uint64_t _random_bounded(Random_State* state, uint64_t range) 
 	{
-		uint64_t mask = ~(uint64_t) 0;
-
 		--range;
 		uint64_t index = _count_leading_zeros(range | 1);
-		mask >>= index;
+		uint64_t mask = (uint64_t) -1 >> index;
 		uint64_t x = 0;
 		do 
 		{
@@ -261,10 +259,13 @@ EXTERNAL void	  random_state_bytes(Random_State* state, void* into, int64_t size
 
 	EXTERNAL int64_t random_state_range(Random_State* state, int64_t from, int64_t to)
 	{
-		ASSERT(to > from);
-		uint64_t range = (uint64_t) (to - from);
-		uint64_t bounded = _random_bounded(state, range);
-		int64_t out = (int64_t) bounded + from;
+		int64_t out = from;
+		if(from < to)
+		{
+			uint64_t range = (uint64_t) (to - from);
+			uint64_t bounded = _random_bounded(state, range);
+			out = (int64_t) bounded + from;
+		}
 		return out;
 	}
 
