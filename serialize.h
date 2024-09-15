@@ -639,7 +639,7 @@ EXTERNAL bool serialize_bool(Lpf_Entry* entry, bool* val, bool def, Read_Or_Writ
         SERIALIZE_ENUM_VALUE(1),
     };
 
-    return serialize_enum_typed(entry, val, sizeof *val, (isize) def, enums, ARRAY_SIZE(enums), action);
+    return serialize_enum_typed(entry, val, sizeof *val, (isize) def, enums, ARRAY_LEN(enums), action);
 }
 
 EXTERNAL bool serialize_int(Lpf_Entry* entry, void* int_value, isize int_type_size, i64 def, Read_Or_Write action)

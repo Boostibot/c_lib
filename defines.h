@@ -70,7 +70,7 @@ typedef unsigned long long llu;
     #define BINIT(Struct_Type) (Struct_Type)
 #endif 
 
-#define ARRAY_SIZE(array) (isize) (sizeof(array) / sizeof((array)[0]))
+#define ARRAY_LEN(array) (isize) (sizeof(array) / sizeof((array)[0]))
 
 //MIN and MAX of types
 #define IS_SIGNED(T)		((T) ~(T) 0 < 0) 

@@ -1101,8 +1101,8 @@ INTERNAL void _tlsf_check_invariants(Tlsf_Allocator* allocator)
 #if (defined(JOT_ALL_TEST) || defined(JOT_ALLOCATOR_TLSF_TEST)) && !defined(JOT_ALLOCATOR_TLSF_HAS_TEST)
 #define JOT_ALLOCATOR_TLSF_HAS_TEST
 
-#ifndef ARRAY_SIZE
-    #define ARRAY_SIZE(arr) (isize)(sizeof(arr)/sizeof((arr)[0]))
+#ifndef ARRAY_LEN
+    #define ARRAY_LEN(arr) (isize)(sizeof(arr)/sizeof((arr)[0]))
 #endif
 
 #include <time.h>
@@ -1129,14 +1129,14 @@ void test_tlsf_alloc_unit()
         {35, 16},
     };
 
-    for(isize i = 0; i < ARRAY_SIZE(allocs); i++)
+    for(isize i = 0; i < ARRAY_LEN(allocs); i++)
     {
         tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
         tlsf_allocate(&allocator, &allocs[i].node, allocs[i].size, allocs[i].align, 0);
         tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
     }
         
-    for(isize i = 0; i < ARRAY_SIZE(allocs); i++)
+    for(isize i = 0; i < ARRAY_LEN(allocs); i++)
     {
         tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
         tlsf_deallocate(&allocator, allocs[i].node);

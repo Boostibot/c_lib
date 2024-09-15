@@ -1079,7 +1079,7 @@ void test_single_path(const char* path, const char* prefix, const char* root, co
 void test_path_normalize(int flags, const char* cpath, const char* cexpected)
 {
     const char* prefixes[] = {"", "\\\\?\\", "\\\\.\\"};
-    for(isize i = 0; i < ARRAY_SIZE(prefixes); i++)
+    for(isize i = 0; i < ARRAY_LEN(prefixes); i++)
     {
         Arena_Frame arena = scratch_arena_frame_acquire();
         String_Builder prefixed_path = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cpath));
@@ -1099,7 +1099,7 @@ void test_canonicalize_with_roots_and_prefixes(int flags, const char* cabs_path,
     const char* roots[]      = {"\\", "C:/", "F:\\", "//Server/", "\\\\xxserverxx\\"};
     const char* norm_roots[] = {"/", "C:/", "F:/", "//Server/", "//xxserverxx/"};
     
-    for(isize i = 0; i < ARRAY_SIZE(roots); i++)
+    for(isize i = 0; i < ARRAY_LEN(roots); i++)
     {
         Arena_Frame arena = scratch_arena_frame_acquire();
         String_Builder prefixed_path = string_concat(arena.alloc, string_of(roots[i]), string_of(cabs_path));
@@ -1118,7 +1118,7 @@ enum {
 void test_path_make_relative_absolute_with_prefixes(int flags, const char* crelative, const char* cpath, const char* cexpected)
 {
     const char* prefixes[] = {"", "\\\\?\\", "\\\\.\\"};
-    for(isize i = 0; i < ARRAY_SIZE(prefixes); i++)
+    for(isize i = 0; i < ARRAY_LEN(prefixes); i++)
     {
         Arena_Frame arena = scratch_arena_frame_acquire();
 

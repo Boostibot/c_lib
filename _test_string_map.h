@@ -622,7 +622,7 @@ static isize most_frquent_words_freqs[] = {
 	#undef X
 };
 
-#define MOST_FREQ_WORDS_COUNT ARRAY_SIZE(most_frquent_words_freqs)
+#define MOST_FREQ_WORDS_COUNT ARRAY_LEN(most_frquent_words_freqs)
 
 const isize* most_frquent_words_cumulative_freqs()
 {
