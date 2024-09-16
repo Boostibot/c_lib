@@ -44,12 +44,7 @@ typedef enum Profile_Sample_Type {
 	PROFILE_SAMPLE_TIMING = 0,
 	PROFILE_SAMPLE_U64    = 1,
 	PROFILE_SAMPLE_F64    = 2,
-	PROFILE_SAMPLE_F64_0  = 2,
-	PROFILE_SAMPLE_F64_1  = 3,
-	PROFILE_SAMPLE_F64_2  = 4,
-	PROFILE_SAMPLE_F64_3  = 5,
-	PROFILE_SAMPLE_F64_4  = 6, //maybe have just 4 levels so we can div faster?
-	PROFILE_SAMPLE_CUSTOM = 7,
+	PROFILE_SAMPLE_CUSTOM = 3,
 } Profile_Sample_Type;
 
 typedef struct Profile_Sample {
