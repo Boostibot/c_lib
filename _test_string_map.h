@@ -199,6 +199,16 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 						key = hash_string_allocate(strings.alloc, truth_key_array.data[index]);
 					else
 						key = string_map_generate_random_hstring(strings.alloc);
+						
+					isize inserted = 0;
+					if(action == FIND_OR_INSERT)
+						inserted = string_map_find_or_insert(&map, key, &val).index;
+					else
+						inserted = string_map_assign_or_insert(&map, key, &val).index;
+						
+					isize found = string_map_find(&map, key).index;
+					TEST(map.keys != NULL && map.values != NULL && map.len > 0);
+					TEST(found != -1 && inserted != -1 && "The inserted value must be findable");
 
 					if(duplicit)
 					{
@@ -209,22 +219,18 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 							truth_key_array.data[index] = key;
 							truth_val_array.data[index] = val;
 						}
+						else
+						{
+							hash_string_deallocate(strings.alloc, &key);
+							hash_string_deallocate(strings.alloc, &val);
+						}
 					}
 					else
 					{
 						array_push(&truth_key_array, key);
 						array_push(&truth_val_array, val);
 					}
-
-					isize inserted = 0;
-					if(action == FIND_OR_INSERT)
-						inserted = string_map_find_or_insert(&map, key, &val).index;
-					else
-						inserted = string_map_assign_or_insert(&map, key, &val).index;
 							
-					isize found = string_map_find(&map, key).index;
-					TEST(map.keys != NULL && map.values != NULL && map.len > 0);
-					TEST(found != -1 && inserted != -1 && "The inserted value must be findable");
 				}
 
 				case REMOVE: SCRATCH_ARENA(arena) {

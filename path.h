@@ -193,7 +193,8 @@ EXTERNAL Path_Builder path_make_absolute(Allocator* alloc, Path relative_to, Pat
 
 EXTERNAL Path path_get_executable();
 EXTERNAL Path path_get_executable_directory();
-EXTERNAL Path path_get_current_working_directory();
+EXTERNAL Path path_get_startup_working_directory();
+EXTERNAL Path_Builder path_get_current_working_directoryXXX(Allocator* alloc, Platform_Error* error_or_null);
 
 #endif
 
@@ -1004,41 +1005,80 @@ EXTERNAL Path_Builder path_make_absolute(Allocator* alloc, Path relative_to, Pat
     return out;
 }
 
+INTERNAL void _path_get_executable_once(void* context)
+{
+    Path_Builder* builder = (Path_Builder*) context; 
+    Path path = path_parse_cstring(platform_get_executable_path());
+    *builder = path_normalize(allocator_get_static(), path, PATH_FLAG_TRANSFORM_TO_FILE);
+}
+
+INTERNAL void _path_get_executable_directory_once(void* context)
+{
+    Path_Builder* builder = (Path_Builder*) context; 
+    Path exe_path = path_parse_cstring(platform_get_executable_path());
+    Path containing = path_strip_to_containing_directory(exe_path);
+    *builder = path_normalize(allocator_get_static(), containing, 0);
+}
+
+INTERNAL void _path_get_startup_working_directory_once(void* context)
+{
+    Path_Builder* builder = (Path_Builder*) context; 
+    Path exe_path = path_parse_cstring(platform_directory_get_startup_working());
+    *builder = path_normalize(allocator_get_static(), exe_path, 0);
+}
+
 EXTERNAL Path path_get_executable()
 {
-    static bool was_parsed = false;
+    static uint32_t init = 0;
     static Path_Builder builder = {0};
-    if(was_parsed == false)
-    {
-        Path path = path_parse_cstring(platform_get_executable_path());
-        builder = path_normalize(allocator_get_static(), path, PATH_FLAG_TRANSFORM_TO_FILE);
-    }
-
+    platform_call_once(&init, _path_get_executable_once, &builder);
     return builder.path;
 }
 
 EXTERNAL Path path_get_executable_directory()
 {
-    return path_strip_to_containing_directory(path_get_executable());
+    static uint32_t init = 0;
+    static Path_Builder builder = {0};
+    platform_call_once(&init, _path_get_executable_directory_once, &builder);
+    return builder.path;
 }
 
-EXTERNAL Path path_get_current_working_directory()
+EXTERNAL Path path_get_startup_working_directory()
 {
-    static Path_Builder cached = {0};
-    static String_Builder last = {0};
+    static uint32_t init = 0;
+    static Path_Builder builder = {0};
     
-    const char* cwd = platform_directory_get_current_working();
-    if(last.data == NULL || strcmp(cwd, last.data) != 0)
-    {
-        if(last.allocator == NULL)
-            builder_init(&last, allocator_get_static());
+    platform_call_once(&init, _path_get_startup_working_directory_once, &builder);
+    return builder.path;
+}
 
-        String cwd_string = string_of(cwd);
-        builder_assign(&last, cwd_string);
-        path_builder_assign(&cached, path_parse(cwd_string), 0);
+EXTERNAL Path_Builder path_get_current_working_directoryXXX(Allocator* alloc, Platform_Error* error_or_null)
+{
+    char backing[1024];
+    isize curr_size = ARRAY_LEN(backing);
+    void* buffer = backing;
+
+    for(int i = 0; i < 16; i++)
+    {
+        bool needs_bigger_buffer = false;
+        Platform_Error error = platform_directory_get_current_working(buffer, curr_size, &needs_bigger_buffer);
+        if(error_or_null)
+            *error_or_null = error;
+        if(needs_bigger_buffer == false)
+            break;
+
+        curr_size *= 2;
+        if(buffer == backing)
+            buffer = NULL;
+
+        buffer = realloc(buffer, curr_size);
     }
 
-    return cached.path;
+    Path_Builder builder = path_normalize(alloc, path_parse_cstring(buffer), 0);
+    if(buffer != backing)
+        free(buffer);
+
+    return builder;
 }
 
 #endif

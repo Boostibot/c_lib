@@ -1156,7 +1156,7 @@ void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align)
 
 int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t skip_count)
 {
-    static void* stack_ptrs[PLATFORM_CALLSTACKS_MAX] = {0};
+    void* stack_ptrs[PLATFORM_CALLSTACKS_MAX] = {0};
     int64_t found_size = backtrace(stack_ptrs, (int) PLATFORM_CALLSTACKS_MAX);
     if(skip_count < 0)
         skip_count = 0;

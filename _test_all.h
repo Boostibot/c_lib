@@ -27,33 +27,384 @@
 #include "_test_string_map.h"
 
 typedef enum Sample_Type {
-    SAMPLE_TYPE_TIME = 0,
-    SAMPLE_TYPE_I64 = 1,
-    SAMPLE_TYPE_U64 = 2,
-    SAMPLE_TYPE_F64 = 3,
-    SAMPLE_TYPE_CUSTOM = 4,
+    SAMPLE_TYPE_NONE = 0,
+    SAMPLE_TYPE_TIME,
+    SAMPLE_TYPE_I64,
+    SAMPLE_TYPE_U64,
+    SAMPLE_TYPE_F64,
+    SAMPLE_TYPE_CUSTOM,
 } Sample_Type;
 
-typedef union Sample_Header {
-    struct {
-        u8 index_len: 2;
-        u8 start_len: 3;
-        u8 value_len: 3;
-    };
-    u8 compressed;
-} Sample_Header;
+typedef struct Sample_Stream_Info {
+    const char* name;
+    const char* file;
+    const char* func;
+    u32 line;
+    u32 type;
+    u32 index;
+    u32 _;
+} Sample_Stream_Info;
 
 typedef struct Sample {
-    Sample_Type type;
-    u32 index;
+    union {
+        Sample_Stream_Info* info;
+        u32 index;
+    };
     u64 start;
     union {
         u64 duration;
         i64 val_i64;
         u64 val_u64;
-        f64 val_f64;
+        //f64 val_f64;
     };
 } Sample;
+
+//Adapted from https://cbloomrants.blogspot.com/2014/03/03-14-14-fold-up-negatives.html
+u64 fold_negatives64(i64 i)
+{
+    u64 two_i = ((u64)i) << 1;
+    i64 sign_i = i >> 63;
+    return two_i ^ sign_i;
+}
+
+i64 unfold_negatives64(u64 i)
+{
+    u64 half_i = i >> 1;
+    i64 sign_i = - (i64)( i & 1 );
+    return half_i ^ sign_i;
+}
+
+u32 fold_negatives32(i32 i)
+{
+    u32 two_i = ((u32)i) << 1;
+    i32 sign_i = i >> 31;
+    return two_i ^ sign_i;
+}
+
+i32 unfold_negatives32(u32 i)
+{
+    u32 half_i = i >> 1;
+    i32 sign_i = - (i32)( i & 1 );
+    return half_i ^ sign_i;
+}
+
+typedef struct Sample_Stream {
+    u64 value;
+    u32 next_index_1;
+    u32 info_index_1;
+    
+    Sample_Stream_Info* info; //debug
+} Sample_Stream;
+
+typedef Array(Sample_Stream_Info) Sample_Stream_Info_Array; 
+typedef Array(Sample) Sample_Array; 
+typedef Array(Sample_Stream) Sample_Stream_Array;
+
+typedef struct Sample_Compressor_State{
+    Sample_Stream_Array streams;
+    u64 last_time;
+    u32 last_index;
+    u32 _;
+} Sample_Compressor_State;
+
+#define MAX_BLOCK_SAMPLE_COUNT 4096
+
+isize sample_block_compress(Sample_Compressor_State* state, const Sample* samples, isize sample_count, isize from, String_Builder* into)
+{
+    isize curr_from = from;
+    for(isize i = 0; i < sample_count; i++)
+    {
+        Sample sample = samples[i];
+        u32 sample_index = sample.info->index;
+        if(sample_index >= state->streams.len)
+            array_resize(&state->streams, sample_index + 1);
+
+        ASSERT(state->last_index < state->streams.len);
+        Sample_Stream* stream = &state->streams.data[sample_index];
+        Sample_Stream* last_stream = &state->streams.data[state->last_index];
+
+        u32 used_last_index = last_stream->next_index_1 ? last_stream->next_index_1 - 1 : state->last_index;
+        u64 index_delta = fold_negatives32((i64) sample_index - (i64) used_last_index);
+        u64 start_delta = fold_negatives64((i64) sample.start - (i64) state->last_time);
+
+        u64 value_delta = 0;
+        u32 value_compressed_len = 0;
+        u32 value_decompressed_len = 0;
+
+        const Sample_Stream_Info* info = sample.info;
+        if(sample.info->type == SAMPLE_TYPE_TIME || sample.info->type == SAMPLE_TYPE_I64)
+        {
+            i64 signed_value_delta = sample.val_i64 - (i64) stream->value;
+            value_delta = fold_negatives64(signed_value_delta);
+
+            u32 value_precise_len = platform_find_last_set_bit64(value_delta << 1 | value_delta | 1);
+            value_compressed_len = (value_precise_len + 7)/8;
+            value_compressed_len -= value_compressed_len == 8;
+            value_decompressed_len = value_compressed_len + (value_compressed_len == 7);
+
+            stream->value = sample.val_u64;
+        }
+        else
+        {
+            TODO();
+        }
+
+        u32 start_precise_len = (u32) platform_find_last_set_bit64(start_delta | start_delta << 1 | 1);
+        u32 start_compressed_len = (start_precise_len + 7)/8;
+        start_compressed_len -= start_compressed_len == 8;
+        u32 start_decompressed_len = start_compressed_len + (start_compressed_len == 7);
+    
+        bool added = false;
+        index_delta = index_delta << 1;
+        if(stream->info == 0)
+        {
+            added = true;
+            stream->info = sample.info;
+            index_delta |= 1;
+        }
+
+        u32 index_compressed_len = 0;
+        index_compressed_len += index_delta > 0;
+        index_compressed_len += index_delta > 0xFF;
+        index_compressed_len += index_delta > 0xFFFF;
+
+        u32 index_decompressed_len = index_compressed_len;
+        index_decompressed_len += index_decompressed_len == 3;
+
+        isize len = curr_from;
+        ASSERT(index_decompressed_len < 8 && start_decompressed_len < 8 && value_decompressed_len < 8);
+        builder_resize(into, len + 24);
+
+        into->data[len++] = (u8) (index_compressed_len << 6 | start_compressed_len << 3 | value_compressed_len);
+        memcpy(into->data + len, &index_delta, 8); len += index_decompressed_len;
+        memcpy(into->data + len, &start_delta, 8); len += start_decompressed_len;
+        memcpy(into->data + len, &value_delta, 8); len += value_decompressed_len;
+        
+        if(added)
+        {
+            u32 name_size = info->name ? (u32) strlen(info->name) : 0; 
+            u32 file_size = info->file ? (u32) strlen(info->file) : 0; 
+            u32 func_size = info->func ? (u32) strlen(info->func) : 0;
+        
+            name_size = MIN(name_size, 0xFFFF);
+            file_size = MIN(file_size, 0xFFFF);
+            func_size = MIN(func_size, 0xFFFF);
+
+            u32 combined_size_header = name_size + file_size + func_size + 12 + 3;
+            builder_resize(into, len + combined_size_header);
+
+            memcpy(into->data + len, &name_size, 2); len += 2;
+            memcpy(into->data + len, &file_size, 2); len += 2;
+            memcpy(into->data + len, &func_size, 2); len += 2;
+            memcpy(into->data + len, &info->type, 2); len += 2;
+            memcpy(into->data + len, &info->line, 4); len += 4;
+        
+            memcpy(into->data + len, info->name, name_size); len += name_size;
+            into->data[len++] = 0;
+            memcpy(into->data + len, info->file, file_size); len += file_size;
+            into->data[len++] = 0;
+            memcpy(into->data + len, info->func, func_size); len += func_size;
+            into->data[len++] = 0;
+
+            builder_resize(into, len + combined_size_header);
+        }
+
+        last_stream->next_index_1 = sample_index + 1;
+        state->last_index = sample_index;
+        state->last_time = sample.start;
+
+        curr_from = len;
+    }
+    
+    return curr_from;
+}
+
+#define MASK(bits) (((uint64_t) ((bits) < 64) << ((bits) & 63)) - 1)
+
+
+typedef struct Sample_Decompressor_State{
+    Sample_Stream_Array streams;
+    Sample_Stream_Info_Array infos;
+
+    u64 last_time;
+    u32 last_index;
+    u32 _;
+} Sample_Decompressor_State;
+
+isize sample_decompress(Sample_Decompressor_State* state, Sample* samples, isize sample_count, isize* read_count, isize* error_at, const char* input, isize input_len, isize input_from)
+{
+    isize curr_from = input_from;
+    for(isize i = 0; i < sample_count; i++)
+    {
+        Sample* sample = &samples[i];
+        if(curr_from >= input_len)
+            break;
+
+        isize at = curr_from;
+        u8 header = input[at++];
+
+        u32 index_compressed_len = header >> 6;
+        u32 start_compressed_len = header >> 3 & 0x7;
+        u32 value_compressed_len = header >> 0 & 0x7;
+
+        u32 index_decompressed_len = index_compressed_len + (index_compressed_len == 3);
+        u32 start_decompressed_len = start_compressed_len + (start_compressed_len == 7);
+        u32 value_decompressed_len = value_compressed_len + (value_compressed_len == 7);
+
+        u64 index_delta = 0;
+        u64 start_delta = 0;
+        u64 value_delta = 0;
+        
+        if(at + index_decompressed_len + start_decompressed_len + value_decompressed_len > input_len)
+        {
+            LOG_ERROR("prof", "Past end when reading sample");
+            *error_at = at;
+            break;
+        }
+
+        memcpy(&index_delta, input + at, 8); at += index_decompressed_len;
+        memcpy(&start_delta, input + at, 8); at += start_decompressed_len;
+        memcpy(&value_delta, input + at, 8); at += value_decompressed_len;
+    
+        index_delta &= MASK(index_decompressed_len*8);
+        start_delta &= MASK(start_decompressed_len*8);
+        value_delta &= MASK(value_decompressed_len*8);
+    
+        u64 added = index_delta & 1;
+        index_delta = index_delta >> 1;
+
+        u32 used_last_index = state->last_index;
+        if(used_last_index < state->streams.len && state->streams.data[state->last_index].next_index_1)
+            used_last_index = state->streams.data[state->last_index].next_index_1 - 1;
+
+        if(i == 10)
+            LOG_HERE;
+
+        u32 index = (u32) (unfold_negatives32((u32) index_delta) + (i32) used_last_index);
+        u64 start = (u64) (unfold_negatives64(start_delta) + (i64) state->last_time);
+        u64 value = 0;
+    
+        ASSERT(index < 0xFFFF);
+        if(state->streams.len <= index)
+            array_resize(&state->streams, index + 1);
+        
+        Sample_Stream* last_stream = &state->streams.data[state->last_index];
+        Sample_Stream* stream = &state->streams.data[index];
+        if(added)
+        {
+            u16 name_size = 0;
+            u16 file_size = 0;
+            u16 func_size = 0;
+            u16 type = 0;
+            u32 line = 0;
+
+            if(at + 12 > input_len)
+            {
+                LOG_ERROR("prof", "Past end when reading sample info");
+                *error_at = at;
+                break;
+            }
+
+            memcpy(&name_size, input + at, 2); at += 2;
+            memcpy(&file_size, input + at, 2); at += 2;
+            memcpy(&func_size, input + at, 2); at += 2;
+            memcpy(&type, input + at, 2); at += 2;
+            memcpy(&line, input + at, 4); at += 4;
+        
+            if(at + name_size + file_size + func_size + 3 > input_len)
+            {
+                LOG_ERROR("prof", "Past end when reading sample info strings");
+                *error_at = at;
+                break;
+            }
+
+            Sample_Stream_Info info = {0};
+            info.type = type;
+            info.line = line;
+            info.index = index;
+            info.name = input + at; at += name_size + 1;
+            info.file = input + at; at += file_size + 1;
+            info.func = input + at; at += func_size + 1;
+
+            array_push(&state->infos, info);
+            stream->info_index_1 = (u32) state->infos.len;
+        }
+    
+        u32 info_index = stream->info_index_1 - 1;
+        ASSERT(info_index < state->infos.len);
+        u32 type = state->infos.data[info_index].type;
+
+        if(type == SAMPLE_TYPE_TIME || type == SAMPLE_TYPE_I64)
+            value = (u64) (unfold_negatives64(value_delta) + (i64) stream->value);
+        else
+            LOG_ERROR("prof", "Unsupported type");
+
+        sample->index = index;
+        sample->start = start;
+        sample->val_u64 = value;
+
+        state->last_time = start;
+        state->last_index = index;
+        last_stream->next_index_1 = index + 1;
+        stream->value = value;
+
+        if(read_count)
+            *read_count += 1;
+        curr_from = at;
+    }
+    *error_at = -1;
+    return curr_from;
+}
+
+isize sample_decompress_all(Sample_Decompressor_State* state, Sample_Array* samples, isize max_count_or_minus_one, isize* error_at, const char* input, isize input_len)
+{
+    isize curr_pos = 0;
+    for(isize read = 0; read < max_count_or_minus_one || max_count_or_minus_one == -1; read++)
+    {
+        Sample sample = {0};
+        curr_pos = sample_decompress(state, &sample, 1, NULL, error_at, input, input_len, curr_pos);
+        if(*error_at != -1)
+            break;
+
+        array_push(samples, sample);
+    }
+
+    return curr_pos;
+}
+
+void test_compress_samples()
+{
+    Sample_Stream_Info infos[10] = {0};
+    for(u32 i = 0; i < ARRAY_LEN(infos); i++)
+    {
+        infos[i].name = "name!";
+        infos[i].file = __FILE__;
+        infos[i].func = __func__;
+        infos[i].line = __LINE__;
+        infos[i].type = SAMPLE_TYPE_TIME;
+        infos[i].index = i;
+    }
+
+    Sample samples[100] = {0};
+    for(isize i = 0; i < ARRAY_LEN(samples); i++)
+    {   
+        samples[i].start = __rdtsc();
+        samples[i].info = &infos[i % 10];
+        samples[i].duration = __rdtsc() - samples[i].start;
+    }
+
+    String_Builder compressed = {0};
+    Sample_Compressor_State comp = {0};
+    sample_block_compress(&comp, samples, ARRAY_LEN(samples), 0, &compressed);
+
+    Sample recontructed_samples[100] = {0};
+    Sample_Decompressor_State decomp = {0};
+    isize read = 0;
+    isize error_at = 0;
+    sample_decompress(&decomp, recontructed_samples, ARRAY_LEN(recontructed_samples), &read, &error_at, compressed.data, compressed.len, 0);
+
+    LOG_HERE;
+}
 
 void write_value(u8* into, u64 val, u32 size)
 {
@@ -69,6 +420,25 @@ void write_value(u8* into, u64 val, u32 size)
         case 2: *(into++) = *(source++);
         case 1: *(into++) = *(source++);
     }
+}
+
+u64 read_value(const u8* from, u32 size)
+{
+    u64 output = 0;
+    u8* source = (u8*) (void*) &output;
+    switch(size)
+    {
+        case 8: *(source++) = *(from++);
+        case 7: *(source++) = *(from++);
+        case 6: *(source++) = *(from++);
+        case 5: *(source++) = *(from++);
+        case 4: *(source++) = *(from++);
+        case 3: *(source++) = *(from++);
+        case 2: *(source++) = *(from++);
+        case 1: *(source++) = *(from++);
+    }
+
+    return output;
 }
 
 uint32_t get_len1(uint64_t val)
@@ -97,7 +467,7 @@ INTERNAL void test_get_len_single(uint64_t val)
     TEST(len1 == len2);
 }
 
-INTERNAL void test_get_len(uint64_t val)
+INTERNAL void test_get_len()
 {
     test_get_len_single(0);
     test_get_len_single(1);
@@ -109,192 +479,9 @@ INTERNAL void test_get_len(uint64_t val)
     test_get_len_single(1ULL << 63 | 0xFF);
 }
 
-//Adapted from https://cbloomrants.blogspot.com/2014/03/03-14-14-fold-up-negatives.html
-u64 fold_up_negatives64(i64 i)
-{
-    u64 two_i = ((u64)i) << 1;
-    i64 sign_i = i >> 63;
-    return two_i ^ sign_i;
-}
-
-i64 unfold_negatives64(u64 i)
-{
-    u64 half_i = i >> 1;
-    i64 sign_i = - (i64)( i & 1 );
-    return half_i ^ sign_i;
-}
-
-u32 fold_up_negatives32(i32 i)
-{
-    u32 two_i = ((u32)i) << 1;
-    i32 sign_i = i >> 31;
-    return two_i ^ sign_i;
-}
-
-i32 unfold_negatives32(u32 i)
-{
-    u32 half_i = i >> 1;
-    i32 sign_i = - (i32)( i & 1 );
-    return half_i ^ sign_i;
-}
-
-isize sample_compress(u32* last_index, u64* last_time, u64* last_value, Sample sample, u8* stream)
-{
-    u32 index_delta = fold_up_negatives32((i64) sample.index - (i64) *last_index);
-    u64 start_delta = fold_up_negatives64((i64) sample.start - (i64) *last_time);
-
-    u64 value_delta = 0;
-    u32 value_compressed_len = 0;
-    u32 value_decompressed_len = 0;
-    if(sample.type == SAMPLE_TYPE_TIME || sample.type == SAMPLE_TYPE_I64)
-    {
-        i64 signed_value_delta = sample.val_i64 - (i64) *last_value;
-        value_delta = fold_up_negatives64(signed_value_delta);
-
-        u32 value_precise_len = platform_find_last_set_bit64(value_delta << 1 | value_delta | 1);
-        value_compressed_len = (value_precise_len + 7)/8;
-        value_compressed_len -= value_compressed_len == 8;
-        value_decompressed_len = value_compressed_len + (value_compressed_len == 7);
-
-        *last_value = sample.val_u64;
-    }
-    else if(sample.type == SAMPLE_TYPE_F64)
-    {
-        #define MASK(x) ((1ULL << x) - 1)
-        u64 curr = sample.val_u64;
-        u64 prev = *last_value;
-        
-        if(curr != prev)
-        {
-            u64 curr_sign = curr >> 63;
-            u64 curr_exp = curr >> 52 & MASK(11);
-		    u64 curr_mantissa = curr & MASK(52);
-        
-            u64 prev_sign = prev >> 63;
-            u64 prev_exp = prev >> 52 & MASK(11);
-		    u64 prev_mantissa = prev & MASK(52);
-
-		    u64 exp_delta = fold_up_negatives64((i64) curr_exp - (i64) prev_exp);
-		    u64 mantissa_delta = fold_up_negatives64((i64) curr_mantissa - (i64) prev_mantissa);
-		    //u64 mantissa_delta = curr_mantissa ^ prev_mantissa;
-            u64 exp_sign_delta = (exp_delta << 1) | (curr_sign ^ prev_sign);
-
-            //we do exponent sizes: [0, 3, 6, 8, 9, 10, 11, 12] and calculate mantissa sizes to fill remaining bits
-            // to full bytes. 6 is for half floats, 8 is for AMD float24, 9 is for float, 12 ios for double.
-            // By doing this we ensure that half float will always be represented in max 2 bytes, float24 in max 3
-            // and float in max 4 bytes.
-
-            //(A)
-            //expo: [0, 3,  6,  8,  9, 12, 12, 12] 
-            //mant: [0, 5, 10, 16, 23, 28, 36, 52]
-            
-            //(B)
-            //expo: [0, 3,  6,  8,  9, 10, 11, 12] 
-            //mant: [0, 5, 10, 16, 23, 30, 37, 52]
-            static const u8 exp_compressed_len_to_size[]      = {0, 3,  6,  8,  9, 12, 12, 12};
-            static const u8 mantissa_compressed_len_to_size[] = {0, 5, 10, 16, 23, 28, 36, 52};
-
-            static const u8 exp_size_to_compressed_len[] = {0, 1,1,1, 2,2,2, 3,3, 4, 5,5,5}; 
-            static const u8 mantissa_size_to_compressed_len[] = {
-                0,                              //
-                1,1,1,1,1,                      //+5 = 5
-                2,2,2,2,2,                      //+5 = 10
-                3,3,3,3,3,3,                    //+6 = 16
-                4,4,4,4,4,4,4,                  //+7 = 23
-                5,5,5,5,5,                      //+5 = 28
-                6,6,6,6,6,6,6,6,                //+8 = 36
-                7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,//+16 = 52
-            }; 
-
-            u32 exp_compressed_len = 0;
-            if(exp_sign_delta > 0)
-            {
-                u32 exp_precise_len = (u32) platform_find_last_set_bit64(exp_sign_delta) + 1;
-                exp_compressed_len = exp_size_to_compressed_len[exp_precise_len];
-            }
-
-            u32 mantissa_compressed_len = 0;
-            if(mantissa_delta > 0)
-            {
-                //u32 mantissa_precise_len = 52 - (u32) platform_find_first_set_bit64(mantissa_delta);
-                u32 mantissa_precise_len = (u32) platform_find_last_set_bit64(mantissa_delta) + 1;
-                mantissa_compressed_len = mantissa_size_to_compressed_len[mantissa_precise_len];
-            }
-            
-            ASSERT(0 <= exp_compressed_len && exp_compressed_len <= 7);
-            ASSERT(0 <= mantissa_compressed_len && mantissa_compressed_len <= 7);
-
-            value_compressed_len = MAX(exp_compressed_len, mantissa_compressed_len);
-            value_decompressed_len = value_compressed_len + (value_compressed_len == 7);
-
-            u32 mantissa_size = mantissa_compressed_len_to_size[value_compressed_len];
-            u32 value_from = 52 - mantissa_size;
-            u64 value_mask = ~(u64) 0 >> (64 - 8*value_decompressed_len);
-            u64 value = exp_sign_delta << 52 | mantissa_delta;
-
-            value_delta = (value >> value_from) & value_mask;
-            *last_value = curr;
-        }
-    }
-    else
-    {
-        UNREACHABLE();
-    }
-
-    u32 start_precise_len = (u32) platform_find_last_set_bit64(start_delta | start_delta << 1 | 1);
-    u32 start_compressed_len = (start_precise_len + 7)/8;
-    start_compressed_len -= start_compressed_len == 8;
-    u32 start_decompressed_len = start_compressed_len + (start_compressed_len == 7);
-
-    u32 index_compressed_len = 0;
-    index_compressed_len += index_delta > 0;
-    index_compressed_len += index_delta > 0xFF;
-    index_compressed_len += index_delta > 0xFFFF;
-
-    u32 index_decompressed_len = index_compressed_len;
-    index_decompressed_len += index_decompressed_len == 3;
-
-    isize len = 0;
-    stream[len++] = (u8) (index_compressed_len << 6 | start_compressed_len << 3 | value_compressed_len);
-    write_value(stream + len, index_delta, index_decompressed_len); len += index_decompressed_len;
-    write_value(stream + len, start_delta, start_decompressed_len); len += start_decompressed_len;
-    write_value(stream + len, value_delta, value_decompressed_len); len += value_decompressed_len;
-
-    *last_index = sample.index;
-    *last_time = sample.start;
-    return len;
-}
-
-void test_compress_samples()
-{
-    
-    u32 last_index = 0;
-    u64 last_start = 0;
-    u64 last_value = 0;
-    u8* stream = malloc(2*MB);
-    Sample samples[100] = {0};
-    f64 mulval = 1.25464;
-    for(isize i = 0; i < ARRAY_LEN(samples); i++)
-    {   
-        samples[i].type = SAMPLE_TYPE_F64;
-        samples[i].index = 128;
-        samples[i].start = __rdtsc();
-        samples[i].val_f64 = mulval*i/8;
-        //samples[i].val_f64 = sin((f64) i/8);
-    }
-
-    isize len = 0;
-    for(isize i = 0; i < ARRAY_LEN(samples); i++)
-        len += sample_compress(&last_index, &last_start, &last_value, samples[i], stream + len);
-    
-    len += sample_compress(&last_index, &last_start, &last_value, samples[1], stream + len);
-    free(stream);
-}
-
-
 INTERNAL void test_all(f64 total_time)
 {
-
+    //test_compress_samples();
 
     LOG_INFO("TEST", "RUNNING ALL TESTS");
     int total_count = 0;

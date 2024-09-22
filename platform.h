@@ -168,10 +168,6 @@ typedef struct Platform_Mutex {
     void* handle;
 } Platform_Mutex;
 
-typedef struct Platform_Futex {
-    volatile uint32_t value;
-} Platform_Futex;
-
 //@TODO: thread processor affinity!
 
 //@NOTE: We made pretty much all of the threaded functions (except init-like) into non failing
@@ -187,10 +183,11 @@ typedef struct Platform_Futex {
 // very specific and a custom implementation is preferred (or we can just change this).
 
 //initializes a new thread and immediately starts it with the func function.
+//Allocates and copies over context_size bytes from context (thus allowing to pass arbitrary large structures to the thread).
 //The thread has stack_size_or_zero bytes of stack sizes rounded up to page size
 //If stack_size_or_zero is zero or lower uses system default stack size.
 //The thread automatically cleans itself up upon completion or termination.
-Platform_Error  platform_thread_launch(Platform_Thread* thread, void (*func)(void*), void* context, int64_t stack_size_or_zero); 
+Platform_Error platform_thread_launch(Platform_Thread* thread, int64_t stack_size_or_zero, int (*func)(void*), const void* context, int64_t context_size);
 
 int64_t         platform_thread_get_proccessor_count();
 Platform_Thread platform_thread_get_current(); //Returns handle to the calling thread
@@ -199,7 +196,9 @@ void            platform_thread_exit(int code); //Terminates a thread with an ex
 void            platform_thread_yield(); //Yields the remainder of this thread's time slice to the OS
 void            platform_thread_detach(Platform_Thread thread);
 void            platform_thread_join(const Platform_Thread* threads, int64_t count); //Blocks calling thread until all threads finish. Must not join the current calling thread!
-bool            platform_thread_is_running(Platform_Thread thread);
+int             platform_thread_get_exit_code(Platform_Thread finished_thread); //Returns the exit code of a terminated thread. If the thread is not terminated the result is undefined. 
+bool            platform_thread_is_running(Platform_Thread thread, Platform_Error* error_or_null);
+void            platform_thread_attach_deinit(void (*func)(void* context), void* context); //Registers a function to be called when the thread terminates
 
 Platform_Error  platform_mutex_init(Platform_Mutex* mutex);
 void            platform_mutex_deinit(Platform_Mutex* mutex);
@@ -207,18 +206,21 @@ void            platform_mutex_lock(Platform_Mutex* mutex);
 void            platform_mutex_unlock(Platform_Mutex* mutex);
 bool            platform_mutex_try_lock(Platform_Mutex* mutex); //Tries to lock a mutex. Returns true if mutex was locked successfully. If it was not returns false without waiting.
 
-bool            platform_futex_wait(volatile int32_t* futex, int32_t value, int64_t ms_or_negative_if_infinite);
-void            platform_futex_wake(volatile int32_t* futex);
-void            platform_futex_wake_all(volatile int32_t* futex);
+bool            platform_futex_wait(void* futex, uint32_t value, int64_t ms_or_negative_if_infinite);
+void            platform_futex_wake(void* futex);
+void            platform_futex_wake_all(void* futex);
 
-void            platform_mutex_global_lock(uint64_t id);
-void            platform_mutex_global_unlock(uint64_t id);
+//calls the given func with context argument just once, even if racing with other threads.
+//state should point to shared variable between racing threads (ie. global) initialized to 0.
+//This function will set it to 1 while initilization is in progress and finally 2 once initialized.
+//After initialization is complete this function costs just one load and if so its extremely cheap.
+static void     platform_call_once(uint32_t* state, void (*func)(void* context), void* context);
 
 //=========================================
 // Atomics 
 //=========================================
-inline static void platform_compiler_memory_fence();
-inline static void platform_memory_fence();
+inline static void platform_compiler_barrier();
+inline static void platform_memory_barrier();
 inline static void platform_processor_pause();
 
 //Returns the first/last set (1) bit position. If num is zero result is undefined.
@@ -242,20 +244,20 @@ inline static int32_t platform_pop_count64(uint64_t num);
 //   *target = new_value;
 //   return true;
 // }
-inline static bool platform_atomic_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value);
-inline static bool platform_atomic_compare_and_swap32(volatile int32_t* target, int32_t old_value, int32_t new_value);
+inline static bool platform_atomic_compare_and_swap64(void* target, uint64_t old_value, uint64_t new_value);
+inline static bool platform_atomic_compare_and_swap32(void* target, uint32_t old_value, uint32_t new_value);
 
 //Performs atomically: { return *target; }
-inline static int64_t platform_atomic_load64(volatile const int64_t* target);
-inline static int32_t platform_atomic_load32(volatile const int32_t* target);
+inline static uint64_t platform_atomic_load64(const void* target);
+inline static uint32_t platform_atomic_load32(const void* target);
 
 //Performs atomically: { *target = value; }
-inline static void platform_atomic_store64(volatile int64_t* target, int64_t value);
-inline static void platform_atomic_store32(volatile int32_t* target, int32_t value);
+inline static void platform_atomic_store64(void* target, uint64_t value);
+inline static void platform_atomic_store32(void* target, uint32_t value);
 
-//Performs atomically: { int64_t copy = *target; *target = value; return copy; }
-inline static int64_t platform_atomic_excahnge64(volatile int64_t* target, int64_t value);
-inline static int32_t platform_atomic_excahnge32(volatile int32_t* target, int32_t value);
+//Performs atomically: { uint64_t copy = *target; *target = value; return copy; }
+inline static uint64_t platform_atomic_exchange64(void* target, uint64_t value);
+inline static uint32_t platform_atomic_exchange32(void* target, uint32_t value);
 
 //Performs atomically: { int64_t copy = *target; *target += value; return copy; }
 inline static int32_t platform_atomic_add32(volatile int32_t* target, int32_t value);
@@ -405,7 +407,11 @@ Platform_Error platform_directory_remove(Platform_String dir_path, bool fail_if_
 //changes the current working directory to the new_working_dir.  
 Platform_Error platform_directory_set_current_working(Platform_String new_working_dir);    
 //Retrieves the absolute path current working directory
-const char* platform_directory_get_current_working();    
+Platform_Error platform_directory_get_current_working(void* buffer, int64_t buffer_size, bool* needs_bigger_buffer_or_null);
+//Retrieves the absolute path working directory at the time of platform_init
+const char* platform_directory_get_startup_working();
+
+
 //Retrieves the absolute path of the executable / dll
 const char* platform_get_executable_path();    
 
@@ -661,30 +667,55 @@ const char* platform_exception_to_string(Platform_Exception error);
 
 #endif
 
+
+
 // =================== INLINE IMPLEMENTATION ============================
 #if defined(_MSC_VER)
     #include <stdio.h>
     #include <intrin.h>
     #include <assert.h>
-    #include <sal.h> //for _Printf_format_string_
+
+    #pragma warning(push)
+    #pragma warning(disable:4996) //disables deprecated/unsafe function warning ( _ReadWriteBarrier() )
+
+    #if defined(_M_CEE_PURE) || defined(_M_IX86) || (defined(_M_X64) && !defined(_M_ARM64EC))
+        #define _PLATFORM_MSVC_X86
+    #elif defined(_M_ARM) || defined(_M_ARM64) || defined(_M_ARM64EC)
+        #define _PLATFORM_MSVC_ARM
+    #else
+        #error Unsupported hardware!
+    #endif
 
     #undef platform_debug_break
     #define platform_debug_break() __debugbreak() 
 
-    inline static void platform_compiler_memory_fence() 
+    inline static void platform_compiler_barrier() 
     {
         _ReadWriteBarrier();
     }
 
-    inline static void platform_memory_fence()
+    inline static void platform_memory_barrier()
     {
         _ReadWriteBarrier(); 
-        __faststorefence();
+        
+        //I dont think this is needed. 
+        //At least thats what MSVC std lib does.
+        //__faststorebarrier();
+        #ifdef _PLATFORM_MSVC_X86
+            //nothing...
+        #else
+            //taken from xxtomic.h
+            __dmb(0xB);
+        #endif
     }
 
     inline static void platform_processor_pause()
     {
-        _mm_pause();
+        #ifdef _PLATFORM_MSVC_X86
+            _mm_pause();
+        #else
+            __yield();
+        #endif
     }
     
     inline static int32_t platform_find_last_set_bit32(uint32_t num)
@@ -724,60 +755,64 @@ const char* platform_exception_to_string(Platform_Exception error);
     }
     inline static int32_t platform_pop_count64(uint64_t num)
     {
-        return (int32_t) __popcnt64((unsigned __int64)num);
+        return (int32_t) __popcnt64((unsigned long long)num);
     }
     
-    inline static int64_t platform_atomic_load64(volatile const int64_t* target)
+    //Load and store function are a bit weird under MSVC.
+    //Since x86/64 has quite strong sequential consistency gurantees, 
+    //MSVC for the longest time got away with using volatile for 
+    // atomic load/store. However with the support for ARM they added 
+    //were forced to add proper support. Now when acessing a volatile on arm they give warning
+    // "warning C4746: volatile access of '<expression>' is subject to /volatile:<iso|ms> setting; consider using __iso_volatile_load/store intrinsic functions"
+    //
+    // Now even though __iso_volatile_load32 and similar are listed under ARM intrinsics they work just fine even on x86/64. 
+    // All this to say that this is a kind of hacky solution but the best there is at the moment.
+    inline static uint64_t platform_atomic_load64(const void* target)
     {
-        return (int64_t) _InterlockedOr64((volatile long long*) target, 0);
+        return (uint64_t) __iso_volatile_load64((const volatile long long*) target);
     }
-    inline static int32_t platform_atomic_load32(volatile const int32_t* target)
+    inline static uint32_t platform_atomic_load32(const void* target)
     {
-        return (int32_t) _InterlockedOr((volatile long*) target, 0);
-    }
-
-    inline static void platform_atomic_store64(volatile int64_t* target, int64_t value)
-    {
-        platform_atomic_excahnge64(target, value);
-    }
-    inline static void platform_atomic_store32(volatile int32_t* target, int32_t value)
-    {
-        platform_atomic_excahnge32(target, value);
-    }
-
-    inline static bool platform_atomic_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value)
-    {
-        return _InterlockedCompareExchange64((volatile long long*) target, (long long) new_value, (long long) old_value) == (long long) old_value;
+        return (uint32_t) __iso_volatile_load32((const volatile int*) target);
     }
 
-    inline static bool platform_atomic_compare_and_swap32(volatile int32_t* target, int32_t old_value, int32_t new_value)
+    inline static void platform_atomic_store64(void* target, uint64_t value)
     {
-        return _InterlockedCompareExchange((volatile long*) target, (long) new_value, (long) old_value) == (long) old_value;
+        __iso_volatile_store64((volatile long long*) target, (long long) value);
+    }
+    inline static void platform_atomic_store32(void* target, uint32_t value)
+    {
+        __iso_volatile_store32((volatile int*) target, (int) value);
     }
 
-    inline static int64_t platform_atomic_excahnge64(volatile int64_t* target, int64_t value)
+    inline static bool platform_atomic_compare_and_swap64(void* target, uint64_t old_value, uint64_t new_value)
     {
-        return (int64_t) _InterlockedExchange64((volatile long long*) target, (long long) value);
+        return _InterlockedCompareExchange64((volatile long long*) (void*) target, (long long) new_value, (long long) old_value) == (long long) old_value;
     }
 
-    inline static int32_t platform_atomic_excahnge32(volatile int32_t* target, int32_t value)
+    inline static bool platform_atomic_compare_and_swap32(void* target, uint32_t old_value, uint32_t new_value)
     {
-        return (int32_t) _InterlockedExchange((volatile long*) target, (long) value);
+        return _InterlockedCompareExchange((volatile long*) (void*) target, (long) new_value, (long) old_value) == (long) old_value;
+    }
+
+    inline static uint64_t platform_atomic_exchange64(void* target, uint64_t value)
+    {
+        return (uint64_t) _InterlockedExchange64((volatile long long*) (void*) target, (long long) value);
+    }
+
+    inline static uint32_t platform_atomic_exchange32(void* target, uint32_t value)
+    {
+        return (uint32_t) _InterlockedExchange((volatile long*) (void*) target, (long) value);
     }
     
     inline static int64_t platform_atomic_add64(volatile int64_t* target, int64_t value)
     {
-        return (int64_t) _InterlockedExchangeAdd64((volatile long long*) target, (long long) value);
+        return (int64_t) _InterlockedExchangeAdd64((volatile long long*) (void*) target, (long long) value);
     }
 
     inline static int32_t platform_atomic_add32(volatile int32_t* target, int32_t value)
     {
-        return (int32_t) _InterlockedExchangeAdd((volatile long*) target, (long) value);
-    }
-
-    inline static int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value)
-    {
-        return platform_atomic_add32(target, -value);
+        return (int32_t) _InterlockedExchangeAdd((volatile long*) (void*) target, (long) value);
     }
 
     inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value)
@@ -785,7 +820,12 @@ const char* platform_exception_to_string(Platform_Exception error);
         return platform_atomic_add64(target, -value);
     }
    
+    inline static int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value)
+    {
+        return platform_atomic_add32(target, -value);
+    }
    
+    #pragma warning(pop)
 
 #elif defined(__GNUC__) || defined(__clang__)
     #define _GNU_SOURCE
@@ -801,14 +841,14 @@ const char* platform_exception_to_string(Platform_Exception error);
         __alignof__(long double) == PLATFORM_MAX_ALIGN ? 1 : -1
     ];
 
-    inline static void platform_compiler_memory_fence() 
+    inline static void platform_compiler_barrier() 
     {
         __asm__ __volatile__("":::"memory");
     }
 
-    inline static void platform_memory_fence()
+    inline static void platform_memory_barrier()
     {
-        platform_compiler_memory_fence(); 
+        platform_compiler_barrier(); 
         __sync_synchronize();
     }
 
@@ -886,11 +926,11 @@ const char* platform_exception_to_string(Platform_Exception error);
         __atomic_store_n(target, value, __ATOMIC_SEQ_CST);
     }
 
-    inline static int64_t platform_atomic_excahnge64(volatile int64_t* target, int64_t value)
+    inline static int64_t platform_atomic_exchange64(volatile int64_t* target, int64_t value)
     {
         return (int64_t) __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
     }
-    inline static int32_t platform_atomic_excahnge32(volatile int32_t* target, int32_t value)
+    inline static int32_t platform_atomic_exchange32(volatile int32_t* target, int32_t value)
     {
         return (int32_t) __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
     }
@@ -916,11 +956,40 @@ const char* platform_exception_to_string(Platform_Exception error);
 
 #endif
 
+static void platform_call_once(uint32_t* state, void (*func)(void* context), void* context)
+{
+    enum {
+        NOT_INIT,
+        INITIALIZING,
+        INIT,
+    };
+
+    //These 3 lines could be removed and the impleemntation would stay correct.
+    //However most of the time the init code will already be init
+    uint32_t before_value = platform_atomic_load32(state);
+    if(before_value == INIT)
+        return;
+
+    if(platform_atomic_compare_and_swap32(state, NOT_INIT, INITIALIZING))
+    {
+        func(context);
+        platform_atomic_store32(state, INIT);
+        platform_futex_wake_all(state);
+    }
+    else
+    {
+        while(true)
+        {
+            uint32_t curr_value = platform_atomic_load32(state);
+            if(curr_value == INIT)
+                break;
+            
+            platform_futex_wait(state, INITIALIZING, -1);
+        }
+    }
+}
+
 #endif
-
-
-
-
 
 // ====================================================================================
 //                               UNIT TESTS 
@@ -1150,8 +1219,8 @@ static void platform_test_directory_list()
 
 static void platform_test_all() 
 {   
-    printf("platform_test_all() running at directory: '%s'\n", platform_directory_get_current_working());
-    PTEST(strlen(platform_directory_get_current_working()) > 0);
+    printf("platform_test_all() running at directory: '%s'\n", platform_directory_get_startup_working());
+    PTEST(strlen(platform_directory_get_startup_working()) > 0);
     PTEST(strlen(platform_get_executable_path()) > 0);
 
     platform_test_file_io();

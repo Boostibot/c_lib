@@ -54,6 +54,22 @@ Platform_Error _platform_error_code(bool state)
     return err;
 }
 
+Platform_Error _platform_error_code_posix(bool state)
+{
+    Platform_Error err = PLATFORM_ERROR_OK;
+    if(!state)
+    {
+        err = (Platform_Error) errno;
+        //If we failed yet there is no error 
+        // set to custom error.
+        if(err == 0)
+            err = PLATFORM_ERROR_OTHER;
+        else
+            err = err | (1 << 29);
+    }
+    return err;
+}
+
 Platform_Error platform_virtual_reallocate(void** output_adress_or_null, void* address, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection)
 {
     void* out_addr = NULL;
@@ -147,28 +163,126 @@ int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
     return size;
 }
 
-
-
 //=========================================
 // Threading
 //=========================================
-#include  	<process.h>
-int64_t platform_thread_get_proccessor_count()
+#include <process.h>
+
+typedef struct Platform_Thread_Cleanup {
+    void (*func)(void* context);
+    void* context;
+} Platform_Thread_Cleanup;
+
+#define _INLINE_CLEANUPS 8
+typedef struct Platform_Thread_State {
+    int (*func)(void*);
+    Platform_Thread_Cleanup inline_cleanups[_INLINE_CLEANUPS];
+    Platform_Thread_Cleanup* extended_cleanups;
+    int cleanup_count;
+    int cleanup_capacity;
+} Platform_Thread_State;
+
+static _declspec(thread) Platform_Thread_State* _current_thread_state = NULL;
+Platform_Thread_State* _platform_thread_state()
 {
-    return GetCurrentProcessorNumber();
+    if(_current_thread_state == NULL)
+        _current_thread_state = calloc(1, sizeof(Platform_Thread_State));
+    
+    return _current_thread_state;
 }
 
-Platform_Error  platform_thread_launch(Platform_Thread* thread, void (*func)(void*), void* context, int64_t stack_size_or_zero)
+void _platform_thread_cleanup()
 {
-    // platform_thread_deinit(thread);
+    Platform_Thread_State* state = _platform_thread_state();
+    for(int i = 0; i < state->cleanup_count; i++)
+    {
+        Platform_Thread_Cleanup* cleanup = &state->inline_cleanups[i];
+        if(i >= _INLINE_CLEANUPS)
+            cleanup = &state->extended_cleanups[i - _INLINE_CLEANUPS];
+
+        cleanup->func(cleanup->context);
+    }
+
+    free(state->extended_cleanups);
+    free(state);
+
+    _current_thread_state = NULL;
+}
+
+unsigned _thread_func(void* ptr)
+{
+    Platform_Thread_State* state = (Platform_Thread_State*) ptr;
+    _current_thread_state = state;
+    void* user_context = state + 1;
+    int result = state->func(user_context);
+
+    _platform_thread_cleanup();
+    return (unsigned) result;
+}
+
+Platform_Error platform_thread_launch(Platform_Thread* thread, int64_t stack_size_or_zero, int (*func)(void*), const void* context, int64_t context_size)
+{
+    assert(stack_size_or_zero >= 0);
+    assert(context_size >= 0);
+
     if(stack_size_or_zero <= 0)
         stack_size_or_zero = 0;
-    thread->handle = (void*) _beginthread(func, (unsigned int) stack_size_or_zero, context);
+
+    thread->handle = NULL;
+    Platform_Thread_State* thread_state = calloc(1, sizeof(Platform_Thread_State) + context_size);
+    if(thread_state)
+    {
+        thread_state->func = func;
+        memcpy(thread_state + 1, context, context_size);
+        thread->handle = (void*) _beginthreadex(NULL, (unsigned int) stack_size_or_zero, _thread_func, thread_state, 0, NULL);
+    }
 
     if(thread->handle)
         return PLATFORM_ERROR_OK;
     else
+    {
+        free(thread_state);
         return (Platform_Error) GetLastError();
+    }
+}
+
+bool platform_thread_is_running(Platform_Thread thread, Platform_Error* error_or_null)
+{
+    DWORD result = WaitForSingleObject((HANDLE) thread.handle, 0);
+    bool out = result == WAIT_OBJECT_0;
+
+    if(error_or_null)
+    {
+        if(result == WAIT_FAILED)
+            *error_or_null = GetLastError();
+        else
+            *error_or_null = PLATFORM_ERROR_OK;
+    }
+    return out;
+}
+
+void platform_thread_attach_deinit(void (*func)(void* context), void* context)
+{
+    Platform_Thread_State* state = _platform_thread_state();
+    Platform_Thread_Cleanup cleanup = {func, context};
+    int i = state->cleanup_count++;
+    if(i < _INLINE_CLEANUPS)
+        state->inline_cleanups[i] = cleanup;
+    else
+    {
+        i -= _INLINE_CLEANUPS;
+        if(i >= state->cleanup_capacity)
+        {
+            int new_capacity = state->cleanup_capacity*2 + _INLINE_CLEANUPS;
+            void* new_ptr = realloc(state->extended_cleanups, new_capacity * sizeof(Platform_Thread_Cleanup));
+            assert(new_ptr);
+            
+            state->extended_cleanups = new_ptr;
+            state->cleanup_capacity = new_capacity;
+        }
+
+        state->extended_cleanups[i] = cleanup;
+    }
 }
 
 Platform_Thread platform_thread_get_current()
@@ -176,6 +290,11 @@ Platform_Thread platform_thread_get_current()
     Platform_Thread out = {0};
     out.handle = GetCurrentThread();
     return out;
+}
+
+int64_t platform_thread_get_proccessor_count()
+{
+    return GetCurrentProcessorNumber();
 }
 
 void platform_thread_yield()
@@ -189,7 +308,16 @@ void platform_thread_sleep(int64_t ms)
 
 void platform_thread_exit(int code)
 {
-    ExitThread(code);
+    _endthreadex((unsigned int) code);
+}
+
+int platform_thread_get_exit_code(Platform_Thread finished_thread)
+{
+    assert(platform_thread_is_running(finished_thread, NULL) == false);
+    int out = INT_MIN;
+    bool okay = !!GetExitCodeThread((HANDLE) finished_thread.handle, (DWORD*) (void*) &out);
+    assert(okay);
+    return out;
 }
 
 void platform_thread_join(const Platform_Thread* threads, int64_t count)
@@ -215,12 +343,11 @@ void platform_thread_join(const Platform_Thread* threads, int64_t count)
 
 void platform_thread_detach(Platform_Thread thread)
 {
-    assert(thread.handle);
+    bool state = true;
     if(thread.handle != NULL)
-    {
-        bool state = CloseHandle(thread.handle);
-        assert(state);
-    }
+        state = CloseHandle(thread.handle);
+
+    assert(state); 
 }
 
 Platform_Error platform_mutex_init(Platform_Mutex* mutex)
@@ -261,61 +388,32 @@ bool platform_mutex_try_lock(Platform_Mutex* mutex)
     return (bool) TryEnterCriticalSection((CRITICAL_SECTION*) mutex->handle);
 }   
 
+#pragma comment(lib, "synchronization.lib")
 #include <process.h>
-//bool platform_futex_wait(volatile int32_t* futex, int32_t value, int64_t ms_or_negative_if_infinite)
-//{
-//    DWORD wait = (DWORD) ms_or_negative_if_infinite;
-//    if(ms_or_negative_if_infinite < 0)
-//        wait = INFINITE;
-//    return WaitOnAddress(futex, &value, sizeof value, wait);
-//}
-//void platform_futex_wake(volatile int32_t* futex)
-//{
-//    WakeByAddressSingle((void*) futex);
-//}
-//void platform_futex_wake_all(volatile int32_t* futex)
-//{
-//    WakeByAddressAll((void*) futex);
-//}
-
-/*
-
-QUEUE [data, data, data, ...growing...]
-        64B   64B   64B
-      
-struct Args {}
-void _file_read_async_func(Args* args)
+bool platform_futex_wait(void* futex, uint32_t value, int64_t ms_or_negative_if_infinite)
 {
-    file_read_entire(&args->builder, args->path, &args->info);
-}
-
-Promise file_read_async(String path)
-{   
-    Job job = job_create("file_read_async");
-    Args* args = job_allocate(&job, 1, Args);
-    args->path = path;
-    job_submit(job, args);
-}
-
-Promise file_promise = file_read_async(completion_callback);
-
-
-void main()
-{
-    Sync_queue event_queue = {0};
-    while(should_quit())
+    DWORD wait = (DWORD) ms_or_negative_if_infinite;
+    if(ms_or_negative_if_infinite < 0)
+        wait = INFINITE;
+    bool windows_state = (bool) WaitOnAddress(futex, &value, sizeof value, wait);
+    if(windows_state == false)
     {
-        if(first_time_around)
-            load_scene("scene.txt", &event_queue);
-        
-        while(event_queue_empty())
-            event_queue_poll();
-
-
+        #ifndef NDEBUG
+        DWORD err = GetLastError(); 
+        assert(err == ERROR_TIMEOUT);
+        #endif
+        return false;
     }
+    return true;
 }
-
-*/
+void platform_futex_wake(void* futex)
+{
+    WakeByAddressSingle((void*) futex);
+}
+void platform_futex_wake_all(void* futex)
+{
+    WakeByAddressAll((void*) futex);
+}
 
 //=========================================
 // Timings
@@ -508,11 +606,23 @@ static wchar_t* _utf8_to_utf16(WString_Buffer* append_to, const char* string, in
 #define _EPHEMERAL_STRING_SIMULTANEOUS 4
 static _declspec(thread) WString_Buffer ephemeral_strings[_EPHEMERAL_STRING_SIMULTANEOUS];
 static _declspec(thread) int64_t ephemeral_strings_slot;
+
+void _ephemeral_wstring_deinit_all(void* ignored)
+{
+    (void) ignored;
+    for(int64_t i = 0; i < _EPHEMERAL_STRING_SIMULTANEOUS; i++)
+        buffer_deinit(&ephemeral_strings[i]);
+}
+
 const wchar_t* _ephemeral_wstring_convert(Platform_String path, bool normalize_path)
 {
+
     enum {RESET_EVERY = 8, MAX_SIZE = MAX_PATH*2, MIN_SIZE = MAX_PATH};
     int64_t *slot = &ephemeral_strings_slot;
     WString_Buffer* curr = &ephemeral_strings[*slot % _EPHEMERAL_STRING_SIMULTANEOUS];
+    
+    if(*slot == 0)
+        platform_thread_attach_deinit(_ephemeral_wstring_deinit_all, NULL);
 
     //We periodacally shrink the strings so that we can use this
     //function regulary for small and big strings without fearing that we will
@@ -554,11 +664,6 @@ char* _convert_to_utf8_normalize_path(String_Buffer* append_to_or_null, const wc
     return str;
 }
 
-void _ephemeral_wstring_deinit_all()
-{
-    for(int64_t i = 0; i < _EPHEMERAL_STRING_SIMULTANEOUS; i++)
-        buffer_deinit(&ephemeral_strings[i]);
-}
 
 const wchar_t* _ephemeral_path(Platform_String path)
 {
@@ -568,10 +673,25 @@ const wchar_t* _ephemeral_path(Platform_String path)
 #define _TRANSLATED_ERRORS_SIMULATANEOUS 8
 static __declspec(thread) char* _translated_errors[_TRANSLATED_ERRORS_SIMULATANEOUS];
 static __declspec(thread) int64_t _translated_error_slot;
+
+void _translated_deinit_all(void* ignored)
+{
+    (void) ignored;
+    for(int64_t i = 0; i < _TRANSLATED_ERRORS_SIMULATANEOUS; i++)
+    {
+        LocalFree((HLOCAL) _translated_errors[i]);
+        _translated_errors[i] = NULL;
+    }
+}
+
 const char* platform_translate_error(Platform_Error error)
 {
     if(error == PLATFORM_ERROR_OTHER)
         return "Other platform specific error occurred";
+    
+    //If posix error code return that format
+    if(error & (1 << 29))
+        return strerror(error & ~(1 << 29));
 
     char* trasnlated = NULL;
     int64_t length = FormatMessageA(
@@ -584,6 +704,9 @@ const char* platform_translate_error(Platform_Error error)
         (LPSTR) &trasnlated,
         0, NULL );
     
+    if(_translated_error_slot == 0)
+        platform_thread_attach_deinit(_translated_deinit_all, NULL);
+
     (void) length;
     LocalFree(_translated_errors[_translated_error_slot]);
     _translated_errors[_translated_error_slot] = trasnlated;
@@ -599,15 +722,6 @@ const char* platform_translate_error(Platform_Error error)
     }
 
     return trasnlated;
-}
-
-void _translated_deinit_all()
-{
-    for(int64_t i = 0; i < _TRANSLATED_ERRORS_SIMULATANEOUS; i++)
-    {
-        LocalFree((HLOCAL) _translated_errors[i]);
-        _translated_errors[i] = NULL;
-    }
 }
 
 //Opens the file in the specified combination of Platform_File_Open_Flags. 
@@ -1144,60 +1258,66 @@ void platform_directory_list_contents_free(Platform_Directory_Entry* entries)
 }
 
 //CWD madness
-static String_Buffer _cwd_cached = {0};
-static String_Buffer _exe_dir_cached = {0};
-static WString_Buffer _wcwd_cached = {0};
 Platform_Error platform_directory_set_current_working(Platform_String new_working_dir)
 {
     const wchar_t* path = _ephemeral_path(new_working_dir);
-
     bool state = _wchdir(path) == 0;
-    return _platform_error_code(state);
+    return _platform_error_code_posix(state);
 }
 
-const char* platform_directory_get_current_working()
+Platform_Error platform_directory_get_current_working(void* buffer, int64_t buffer_size, bool* needs_bigger_buffer_or_null)
 {
-    wchar_t* current_working = _wgetcwd(NULL, 0);
-    if(current_working == NULL || _wcwd_cached.data == NULL || wcscmp(current_working, _wcwd_cached.data) != 0)
-    {
-        buffer_resize(&_wcwd_cached, 0);
-        buffer_append(&_wcwd_cached, current_working, current_working ? wcslen(current_working) : 0);
-        _alloc_full_path(&_cwd_cached, current_working, _NORMALIZE_DIRECTORY);
-    }
+    assert(buffer != NULL || (buffer == NULL && buffer_size == 0));
+
+    bool ok = true;
+    if(buffer_size > 0)
+        ok = _getcwd(buffer, (int) buffer_size) != NULL;
     
-    assert(_cwd_cached.data != NULL);
-    return _cwd_cached.data;
+    if(*needs_bigger_buffer_or_null)
+        *needs_bigger_buffer_or_null = errno == ERANGE;
+    return _platform_error_code_posix(ok);
+}
+
+static void _directory_get_startup_working_once(void* context)
+{
+    const char** cwd = (const char**) context;
+    *cwd = _getcwd(NULL, 0);
+}
+
+const char* platform_directory_get_startup_working()
+{
+    static uint32_t init = 0;
+    static const char* cwd = NULL;
+    platform_call_once(&init, _directory_get_startup_working_once, &cwd);
+    return cwd;
+}
+
+static void _platform_get_executable_path_once(void* context)
+{
+    String_Buffer* dir = (String_Buffer*) context;
+    WString_Buffer wide = {0};
+    buffer_init_backed(&wide, _LOCAL_BUFFER_SIZE);
+    buffer_resize(&wide, MAX_PATH);
+
+    for(int64_t i = 0; i < 16; i++)
+    {
+        buffer_resize(&wide, wide.size * 2);
+        int64_t len = GetModuleFileNameW(NULL, wide.data, (DWORD) wide.size);
+        if(len < wide.size)
+            break;
+    }
+        
+    _alloc_full_path(dir, wide.data, _NORMALIZE_FILE);
+    buffer_deinit(&wide);
+    assert(dir->data != NULL);
 }
 
 const char* platform_get_executable_path()
 {
-    if(_exe_dir_cached.data == NULL)
-    {
-        WString_Buffer wide = {0};
-        buffer_init_backed(&wide, _LOCAL_BUFFER_SIZE);
-        buffer_resize(&wide, MAX_PATH);
-
-        for(int64_t i = 0; i < 16; i++)
-        {
-            buffer_resize(&wide, wide.size * 2);
-            int64_t len = GetModuleFileNameW(NULL, wide.data, (DWORD) wide.size);
-            if(len < wide.size)
-                break;
-        }
-        
-        _alloc_full_path(&_exe_dir_cached, wide.data, _NORMALIZE_FILE);
-        buffer_deinit(&wide);
-    }
-    
-    assert(_exe_dir_cached.data != NULL);
-    return _exe_dir_cached.data;
-}
-
-static void _platform_cached_directory_deinit()
-{
-    buffer_deinit(&_cwd_cached);
-    buffer_deinit(&_wcwd_cached);
-    buffer_deinit(&_exe_dir_cached);
+    static uint32_t init = 0;
+    static String_Buffer dir = {0};
+    platform_call_once(&init, _platform_get_executable_path_once, &dir);
+    return dir.data;
 }
 
 void platform_file_memory_unmap(Platform_Memory_Mapping* mapping)
@@ -2210,8 +2330,7 @@ void platform_init()
 void platform_deinit()
 {
     _platform_deinit_timings();
-    _translated_deinit_all();
-    _ephemeral_wstring_deinit_all();
-    _platform_cached_directory_deinit();
+    _translated_deinit_all(NULL);
+    _ephemeral_wstring_deinit_all(NULL);
     _platform_stack_trace_deinit();
 }

@@ -41,9 +41,9 @@ typedef struct Allocation_List_Block {
     Allocation_List_Block* next_block; 
     Allocation_List_Block* prev_block;
 
-    u64 is_offset   : 1;
     u64 align       : 16;
-    u64 size        : 45;
+    u64 size        : 47;
+    u64 is_offset   : 1;
 
     #ifdef ALLOCATION_LIST_DEBUG
     char magic[8];
