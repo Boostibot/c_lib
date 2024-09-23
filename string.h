@@ -483,32 +483,33 @@ EXTERNAL bool char_is_id(char c);
         String nil = {0};
         *string = nil;
     }
-
+    
     char _builder_null_termination[4] = {0};
-    EXTERNAL bool _builder_is_invariant(const String_Builder* builder)
+    EXTERNAL bool builder_is_invariant(String_Builder builder)
     {
-        bool is_capacity_correct = 0 <= builder->capacity;
-        bool is_size_correct = (0 <= builder->len && builder->len <= builder->capacity);
+        bool null_termination_not_corrupted = _builder_null_termination[0] == '\0';
+        bool is_capacity_correct = 0 <= builder.capacity;
+        bool is_size_correct = (0 <= builder.len && builder.len <= builder.capacity);
         //Data is default iff capacity is zero
-        bool is_data_correct = (builder->data == NULL || builder->data == _builder_null_termination) == (builder->capacity == 0);
+        bool is_data_correct = (builder.data == NULL || builder.data == _builder_null_termination) == (builder.capacity == 0);
 
         //If has capacity then was allocated therefore must have an allocator set
-        if(builder->capacity > 0)
-            is_capacity_correct = is_capacity_correct && builder->allocator != NULL;
+        if(builder.capacity > 0)
+            is_capacity_correct = is_capacity_correct && builder.allocator != NULL;
 
         //If is not in 0 state must be null terminated (both right after and after the whole capacity for safety)
         bool is_null_terminated = true;
-        if(builder->data != NULL)
-            is_null_terminated = builder->data[builder->len] == '\0' && builder->data[builder->capacity] == '\0';
+        if(builder.data != NULL)
+            is_null_terminated = builder.data[builder.len] == '\0' && builder.data[builder.capacity] == '\0';
         
-        bool result = is_capacity_correct && is_size_correct && is_data_correct && is_null_terminated;
+        bool result = is_capacity_correct && is_size_correct && is_data_correct && is_null_terminated && null_termination_not_corrupted;
         ASSERT(result);
         return result;
     }
     EXTERNAL void builder_deinit(String_Builder* builder)
     {
         ASSERT(builder != NULL);
-        ASSERT(_builder_is_invariant(builder));
+        ASSERT(builder_is_invariant(*builder));
 
         if(builder->data != NULL && builder->data != _builder_null_termination)
             allocator_deallocate(builder->allocator, builder->data, builder->capacity + 1, 1);
@@ -544,7 +545,7 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL void builder_set_capacity(String_Builder* builder, isize capacity)
     {
-        ASSERT(_builder_is_invariant(builder));
+        ASSERT(builder_is_invariant(*builder));
         ASSERT(capacity >= 0);
 
         //@TEMP: just for transition
@@ -593,7 +594,7 @@ EXTERNAL bool char_is_id(char c);
             builder->data[builder->len] = '\0'; 
             builder->data[builder->capacity] = '\0'; 
         }
-        ASSERT(_builder_is_invariant(builder));
+        ASSERT(builder_is_invariant(*builder));
     }
     
     EXTERNAL void builder_reserve(String_Builder* builder, isize to_fit)
@@ -619,7 +620,7 @@ EXTERNAL bool char_is_id(char c);
             memset(builder->data + to_size, 0, (size_t) ((builder->len - to_size)));
         
         builder->len = to_size;
-        ASSERT(_builder_is_invariant(builder));
+        ASSERT(builder_is_invariant(*builder));
     }
 
     EXTERNAL void builder_clear(String_Builder* builder)
@@ -633,7 +634,7 @@ EXTERNAL bool char_is_id(char c);
         builder_reserve(builder, builder->len+string.len);
         memcpy(builder->data + builder->len, string.data, (size_t) string.len);
         builder->len += string.len;
-        ASSERT(_builder_is_invariant(builder));
+        ASSERT(builder_is_invariant(*builder));
     }
 
     EXTERNAL void builder_append_line(String_Builder* builder, String string)
@@ -643,7 +644,7 @@ EXTERNAL bool char_is_id(char c);
         memcpy(builder->data + builder->len, string.data, (size_t) string.len);
         builder->data[builder->len + string.len] = '\n';
         builder->len += string.len + 1;
-        ASSERT(_builder_is_invariant(builder));
+        ASSERT(builder_is_invariant(*builder));
     }
     
     EXTERNAL void builder_insert_hole(String_Builder* builder, isize at, isize hole_size, int fill_with_char_or_minus_one)
@@ -668,7 +669,7 @@ EXTERNAL bool char_is_id(char c);
     {
         builder_resize(builder, string.len);
         memcpy(builder->data, string.data, (size_t) string.len);
-        ASSERT(_builder_is_invariant(builder));
+        ASSERT(builder_is_invariant(*builder));
     }
 
     EXTERNAL void builder_push(String_Builder* builder, char c)
@@ -718,18 +719,7 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL bool char_is_space(char c)
     {
-        switch(c)
-        {
-            case ' ':
-            case '\n':
-            case '\t':
-            case '\r':
-            case '\v':
-            case '\f':
-                return true;
-            default: 
-                return false;
-        }
+        return c == ' ' || c == '\n' || c == '\t' || c == '\r' || c == '\v' || c == '\f';
     }
 
     EXTERNAL bool char_is_digit(char c)
@@ -751,14 +741,30 @@ EXTERNAL bool char_is_id(char c);
     {
         //return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z');
 
-        //this is just a little flex of doing the two range checks in one
+        //this is just a cute way of doing the two range checks in one
         //using the fact that all uppercase to lowercase letters are 32 apart.
-        //That means we can just makes the fift bit and test once.
+        //That means we can just makes the fifth bit and test once.
         //You can simply test this works by comparing the result of both approaches on all char values.
         char masked = (c - 'A') & ~(1 << 5);
         bool is_letter = 0 <= masked && masked <= ('Z' - 'A');
 
         return is_letter;
+    }
+
+    EXTERNAL char char_to_upper(char c)
+    {
+        if('a' <= c && c <= 'z')
+            return c - 'a' + 'A';
+        else    
+            return c;
+    }
+    
+    EXTERNAL char char_to_lower(char c)
+    {
+        if('A' <= c && c <= 'A')
+            return c - 'A' + 'a';
+        else    
+            return c;
     }
 
     //all characters permitted inside a common programming language id. [0-9], _, [a-z], [A-Z]

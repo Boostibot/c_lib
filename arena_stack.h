@@ -127,10 +127,10 @@
 #endif
 
 #ifndef ARENA_STACK_CUSTOM
-    #define ARENA_STACK_CHANNELS 2
+    #define ARENA_STACK_CHANNELS         2
     #define ARENA_STACK_DEF_STACK_SIZE   256
-    #define ARENA_STACK_DEF_RESERVE_SIZE 64 * GB 
-    #define ARENA_STACK_DEF_COMMIT_SIZE  8 * MB 
+    #define ARENA_STACK_DEF_RESERVE_SIZE (16*GB)
+    #define ARENA_STACK_DEF_COMMIT_SIZE  ( 4*MB) 
 #endif
 
 typedef struct Arena_Stack_Channel {
@@ -320,8 +320,10 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
             if(platform_error)
             {
                 out = NULL;
+                char buffer[4096];
+                platform_translate_error(platform_error, buffer, sizeof buffer);
                 allocator_error(error, ALLOCATOR_ERROR_OUT_OF_MEM, NULL, size, NULL, 0, align, 
-                    "Virtual memory commit failed! Error: %s", platform_translate_error(platform_error));
+                    "Virtual memory commit failed! Error: %s", buffer);
                 goto end;
             }
 

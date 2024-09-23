@@ -3,6 +3,7 @@
 
 #include "string.h"
 #include "path.h"
+#include "arena_stack.h"
 
 EXTERNAL Platform_Error file_read_entire_into_no_log(String file_path, String_Builder* append_into, Platform_File_Info* info_or_null);
 EXTERNAL Platform_Error file_read_entire_no_log(String file_path, String_Builder* data, Platform_File_Info* info_or_null);
@@ -53,7 +54,8 @@ EXTERNAL bool file_read_entire_into(String file_path, String_Builder* append_int
 {
     Platform_Error error = file_read_entire_into_no_log(file_path, append_into, NULL);
     if(error != 0)
-        LOG(log, "error reading file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
+        SCRATCH_ARENA(arena)
+            LOG(log, "error reading file '%.*s': %s", STRING_PRINT(file_path), translate_error(arena.alloc, error).data);
 
     return error == 0;
 }
@@ -76,7 +78,8 @@ EXTERNAL bool file_append_entire(String file_path, String data, Log log)
     }
 
     if(error != 0)
-        LOG(log, "error appending file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
+        SCRATCH_ARENA(arena)
+            LOG(log, "error appending file '%.*s': %s", STRING_PRINT(file_path), translate_error(arena.alloc, error).data);
     platform_file_close(&file);
     PROFILE_END();
     return error == 0;
@@ -91,7 +94,8 @@ EXTERNAL bool file_write_entire(String file_path, String data, Log log)
         error = platform_file_write(&file, data.data, data.len);
 
     if(error != 0)
-        LOG(log, "error writing file '%.*s': %s", STRING_PRINT(file_path), platform_translate_error(error));
+        SCRATCH_ARENA(arena)
+            LOG(log, "error writing file '%.*s': %s", STRING_PRINT(file_path), translate_error(arena.alloc, error).data);
 
     platform_file_close(&file);
     PROFILE_END();

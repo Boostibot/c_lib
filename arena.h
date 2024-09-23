@@ -4,8 +4,8 @@
 #include "allocator.h"
 #include "profile_defs.h"
 
-#define ARENA_DEF_RESERVE_SIZE 64 * GB 
-#define ARENA_DEF_COMMIT_SIZE  8 * MB 
+#define ARENA_DEF_RESERVE_SIZE (16*GB)
+#define ARENA_DEF_COMMIT_SIZE  ( 4*MB) 
 
 //Contiguous chunk of virtual memory. 
 // This struct is combination of two separate concepts (for simplicity of implementation):
@@ -103,8 +103,10 @@ INTERNAL ATTRIBUTE_INLINE_NEVER void _arena_commit_no_inline(Arena* arena, const
         Platform_Error platform_error = platform_virtual_reallocate(NULL, arena->commit_to, new_commit_to - arena->commit_to, PLATFORM_VIRTUAL_ALLOC_COMMIT, PLATFORM_MEMORY_PROT_READ_WRITE);
         if(platform_error)
         {
+            char buffer[4096];
+            platform_translate_error(platform_error, buffer, sizeof buffer);
             allocator_error(error_or_null, ALLOCATOR_ERROR_OUT_OF_MEM, arena->alloc, size, NULL, 0, 1, 
-                "Virtual memory commit failed! Error: %s", platform_translate_error(platform_error));
+                "Virtual memory commit failed! Error: %s", buffer);
             goto end;
         }
 

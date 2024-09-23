@@ -121,9 +121,10 @@ enum {
     PLATFORM_ERROR_OTHER = INT32_MAX, //Is used when the OS reports no error yet there was clearly an error.
 };
 
-//Returns a translated error message. The returned pointer is not static and shall NOT be stored as further calls to this functions will invalidate it. 
-//The returned string should be immediately printed or copied into a different buffer
-const char* platform_translate_error(Platform_Error error);
+//Translates error into a textual description stored in translated. Does not write more than translated_size chars.
+//translated will always be null terminated, unless translated_size == 0 in which case nothing is written.
+//Returns the needed buffer size for the full message.
+int64_t platform_translate_error(Platform_Error error, char* translated, int64_t translated_size);
 
 //=========================================
 // Virtual memory
@@ -213,7 +214,7 @@ void            platform_futex_wake_all(void* futex);
 //calls the given func with context argument just once, even if racing with other threads.
 //state should point to shared variable between racing threads (ie. global) initialized to 0.
 //This function will set it to 1 while initilization is in progress and finally 2 once initialized.
-//After initialization is complete this function costs just one load and if so its extremely cheap.
+//After initialization is complete this function costs just one load and thus is extremely cheap.
 static void     platform_call_once(uint32_t* state, void (*func)(void* context), void* context);
 
 //=========================================
@@ -1312,8 +1313,13 @@ static bool _platform_test_report(Platform_Error error, bool is_error, const cha
         }
         
         if(error != 0)
-            printf("Error: %s\n", platform_translate_error(error));
-
+        {
+            int64_t size = platform_translate_error(error, NULL, 0);
+            char* message = (char*) malloc(size);
+            platform_translate_error(error, message, size);
+            printf("Error: %s\n", message);
+            free(message);
+        }
         fflush(stdout);
     }
 

@@ -19,6 +19,9 @@ EXTERNAL String_Builder format_no_check(Allocator* alloc, const char* format, ..
 #define  format(alloc, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_no_check((alloc), (format), ##__VA_ARGS__))
 #define  formata(allocator, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_no_check((allocator).alloc, (format), ##__VA_ARGS__)).string
 
+EXTERNAL String translate_error(Allocator* alloc, Platform_Error error);
+EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error error);
+
 #endif // !JOT_VFORMAT
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_VFORMAT_IMPL)) && !defined(JOT_VFORMAT_HAS_IMPL)
@@ -103,5 +106,23 @@ EXTERNAL String_Builder format_no_check(Allocator* alloc, const char* format, ..
         String_Builder builder = vformat(alloc, format, args);
         va_end(args);
         return builder;
+    }
+
+    EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error error)
+    {
+        isize size = platform_translate_error(error, NULL, 0);
+        String_Builder out = builder_make(alloc, size - 1);
+        platform_translate_error(error, out.data, size);
+
+        ASSERT(builder_is_invariant(out));
+        return out;
+    }
+
+    EXTERNAL String translate_error(Allocator* alloc, Platform_Error error)
+    {
+        isize size = platform_translate_error(error, NULL, 0);
+        char* data = allocator_allocate(alloc, size, 1);
+        platform_translate_error(error, data, size);
+        return string_make(data, size - 1);
     }
 #endif

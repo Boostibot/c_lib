@@ -617,7 +617,7 @@ void _ephemeral_wstring_deinit_all(void* ignored)
 const wchar_t* _ephemeral_wstring_convert(Platform_String path, bool normalize_path)
 {
 
-    enum {RESET_EVERY = 8, MAX_SIZE = MAX_PATH*2, MIN_SIZE = MAX_PATH};
+    enum {RESET_EVERY = 8*_EPHEMERAL_STRING_SIMULTANEOUS, MAX_SIZE = MAX_PATH*2, MIN_SIZE = MAX_PATH};
     int64_t *slot = &ephemeral_strings_slot;
     WString_Buffer* curr = &ephemeral_strings[*slot % _EPHEMERAL_STRING_SIMULTANEOUS];
     
@@ -670,58 +670,70 @@ const wchar_t* _ephemeral_path(Platform_String path)
     return _ephemeral_wstring_convert(path, true);
 }
 
-#define _TRANSLATED_ERRORS_SIMULATANEOUS 8
-static __declspec(thread) char* _translated_errors[_TRANSLATED_ERRORS_SIMULATANEOUS];
-static __declspec(thread) int64_t _translated_error_slot;
-
-void _translated_deinit_all(void* ignored)
+int64_t platform_translate_error(Platform_Error error, char* translated, int64_t translated_size)
 {
-    (void) ignored;
-    for(int64_t i = 0; i < _TRANSLATED_ERRORS_SIMULATANEOUS; i++)
-    {
-        LocalFree((HLOCAL) _translated_errors[i]);
-        _translated_errors[i] = NULL;
-    }
-}
+    char buffer[4096];
+    const char* source = NULL;
+    bool was_allocated = false;
 
-const char* platform_translate_error(Platform_Error error)
-{
     if(error == PLATFORM_ERROR_OTHER)
-        return "Other platform specific error occurred";
-    
+        source = "Other platform specific error occurred";
     //If posix error code return that format
-    if(error & (1 << 29))
-        return strerror(error & ~(1 << 29));
-
-    char* trasnlated = NULL;
-    int64_t length = FormatMessageA(
-        FORMAT_MESSAGE_ALLOCATE_BUFFER | 
-        FORMAT_MESSAGE_FROM_SYSTEM |
-        FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL,
-        (DWORD) error,
-        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-        (LPSTR) &trasnlated,
-        0, NULL );
-    
-    if(_translated_error_slot == 0)
-        platform_thread_attach_deinit(_translated_deinit_all, NULL);
-
-    (void) length;
-    LocalFree(_translated_errors[_translated_error_slot]);
-    _translated_errors[_translated_error_slot] = trasnlated;
-    _translated_error_slot = (_translated_error_slot + 1) % _TRANSLATED_ERRORS_SIMULATANEOUS;
-
-    //Strips annoying trailing whitespace
-    for(int64_t i = length; i-- > 0; )
+    else if(error & (1 << 29))
+        source = strerror(error & ~(1 << 29));
+    //If win32 error code return that
+    else
     {
-        if(isspace(trasnlated[i]))
-            trasnlated[i] = '\0';
-        else
+        //Try to format into a stack buffer
+        source = buffer;
+        int64_t size = FormatMessageA(
+            FORMAT_MESSAGE_FROM_SYSTEM |
+            FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL,
+            (DWORD) error,
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            (LPSTR) buffer,
+            sizeof(buffer), NULL);
+
+        //if too big format into an allocated buffer (unlikely)
+        if(size == sizeof(buffer))
+        {
+            was_allocated = true;
+            FormatMessageA(
+                FORMAT_MESSAGE_ALLOCATE_BUFFER | 
+                FORMAT_MESSAGE_FROM_SYSTEM |
+                FORMAT_MESSAGE_IGNORE_INSERTS,
+                NULL,
+                (DWORD) error,
+                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                (LPSTR) (void*) &source,
+                0, NULL );
+        }
+    }
+    
+    //Strips annoying trailing whitespace and null termination
+    int64_t needed_size = strlen(source);
+    for(; needed_size > 0; needed_size --)
+    {
+        char c = translated[needed_size - 1];
+        if(!isspace(c) && c != '\0')
             break;
     }
 
-    return trasnlated;
+    int64_t min_size = needed_size < translated_size ? needed_size : translated_size;
+    memcpy(translated, source, min_size);
+    
+    //Null terminate right after
+    if(needed_size < translated_size) 
+        translated[needed_size] = '\0';
+    //Null terminate the whole buffer 
+    else if(translated_size > 0) 
+        translated[translated_size - 1] = '\0';
+
+    if(was_allocated)
+        LocalFree((void*) source);
+
+    return needed_size + 1;
 }
 
 //Opens the file in the specified combination of Platform_File_Open_Flags. 
@@ -2330,7 +2342,6 @@ void platform_init()
 void platform_deinit()
 {
     _platform_deinit_timings();
-    _translated_deinit_all(NULL);
     _ephemeral_wstring_deinit_all(NULL);
     _platform_stack_trace_deinit();
 }
