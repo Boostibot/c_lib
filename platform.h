@@ -160,6 +160,8 @@ int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align);
 // Threading
 //=========================================
 
+typedef int (*Platform_Thread_Func)(void* context);
+
 typedef struct Platform_Thread {
     void* handle;
 } Platform_Thread;
@@ -192,14 +194,18 @@ Platform_Error platform_thread_launch(Platform_Thread* thread, int64_t stack_siz
 
 int64_t         platform_thread_get_proccessor_count();
 Platform_Thread platform_thread_get_current(); //Returns handle to the calling thread
+int32_t         platform_thread_get_current_id(); 
+Platform_Thread platform_thread_get_main(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns NULL.
+bool            platform_thread_is_main();
 void            platform_thread_sleep(int64_t ms); //Sleeps the calling thread for ms milliseconds
 void            platform_thread_exit(int code); //Terminates a thread with an exit code
 void            platform_thread_yield(); //Yields the remainder of this thread's time slice to the OS
-void            platform_thread_detach(Platform_Thread thread);
-void            platform_thread_join(const Platform_Thread* threads, int64_t count); //Blocks calling thread until all threads finish. Must not join the current calling thread!
+void            platform_thread_detach(Platform_Thread* thread);
+bool            platform_thread_join(const Platform_Thread* threads, int64_t count, int64_t ms_or_negative_if_infinite); //Blocks calling thread until all threads finish. Must not join the current calling thread!
 int             platform_thread_get_exit_code(Platform_Thread finished_thread); //Returns the exit code of a terminated thread. If the thread is not terminated the result is undefined. 
 bool            platform_thread_is_running(Platform_Thread thread, Platform_Error* error_or_null);
 void            platform_thread_attach_deinit(void (*func)(void* context), void* context); //Registers a function to be called when the thread terminates
+
 
 Platform_Error  platform_mutex_init(Platform_Mutex* mutex);
 void            platform_mutex_deinit(Platform_Mutex* mutex);
@@ -207,9 +213,9 @@ void            platform_mutex_lock(Platform_Mutex* mutex);
 void            platform_mutex_unlock(Platform_Mutex* mutex);
 bool            platform_mutex_try_lock(Platform_Mutex* mutex); //Tries to lock a mutex. Returns true if mutex was locked successfully. If it was not returns false without waiting.
 
-bool            platform_futex_wait(void* futex, uint32_t value, int64_t ms_or_negative_if_infinite);
-void            platform_futex_wake(void* futex);
-void            platform_futex_wake_all(void* futex);
+bool            platform_futex_wait(volatile void* futex, uint32_t value, int64_t ms_or_negative_if_infinite);
+void            platform_futex_wake(volatile void* futex);
+void            platform_futex_wake_all(volatile void* futex);
 
 //calls the given func with context argument just once, even if racing with other threads.
 //state should point to shared variable between racing threads (ie. global) initialized to 0.
@@ -245,28 +251,33 @@ inline static int32_t platform_pop_count64(uint64_t num);
 //   *target = new_value;
 //   return true;
 // }
-inline static bool platform_atomic_compare_and_swap64(void* target, uint64_t old_value, uint64_t new_value);
-inline static bool platform_atomic_compare_and_swap32(void* target, uint32_t old_value, uint32_t new_value);
+inline static bool platform_atomic_compare_and_swap128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi);
+inline static bool platform_atomic_compare_and_swap64(volatile void* target, uint64_t old_value, uint64_t new_value);
+inline static bool platform_atomic_compare_and_swap32(volatile void* target, uint32_t old_value, uint32_t new_value);
+
+inline static bool platform_atomic_compare_and_swap_weak128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi);
+inline static bool platform_atomic_compare_and_swap_weak64(volatile void* target, uint64_t old_value, uint64_t new_value);
+inline static bool platform_atomic_compare_and_swap_weak32(volatile void* target, uint32_t old_value, uint32_t new_value);
 
 //Performs atomically: { return *target; }
-inline static uint64_t platform_atomic_load64(const void* target);
-inline static uint32_t platform_atomic_load32(const void* target);
+inline static uint64_t platform_atomic_load64(const volatile void* target);
+inline static uint32_t platform_atomic_load32(const volatile void* target);
 
 //Performs atomically: { *target = value; }
-inline static void platform_atomic_store64(void* target, uint64_t value);
-inline static void platform_atomic_store32(void* target, uint32_t value);
+inline static void platform_atomic_store64(volatile void* target, uint64_t value);
+inline static void platform_atomic_store32(volatile void* target, uint32_t value);
 
 //Performs atomically: { uint64_t copy = *target; *target = value; return copy; }
-inline static uint64_t platform_atomic_exchange64(void* target, uint64_t value);
-inline static uint32_t platform_atomic_exchange32(void* target, uint32_t value);
+inline static uint64_t platform_atomic_exchange64(volatile void* target, uint64_t value);
+inline static uint32_t platform_atomic_exchange32(volatile void* target, uint32_t value);
 
 //Performs atomically: { int64_t copy = *target; *target += value; return copy; }
-inline static int32_t platform_atomic_add32(volatile int32_t* target, int32_t value);
-inline static int64_t platform_atomic_add64(volatile int64_t* target, int64_t value);
+inline static uint32_t platform_atomic_add32(volatile void* target, uint32_t value);
+inline static uint64_t platform_atomic_add64(volatile void* target, uint64_t value);
 
-//Performs atomically: { int64_t copy = *target; *target -= value; return copy; }
-inline static int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value);
-inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value);
+//Performs atomically: { uint64_t copy = *target; *target -= value; return copy; }
+inline static uint32_t platform_atomic_sub32(volatile void* target, uint32_t value);
+inline static uint64_t platform_atomic_sub64(volatile void* target, uint64_t value);
 
 //=========================================
 // Timings
@@ -284,6 +295,12 @@ int64_t platform_perf_counter();
 int64_t platform_perf_counter_frequency();  
 //returns platform_perf_counter() take at time of platform_init()
 int64_t platform_perf_counter_startup();    
+
+//Functions which deal with __rdtsc or equivalent on ARM
+inline static int64_t platform_rdtsc();
+inline static int64_t platform_rdtsc_fence();
+int64_t platform_rdtsc_frequency();
+int64_t platform_rdtsc_startup();
 
 //=========================================
 // Filesystem
@@ -768,64 +785,94 @@ const char* platform_exception_to_string(Platform_Exception error);
     //
     // Now even though __iso_volatile_load32 and similar are listed under ARM intrinsics they work just fine even on x86/64. 
     // All this to say that this is a kind of hacky solution but the best there is at the moment.
-    inline static uint64_t platform_atomic_load64(const void* target)
+    inline static uint64_t platform_atomic_load64(const volatile void* target)
     {
         return (uint64_t) __iso_volatile_load64((const volatile long long*) target);
     }
-    inline static uint32_t platform_atomic_load32(const void* target)
+    inline static uint32_t platform_atomic_load32(const volatile void* target)
     {
         return (uint32_t) __iso_volatile_load32((const volatile int*) target);
     }
 
-    inline static void platform_atomic_store64(void* target, uint64_t value)
+    inline static void platform_atomic_store64(volatile void* target, uint64_t value)
     {
         __iso_volatile_store64((volatile long long*) target, (long long) value);
     }
-    inline static void platform_atomic_store32(void* target, uint32_t value)
+    inline static void platform_atomic_store32(volatile void* target, uint32_t value)
     {
         __iso_volatile_store32((volatile int*) target, (int) value);
     }
-
-    inline static bool platform_atomic_compare_and_swap64(void* target, uint64_t old_value, uint64_t new_value)
+    
+    inline static bool platform_atomic_compare_and_swap128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi)
     {
-        return _InterlockedCompareExchange64((volatile long long*) (void*) target, (long long) new_value, (long long) old_value) == (long long) old_value;
+        long long new_val[] = {(long long) old_value_lo, (long long) old_value_hi};
+        return (bool) _InterlockedCompareExchange128((volatile long long*) target, (long long) new_value_hi, (long long) new_value_lo, new_val);
     }
-
-    inline static bool platform_atomic_compare_and_swap32(void* target, uint32_t old_value, uint32_t new_value)
+    inline static bool platform_atomic_compare_and_swap64(volatile void* target, uint64_t old_value, uint64_t new_value)
     {
-        return _InterlockedCompareExchange((volatile long*) (void*) target, (long) new_value, (long) old_value) == (long) old_value;
+        return _InterlockedCompareExchange64((volatile long long*) target, (long long) new_value, (long long) old_value) == (long long) old_value;
     }
-
-    inline static uint64_t platform_atomic_exchange64(void* target, uint64_t value)
+    inline static bool platform_atomic_compare_and_swap32(volatile void* target, uint32_t old_value, uint32_t new_value)
     {
-        return (uint64_t) _InterlockedExchange64((volatile long long*) (void*) target, (long long) value);
-    }
-
-    inline static uint32_t platform_atomic_exchange32(void* target, uint32_t value)
-    {
-        return (uint32_t) _InterlockedExchange((volatile long*) (void*) target, (long) value);
+        return _InterlockedCompareExchange((volatile long*) target, (long) new_value, (long) old_value) == (long) old_value;
     }
     
-    inline static int64_t platform_atomic_add64(volatile int64_t* target, int64_t value)
+    inline static bool platform_atomic_compare_and_swap_weak128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi)
     {
-        return (int64_t) _InterlockedExchangeAdd64((volatile long long*) (void*) target, (long long) value);
+        long long new_val[] = {(long long) old_value_lo, (long long) old_value_hi};
+        return (bool) _InterlockedCompareExchange128((volatile long long*) target, (long long) new_value_hi, (long long) new_value_lo, new_val);
+    }
+    inline static bool platform_atomic_compare_and_swap_weak64(volatile void* target, uint64_t old_value, uint64_t new_value)
+    {
+        return _InterlockedCompareExchange64((volatile long long*) target, (long long) new_value, (long long) old_value) == (long long) old_value;
+    }
+    inline static bool platform_atomic_compare_and_swap_weak32(volatile void* target, uint32_t old_value, uint32_t new_value)
+    {
+        return _InterlockedCompareExchange((volatile long*) target, (long) new_value, (long) old_value) == (long) old_value;
     }
 
-    inline static int32_t platform_atomic_add32(volatile int32_t* target, int32_t value)
+    inline static uint64_t platform_atomic_exchange64(volatile void* target, uint64_t value)
     {
-        return (int32_t) _InterlockedExchangeAdd((volatile long*) (void*) target, (long) value);
+        return (uint64_t) _InterlockedExchange64((volatile long long*) target, (long long) value);
     }
 
-    inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value)
+    inline static uint32_t platform_atomic_exchange32(volatile void* target, uint32_t value)
     {
-        return platform_atomic_add64(target, -value);
+        return (uint32_t) _InterlockedExchange((volatile long*) target, (long) value);
+    }
+    
+    inline static uint64_t platform_atomic_add64(volatile void* target, uint64_t value)
+    {
+        return (uint64_t) _InterlockedExchangeAdd64((volatile long long*) (void*) target, (long long) value);
+    }
+
+    inline static uint32_t platform_atomic_add32(volatile void* target, uint32_t value)
+    {
+        return (uint32_t) _InterlockedExchangeAdd((volatile long*) (void*) target, (long) value);
+    }
+
+    inline static uint64_t platform_atomic_sub64(volatile void* target, uint64_t value)
+    {
+        return platform_atomic_add64(target, (uint64_t) -(int64_t) value);
     }
    
-    inline static int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value)
+    inline static uint32_t platform_atomic_sub32(volatile void* target, uint32_t value)
     {
-        return platform_atomic_add32(target, -value);
+        return platform_atomic_add32(target, (uint32_t) -(int32_t) value);
     }
    
+    inline static int64_t platform_rdtsc()
+    {
+        _ReadWriteBarrier(); 
+	    return (int64_t) __rdtsc();
+    }
+
+    inline static int64_t platform_rdtsc_fence()
+    {
+        _ReadWriteBarrier(); 
+        _mm_lfence();
+    }
+
     #pragma warning(pop)
 
 #elif defined(__GNUC__) || defined(__clang__)

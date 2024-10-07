@@ -23,7 +23,7 @@
 #include "defines.h"
 #include "assert.h"
 #include "platform.h"
-#include "profile_defs.h"
+#include "profile.h"
 #include <stdarg.h>
 
 typedef struct Allocator        Allocator;
@@ -173,7 +173,7 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
         else 
             out = alloc->func(alloc, new_size, old_ptr, old_size, align, error);
             
-        PROFILE_END();
+        PROFILE_STOP();
         return out;
     }
 
@@ -194,7 +194,7 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
         PROFILE_START();
         if(old_size > 0 && allocator_is_arena_frame(alloc) == false)
             alloc->func(alloc, 0, old_ptr, old_size, align, NULL);
-        PROFILE_END();
+        PROFILE_STOP();
     }
 
     EXTERNAL Allocator_Stats allocator_get_stats(Allocator* alloc)
@@ -270,10 +270,14 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
     
     INTERNAL void* _malloc_allocator_func(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error_or_null)
     {
-        (void) alloc; (void) old_size; (void) align; (void) error_or_null;
-        void* out = platform_heap_reallocate(new_size, old_ptr, align);
-        if(out == NULL && new_size != 0)
-            allocator_error(error_or_null, ALLOCATOR_ERROR_OUT_OF_MEM, alloc, new_size, old_ptr, old_size, align, "malloc failed!");
+        void* out = NULL;
+        PROFILE_SCOPE(malloc)
+        {
+            (void) alloc; (void) old_size; (void) align; (void) error_or_null;
+            out = platform_heap_reallocate(new_size, old_ptr, align);
+            if(out == NULL && new_size != 0)
+                allocator_error(error_or_null, ALLOCATOR_ERROR_OUT_OF_MEM, alloc, new_size, old_ptr, old_size, align, "malloc failed!");
+        }
         return out;
     }
 

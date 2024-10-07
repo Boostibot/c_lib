@@ -1,6 +1,5 @@
-#define _CRT_SECURE_NO_WARNINGS
 
-#include "platform.h"
+#define _CRT_SECURE_NO_WARNINGS
 
 #ifdef APIENTRY
     #undef APIENTRY
@@ -10,9 +9,19 @@
     #define WIN32_LEAN_AND_MEAN
 #endif
 
+#ifndef VC_EXTRALEAN
+    #define VC_EXTRALEAN
+#endif
+
 #ifndef UNICODE
     #define UNICODE
 #endif 
+
+#ifndef NOMINMAX
+    #define NOMINMAX
+#endif
+
+#include "platform.h"
 
 #pragma comment(lib, "dwmapi.lib")
 
@@ -292,6 +301,28 @@ Platform_Thread platform_thread_get_current()
     return out;
 }
 
+int32_t platform_thread_get_current_id()
+{
+    return (int32_t) GetCurrentThreadId();
+}
+
+volatile void* _main_thread_handle = {0};
+void _platform_thread_get_main_init()
+{
+    void* thread = GetCurrentThread();
+    platform_atomic_store64(&_main_thread_handle, (uint64_t) thread);
+}
+
+Platform_Thread platform_thread_get_main()
+{
+    Platform_Thread out = {(void*) platform_atomic_load64(&_main_thread_handle)};
+    return out;
+}
+bool platform_thread_is_main()
+{
+    return platform_thread_get_current().handle == platform_thread_get_main().handle;
+}
+
 int64_t platform_thread_get_proccessor_count()
 {
     return GetCurrentProcessorNumber();
@@ -320,14 +351,17 @@ int platform_thread_get_exit_code(Platform_Thread finished_thread)
     return out;
 }
 
-void platform_thread_join(const Platform_Thread* threads, int64_t count)
+bool platform_thread_join(const Platform_Thread* threads, int64_t count, int64_t ms_or_negative_if_infinite)
 {
+    DWORD timeout = ms_or_negative_if_infinite < 0 ? INFINITE : (DWORD) ms_or_negative_if_infinite;
+    DWORD result = 0;
     if(count == 1)
     {
-        WaitForSingleObject((HANDLE) threads[0].handle, INFINITE);
+        result = WaitForSingleObject((HANDLE) threads[0].handle, timeout);
     }
     else
     {
+        //@NOTE: In case of more then 256 handles we should wait differently but we dont because I am lazy
         bool wait_for_all = true;
         HANDLE handles[256] = {0};
         for(int64_t i = 0; i < count;)
@@ -336,18 +370,21 @@ void platform_thread_join(const Platform_Thread* threads, int64_t count)
             for(; handle_count < 256; handle_count ++, i++)
                 handles[handle_count] = (HANDLE) threads[i].handle;
 
-            WaitForMultipleObjects((DWORD) handle_count, handles, wait_for_all, INFINITE);
+            result = WaitForMultipleObjects((DWORD) handle_count, handles, wait_for_all, timeout);
         }
     }
+
+    return result != WAIT_TIMEOUT;
 }
 
-void platform_thread_detach(Platform_Thread thread)
+void platform_thread_detach(Platform_Thread* thread)
 {
-    bool state = true;
-    if(thread.handle != NULL)
-        state = CloseHandle(thread.handle);
-
-    assert(state); 
+    if(thread->handle != NULL)
+    {
+        bool state = CloseHandle(thread->handle);
+        thread->handle = NULL;
+        assert(state); 
+    }
 }
 
 Platform_Error platform_mutex_init(Platform_Mutex* mutex)
@@ -390,7 +427,7 @@ bool platform_mutex_try_lock(Platform_Mutex* mutex)
 
 #pragma comment(lib, "synchronization.lib")
 #include <process.h>
-bool platform_futex_wait(void* futex, uint32_t value, int64_t ms_or_negative_if_infinite)
+bool platform_futex_wait(volatile void* futex, uint32_t value, int64_t ms_or_negative_if_infinite)
 {
     DWORD wait = (DWORD) ms_or_negative_if_infinite;
     if(ms_or_negative_if_infinite < 0)
@@ -406,11 +443,11 @@ bool platform_futex_wait(void* futex, uint32_t value, int64_t ms_or_negative_if_
     }
     return true;
 }
-void platform_futex_wake(void* futex)
+void platform_futex_wake(volatile void* futex)
 {
     WakeByAddressSingle((void*) futex);
 }
-void platform_futex_wake_all(void* futex)
+void platform_futex_wake_all(volatile void* futex)
 {
     WakeByAddressAll((void*) futex);
 }
@@ -453,6 +490,98 @@ int64_t platform_perf_counter_frequency()
         perf_counter_freq = ticks.QuadPart;
     }
     return perf_counter_freq;
+}
+
+//Directly copied from: https://gist.github.com/pmttavara/6f06fc5c7679c07375483b06bb77430c
+#if 1
+    // SPDX-FileCopyrightText: 2022 Phillip Trudeau-Tavara <pmttavara@protonmail.com>
+    // SPDX-License-Identifier: 0BSD
+
+    // https://hero.handmade.network/forums/code-discussion/t/7485-queryperformancefrequency_returning_10mhz_bug/2
+    // https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/timers#partition-reference-tsc-mechanism
+
+    #include <stdbool.h>
+    #include <stdint.h>
+
+    #define WIN32_LEAN_AND_MEAN
+    #define VC_EXTRALEAN
+    #define NOMINMAX
+    #include <Windows.h>
+    #include <intrin.h>
+
+    static inline uint64_t get_rdtsc_freq(void) {
+
+        // Cache the answer so that multiple calls never take the slow path more than once
+        static uint64_t tsc_freq = 0;
+        if (tsc_freq) {
+            return tsc_freq;
+        }
+
+        // Fast path: Load kernel-mapped memory page
+        HMODULE ntdll = LoadLibraryA("ntdll.dll");
+        if (ntdll) {
+
+            int (*NtQuerySystemInformation)(int, void *, unsigned int, unsigned int *) =
+                (int (*)(int, void *, unsigned int, unsigned int *))GetProcAddress(ntdll, "NtQuerySystemInformation");
+            if (NtQuerySystemInformation) {
+
+                volatile uint64_t *hypervisor_shared_page = NULL;
+                unsigned int size = 0;
+
+                // SystemHypervisorSharedPageInformation == 0xc5
+                int result = (NtQuerySystemInformation)(0xc5, (void *)&hypervisor_shared_page, sizeof(hypervisor_shared_page), &size);
+
+                // success
+                if (size == sizeof(hypervisor_shared_page) && result >= 0) {
+                    // docs say ReferenceTime = ((VirtualTsc * TscScale) >> 64)
+                    //      set ReferenceTime = 10000000 = 1 second @ 10MHz, solve for VirtualTsc
+                    //       =>    VirtualTsc = 10000000 / (TscScale >> 64)
+                    tsc_freq = (10000000ull << 32) / (hypervisor_shared_page[1] >> 32);
+                    // If your build configuration supports 128 bit arithmetic, do this:
+                    // tsc_freq = ((unsigned __int128)10000000ull << (unsigned __int128)64ull) / hypervisor_shared_page[1];
+                }
+            }
+            FreeLibrary(ntdll);
+        }
+
+        // Slow path
+        if (!tsc_freq) {
+
+            // Get time before sleep
+            uint64_t qpc_begin = 0; QueryPerformanceCounter((LARGE_INTEGER *)&qpc_begin);
+            uint64_t tsc_begin = __rdtsc();
+
+            Sleep(2);
+
+            // Get time after sleep
+            uint64_t qpc_end = qpc_begin + 1; QueryPerformanceCounter((LARGE_INTEGER *)&qpc_end);
+            uint64_t tsc_end = __rdtsc();
+
+            // Do the math to extrapolate the RDTSC ticks elapsed in 1 second
+            uint64_t qpc_freq = 0; QueryPerformanceFrequency((LARGE_INTEGER *)&qpc_freq);
+            tsc_freq = (tsc_end - tsc_begin) * qpc_freq / (qpc_end - qpc_begin);
+        }
+
+        // Failure case
+        if (!tsc_freq) {
+            tsc_freq = 1000000000;
+        }
+
+        return tsc_freq;
+    }
+#endif
+
+int64_t platform_rdtsc_frequency()
+{
+    return get_rdtsc_freq();
+}
+
+static int64_t startup_rdtsc = 0;
+int64_t platform_rdtsc_startup()
+{
+    if(startup_rdtsc == 0)
+        startup_rdtsc = platform_rdtsc();
+    return startup_rdtsc;
 }
 
 static int64_t _filetime_to_epoch_time(FILETIME t)  
@@ -2330,6 +2459,10 @@ void _platform_set_console_utf8()
 void platform_init()
 {
     platform_deinit();
+    _platform_thread_get_main_init();
+
+    platform_rdtsc_frequency();
+    platform_rdtsc_startup();
 
     platform_perf_counter();
     platform_epoch_time_startup();

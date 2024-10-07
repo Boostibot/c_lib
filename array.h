@@ -234,24 +234,31 @@ EXTERNAL void generic_array_deinit(Generic_Array gen)
     memset(gen.array, 0, sizeof *gen.array);
 }
 
+#ifndef PROFILE_SCOPE
+    #define PROFILE_SCOPE(...)
+#endif
+
 EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity)
 {
-    ASSERT(generic_array_is_invariant(gen));
-    ASSERT(capacity >= 0);
+    PROFILE_SCOPE()
+    {
+        ASSERT(generic_array_is_invariant(gen));
+        ASSERT(capacity >= 0);
 
-    isize old_byte_size = gen.item_size * gen.array->capacity;
-    isize new_byte_size = gen.item_size * capacity;
-    if(gen.array->allocator == NULL)
-        gen.array->allocator = allocator_get_default();
+        isize old_byte_size = gen.item_size * gen.array->capacity;
+        isize new_byte_size = gen.item_size * capacity;
+        if(gen.array->allocator == NULL)
+            gen.array->allocator = allocator_get_default();
 
-    gen.array->data = (uint8_t*) allocator_reallocate(gen.array->allocator, new_byte_size, gen.array->data, old_byte_size, DEF_ALIGN);
+        gen.array->data = (uint8_t*) allocator_reallocate(gen.array->allocator, new_byte_size, gen.array->data, old_byte_size, DEF_ALIGN);
 
-    //trim the size if too big
-    gen.array->capacity = capacity;
-    if(gen.array->len > gen.array->capacity)
-        gen.array->len = gen.array->capacity;
+        //trim the size if too big
+        gen.array->capacity = capacity;
+        if(gen.array->len > gen.array->capacity)
+            gen.array->len = gen.array->capacity;
         
-    ASSERT(generic_array_is_invariant(gen));
+        ASSERT(generic_array_is_invariant(gen));
+    }
 }
 
 EXTERNAL void generic_array_resize(Generic_Array gen, isize to_size, bool zero_new)

@@ -201,6 +201,10 @@ EXTERNAL Path_Builder path_get_current_working_directoryXXX(Allocator* alloc, Pl
 #if (defined(JOT_ALL_IMPL) || defined(JOT_PATH_IMPL)) && !defined(JOT_PATH_HAS_IMPL)
 #define JOT_PATH_HAS_IMPL
 
+#ifndef PROFILE_START
+    #define PROFILE_START(...)
+    #define PROFILE_STOP(...)
+#endif
 
 EXTERNAL bool is_path_sep(char c)
 {
@@ -227,6 +231,7 @@ EXTERNAL isize string_find_last_path_separator(String string, isize from)
 
 EXTERNAL void path_parse_root(String path, Path_Info* info)
 {
+    PROFILE_START();
     info->prefix_size = 0;
     info->root_content_from = 0;
     info->root_content_to = 0;
@@ -322,10 +327,12 @@ EXTERNAL void path_parse_root(String path, Path_Info* info)
             info->root_kind = PATH_ROOT_WIN;
         }
     }
+    PROFILE_STOP();
 }
 
 EXTERNAL void path_parse_rest(String path, Path_Info* info)
 {
+    PROFILE_START();
     //Clear the overriden
     info->is_directory = false;
     info->is_directory = false;
@@ -395,6 +402,7 @@ EXTERNAL void path_parse_rest(String path, Path_Info* info)
             }
         }
     }
+    PROFILE_STOP();
 }
 
 EXTERNAL bool path_is_empty(Path path)
@@ -413,9 +421,11 @@ EXTERNAL bool path_is_equal_except_prefix(Path a, Path b)
 
 EXTERNAL Path path_parse(String path)
 {
+    PROFILE_START();
     Path out_path = {path};
     path_parse_root(path, &out_path.info);
     path_parse_rest(path, &out_path.info);
+    PROFILE_STOP();
     return out_path;
 }
 
@@ -618,6 +628,7 @@ EXTERNAL void path_builder_clear(Path_Builder* builder)
 
 EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
 {
+    PROFILE_START();
     //@NOTE: this function is the main normalization function. It expects 
     // into to be in a valid state.
     builder_reserve(&into->builder, path.string.len*9/8 + 5);
@@ -825,7 +836,8 @@ EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
     new_info.segment_count = into->info.segment_count;
     ASSERT(memcmp(&new_info, &into->info, sizeof(new_info)) == 0);
     #endif
-
+    
+    PROFILE_STOP();
     return state;
 }
 
@@ -884,6 +896,7 @@ EXTERNAL void path_make_relative_into(Path_Builder* into, Path relative_to, Path
 {
     path_builder_clear(into);
     
+    PROFILE_START();
     //If path is relative path we and the relative_to path is absolute then 
     // we cannot make it any more relative than it currently is.
     //Same happens vice versa.
@@ -896,91 +909,91 @@ EXTERNAL void path_make_relative_into(Path_Builder* into, Path relative_to, Path
     }
     else
     {
-        Arena_Frame arena = scratch_arena_frame_acquire();
-        
-        //Make paths normalized if they are not invarinat already. 
-        // It is very likely that at least relative_to will be invarinat since 
-        // most often it will be a path to the current executable which is cached
-        // in normalized form.
-        Path reli = path_strip_to_containing_directory(relative_to);
-        Path pathi = path;
+        SCRATCH_ARENA(arena) 
+        {
+            //Make paths normalized if they are not invarinat already. 
+            // It is very likely that at least relative_to will be invarinat since 
+            // most often it will be a path to the current executable which is cached
+            // in normalized form.
+            Path reli = path_strip_to_containing_directory(relative_to);
+            Path pathi = path;
 
-        Path_Builder reli_builder = {0}; 
-        Path_Builder pathi_builder = {0}; 
-        if(relative_to.info.is_normalized == false)
-        {
-            reli_builder = path_normalize(arena.alloc, relative_to, 0); 
-            reli = reli_builder.path;
-        }
-        if(path.info.is_normalized == false)
-        {
-            pathi_builder = path_normalize(arena.alloc, path, 0); 
-            pathi = pathi_builder.path;
-        }
-
-        //If roots differ we cannot make it more relative
-        if(string_is_equal(path_get_root(reli), path_get_root(pathi)) == false)
-            path_builder_assign(into, path, 0);
-        else
-        {
-            Path_Segement_Iterator rel_it = {0};
-            Path_Segement_Iterator path_it = {0};
-            while(true)
+            Path_Builder reli_builder = {0}; 
+            Path_Builder pathi_builder = {0}; 
+            if(relative_to.info.is_normalized == false)
             {
-                bool has_rel = path_segment_iterate(&rel_it, reli);
-                bool has_path = path_segment_iterate(&path_it, pathi);
-                bool are_equal = string_is_equal(rel_it.segment, path_it.segment);
-                path_builder_append(into, path_parse(path_get_prefix(pathi)), 0);
+                reli_builder = path_normalize(arena.alloc, relative_to, 0); 
+                reli = reli_builder.path;
+            }
+            if(path.info.is_normalized == false)
+            {
+                pathi_builder = path_normalize(arena.alloc, path, 0); 
+                pathi = pathi_builder.path;
+            }
 
-                //If both are present and same do nothing
-                if(has_rel && has_path && are_equal)
+            //If roots differ we cannot make it more relative
+            if(string_is_equal(path_get_root(reli), path_get_root(pathi)) == false)
+                path_builder_assign(into, path, 0);
+            else
+            {
+                Path_Segement_Iterator rel_it = {0};
+                Path_Segement_Iterator path_it = {0};
+                while(true)
                 {
-                    //nothing
-                }
-                //If they were same and end the same then also do nothing
-                else if(has_rel == false && has_path == false && are_equal)
-                {
-                    path_builder_append(into, path_parse_cstring("."), 0);
-                    break;
-                }
-                else
-                {
-                    //If rel is shorter than path add all remainig segments of `path` into `into`
-                    if(has_rel == false)
+                    bool has_rel = path_segment_iterate(&rel_it, reli);
+                    bool has_path = path_segment_iterate(&path_it, pathi);
+                    bool are_equal = string_is_equal(rel_it.segment, path_it.segment);
+                    path_builder_append(into, path_parse(path_get_prefix(pathi)), 0);
+
+                    //If both are present and same do nothing
+                    if(has_rel && has_path && are_equal)
                     {
-                        builder_append(&into->builder, path_it.segment);
-                        while(path_segment_iterate(&path_it, pathi))
-                        {
-                            builder_push(&into->builder, '/');
-                            builder_append(&into->builder, path_it.segment);
-                        }
-
+                        //nothing
                     }
-                    //If there was a difference in the path or path is shorter
-                    // we add appropriate amountof ".." segments then the rest of the path
+                    //If they were same and end the same then also do nothing
+                    else if(has_rel == false && has_path == false && are_equal)
+                    {
+                        path_builder_append(into, path_parse_cstring("."), 0);
+                        break;
+                    }
                     else
                     {
-                        builder_append(&into->builder, STRING(".."));
-                        while(path_segment_iterate(&rel_it, reli))
-                            builder_append(&into->builder, STRING("/.."));
-
-                        builder_push(&into->builder, '/');
-                        builder_append(&into->builder, path_it.segment);
-                        while(path_segment_iterate(&path_it, pathi))
+                        //If rel is shorter than path add all remainig segments of `path` into `into`
+                        if(has_rel == false)
                         {
+                            builder_append(&into->builder, path_it.segment);
+                            while(path_segment_iterate(&path_it, pathi))
+                            {
+                                builder_push(&into->builder, '/');
+                                builder_append(&into->builder, path_it.segment);
+                            }
+
+                        }
+                        //If there was a difference in the path or path is shorter
+                        // we add appropriate amountof ".." segments then the rest of the path
+                        else
+                        {
+                            builder_append(&into->builder, STRING(".."));
+                            while(path_segment_iterate(&rel_it, reli))
+                                builder_append(&into->builder, STRING("/.."));
+
                             builder_push(&into->builder, '/');
                             builder_append(&into->builder, path_it.segment);
+                            while(path_segment_iterate(&path_it, pathi))
+                            {
+                                builder_push(&into->builder, '/');
+                                builder_append(&into->builder, path_it.segment);
+                            }
                         }
-                    }
                     
-                    path_normalize_in_place(into, path.info.is_directory ? PATH_FLAG_TRANSFORM_TO_DIR : PATH_FLAG_TRANSFORM_TO_FILE);
-                    break;
+                        path_normalize_in_place(into, path.info.is_directory ? PATH_FLAG_TRANSFORM_TO_DIR : PATH_FLAG_TRANSFORM_TO_FILE);
+                        break;
+                    }
                 }
             }
         }
-
-        arena_frame_release(&arena);
     }
+    PROFILE_STOP();
 }
 
 EXTERNAL void path_make_absolute_into(Path_Builder* into, Path relative_to, Path path)
@@ -1097,6 +1110,7 @@ enum {
 
 void test_single_path(const char* path, const char* prefix, const char* root, const char* directories, const char* filename, const char* extension, int flags)
 {
+    PROFILE_START();
     String _path = string_of(path);
     Path parsed = path_parse(_path);
     String _prefix = path_get_prefix(parsed);
@@ -1114,10 +1128,12 @@ void test_single_path(const char* path, const char* prefix, const char* root, co
     TEST(parsed.info.is_absolute == ((flags & TEST_PATH_IS_ABSOLUTE) > 0));
     TEST(parsed.info.is_directory == ((flags & TEST_PATH_IS_DIR) > 0));
     TEST(parsed.info.has_trailing_slash == ((flags & TEST_PATH_TRAILING_SLASH) > 0));
+    PROFILE_STOP();
 }
 
 void test_path_normalize(int flags, const char* cpath, const char* cexpected)
 {
+    PROFILE_START();
     const char* prefixes[] = {"", "\\\\?\\", "\\\\.\\"};
     for(isize i = 0; i < ARRAY_LEN(prefixes); i++)
     {
@@ -1132,10 +1148,12 @@ void test_path_normalize(int flags, const char* cpath, const char* cexpected)
         TEST_STRING_EQ(canonical.string, expected.string);
         arena_frame_release(&arena);
     }
+    PROFILE_STOP();
 }
 
 void test_canonicalize_with_roots_and_prefixes(int flags, const char* cabs_path, const char* cexpected)
 {
+    PROFILE_START();
     const char* roots[]      = {"\\", "C:/", "F:\\", "//Server/", "\\\\xxserverxx\\"};
     const char* norm_roots[] = {"/", "C:/", "F:/", "//Server/", "//xxserverxx/"};
     
@@ -1148,6 +1166,7 @@ void test_canonicalize_with_roots_and_prefixes(int flags, const char* cabs_path,
         test_path_normalize(flags, prefixed_path.data, prefixed_expected.data);
         arena_frame_release(&arena);
     }
+    PROFILE_STOP();
 }
 
 enum {
@@ -1203,6 +1222,7 @@ void test_path_strip_last(const char* path, const char* expected_head, const cha
 
 void test_path()
 {
+    PROFILE_START();
     test_single_path("", "", "", "", "", "", TEST_PATH_IS_DIR);
     test_single_path(".", "", "", ".", "", "", TEST_PATH_IS_DIR);
     test_single_path("..", "", "", "..", "", "", TEST_PATH_IS_DIR);
@@ -1323,6 +1343,7 @@ void test_path()
     test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_RELATIVE, "path/to/dir", "C:/path/to/world/file.txt", "C:/path/to/world/file.txt");
 
     LOG_OKAY("PATH", "Done!");
+    PROFILE_STOP();
 }   
 
 #endif

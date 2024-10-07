@@ -275,7 +275,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
 
     #ifndef PROFILE_START
         #define PROFILE_START(...)
-        #define PROFILE_END(...)
+        #define PROFILE_STOP(...)
     #endif
 
     #ifndef ATTRIBUTE_INLINE_NEVER
@@ -309,7 +309,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
                 i = (i + (uint64_t) out.probes) & mod;
             }
         }
-        PROFILE_END();
+        PROFILE_STOP();
         return out;
     }
     
@@ -379,7 +379,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         out.entry = &table->entries[insert_index];
         
         end:
-        PROFILE_END();
+        PROFILE_STOP();
         return out;
     }
 
@@ -415,7 +415,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         
         Hash null = {0};
         *table = null;
-        PROFILE_END();
+        PROFILE_STOP();
     }
 
     EXTERNAL void hash_init_load_factor(Hash* table, Allocator* allocator, isize load_factor_percent, isize load_factor_gravestone_percent)
@@ -423,7 +423,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         hash_deinit(table);
         PROFILE_START();
         _hash_init_if_not_init(table, allocator, load_factor_percent, load_factor_gravestone_percent);
-        PROFILE_END();
+        PROFILE_STOP();
     }
 
     EXTERNAL void hash_init(Hash* table, Allocator* allocator)
@@ -466,7 +466,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         to_table->info_rehash_count += 1;
 
         ASSERT(hash_is_invariant(*to_table, HASH_DEBUG));
-        PROFILE_END();
+        PROFILE_STOP();
     }
     
     EXTERNAL void hash_clear(Hash* to_table)
@@ -481,7 +481,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         to_table->info_total_extra_probes = 0;
         to_table->gravestone_count = 0;
         to_table->len = 0;
-        PROFILE_END();
+        PROFILE_STOP();
     }
 
     EXTERNAL bool hash_is_invariant(Hash table, bool slow_check)
@@ -529,7 +529,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
             #undef TESTI
         }
         end:
-        PROFILE_END();
+        PROFILE_STOP();
         return is_invariant;
     }
     
@@ -602,7 +602,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
             else
             #endif
                 _hash_rehash(table, table->entries_count, true);
-            PROFILE_END(in_place);
+            PROFILE_STOP(in_place);
         }
         else
         {
@@ -613,7 +613,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
                 rehash_to *= 2;
             
             _hash_rehash(table, rehash_to, true);
-            PROFILE_END(normal);
+            PROFILE_STOP(normal);
         }
     }
 
@@ -668,7 +668,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
             ASSERT(hash_is_invariant(*table, HASH_DEBUG));
         }
 
-        PROFILE_END();
+        PROFILE_STOP();
         return removed;
     }
     
@@ -679,7 +679,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         Hash_Entry removed = hash_remove_found(table, found);
         if(removed_or_null)
             *removed_or_null = removed;
-        PROFILE_END();
+        PROFILE_STOP();
         return found != -1;
     }
     

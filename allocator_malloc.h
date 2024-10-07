@@ -76,12 +76,12 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
     #ifdef MALLOC_ALLOCATOR_NAKED
         #include <stdlib.h>
         #define PROFILE_START(...)
-        #define PROFILE_END(...)
+        #define PROFILE_STOP(...)
         #define MALLOC_ALLOCATOR_MALLOC(size) malloc(size)
         #define MALLOC_ALLOCATOR_FREE(pointer) free(pointer)
     #else
         #include "platform.h"
-        #include "profile_defs.h"
+        #include "profile.h"
         #define MALLOC_ALLOCATOR_MALLOC(size) platform_heap_reallocate(size, NULL, DEF_ALIGN)
         #define MALLOC_ALLOCATOR_FREE(pointer) platform_heap_reallocate(0, pointer, DEF_ALIGN)
     #endif 
@@ -216,7 +216,7 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
                 MALLOC_ALLOCATOR_FREE(old_allocation);
         }
             
-        PROFILE_END();
+        PROFILE_STOP();
         return out_ptr;
 
         error:

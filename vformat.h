@@ -2,7 +2,7 @@
 #define JOT_VFORMAT
 
 #include "string.h"
-#include "profile_defs.h"
+#include "profile.h"
 #include <stdarg.h>
 
 EXTERNAL void vformat_append_into(String_Builder* append_to, const char* format, va_list args);
@@ -57,7 +57,7 @@ EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error
             PROFILE_START(format_twice);
             builder_resize(append_to, base_size + count + 3);
             count = vsnprintf(append_to->data + base_size, (size_t) (append_to->len - base_size), format, args_copy);
-            PROFILE_END(format_twice);
+            PROFILE_STOP(format_twice);
         }
     
         //Sometimes apparently the MSVC standard library screws up and returns negative...
@@ -66,7 +66,7 @@ EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error
         builder_resize(append_to, base_size + count);
         ASSERT(append_to->data[base_size + count] == '\0');
         
-        PROFILE_END();
+        PROFILE_STOP();
         return;
     }
     

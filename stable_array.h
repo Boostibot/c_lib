@@ -50,7 +50,7 @@
 // hash table. This however requires a lot of item specific information (to be able to set the align properly).
 
 #include "allocator.h"
-#include "profile_defs.h"
+#include "profile.h"
 
 #define STABLE_ARRAY_BLOCK_SIZE             32
 #define STABLE_ARRAY_FILLED_MASK_FULL       (u32) 0xffffffff
@@ -200,7 +200,7 @@ EXTERNAL void stable_array_deinit(Stable_Array* stable)
 
     allocator_deallocate(stable->allocator, stable->blocks, stable->blocks_capacity * isizeof(Stable_Array_Block), _STABLE_ARRAY_BLOCKS_ARR_ALIGN);
     memset(stable, 0, sizeof *stable);
-    PROFILE_END();
+    PROFILE_STOP();
 }
 
 typedef struct _Stable_Array_Lookup {
@@ -283,7 +283,7 @@ EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out)
         *out = out_ptr;
         
     isize out_i = block_i*STABLE_ARRAY_BLOCK_SIZE + first_empty_index;
-    PROFILE_END();
+    PROFILE_STOP();
     return out_i;
 }
 
@@ -311,7 +311,7 @@ EXTERNAL void stable_array_remove(Stable_Array* stable, isize index)
     stable->len -= 1;
     block->filled_mask = block->filled_mask & ~bit;
     _stable_array_check_invariants(stable);
-    PROFILE_END();
+    PROFILE_STOP();
 }
 
 EXTERNAL void stable_array_reserve(Stable_Array* stable, isize to_size)
@@ -367,7 +367,7 @@ EXTERNAL void stable_array_reserve(Stable_Array* stable, isize to_size)
         //mark the block on the allocation as allocated 
         stable->blocks[blocks_before].ptr_and_is_allocated_bit |= STABLE_ARRAY_BLOCK_ALLOCATED_BIT;
         _stable_array_check_invariants(stable);
-        PROFILE_END();
+        PROFILE_STOP();
     }
 }
 
@@ -455,7 +455,7 @@ EXTERNAL void stable_array_test_invariants(const Stable_Array* stable, bool slow
     }
 
     #undef IS_IN_RANGE
-    PROFILE_END();
+    PROFILE_STOP();
 }
 
 #endif

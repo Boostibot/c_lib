@@ -52,7 +52,7 @@
 #include "hash_func.h"
 #include "log.h"
 
-#include "profile_defs.h"
+#include "profile.h"
 #include "vformat.h"
 
 typedef struct Debug_Allocator          Debug_Allocator;
@@ -532,7 +532,7 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
         Debug_Allocator_Panic_Reason reason = _debug_allocator_check_block(self, old_ptr, &interpenetration, &hash_found, old_size, align);
         if(reason != DEBUG_ALLOC_PANIC_NONE)
         {
-            PROFILE_END();
+            PROFILE_STOP();
             return _debug_allocator_panic(self, reason, old_ptr, interpenetration);
         }
         
@@ -544,7 +544,7 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
     //if failed return failiure and do nothing
     if(new_block_ptr == NULL && new_size != 0)
     {
-        PROFILE_END();
+        PROFILE_STOP();
         return NULL;
     }
     
@@ -604,7 +604,7 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
         self->reallocation_count += 1;
     
     _debug_allocator_is_invariant(self);
-    PROFILE_END();
+    PROFILE_STOP();
     return new_ptr;
 }
 

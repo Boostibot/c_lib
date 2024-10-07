@@ -40,7 +40,7 @@ EXTERNAL Platform_Error file_read_entire_into_no_log(String file_path, String_Bu
         *info_or_null = info;
 
     platform_file_close(&file);
-    PROFILE_END();
+    PROFILE_STOP();
     return error;
 }
 
@@ -81,7 +81,7 @@ EXTERNAL bool file_append_entire(String file_path, String data, Log log)
         SCRATCH_ARENA(arena)
             LOG(log, "error appending file '%.*s': %s", STRING_PRINT(file_path), translate_error(arena.alloc, error).data);
     platform_file_close(&file);
-    PROFILE_END();
+    PROFILE_STOP();
     return error == 0;
 }
 EXTERNAL bool file_write_entire(String file_path, String data, Log log)
@@ -98,7 +98,7 @@ EXTERNAL bool file_write_entire(String file_path, String data, Log log)
             LOG(log, "error writing file '%.*s': %s", STRING_PRINT(file_path), translate_error(arena.alloc, error).data);
 
     platform_file_close(&file);
-    PROFILE_END();
+    PROFILE_STOP();
     return error == 0;
 }
 #endif

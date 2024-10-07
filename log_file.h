@@ -48,7 +48,7 @@
 
 #include "time.h"
 #include "string.h"
-#include "profile_defs.h"
+#include "profile.h"
 #include "vformat.h"
 #include "time.h"
 #include "log.h"
@@ -235,7 +235,7 @@ EXTERNAL void file_logger_log_append_into(Allocator* scratch, String_Builder* ap
     }
     
     builder_deinit(&formatted_module);
-    PROFILE_END();
+    PROFILE_STOP();
 }
 
 EXTERNAL void file_logger_deinit(File_Logger* logger)
@@ -356,7 +356,7 @@ EXTERNAL bool file_logger_flush(File_Logger* logger)
         builder_clear(&self->buffer);
     }
 
-    PROFILE_END();
+    PROFILE_STOP();
     return state;
 }
 
@@ -386,8 +386,8 @@ EXTERNAL Log_Set file_logger_log_set(File_Logger* logger)
 
 EXTERNAL void file_logger_log(void* context, int indent, int custom, int is_flush, const char* name, const char* format, va_list args)
 {
-    i64 now = platform_epoch_time();
     PROFILE_START();
+    i64 now = platform_epoch_time();
     File_Logger* self = (File_Logger*) context;
     
     platform_mutex_lock(&self->mutex);
@@ -397,15 +397,18 @@ EXTERNAL void file_logger_log(void* context, int indent, int custom, int is_flus
     }
     else
     {
-        Arena_Frame arena = scratch_arena_frame_acquire();
+        SCRATCH_ARENA(arena)
         {
-            String_Builder message = vformat(arena.alloc, format, args);
-            String_Builder formatted_log = builder_make(arena.alloc, 1024);
-            file_logger_log_append_into(arena.alloc, &formatted_log, indent, custom, name, message.string, now);
+            PROFILE_START(formatting);
+                String_Builder message = vformat(arena.alloc, format, args);
+                String_Builder formatted_log = builder_make(arena.alloc, 1024);
+                file_logger_log_append_into(arena.alloc, &formatted_log, indent, custom, name, message.string, now);
 
-            bool print_to_console = !!((1ULL << custom) & self->console_type_filter);
-            bool print_to_file = !!((1ULL << custom) & self->file_type_filter);
-
+                bool print_to_console = !!((1ULL << custom) & self->console_type_filter);
+                bool print_to_file = !!((1ULL << custom) & self->file_type_filter);
+            PROFILE_STOP(formatting);
+            
+            PROFILE_START(console_printing);
             if(print_to_console)
             {
                 const char* color_mode = ANSI_COLOR_NORMAL;
@@ -423,19 +426,21 @@ EXTERNAL void file_logger_log(void* context, int indent, int custom, int is_flus
                 else
                     printf("%s%s" ANSI_COLOR_NORMAL, color_mode, formatted_log.data);
             }
-
+            PROFILE_STOP(console_printing);
+            
+            PROFILE_START(file_printing);
             if(print_to_file)
                 builder_append(&self->buffer, formatted_log.string);
     
             f64 time_since_last_flush = clock_s() - self->last_flush_time;
             if(self->buffer.len > self->flush_every_bytes || time_since_last_flush > self->flush_every_seconds)
                 file_logger_flush(self);
+            PROFILE_STOP(file_printing);
         }
-        arena_frame_release(&arena);
     }
 
     platform_mutex_unlock(&self->mutex);
-    PROFILE_END();
+    PROFILE_STOP();
 }
 
 

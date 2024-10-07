@@ -116,7 +116,7 @@
 // of primary concern.
 
 #include "allocator.h"
-#include "profile_defs.h"
+#include "profile.h"
 
 #ifndef ARENA_STACK_DEBUG
     #ifdef NDEBUG
@@ -338,7 +338,7 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
         _arena_stack_check_invariants(stack);
 
         end:
-        PROFILE_END();
+        PROFILE_STOP();
         return out;
     }
 
@@ -359,7 +359,7 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
             _arena_stack_check_invariants(frame->stack);
         }
 
-        PROFILE_END();
+        PROFILE_STOP();
         return out;
     }
 
@@ -407,7 +407,7 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
         stack->max_alive_level += 1;
 
         _arena_stack_check_invariants(stack);
-        PROFILE_END();
+        PROFILE_STOP();
         return out;
     }
     
@@ -456,7 +456,7 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
         if(ARENA_STACK_DEBUG)
             memset(frame, 0, sizeof* frame);
 
-        PROFILE_END();
+        PROFILE_STOP();
     }
 
     EXTERNAL void* arena_frame_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)

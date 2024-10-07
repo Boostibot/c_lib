@@ -62,6 +62,7 @@ EXTERNAL void _run_test_recover(void* context, Platform_Sandbox_Error error)
     Test_Run_Context* c = (Test_Run_Context*) context;
     if(error.exception != PLATFORM_EXCEPTION_ABORT)
     {
+        PROFILE_INSTANT("failed test");
         LOG_ERROR("TEST", "Exception occurred in test '%s': %s", c->name, platform_exception_to_string(error.exception));
         log_captured_callstack(log_trace(">TEST"), error.call_stack, error.call_stack_size);
     }
@@ -69,6 +70,7 @@ EXTERNAL void _run_test_recover(void* context, Platform_Sandbox_Error error)
 
 EXTERNAL bool run_test(void* func, const char* name, Test_Func_Type type, f64 max_time, void* user_data)
 {
+    PROFILE_START();
     Test_Run_Context context = {0};
     context.user_data = user_data;
     context.max_time = max_time;
@@ -92,6 +94,7 @@ EXTERNAL bool run_test(void* func, const char* name, Test_Func_Type type, f64 ma
     else
         LOG_ERROR("TEST", "%s FAILED", name);
 
+    PROFILE_STOP();
     return success;
 }
 

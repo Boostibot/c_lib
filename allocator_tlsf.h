@@ -1473,7 +1473,7 @@ void test_allocator_tlsf(double seconds)
         free(tlsf_nodes);
         arena_deinit(&arena);
 
-        log_perf_stats_hdr(log_info("BENCH"), "ALLOC:        ");
+        /*log_perf_stats_hdr(log_info("BENCH"), "ALLOC:        ");
         log_perf_stats_row(log_info("BENCH"), "arena         ", stats_arena_alloc);
         log_perf_stats_row(log_info("BENCH"), "tlsf          ", stats_tlsf);
         log_perf_stats_row(log_info("BENCH"), "malloc        ", stats_malloc_alloc);
@@ -1481,7 +1481,7 @@ void test_allocator_tlsf(double seconds)
         log_perf_stats_hdr(log_info("BENCH"), "FREE:         ");
         log_perf_stats_row(log_info("BENCH"), "arena         ", stats_arena_free);
         log_perf_stats_row(log_info("BENCH"), "tlsf          ", stats_tlsf_free);
-        log_perf_stats_row(log_info("BENCH"), "malloc        ", stats_malloc_free);
+        log_perf_stats_row(log_info("BENCH"), "malloc        ", stats_malloc_free);*/
     }
 
     void benchmark_allocator_tlsf(bool touch, double seconds)

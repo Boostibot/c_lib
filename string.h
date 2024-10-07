@@ -237,6 +237,7 @@ EXTERNAL bool char_is_id(char c);
     
     EXTERNAL void memtile(void *field, isize field_size, const void* pattern, isize pattern_size)
     {
+        PROFILE_START();
 	    ASSERT(field_size >= 0 && pattern_size >= 0);
         if (field_size <= pattern_size)
             memcpy(field, pattern, (size_t) field_size);
@@ -260,6 +261,7 @@ EXTERNAL bool char_is_id(char c);
             // copy any remainder
             memcpy((char*) field + cursor, field, (size_t) (field_size - cursor));
         }
+        PROFILE_STOP();
     }
     
     EXTERNAL const void* memcheck(const void* ptr, uint8_t byte, isize size)
@@ -301,33 +303,9 @@ EXTERNAL bool char_is_id(char c);
         return NULL;
     }
     
-    EXTERNAL void memswap_old(void* a, void* b, isize size)
-    {
-	    ASSERT(size >= 0);
-	    enum {LOCAL = 32};
-	    char temp[LOCAL] = {0};
-	
-	    size_t repeats = (size_t) size / LOCAL;
-	    size_t remainder = (size_t) size % LOCAL;
-	    size_t exact = (size_t) size - remainder;
-
-	    char* ac = (char*) a;
-	    char* bc = (char*) b;
-
-	    for(size_t k = 0; k < repeats; k ++)
-	    {
-		    memcpy(temp,         ac + k*LOCAL, LOCAL);
-		    memcpy(ac + k*LOCAL, bc + k*LOCAL, LOCAL);
-		    memcpy(bc + k*LOCAL, temp,         LOCAL);
-	    }
-			
-	    memcpy(temp,         ac + exact, remainder);
-	    memcpy(ac + exact,   bc + exact, remainder);
-	    memcpy(bc + exact,   temp,       remainder);
-    }
-
     EXTERNAL void memswap_generic(void* a, void* b, isize size)
     {
+        PROFILE_START();
 	    ASSERT(size >= 0);
         enum {LOCAL = 8};
         char temp[LOCAL] = {0};
@@ -352,10 +330,12 @@ EXTERNAL bool char_is_id(char c);
             ac[i] = bc[i];
             bc[i] = t;         
         }
+        PROFILE_STOP();
     }
 
     EXTERNAL void memswap(void* a, void* b, isize size)
     {
+        PROFILE_START();
         char temp[32] = {0};
         switch(size) {
             #define SWAP_X(N) \
@@ -377,6 +357,7 @@ EXTERNAL bool char_is_id(char c);
 
             default: memswap_generic(a, b, size); break;
         }
+        PROFILE_STOP();
     }
 
     EXTERNAL isize string_find_last_char_from(String string, char search_for, isize from)
@@ -469,19 +450,23 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL String string_allocate(Allocator* alloc, String string)
     {
+        PROFILE_START();
         char* data = allocator_allocate(alloc, string.len + 1, 1);
         memcpy(data, string.data, string.len);
         data[string.len] = '\0';
         String out = {data, string.len};
+        PROFILE_STOP();
         return out;
     }
 
     EXTERNAL void string_deallocate(Allocator* alloc, String* string)
     {
+        PROFILE_START();
         if(string->len != 0)
             allocator_deallocate(alloc, (void*) string->data, string->len + 1, 1);
         String nil = {0};
         *string = nil;
+        PROFILE_STOP();
     }
     
     char _builder_null_termination[4] = {0};
@@ -545,6 +530,7 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL void builder_set_capacity(String_Builder* builder, isize capacity)
     {
+        PROFILE_START();
         ASSERT(builder_is_invariant(*builder));
         ASSERT(capacity >= 0);
 
@@ -594,6 +580,7 @@ EXTERNAL bool char_is_id(char c);
             builder->data[builder->len] = '\0'; 
             builder->data[builder->capacity] = '\0'; 
         }
+        PROFILE_STOP();
         ASSERT(builder_is_invariant(*builder));
     }
     

@@ -5,6 +5,7 @@
 
 INTERNAL void test_array_stress(f64 max_seconds)
 {
+    PROFILE_START();
 	isize mem_before = allocator_get_stats(allocator_get_default()).bytes_allocated;
 
 	enum Action 
@@ -53,6 +54,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 	f64 start = clock_s();
 	for(isize i = 0; i < MAX_ITERS; i++)
 	{
+		PROFILE_START(iter);
 		if(clock_s() - start >= max_seconds && i >= MIN_ITERS)
 			break;
 
@@ -159,6 +161,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 			TEST(arr->data != NULL && is_power_of_two_or_zero(arr->data[k]));
 			
 		TEST(generic_array_is_invariant(array_make_generic(arr)));
+		PROFILE_STOP(iter);
 	}
 
 	array_deinit(&array1);
@@ -166,6 +169,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 
 	isize mem_after = allocator_get_stats(allocator_get_default()).bytes_allocated;
 	TEST(mem_before == mem_after);
+    PROFILE_STOP();
 }
 
 INTERNAL void test_array(f64 max_seconds)

@@ -2,7 +2,7 @@
 #define JOT_ARENA
 
 #include "allocator.h"
-#include "profile_defs.h"
+#include "profile.h"
 
 #define ARENA_DEF_RESERVE_SIZE (16*GB)
 #define ARENA_DEF_COMMIT_SIZE  ( 4*MB) 
@@ -113,7 +113,7 @@ INTERNAL ATTRIBUTE_INLINE_NEVER void _arena_commit_no_inline(Arena* arena, const
         arena->commit_to = new_commit_to;
     }
     end:
-    PROFILE_END();
+    PROFILE_STOP();
 }
 
 EXTERNAL void arena_commit_ptr(Arena* arena, const void* to, Allocator_Error* error_or_null)
