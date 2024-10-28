@@ -97,6 +97,14 @@
     #define PLATFORM_HAS_ENDIAN_BIG    PLATFORM_ENDIAN_BIG
 #endif
 
+#if defined(_MSC_VER)
+    #define PLATFORM_INTRINSIC   __forceinline static
+#elif defined(__GNUC__) || defined(__clang__)
+    #define PLATFORM_INTRINSIC   __attribute__((always_inline)) inline static
+#else
+    #define PLATFORM_INTRINSIC   inline static
+#endif
+
 
 //=========================================
 // Platform layer setup
@@ -226,24 +234,24 @@ static void     platform_call_once(uint32_t* state, void (*func)(void* context),
 //=========================================
 // Atomics 
 //=========================================
-inline static void platform_compiler_barrier();
-inline static void platform_memory_barrier();
-inline static void platform_processor_pause();
+PLATFORM_INTRINSIC void platform_compiler_barrier();
+PLATFORM_INTRINSIC void platform_memory_barrier();
+PLATFORM_INTRINSIC void platform_processor_pause();
 
 //Returns the first/last set (1) bit position. If num is zero result is undefined.
 //The following invariants hold (analogous for 64 bit)
 // (num & (1 << platform_find_first_set_bit32(num)) != 0
 // (num & (1 << (32 - platform_find_last_set_bit32(num))) != 0
-inline static int32_t platform_find_first_set_bit32(uint32_t num);
-inline static int32_t platform_find_first_set_bit64(uint64_t num);
-inline static int32_t platform_find_last_set_bit32(uint32_t num); 
-inline static int32_t platform_find_last_set_bit64(uint64_t num);
+PLATFORM_INTRINSIC int32_t platform_find_first_set_bit32(uint32_t num);
+PLATFORM_INTRINSIC int32_t platform_find_first_set_bit64(uint64_t num);
+PLATFORM_INTRINSIC int32_t platform_find_last_set_bit32(uint32_t num); 
+PLATFORM_INTRINSIC int32_t platform_find_last_set_bit64(uint64_t num);
 
 //Returns the number of set (1) bits 
-inline static int32_t platform_pop_count32(uint32_t num);
-inline static int32_t platform_pop_count64(uint64_t num);
+PLATFORM_INTRINSIC int32_t platform_pop_count32(uint32_t num);
+PLATFORM_INTRINSIC int32_t platform_pop_count64(uint64_t num);
 
-//Standard Compare and Swap (CAS) semantics.
+//Standard Compare and Set (CAS) semantics.
 //Performs atomically: {
 //   if(*target != old_value)
 //      return false;
@@ -251,33 +259,37 @@ inline static int32_t platform_pop_count64(uint64_t num);
 //   *target = new_value;
 //   return true;
 // }
-inline static bool platform_atomic_compare_and_swap128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi);
-inline static bool platform_atomic_compare_and_swap64(volatile void* target, uint64_t old_value, uint64_t new_value);
-inline static bool platform_atomic_compare_and_swap32(volatile void* target, uint32_t old_value, uint32_t new_value);
+PLATFORM_INTRINSIC bool platform_atomic_cas128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi);
+PLATFORM_INTRINSIC bool platform_atomic_cas64(volatile void* target, uint64_t old_value, uint64_t new_value);
+PLATFORM_INTRINSIC bool platform_atomic_cas32(volatile void* target, uint32_t old_value, uint32_t new_value);
 
-inline static bool platform_atomic_compare_and_swap_weak128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi);
-inline static bool platform_atomic_compare_and_swap_weak64(volatile void* target, uint64_t old_value, uint64_t new_value);
-inline static bool platform_atomic_compare_and_swap_weak32(volatile void* target, uint32_t old_value, uint32_t new_value);
+PLATFORM_INTRINSIC bool platform_atomic_cas_weak128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi);
+PLATFORM_INTRINSIC bool platform_atomic_cas_weak64(volatile void* target, uint64_t old_value, uint64_t new_value);
+PLATFORM_INTRINSIC bool platform_atomic_cas_weak32(volatile void* target, uint32_t old_value, uint32_t new_value);
 
 //Performs atomically: { return *target; }
-inline static uint64_t platform_atomic_load64(const volatile void* target);
-inline static uint32_t platform_atomic_load32(const volatile void* target);
+PLATFORM_INTRINSIC uint64_t platform_atomic_load64(const volatile void* target);
+PLATFORM_INTRINSIC uint32_t platform_atomic_load32(const volatile void* target);
 
 //Performs atomically: { *target = value; }
-inline static void platform_atomic_store64(volatile void* target, uint64_t value);
-inline static void platform_atomic_store32(volatile void* target, uint32_t value);
+PLATFORM_INTRINSIC void platform_atomic_store64(volatile void* target, uint64_t value);
+PLATFORM_INTRINSIC void platform_atomic_store32(volatile void* target, uint32_t value);
 
 //Performs atomically: { uint64_t copy = *target; *target = value; return copy; }
-inline static uint64_t platform_atomic_exchange64(volatile void* target, uint64_t value);
-inline static uint32_t platform_atomic_exchange32(volatile void* target, uint32_t value);
+PLATFORM_INTRINSIC uint64_t platform_atomic_exchange64(volatile void* target, uint64_t value);
+PLATFORM_INTRINSIC uint32_t platform_atomic_exchange32(volatile void* target, uint32_t value);
 
 //Performs atomically: { int64_t copy = *target; *target += value; return copy; }
-inline static uint32_t platform_atomic_add32(volatile void* target, uint32_t value);
-inline static uint64_t platform_atomic_add64(volatile void* target, uint64_t value);
+PLATFORM_INTRINSIC uint32_t platform_atomic_add32(volatile void* target, uint32_t value);
+PLATFORM_INTRINSIC uint64_t platform_atomic_add64(volatile void* target, uint64_t value);
 
 //Performs atomically: { uint64_t copy = *target; *target -= value; return copy; }
-inline static uint32_t platform_atomic_sub32(volatile void* target, uint32_t value);
-inline static uint64_t platform_atomic_sub64(volatile void* target, uint64_t value);
+PLATFORM_INTRINSIC uint32_t platform_atomic_sub32(volatile void* target, uint32_t value);
+PLATFORM_INTRINSIC uint64_t platform_atomic_sub64(volatile void* target, uint64_t value);
+
+
+PLATFORM_INTRINSIC uint64_t platform_atomic_or64(volatile void* target, uint64_t value);
+PLATFORM_INTRINSIC uint64_t platform_atomic_and64(volatile void* target, uint64_t value);
 
 //=========================================
 // Timings
@@ -297,8 +309,8 @@ int64_t platform_perf_counter_frequency();
 int64_t platform_perf_counter_startup();    
 
 //Functions which deal with __rdtsc or equivalent on ARM
-inline static int64_t platform_rdtsc();
-inline static int64_t platform_rdtsc_fence();
+PLATFORM_INTRINSIC int64_t platform_rdtsc();
+PLATFORM_INTRINSIC int64_t platform_rdtsc_fence();
 int64_t platform_rdtsc_frequency();
 int64_t platform_rdtsc_startup();
 
@@ -707,12 +719,12 @@ const char* platform_exception_to_string(Platform_Exception error);
     #undef platform_debug_break
     #define platform_debug_break() __debugbreak() 
 
-    inline static void platform_compiler_barrier() 
+    PLATFORM_INTRINSIC void platform_compiler_barrier() 
     {
         _ReadWriteBarrier();
     }
 
-    inline static void platform_memory_barrier()
+    PLATFORM_INTRINSIC void platform_memory_barrier()
     {
         _ReadWriteBarrier(); 
         
@@ -727,7 +739,7 @@ const char* platform_exception_to_string(Platform_Exception error);
         #endif
     }
 
-    inline static void platform_processor_pause()
+    PLATFORM_INTRINSIC void platform_processor_pause()
     {
         #ifdef _PLATFORM_MSVC_X86
             _mm_pause();
@@ -736,7 +748,7 @@ const char* platform_exception_to_string(Platform_Exception error);
         #endif
     }
     
-    inline static int32_t platform_find_last_set_bit32(uint32_t num)
+    PLATFORM_INTRINSIC int32_t platform_find_last_set_bit32(uint32_t num)
     {
         assert(num != 0);
         unsigned long out = 0;
@@ -744,7 +756,7 @@ const char* platform_exception_to_string(Platform_Exception error);
         return (int32_t) out;
     }
     
-    inline static int32_t platform_find_last_set_bit64(uint64_t num)
+    PLATFORM_INTRINSIC int32_t platform_find_last_set_bit64(uint64_t num)
     {
         assert(num != 0);
         unsigned long out = 0;
@@ -752,14 +764,14 @@ const char* platform_exception_to_string(Platform_Exception error);
         return (int32_t) out;
     }
 
-    inline static int32_t platform_find_first_set_bit32(uint32_t num)
+    PLATFORM_INTRINSIC int32_t platform_find_first_set_bit32(uint32_t num)
     {
         assert(num != 0);
         unsigned long out = 0;
         _BitScanForward(&out, (unsigned long) num);
         return (int32_t) out;
     }
-    inline static int32_t platform_find_first_set_bit64(uint64_t num)
+    PLATFORM_INTRINSIC int32_t platform_find_first_set_bit64(uint64_t num)
     {
         assert(num != 0);
         unsigned long out = 0;
@@ -767,11 +779,11 @@ const char* platform_exception_to_string(Platform_Exception error);
         return (int32_t) out;
     }
     
-    inline static int32_t platform_pop_count32(uint32_t num)
+    PLATFORM_INTRINSIC int32_t platform_pop_count32(uint32_t num)
     {
         return (int32_t) __popcnt((unsigned int) num);
     }
-    inline static int32_t platform_pop_count64(uint64_t num)
+    PLATFORM_INTRINSIC int32_t platform_pop_count64(uint64_t num)
     {
         return (int32_t) __popcnt64((unsigned long long)num);
     }
@@ -785,89 +797,106 @@ const char* platform_exception_to_string(Platform_Exception error);
     //
     // Now even though __iso_volatile_load32 and similar are listed under ARM intrinsics they work just fine even on x86/64. 
     // All this to say that this is a kind of hacky solution but the best there is at the moment.
-    inline static uint64_t platform_atomic_load64(const volatile void* target)
+    PLATFORM_INTRINSIC uint64_t platform_atomic_load64(const volatile void* target)
     {
         return (uint64_t) __iso_volatile_load64((const volatile long long*) target);
     }
-    inline static uint32_t platform_atomic_load32(const volatile void* target)
+    PLATFORM_INTRINSIC uint32_t platform_atomic_load32(const volatile void* target)
     {
         return (uint32_t) __iso_volatile_load32((const volatile int*) target);
     }
 
-    inline static void platform_atomic_store64(volatile void* target, uint64_t value)
+    PLATFORM_INTRINSIC void platform_atomic_store64(volatile void* target, uint64_t value)
     {
         __iso_volatile_store64((volatile long long*) target, (long long) value);
     }
-    inline static void platform_atomic_store32(volatile void* target, uint32_t value)
+    PLATFORM_INTRINSIC void platform_atomic_store32(volatile void* target, uint32_t value)
     {
         __iso_volatile_store32((volatile int*) target, (int) value);
     }
     
-    inline static bool platform_atomic_compare_and_swap128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi)
+    PLATFORM_INTRINSIC bool platform_atomic_cas128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi)
     {
         long long new_val[] = {(long long) old_value_lo, (long long) old_value_hi};
         return (bool) _InterlockedCompareExchange128((volatile long long*) target, (long long) new_value_hi, (long long) new_value_lo, new_val);
     }
-    inline static bool platform_atomic_compare_and_swap64(volatile void* target, uint64_t old_value, uint64_t new_value)
+    PLATFORM_INTRINSIC bool platform_atomic_cas64(volatile void* target, uint64_t old_value, uint64_t new_value)
     {
         return _InterlockedCompareExchange64((volatile long long*) target, (long long) new_value, (long long) old_value) == (long long) old_value;
     }
-    inline static bool platform_atomic_compare_and_swap32(volatile void* target, uint32_t old_value, uint32_t new_value)
+    PLATFORM_INTRINSIC bool platform_atomic_cas32(volatile void* target, uint32_t old_value, uint32_t new_value)
     {
         return _InterlockedCompareExchange((volatile long*) target, (long) new_value, (long) old_value) == (long) old_value;
     }
     
-    inline static bool platform_atomic_compare_and_swap_weak128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi)
+    PLATFORM_INTRINSIC bool platform_atomic_cas_weak128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi)
     {
         long long new_val[] = {(long long) old_value_lo, (long long) old_value_hi};
         return (bool) _InterlockedCompareExchange128((volatile long long*) target, (long long) new_value_hi, (long long) new_value_lo, new_val);
     }
-    inline static bool platform_atomic_compare_and_swap_weak64(volatile void* target, uint64_t old_value, uint64_t new_value)
+    PLATFORM_INTRINSIC bool platform_atomic_cas_weak64(volatile void* target, uint64_t old_value, uint64_t new_value)
     {
         return _InterlockedCompareExchange64((volatile long long*) target, (long long) new_value, (long long) old_value) == (long long) old_value;
     }
-    inline static bool platform_atomic_compare_and_swap_weak32(volatile void* target, uint32_t old_value, uint32_t new_value)
+    PLATFORM_INTRINSIC bool platform_atomic_cas_weak32(volatile void* target, uint32_t old_value, uint32_t new_value)
     {
         return _InterlockedCompareExchange((volatile long*) target, (long) new_value, (long) old_value) == (long) old_value;
     }
 
-    inline static uint64_t platform_atomic_exchange64(volatile void* target, uint64_t value)
+    PLATFORM_INTRINSIC uint64_t platform_atomic_exchange64(volatile void* target, uint64_t value)
     {
         return (uint64_t) _InterlockedExchange64((volatile long long*) target, (long long) value);
     }
 
-    inline static uint32_t platform_atomic_exchange32(volatile void* target, uint32_t value)
+    PLATFORM_INTRINSIC uint32_t platform_atomic_exchange32(volatile void* target, uint32_t value)
     {
         return (uint32_t) _InterlockedExchange((volatile long*) target, (long) value);
     }
     
-    inline static uint64_t platform_atomic_add64(volatile void* target, uint64_t value)
+    PLATFORM_INTRINSIC uint64_t platform_atomic_add64(volatile void* target, uint64_t value)
     {
         return (uint64_t) _InterlockedExchangeAdd64((volatile long long*) (void*) target, (long long) value);
     }
 
-    inline static uint32_t platform_atomic_add32(volatile void* target, uint32_t value)
+    PLATFORM_INTRINSIC uint32_t platform_atomic_add32(volatile void* target, uint32_t value)
     {
         return (uint32_t) _InterlockedExchangeAdd((volatile long*) (void*) target, (long) value);
     }
 
-    inline static uint64_t platform_atomic_sub64(volatile void* target, uint64_t value)
+    PLATFORM_INTRINSIC uint64_t platform_atomic_sub64(volatile void* target, uint64_t value)
     {
         return platform_atomic_add64(target, (uint64_t) -(int64_t) value);
     }
    
-    inline static uint32_t platform_atomic_sub32(volatile void* target, uint32_t value)
+    PLATFORM_INTRINSIC uint32_t platform_atomic_sub32(volatile void* target, uint32_t value)
     {
         return platform_atomic_add32(target, (uint32_t) -(int32_t) value);
     }
    
-    inline static int64_t platform_rdtsc()
+    PLATFORM_INTRINSIC uint64_t platform_atomic_or64(volatile void* target, uint64_t value)
+    {
+        return (uint64_t) _InterlockedOr64((volatile long long*) (void*) target, (long long) value);
+    }
+    PLATFORM_INTRINSIC uint32_t platform_atomic_or32(volatile void* target, uint32_t value)
+    {
+        return (uint32_t) _InterlockedOr((volatile long*) (void*) target, (long) value);
+    }
+    PLATFORM_INTRINSIC uint64_t platform_atomic_and64(volatile void* target, uint64_t value)
+    {
+        return (uint64_t) _InterlockedAnd64((volatile long long*) (void*) target, (long long) value);
+    }
+    PLATFORM_INTRINSIC uint32_t platform_atomic_and32(volatile void* target, uint32_t value)
+    {
+        return (uint32_t) _InterlockedAnd((volatile long*) (void*) target, (long) value);
+    }
+
+    PLATFORM_INTRINSIC int64_t platform_rdtsc()
     {
         _ReadWriteBarrier(); 
 	    return (int64_t) __rdtsc();
     }
 
-    inline static int64_t platform_rdtsc_fence()
+    PLATFORM_INTRINSIC int64_t platform_rdtsc_fence()
     {
         _ReadWriteBarrier(); 
         _mm_lfence();
@@ -889,12 +918,12 @@ const char* platform_exception_to_string(Platform_Exception error);
         __alignof__(long double) == PLATFORM_MAX_ALIGN ? 1 : -1
     ];
 
-    inline static void platform_compiler_barrier() 
+    PLATFORM_INTRINSIC void platform_compiler_barrier() 
     {
         __asm__ __volatile__("":::"memory");
     }
 
-    inline static void platform_memory_barrier()
+    PLATFORM_INTRINSIC void platform_memory_barrier()
     {
         platform_compiler_barrier(); 
         __sync_synchronize();
@@ -902,13 +931,13 @@ const char* platform_exception_to_string(Platform_Exception error);
 
     #if defined(__x86_64__) || defined(__i386__)
         #include <immintrin.h> // For _mm_pause
-        inline static void platform_processor_pause()
+        PLATFORM_INTRINSIC void platform_processor_pause()
         {
             _mm_pause();
         }
     #else
         #include <time.h>
-        inline static void platform_processor_pause()
+        PLATFORM_INTRINSIC void platform_processor_pause()
         {
             struct timespec spec = {0};
             spec.tv_sec = 0;
@@ -918,85 +947,85 @@ const char* platform_exception_to_string(Platform_Exception error);
     #endif
 
     //for refernce see: https://gcc.gnu.org/onlinedocs/gcc/Other-Builtins.html
-    inline static int32_t platform_find_last_set_bit32(uint32_t num)
+    PLATFORM_INTRINSIC int32_t platform_find_last_set_bit32(uint32_t num)
     {
         return 32 - __builtin_ctz((unsigned int) num) - 1;
     }
-    inline static int32_t platform_find_last_set_bit64(uint64_t num)
+    PLATFORM_INTRINSIC int32_t platform_find_last_set_bit64(uint64_t num)
     {
         return 64 - __builtin_ctzll((unsigned long long) num) - 1;
     }
 
-    inline static int32_t platform_find_first_set_bit32(uint32_t num)
+    PLATFORM_INTRINSIC int32_t platform_find_first_set_bit32(uint32_t num)
     {
         return __builtin_ffs((int) num) - 1;
     }
-    inline static int32_t platform_find_first_set_bit64(uint64_t num)
+    PLATFORM_INTRINSIC int32_t platform_find_first_set_bit64(uint64_t num)
     {
         return __builtin_ffsll((long long) num) - 1;
     }
 
-    inline static int32_t platform_pop_count32(uint32_t num)
+    PLATFORM_INTRINSIC int32_t platform_pop_count32(uint32_t num)
     {
         return __builtin_popcount((uint32_t) num);
     }
-    inline static int32_t platform_pop_count64(uint64_t num)
+    PLATFORM_INTRINSIC int32_t platform_pop_count64(uint64_t num)
     {
         return __builtin_popcountll((uint64_t) num);
     }
 
     //for reference see: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fatomic-Builtins.html
-    inline static bool platform_atomic_compare_and_swap64(volatile int64_t* target, int64_t old_value, int64_t new_value)
+    PLATFORM_INTRINSIC bool platform_atomic_cas64(volatile int64_t* target, int64_t old_value, int64_t new_value)
     {
         return __atomic_compare_exchange_n(target, &old_value, new_value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
     }
 
-    inline static bool platform_atomic_compare_and_swap32(volatile int32_t* target, int32_t old_value, int32_t new_value)
+    PLATFORM_INTRINSIC bool platform_atomic_cas32(volatile int32_t* target, int32_t old_value, int32_t new_value)
     {
         return __atomic_compare_exchange_n(target, &old_value, new_value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
     }
 
-    inline static int64_t platform_atomic_load64(volatile const int64_t* target)
+    PLATFORM_INTRINSIC int64_t platform_atomic_load64(volatile const int64_t* target)
     {
         return (int64_t) __atomic_load_n(target, __ATOMIC_SEQ_CST);
     }
-    inline static int32_t platform_atomic_load32(volatile const int32_t* target)
+    PLATFORM_INTRINSIC int32_t platform_atomic_load32(volatile const int32_t* target)
     {
         return (int32_t) __atomic_load_n(target, __ATOMIC_SEQ_CST);
     }
 
-    inline static void platform_atomic_store64(volatile int64_t* target, int64_t value)
+    PLATFORM_INTRINSIC void platform_atomic_store64(volatile int64_t* target, int64_t value)
     {
         __atomic_store_n(target, value, __ATOMIC_SEQ_CST);
     }
-    inline static void platform_atomic_store32(volatile int32_t* target, int32_t value)
+    PLATFORM_INTRINSIC void platform_atomic_store32(volatile int32_t* target, int32_t value)
     {
         __atomic_store_n(target, value, __ATOMIC_SEQ_CST);
     }
 
-    inline static int64_t platform_atomic_exchange64(volatile int64_t* target, int64_t value)
+    PLATFORM_INTRINSIC int64_t platform_atomic_exchange64(volatile int64_t* target, int64_t value)
     {
         return (int64_t) __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
     }
-    inline static int32_t platform_atomic_exchange32(volatile int32_t* target, int32_t value)
+    PLATFORM_INTRINSIC int32_t platform_atomic_exchange32(volatile int32_t* target, int32_t value)
     {
         return (int32_t) __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
     }
 
-    inline static int32_t platform_atomic_add32(volatile int32_t* target, int32_t value)
+    PLATFORM_INTRINSIC int32_t platform_atomic_add32(volatile int32_t* target, int32_t value)
     {
         return (int32_t) __atomic_add_fetch(target, value, __ATOMIC_SEQ_CST);
     }
-    inline static int64_t platform_atomic_add64(volatile int64_t* target, int64_t value)
+    PLATFORM_INTRINSIC int64_t platform_atomic_add64(volatile int64_t* target, int64_t value)
     {
         return (int64_t) __atomic_add_fetch(target, value, __ATOMIC_SEQ_CST);
     }
 
-    inline static int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value)
+    PLATFORM_INTRINSIC int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value)
     {
         return (int32_t) __atomic_sub_fetch(target, value, __ATOMIC_SEQ_CST);
     }
-    inline static int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value)
+    PLATFORM_INTRINSIC int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value)
     {
         return (int64_t) __atomic_sub_fetch(target, value, __ATOMIC_SEQ_CST);
     }
@@ -1018,7 +1047,7 @@ static void platform_call_once(uint32_t* state, void (*func)(void* context), voi
     if(before_value == INIT)
         return;
 
-    if(platform_atomic_compare_and_swap32(state, NOT_INIT, INITIALIZING))
+    if(platform_atomic_cas32(state, NOT_INIT, INITIALIZING))
     {
         func(context);
         platform_atomic_store32(state, INIT);

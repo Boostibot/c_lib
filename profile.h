@@ -1,6 +1,11 @@
 #ifndef JOT_PROFILE
 #define JOT_PROFILE
 
+#pragma warning(disable:4028)
+#pragma warning(disable:4100)
+
+
+
 #include <stdbool.h>
 #include <math.h>
 #include <stdint.h>
@@ -117,11 +122,15 @@ typedef struct Profile_Sample {
 #define PROFILE_BUFFER_CAPACITY 1024
 typedef struct Profile_Buffer {
 	struct Profile_Buffer* next;
-	int32_t sample_count;
+	struct Profile_Buffer* prev;
+	volatile int32_t written_count; //tail
+	volatile int32_t flushed_count; //head
+	volatile int32_t to_be_flushed_count; //temporary marker
+	int32_t capacity;
 	int32_t thread_id;
 	int32_t process_id;
+	int32_t abandoned;
 	int32_t _;
-	Profile_Sample samples[PROFILE_BUFFER_CAPACITY];
 } Profile_Buffer;
 
 enum {PROFILE_STOPPED, PROFILE_STARTING, PROFILE_STARTED, PROFILE_STOPPING};
@@ -139,22 +148,29 @@ typedef struct Profile_State {
 	//  little sense writing out a zone which was not yet used.
 	
 	ATTRIBUTE_ALIGNED(64) 
-	Profile_Buffer* local_buffers;
+	Profile_Buffer* local_buffers_first;
+	Profile_Buffer* local_buffers_last;
 	Profile_Zone* local_zones;
 	Profile_Zone* new_zones;
 	Platform_Thread thread;
 	FILE*	 output_file;
 	uint64_t zone_count;
-	uint64_t _1[2];
+	uint64_t _1[1];
 	
 	ATTRIBUTE_ALIGNED(64) 
 	Profile_Buffer* foreign_buffers;
 	Profile_Zone* foreign_zones;
-	uint32_t wake_calls;
+	uint64_t requested;
+	uint64_t completed;
+	isize flush_every_ms;
+
+	//uint64_t info_used_blocks;
+	//uint64_t info_flushed_samples;
+	//uint64_t info_write_count;
+	//uint64_t info_write_size;
+
 	uint32_t state;
-	int64_t submitted_count;
-	int64_t processed_count;
-	uint64_t _2[3];
+	uint32_t _2[5];
 } Profile_State;
 
 ATTRIBUTE_INLINE_ALWAYS 
@@ -163,7 +179,7 @@ static void atomic_list_push_chain(volatile void** list, void* first, void* last
     for(;;) {
         uint64_t curr = platform_atomic_load64(list);
         platform_atomic_store64(last, curr);
-        if(platform_atomic_compare_and_swap_weak64(list, curr, (uint64_t) first))
+        if(platform_atomic_cas_weak64(list, curr, (uint64_t) first))
             break;
     }
 }
@@ -204,7 +220,7 @@ void profile_zone_init(volatile uint32_t* zone, const Profile_Zone_Info* id)
 	uint32_t INITIALIZING = (uint32_t) -1;
 
 	//Make sure that only one thread is initializing
-    if(platform_atomic_compare_and_swap32(zone, NOT_INIT, INITIALIZING))
+    if(platform_atomic_cas32(zone, NOT_INIT, INITIALIZING))
     {
 		//We will allocate all the data relevant to the zone separately. 
 		// This makes it possible to safely access zone.id when doing hot reloading
@@ -258,119 +274,209 @@ void profile_zone_init(volatile uint32_t* zone, const Profile_Zone_Info* id)
     }
 }
 
-static ATTRIBUTE_THREAD_LOCAL struct {
-	Profile_Buffer* ptr;
-	uint32_t count;
-	uint32_t _;
-} profile_buffer = {NULL, PROFILE_BUFFER_CAPACITY};
+static Profile_Buffer _dummy_profile_buffer = {NULL, NULL, INT32_MAX};
+#define NIL_PROFILE_BUFFER &_dummy_profile_buffer
 
-void profile_flush()
+static ATTRIBUTE_THREAD_LOCAL Profile_Buffer* profile_buffer = NIL_PROFILE_BUFFER;
+
+static Profile_Sample* profile_buffer_samples(Profile_Buffer* buffer)
+{
+	return (Profile_Sample*) (void*) (buffer + 1);
+}
+
+void profile_flush(bool wait_for_completion)
 {
 	Profile_State* state = profile_state();
-	if(profile_buffer.ptr)
-	{
-		if(platform_atomic_load32(&state->state) != PROFILE_STARTED)
-			profile_buffer.count = 0;
-		else
-		{
-			ASSERT(profile_buffer.count <= PROFILE_BUFFER_CAPACITY);
-			profile_buffer.ptr->sample_count = profile_buffer.count; 
-			platform_memory_barrier();
-			atomic_list_push((void**) &state->foreign_buffers, profile_buffer.ptr);
-			platform_atomic_add32(&state->wake_calls, 1);
-			platform_atomic_add64(&state->submitted_count, profile_buffer.count);
-			platform_futex_wake(&state->wake_calls);
 
-			profile_buffer.ptr = NULL;
-			profile_buffer.count = PROFILE_BUFFER_CAPACITY;
+	uint64_t requested = platform_atomic_add64(&state->requested, 1);
+	platform_futex_wake_all(&state->requested);
+
+	if(wait_for_completion)
+	{
+		for(;;) {
+			uint64_t completed = platform_atomic_load64(&state->completed);
+			if(completed > requested)
+				break;
+			platform_futex_wait(&state->completed, (uint32_t) completed, -1);
 		}
 	}
 }
 
-static ATTRIBUTE_INLINE_NEVER void _profile_buffer_refill()
+ATTRIBUTE_INLINE_NEVER
+static void profile_buffer_dispose()
 {
-	ASSERT(profile_buffer.count >= PROFILE_BUFFER_CAPACITY);
-	profile_flush();
-	if(profile_buffer.ptr == NULL)
-	{
-		profile_buffer.ptr = (Profile_Buffer*) malloc(sizeof(Profile_Buffer));
-		profile_buffer.count = 0;
-		profile_buffer.ptr->next = NULL;
-		profile_buffer.ptr->sample_count = 0;
-		profile_buffer.ptr->process_id = 0;
-		profile_buffer.ptr->thread_id = platform_thread_get_current_id();
-	}
+	ASSERT(profile_buffer);
+	if(profile_buffer != NIL_PROFILE_BUFFER)
+		platform_atomic_store32(&profile_buffer->abandoned, 1);
+
+	profile_buffer = NIL_PROFILE_BUFFER;
 }
 
-
-static ATTRIBUTE_INLINE_ALWAYS void profile_zone_submit(uint32_t type, uint32_t zone, int64_t before, int64_t val)
+ATTRIBUTE_INLINE_NEVER
+static void _profile_buffer_refill()
 {
-	if(profile_buffer.count >= PROFILE_BUFFER_CAPACITY)
+	ASSERT(profile_buffer);
+	
+	if(profile_buffer != NIL_PROFILE_BUFFER)
+	{
+		platform_atomic_store32(&profile_buffer->abandoned, 1);
+		profile_buffer = NIL_PROFILE_BUFFER;
+	}
+	
+	Profile_State* state = profile_state();
+	profile_buffer = (Profile_Buffer*) malloc(sizeof(Profile_Buffer) + PROFILE_BUFFER_CAPACITY*sizeof(Profile_Sample));
+	memset(profile_buffer, 0, sizeof *profile_buffer);
+	profile_buffer->thread_id = platform_thread_get_current_id();
+	profile_buffer->process_id = 0;
+	profile_buffer->capacity = PROFILE_BUFFER_CAPACITY;
+
+	platform_memory_barrier();
+	atomic_list_push((void**) &state->foreign_buffers, profile_buffer);
+	
+	profile_flush(false); //Do we want this here?
+}
+
+ATTRIBUTE_INLINE_ALWAYS
+static void profile_zone_submit(uint32_t type, uint32_t zone, int64_t before, int64_t val)
+{
+	ASSERT(profile_buffer);
+	if(profile_buffer->written_count >= PROFILE_BUFFER_CAPACITY)
 		_profile_buffer_refill();
 
+	int32_t count = profile_buffer->written_count;
+	Profile_Sample* samples = (Profile_Sample*) (void*) (profile_buffer + 1);
 	Profile_Sample sample = {type, zone, before, val};
-	ASSERT(profile_buffer.count < PROFILE_BUFFER_CAPACITY);
-	profile_buffer.ptr->samples[profile_buffer.count++] = sample;
+
+	ASSERT(count < PROFILE_BUFFER_CAPACITY);
+	samples[count] = sample;
+
+	//profile_buffer->written_count = count + 1;
 }
 
-isize profile_format_buffer(Profile_Buffer* block, uint64_t* last_values, isize last_values_capacity, char** malloced_space, isize* capacity);
+//isize profile_format_buffer(Profile_Buffer* block, uint64_t* last_values, isize last_values_capacity, char** malloced_space, isize* capacity);
+isize profile_format_buffer(Profile_Buffer* block, isize sample_from_i, isize sample_to_i, Profile_Zone* new_zones, uint64_t* last_values, isize last_values_capacity, char** malloced_space, isize* capacity);
 
-#define PROFILE_TIMEOUT_MS 1000
+#define PROFILE_TIMEOUT_MS 100
 int profile_writer_func(void* context)
 {
-	isize format_buffer_capacity = 0;
-	char* format_buffer = NULL; 
+	Profile_State* state = *(Profile_State**) context;
+
+	isize format_buffer_capacity = 4096*8;
+	char* format_buffer = (char*) calloc(format_buffer_capacity, 1); 
+
 	isize last_values_capacity = 4096;
 	uint64_t* last_values = (uint64_t*) calloc(last_values_capacity, sizeof(uint64_t));
-
-	Profile_State* state = *(Profile_State**) context;
+	
 	for(;;) {
 		PROFILE_START();
-		if(state->local_buffers == NULL)
-		{
+		
+		PROFILE_START(pulling);
+			uint64_t requested = platform_atomic_load64(&state->requested);
 			uint32_t run_state = platform_atomic_load32(&state->state);
-			uint32_t wake_calls = platform_atomic_load32(&state->wake_calls);
 
 			Profile_Buffer* buffers = (Profile_Buffer*) atomic_list_pop_all((void**) &state->foreign_buffers);
-			Profile_Zone* zones = (Profile_Zone*) atomic_list_pop_all((void**) &state->foreign_zones);
-			
 			for(Profile_Buffer* curr = buffers; curr;)
 			{
 				Profile_Buffer* next = curr->next;
-				curr->next = state->local_buffers;
-				state->local_buffers = curr;
+				curr->next = state->local_buffers_first;
+				state->local_buffers_first = curr;
 				curr = next;
 			}
-			for(Profile_Zone* curr = zones; curr;)
+
+			//Mark till where we are going to flush. This is to fix a problematic case related to adding new 
+			// zones. read comment just below
+			for(Profile_Buffer* curr = state->local_buffers_first; curr; curr = curr->next)
+				platform_atomic_store32(&curr->to_be_flushed_count, platform_atomic_load32(&curr->written_count));
+			
+			//Add all new zones. This cannot happen before writing the samples because in the time between 
+			// executing this atomic_list_pop_all operation, a writer could add a sample referencing a new 
+			// zone. Thus we first write and then query all new zones and push them.
+			Profile_Zone* new_zones = (Profile_Zone*) atomic_list_pop_all((void**) &state->foreign_zones);
+		PROFILE_STOP(pulling);
+
+		//TODO: remove
+		if(0)
+		{
+			Profile_Zone* first_new_zone = NULL;
+			Profile_Zone* last_new_zone = NULL;
+			for(Profile_Zone* curr = new_zones; curr;)
 			{
 				Profile_Zone* next = curr->next;
-				curr->next = state->new_zones;
-				state->new_zones = curr;
+				curr->next = first_new_zone;
+				first_new_zone = curr;
+				last_new_zone = curr;
 				curr = next;
 			}
+		}
 
-			if(state->local_buffers == NULL)
+		//Iterate all buffers and push the recently added samples on indices [flushed_count, to_be_flushed_count)
+		PROFILE_START(formatting);
+			isize total_samples_written = 0;
+			isize total_formatted_size = 0;
+			isize in_buffer_formatted_size = 0;
+			for(Profile_Buffer* curr = state->local_buffers_first; curr;)
 			{
-				if(run_state != PROFILE_STARTED)
+
+				Profile_Buffer* next = curr->next;
+				uint32_t to_be_flushed = platform_atomic_load32(&curr->to_be_flushed_count);
+				uint32_t flushed = platform_atomic_load32(&curr->flushed_count);
+
+				if(flushed < to_be_flushed)
+				{
+					total_samples_written += to_be_flushed - flushed;
+					isize formatted_size = 0;
+					//isize formatted_size = profile_format_buffer(curr, last_values, last_values_capacity, &format_buffer, &format_buffer_capacity);
+					total_formatted_size += formatted_size;
+					in_buffer_formatted_size += formatted_size;
+
+				}
+
+				if((int32_t) to_be_flushed < curr->capacity)
+					platform_atomic_store32(&curr->flushed_count, to_be_flushed);
+				else
+				{
+					Profile_Buffer* prev = curr->prev;
+					if(prev == NULL)
+						state->local_buffers_first = next;
+					else
+						prev->next = next;
+
+					if(next == NULL)
+						state->local_buffers_last = prev;
+					else
+						next->prev = prev;
+
+					free(curr);
+				}
+
+				curr = next;
+			}
+		PROFILE_STOP(formatting);
+
+		PROFILE_START(flushing);
+			if(total_samples_written > 0)
+				fflush(state->output_file);
+		PROFILE_STOP(flushing);
+			
+		PROFILE_START(waiting);
+			platform_atomic_store64(&state->completed, requested + 1);
+			platform_futex_wake_all(&state->completed);
+
+			//
+			if(run_state != PROFILE_STARTED)
+				break;
+		
+			for(;;) {
+				uint64_t curr_requested = platform_atomic_load64(&state->requested);
+				if(curr_requested != requested)
 					break;
 
-				while(wake_calls == platform_atomic_load32(&state->wake_calls))
-					platform_futex_wait(&state->wake_calls, wake_calls, -1);
-				continue;
+				bool timed_out = platform_futex_wait(&state->requested, (uint32_t) requested, PROFILE_TIMEOUT_MS) == false; //TODO: THIS MUST BE A SETTING!!! MUST BE!
+				if(timed_out)
+					break;
 			}
-		}
-			
-		Profile_Buffer* popped = state->local_buffers;
-		state->local_buffers = popped->next;
-		
-		isize formated_size = profile_format_buffer(popped, last_values, last_values_capacity, &format_buffer, &format_buffer_capacity);
-		isize wrote = fwrite(format_buffer, 1, formated_size, state->output_file);
-		ASSERT(formated_size == wrote);
-		fflush(state->output_file);
+		PROFILE_STOP(waiting);
 
-		platform_atomic_add64(&state->processed_count, popped->sample_count);
-		free(popped);
-		
 		PROFILE_STOP();
 	}
 
@@ -379,8 +485,6 @@ int profile_writer_func(void* context)
 	return 0;
 }
 
-
-
 bool profile_init(const char* filename)
 {
 	Profile_State* state = profile_state();
@@ -388,7 +492,7 @@ bool profile_init(const char* filename)
 	for(;;) { 
 		uint32_t curr_state = platform_atomic_load32(&state->state); 
 		if(curr_state != PROFILE_STOPPING && curr_state !=  PROFILE_STARTING) 
-			if(platform_atomic_compare_and_swap32(&state->state, curr_state, PROFILE_STARTING)) 
+			if(platform_atomic_cas32(&state->state, curr_state, PROFILE_STARTING)) 
 			{
 				if(curr_state == PROFILE_STOPPED)
 				{
@@ -428,15 +532,16 @@ void profile_deinit()
 	for(;;) { 
 		uint32_t curr_state = platform_atomic_load32(&state->state); 
 		if(curr_state != PROFILE_STOPPING && curr_state !=  PROFILE_STARTING) 
-			if(platform_atomic_compare_and_swap32(&state->state, curr_state, PROFILE_STOPPING)) 
+			if(platform_atomic_cas32(&state->state, curr_state, PROFILE_STOPPING)) 
 			{
 				if(curr_state == PROFILE_STARTED)
 				{
-					platform_atomic_add32(&state->wake_calls, 1);
-					platform_futex_wake(&state->wake_calls);
+					platform_atomic_add32(&state->requested, 1);
+					platform_futex_wake(&state->requested);
 
 					platform_thread_join(&state->thread, 1, -1);
-					platform_thread_detach(&state->thread);
+					//platform_thread_detach(&state->thread);
+					#if 0
 					Profile_Buffer* popped_blocks_f = (Profile_Buffer*) atomic_list_pop_all((void**) &state->foreign_buffers);
 					Profile_Buffer* popped_blocks_l = (Profile_Buffer*) atomic_list_pop_all((void**) &state->local_buffers);
 					Profile_Zone* popped_zones_f = (Profile_Zone*) atomic_list_pop_all((void**) &state->foreign_zones);
@@ -446,6 +551,7 @@ void profile_deinit()
 					_profile_free_chain(popped_blocks_l);
 					_profile_free_chain(popped_zones_f);
 					_profile_free_chain(popped_zones_l);
+					#endif
 
 					fclose(state->output_file);
 					memset(state, 0, sizeof state);
@@ -485,13 +591,15 @@ typedef struct Profile_Block_Header {
 	int64_t from_time;
 	int64_t to_time;
 	uint16_t new_zone_count;
-	uint16_t sample_count;
-	uint32_t samples_to;
+	uint16_t _;
 	uint32_t block_size;
+	uint32_t sample_count;
+	uint32_t samples_to;
 	uint32_t frequency;
 
 	uint32_t thread_id;
 	uint32_t process_id;
+	uint32_t _2;
 } Profile_Block_Header;
 		
 typedef struct Profile_Zone_Info_Header {
@@ -582,19 +690,134 @@ isize profile_compress_samples_max_size(isize sample_count)
 	) + sizeof(uint64_t); //overwrite (so that we can copy 8 bytes and not use memcpy)
 }
 
-isize profile_compress_samples(uint32_t* last_zone, uint64_t* last_time, uint64_t* last_values, isize zone_capacity, const Profile_Sample* samples, isize sample_count, isize from, uint8_t* into, isize into_capacity)
+typedef struct Buffered_Writer {
+	void (*write)(const void* data, isize data_size, void* context);
+	void* context;
+
+	uint8_t* data;
+	isize data_size;
+	isize data_capacity;
+} Buffered_Writer;
+
+typedef struct Buffered_Reader {
+	isize (*read)(void* data, isize data_size, void* context);
+	void* context;
+
+	uint8_t* data;
+	isize read_size;
+	isize loaded_capacity;
+	isize data_capacity;
+} Buffered_Reader;
+
+void buffered_writer_flush(Buffered_Writer* writer)
+{
+	if(writer->data_size > 0)
+	{
+		if(writer->write)
+			writer->write(writer->data, writer->data_size, writer->context);
+		writer->data_size = 0;
+	}
+}
+
+ATTRIBUTE_INLINE_NEVER
+void buffered_writer_write_slow_path(Buffered_Writer* writer, const void* data, isize data_size)
+{
+	if(writer->data_capacity <= 0)
+		writer->write(data, data_size, writer->context);
+	else
+	{
+		isize processed = 0;
+		while(processed < data_size)
+		{
+			uint8_t* curr = (uint8_t*) (void*) data + processed;
+
+			isize remaining_data = data_size - processed;
+			isize remaining_buffer = writer->data_capacity - writer->data_size;
+			isize to_write = remaining_data < remaining_buffer ? remaining_data : remaining_buffer;
+
+			memcpy(writer->data + writer->data_size, curr, to_write);
+			writer->data_size += to_write;
+			processed += to_write;
+			
+			ASSERT(writer->data_size <= writer->data_capacity);
+			if(writer->data_size == writer->data_capacity)
+			{
+				writer->write(writer->data, writer->data_size, writer->context);
+				writer->data_size = 0;
+			}
+		}
+	}
+}
+
+ATTRIBUTE_INLINE_ALWAYS
+void buffered_writer_write(Buffered_Writer* writer, const void* data, isize data_size)
+{
+	if(writer->data_size + data_size < writer->data_capacity)
+	{
+		memcpy(writer->data + writer->data_size, data, data_size);
+		writer->data_size += data_size;
+	}
+	else
+		buffered_writer_write_slow_path(writer, data, data_size);
+}
+
+ATTRIBUTE_INLINE_NEVER
+isize buffered_reader_read_slow_path(Buffered_Reader* reader, void* data, isize size)
+{
+	if(reader->data_capacity <= 0)
+		return reader->read(data, size, reader->context);
+	else
+	{
+		isize processed = 0;
+		while(processed < size)
+		{
+			uint8_t* curr = (uint8_t*) (void*) data + processed;
+
+			isize remaining_data = size - processed;
+			isize remaining_buffer = reader->loaded_capacity - reader->read_size;
+			isize to_read = remaining_data < remaining_buffer ? remaining_data : remaining_buffer;
+
+			memcpy(curr, reader->data + reader->read_size, to_read);
+			reader->read_size += to_read;
+			processed += to_read;
+			
+			ASSERT(reader->read_size <= reader->loaded_capacity);
+			ASSERT(reader->loaded_capacity <= reader->data_capacity);
+			if(reader->read_size == reader->loaded_capacity)
+			{
+				reader->loaded_capacity = reader->read(reader->data, reader->data_capacity, reader->context);
+				reader->read_size = 0;
+
+				if(reader->loaded_capacity == 0)
+					break;
+			}
+		}
+
+		return processed;
+	}
+}
+
+ATTRIBUTE_INLINE_ALWAYS
+isize buffered_reader_read(Buffered_Reader* reader, void* data, isize size)
+{
+	if(reader->read_size + size < reader->data_capacity)
+	{
+		memcpy(data, reader->data + reader->read_size, size);
+		reader->read_size += size;
+		return size;
+	}
+	else
+		return buffered_reader_read_slow_path(reader, data, size);
+}
+
+void profile_compress_samples(uint32_t* last_zone, uint64_t* last_time, uint64_t* last_values, isize zone_capacity, const Profile_Sample* samples, isize sample_count, Buffered_Writer* writer)
 {	
     PROFILE_START();
-	isize pos = from;
+
+	u8 local[32] = {0};
     for(isize i = 0; i < sample_count; i++)
     {
         Profile_Sample sample = samples[i];
-
-		if(pos + 21 > into_capacity)
-		{
-			printf("@TODO: Error: Not enough output buffer capacity! Requiring %lli got %lli\n", pos + 21, into_capacity);
-			break;
-		}
 
 		if(0 < sample.zone && sample.zone < zone_capacity)
 		{
@@ -622,12 +845,14 @@ isize profile_compress_samples(uint32_t* last_zone, uint64_t* last_time, uint64_
 			index_decompressed_len += index_decompressed_len == 3;
 
 			ASSERT(index_decompressed_len <= 4 && start_decompressed_len <= 8 && value_decompressed_len <= 8);
-
-			into[pos++] = (u8) (index_compressed_len << 6 | start_compressed_len << 3 | value_compressed_len);
-			memcpy(into + pos, &index_delta, 4); pos += index_decompressed_len;
-			memcpy(into + pos, &start_delta, 8); pos += start_decompressed_len;
-			memcpy(into + pos, &value_delta, 8); pos += value_decompressed_len;
 			
+			isize pos = 0;
+			local[pos++] = (u8) (index_compressed_len << 6 | start_compressed_len << 3 | value_compressed_len);
+			memcpy(local + pos, &index_delta, 4); pos += index_decompressed_len;
+			memcpy(local + pos, &start_delta, 8); pos += start_decompressed_len;
+			memcpy(local + pos, &value_delta, 8); pos += value_decompressed_len;
+			buffered_writer_write(writer, local, pos);
+
 			*last_value = sample.value;
 			*last_zone = sample.zone;
 			*last_time = sample.start;
@@ -637,14 +862,13 @@ isize profile_compress_samples(uint32_t* last_zone, uint64_t* last_time, uint64_
     }
     
 	PROFILE_STOP();
-    return pos;
 }
 
-isize profile_decompress_samples(uint32_t* last_zone, uint64_t* last_time, uint64_t* values, isize zone_capacity, Profile_Sample* samples, isize* sample_count, isize sample_capacity, isize input_from, const uint8_t* input, isize input_len)
+isize profile_decompress_samples(uint32_t* last_zone, uint64_t* last_time, uint64_t* values, isize zone_capacity, Profile_Sample* samples, isize* sample_count, isize sample_capacity, Buffered_Reader* reader)
 {	
+	#if 0
     PROFILE_START();
-	isize pos = input_from;
-    for(; pos < input_len && *sample_count < sample_capacity; )
+    for(; *sample_count < sample_capacity; )
     {
         u8 header = input[pos++];
 
@@ -656,17 +880,24 @@ isize profile_decompress_samples(uint32_t* last_zone, uint64_t* last_time, uint6
         u32 start_decompressed_len = start_compressed_len + (start_compressed_len == 7);
         u32 value_decompressed_len = value_compressed_len + (value_compressed_len == 7);
 
+		ASSERT(index_decompressed_len <= 4 && start_decompressed_len <= 8 && value_decompressed_len <= 8);
+
         u32 index_delta = 0;
         u64 start_delta = 0;
         u64 value_delta = 0;
         
-		//Error!
-        if(pos + index_decompressed_len + start_decompressed_len + value_decompressed_len > input_len)
-            break;
+		u8 local[32] = {0};
+		isize to_read = index_decompressed_len + start_decompressed_len + value_decompressed_len;
+		isize read = buffered_reader_read(reader, local, to_read);
 
-        memcpy(&index_delta, input + pos, 4); pos += index_decompressed_len;
-        memcpy(&start_delta, input + pos, 8); pos += start_decompressed_len;
-        memcpy(&value_delta, input + pos, 8); pos += value_decompressed_len;
+		//error!
+		if(to_read != read)
+			break;
+
+		isize pos = 0;
+        memcpy(&index_delta, local + pos, 4); pos += index_decompressed_len;
+        memcpy(&start_delta, local + pos, 8); pos += start_decompressed_len;
+        memcpy(&value_delta, local + pos, 8); pos += value_decompressed_len;
     
 		#define MASK(bits) (((uint64_t) ((bits) < 64) << ((bits) & 63)) - 1)
 
@@ -696,6 +927,8 @@ isize profile_decompress_samples(uint32_t* last_zone, uint64_t* last_time, uint6
 	
 	PROFILE_STOP();
     return pos;
+	#endif
+	return 0;
 }
 
 isize _profile_find_first(const char* in_str, isize in_str_len, const char* search_for, isize search_for_len, isize from)
@@ -918,11 +1151,11 @@ isize profile_decompress_block(
 		}
 		
 		//Read all samples
-		isize sample_pos = pos;
-
-		uint32_t last_zone = 0;
-		uint64_t last_time = 0;
-		isize finished_at = profile_decompress_samples(&last_zone, &last_time, last_values, last_values_capacity, samples, sample_count, sample_capacity, sample_pos, buffer, new_zones_from);
+		//isize sample_pos = pos;
+		//uint32_t last_zone = 0;
+		//uint64_t last_time = 0;
+		isize finished_at = 0;
+		//isize finished_at = profile_decompress_samples(&last_zone, &last_time, last_values, last_values_capacity, samples, sample_count, sample_capacity, sample_pos, buffer, new_zones_from);
 
 		if(finished_at != new_zones_from)
 		{
@@ -940,8 +1173,9 @@ isize profile_decompress_block(
 }
 
 
-isize profile_format_buffer(Profile_Buffer* block, uint64_t* last_values, isize last_values_capacity, char** malloced_space, isize* capacity)
+isize profile_format_buffer(Profile_Buffer* block, isize sample_from_i, isize sample_to_i, Profile_Zone* new_zones, uint64_t* last_values, isize last_values_capacity, char** malloced_space, isize* capacity)
 {
+	#if 0
     PROFILE_START();
 	Profile_State* state = profile_state();
 	char* space = *malloced_space;
@@ -958,10 +1192,8 @@ isize profile_format_buffer(Profile_Buffer* block, uint64_t* last_values, isize 
 	isize samples_to = profile_compress_samples(&last_zone, &last_time, last_values, last_values_capacity, block->samples, block->sample_count, pos, (uint8_t*) (void*) space, pos + max_needed_size);
 	pos = samples_to;
 
-	uint16_t new_zones_count = 0;
-	Profile_Zone* first_new_zone = state->new_zones;
-	Profile_Zone* last_new_zone = state->new_zones;
-	for(Profile_Zone* curr = state->new_zones; curr && new_zones_count < UINT16_MAX;)
+	uint32_t new_zones_count = 0;
+	for(Profile_Zone* curr = new_zones; curr; curr = curr->next)
 	{
 		Profile_Zone_Info id = curr->id;
 		
@@ -992,15 +1224,6 @@ isize profile_format_buffer(Profile_Buffer* block, uint64_t* last_values, isize 
 
 		ASSERT(pos == should_finish_at);
 		new_zones_count += 1;
-		last_new_zone = curr;
-		curr = curr->next;
-	}
-
-	if(first_new_zone)
-	{
-		last_new_zone->next = state->local_zones;
-		state->local_zones = first_new_zone;
-		state->new_zones = NULL;
 	}
 	
 	_profile_buffer_reserve(&space, capacity, pos + sizeof(uint32_t));
@@ -1029,6 +1252,9 @@ isize profile_format_buffer(Profile_Buffer* block, uint64_t* last_values, isize 
 	*malloced_space = space;
 	PROFILE_STOP();
 	return pos;
+	#endif
+
+	return 0;
 }
 
 isize profile_to_chrome_json(const uint8_t* buffer, isize buffer_size, 
@@ -1242,6 +1468,7 @@ isize profile_to_chrome_json_files(const char* output_filename, const char* inpu
 
 void profile_test()
 {
+	#if 0
 	profile_deinit();
 	bool check = profile_init("test.jprof");
 	ASSERT(check);
@@ -1337,6 +1564,7 @@ void profile_test()
 
 	printf("done!");
 	profile_deinit();
+	#endif
 }
 
 #endif
