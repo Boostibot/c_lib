@@ -44,12 +44,15 @@ EXTERNAL bool   string_has_substring_at(String larger_string, isize from_index, 
 EXTERNAL int    string_compare(String a, String b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
 
 EXTERNAL isize  string_find_first(String string, String search_for, isize from); 
+EXTERNAL isize  string_find_first_or(String in_str, String search_for, isize from, isize if_not_found);
 EXTERNAL isize  string_find_last_from(String in_str, String search_for, isize from);
 EXTERNAL isize  string_find_last(String string, String search_for); 
 
 EXTERNAL isize  string_find_first_char(String string, char search_for, isize from); 
+EXTERNAL isize  string_find_first_char_or(String string, char search_for, isize from, isize if_not_found);
 EXTERNAL isize  string_find_last_char_from(String in_str, char search_for, isize from);
 EXTERNAL isize  string_find_last_char(String string, char search_for); 
+
 
 EXTERNAL void string_to_null_terminated(char* buffer, isize buffer_size, String string);
 EXTERNAL String string_allocate(Allocator* alloc, String string);
@@ -151,12 +154,12 @@ EXTERNAL bool char_is_id(char c);
         return string_range(string, escaped_from, escaped_to);
     }
 
-    EXTERNAL isize string_find_first(String in_str, String search_for, isize from)
+    EXTERNAL isize string_find_first_or(String in_str, String search_for, isize from, isize if_not_found)
     {
         ASSERT(from >= 0);
 
         if(from + search_for.len > in_str.len)
-            return -1;
+            return if_not_found;
         
         if(search_for.len == 0)
             return from;
@@ -175,7 +178,7 @@ EXTERNAL bool char_is_id(char c);
 
             found = (const char*) memchr(found, first_char, remaining_length);
             if(found == NULL)
-                return -1;
+                return if_not_found;
                 
             char last_char_of_found = found[search_for.len - 1];
             if (last_char_of_found == last_char)
@@ -185,9 +188,15 @@ EXTERNAL bool char_is_id(char c);
             found += 1;
         }
 
-        return -1;
+        return if_not_found;
     }
       
+    
+    EXTERNAL isize string_find_first(String in_str, String search_for, isize from)
+    {
+        return string_find_first_or(in_str, search_for, from);
+    }
+
     EXTERNAL isize string_find_last_from(String in_str, String search_for, isize from)
     {
         ASSERT(false, "UNTESTED! @TODO: test!");
@@ -229,12 +238,17 @@ EXTERNAL bool char_is_id(char c);
         return string_find_last_from(in_str, search_for, from);
     }
     
-    EXTERNAL isize string_find_first_char(String string, char search_for, isize from)
+    EXTERNAL isize string_find_first_char_or(String string, char search_for, isize from, isize if_not_found)
     {
         char* ptr = (char*) memchr(string.data + from, search_for, string.len - from);
-        return ptr ? (isize) (ptr - string.data) : -1; 
+        return ptr ? (isize) (ptr - string.data) : if_not_found; 
     }
     
+    EXTERNAL isize string_find_first_char(String string, char search_for, isize from)
+    {
+        return string_find_first_char_or(string, search_for, from, -1);
+    }
+
     EXTERNAL void memtile(void *field, isize field_size, const void* pattern, isize pattern_size)
     {
         PROFILE_START();

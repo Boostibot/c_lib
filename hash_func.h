@@ -28,8 +28,9 @@ HASH_FN_API uint32_t unhash32_bijective(uint32_t x);
 HASH_FN_API uint64_t hash64_mix(uint64_t hash1, uint64_t hash2);
 HASH_FN_API uint32_t hash32_mix(uint32_t hash1, uint32_t hash2);
 
-//Mixes hi and lo bits of hash to produce a good 32 bit hash
+//Mixes hi and lo bits of hash to produce a 32 bit hash
 HASH_FN_API uint32_t hash64_fold(uint64_t hash);
+HASH_FN_API uint32_t hash64_fold_mix(uint64_t hash);
 
 //Source: https://github.com/abrandoned/murmur2/blob/master/MurmurHash2.c (modified to not use unaligned pointers since those are UB)
 HASH_FN_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed);
@@ -95,9 +96,14 @@ HASH_FN_API uint32_t hash32_mix(uint32_t hash1, uint32_t hash2)
     return hash1;
 }
 
-HASH_FN_API uint32_t hash64_fold(uint64_t hash)
+HASH_FN_API uint32_t hash64_fold_mix(uint64_t hash)
 {
     return hash32_mix((uint32_t) hash, (uint32_t)(hash >> 32));
+}
+
+HASH_FN_API uint32_t hash64_fold(uint64_t hash)
+{
+    return (uint32_t) hash ^ (uint32_t)(hash >> 32);
 }
 
 HASH_FN_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed)
