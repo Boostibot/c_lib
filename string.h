@@ -29,8 +29,10 @@ typedef Array(String_Builder) String_Builder_Array;
 //Constructs a String out of a string literal
 #define STRING(cstring) BINIT(String){cstring "", sizeof(cstring "") - 1}
 
+
 EXTERNAL String string_of(const char* str); //Constructs a string from null terminated str
 EXTERNAL String string_make(const char* data, isize size); //Constructs a string
+EXTERNAL char   string_at_or(String str, isize at, char if_out_of_range); //returns str.data[at] or if_out_of_range if the index at is not within [0, str.len)
 EXTERNAL String string_head(String string, isize to); //keeps only characters to to ( [0, to) interval )
 EXTERNAL String string_tail(String string, isize from); //keeps only characters from from ( [from, string.len) interval )
 EXTERNAL String string_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
@@ -107,6 +109,7 @@ EXTERNAL bool char_is_id(char c);
 #define JOT_STRING_HAS_IMPL
     #include <string.h>
     
+
     EXTERNAL String string_of(const char* str)
     {
         return string_make(str, str == NULL ? 0 : strlen(str));
@@ -116,6 +119,14 @@ EXTERNAL bool char_is_id(char c);
     {
         String string = {data, size};
         return string;
+    }
+    
+    EXTERNAL char string_at_or(String str, isize at, char or)
+    {
+        if((uint64_t) at < (uint64_t) str.len)
+            return str.data[at];
+        else
+            return or;
     }
 
     EXTERNAL String string_head(String string, isize to)
@@ -194,7 +205,7 @@ EXTERNAL bool char_is_id(char c);
     
     EXTERNAL isize string_find_first(String in_str, String search_for, isize from)
     {
-        return string_find_first_or(in_str, search_for, from);
+        return string_find_first_or(in_str, search_for, from, -1);
     }
 
     EXTERNAL isize string_find_last_from(String in_str, String search_for, isize from)
