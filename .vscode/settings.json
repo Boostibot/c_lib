@@ -44,6 +44,7 @@
         "limits": "c",
         "unistd.h": "c",
         "stat.h": "c",
-        "optional": "cpp"
+        "optional": "cpp",
+        "atomic": "cpp"
     }
 }

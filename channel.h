@@ -977,10 +977,10 @@ CHANAPI Channel* channel_init_into_memory(void* aligned_memory, isize capacity, 
 }
 
 #ifdef _MSC_VER
-    #define chan_aligned_alloc _aligned_malloc
+    #define chan_aligned_alloc(size, align) _aligned_malloc((size), (align))
     #define chan_aligned_free _aligned_free
 #else
-    #define chan_aligned_alloc aligned_alloc
+    #define chan_aligned_alloc(size, align) aligned_alloc((align), (size))
     #define chan_aligned_free free
 #endif
 
@@ -1279,20 +1279,15 @@ CHANAPI void chan_wake_block(volatile void* state)
     }
     
     #include <pthread.h>
-    int pthread_create(pthread_t *restrict thread,
-                        const pthread_attr_t *restrict attr,
-                        void *(*start_routine)(void *),
-                        void *restrict arg);
-
     CHAN_OS_API void* _chan_thread_func(void* func_and_context)
     {
         typedef void (*Void_Func)(void* context);
 
-        Void_Func func = (Void_Func) func_and_context;
-        void* context = ((void**) func_and_context)[1];
-
+        Void_Func func = (Void_Func) ((void**) func_and_context)[0];
+        void* context =              ((void**) func_and_context)[1];
         func(context);
         free(func_and_context);
+        return NULL;
     }
 
     CHAN_OS_API bool chan_start_thread(void (*func)(void* context), void* context)
@@ -1304,10 +1299,11 @@ CHANAPI void chan_wake_block(volatile void* state)
             func_and_context[0] = func;
             func_and_context[1] = context;
 
+            pthread_t handle = {0};
             pthread_attr_t attr = {0};
             pthread_attr_init(&attr);
             pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-            error = pthread_create(NULL, NULL, _chan_thread_func, func_and_context);
+            error = pthread_create(&handle, &attr, _chan_thread_func, func_and_context);
         }
 
         if(error)

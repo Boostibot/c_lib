@@ -1,6 +1,10 @@
-#pragma once
+#ifndef JOT_TEST_CHANNEL_H
+#define JOT_TEST_CHANNEL_H
 
 #include <stdint.h>
+
+typedef long long int       lli;
+typedef long long unsigned  llu;
 
 //Inject debug stuff
 #define CHANNEL_DEBUG
@@ -136,7 +140,7 @@ void _test_channel_linearization_consumer(void* arg)
                     context->okay = false;
                     for(int k = 0; k < 10; k++)
                     printf("   %s encountered value %lli which was not more than previous %lli\n", 
-                        context->name, point.value, max_per_thread[point.thread_id]);
+                        context->name, (lli) point.value, (lli) max_per_thread[point.thread_id]);
                     max_per_thread[point.thread_id] = point.value;
                 }
                 else
@@ -225,7 +229,7 @@ void test_channel_linearization(isize buffer_capacity, isize producer_count, isi
 {
     if(printing)
         printf("Channel: Testing liearizability with buffer capacity %lli producers:%lli consumers:%lli block:%s for %.2lfs\n", 
-            buffer_capacity, producer_count, consumers_count, block ? "true" : "false", seconds);
+            (lli) buffer_capacity, (lli) producer_count, (lli) consumers_count, block ? "true" : "false", seconds);
 
     Channel_Info info = {0};
     if(block)
@@ -253,7 +257,7 @@ void test_channel_linearization(isize buffer_capacity, isize producer_count, isi
         producers[i].print = thread_printing;
         producers[i].done = &done;
         producers[i].requests = requests[i];
-        snprintf(producers[i].name, sizeof producers[i].name, "producer #%02lli", i);
+        snprintf(producers[i].name, sizeof producers[i].name, "producer #%02lli", (lli) i);
         TEST(chan_start_thread(_test_channel_linearization_producer, &producers[i]));
     }
     
@@ -266,7 +270,7 @@ void test_channel_linearization(isize buffer_capacity, isize producer_count, isi
         consumers[i].done = &done;
         consumers[i].okay = true;
         consumers[i].requests = requests[producer_count + i];
-        snprintf(consumers[i].name, sizeof consumers[i].name, "consumer #%02lli", i);
+        snprintf(consumers[i].name, sizeof consumers[i].name, "consumer #%02lli", (lli) i);
         TEST(chan_start_thread(_test_channel_linearization_consumer, &consumers[i]));
     }
 
@@ -300,10 +304,10 @@ void test_channel_linearization(isize buffer_capacity, isize producer_count, isi
             printf("   Wait stuck\n");
             for(isize i = 0; i < producer_count; i++)
                 if(atomic_load(&producers[i].done_ticket) != gen)
-                    printf("   producer #%lli stuck\n", i);
+                    printf("   producer #%lli stuck\n", (lli) i);
             for(isize i = 0; i < consumers_count; i++)
                 if(atomic_load(&consumers[i].done_ticket) != gen)
-                    printf("   consumer #%lli stuck\n", i);
+                    printf("   consumer #%lli stuck\n", (lli) i);
             printf("   Wait stuck done\n");
         }
         
@@ -418,7 +422,7 @@ void test_channel_cycle(isize buffer_capacity, isize a_count, isize b_count, isi
 {
     if(printing)
         printf("Channel: Testing cycle with buffer capacity %lli threads A:%lli threads B:%lli block:%s for %.2lfs\n", 
-            buffer_capacity, a_count, b_count, block ? "true" : "false", seconds);
+            (lli) buffer_capacity, (lli) a_count, (lli) b_count, block ? "true" : "false", seconds);
             
     Channel_Info info = {0};
     if(block)
@@ -455,7 +459,7 @@ void test_channel_cycle(isize buffer_capacity, isize a_count, isize b_count, isi
         state.done_ticket = CHANNEL_MAX_TICKET;
         state.print = thread_printing;
         state.done = &done;
-        snprintf(state.name, sizeof state.name, "A -> B #%lli", i);
+        snprintf(state.name, sizeof state.name, "A -> B #%lli", (lli) i);
 
         a_threads[i] = state;
         TEST(chan_start_thread(_test_channel_cycle_runner, a_threads + i));
@@ -471,7 +475,7 @@ void test_channel_cycle(isize buffer_capacity, isize a_count, isize b_count, isi
         state.done_ticket = CHANNEL_MAX_TICKET;
         state.print = thread_printing;
         state.done = &done;
-        snprintf(state.name, sizeof state.name, "B -> A #%lli", i);
+        snprintf(state.name, sizeof state.name, "B -> A #%lli", (lli) i);
 
         b_threads[i] = state;
         TEST(chan_start_thread(_test_channel_cycle_runner, b_threads + i));
@@ -505,10 +509,10 @@ void test_channel_cycle(isize buffer_capacity, isize a_count, isize b_count, isi
             printf("   Wait stuck\n");
             for(isize i = 0; i < a_count; i++)
                 if(atomic_load(&a_threads[i].done_ticket) != gen)
-                    printf("   a #%lli stuck\n", i);
+                    printf("   a #%lli stuck\n", (lli) i);
             for(isize i = 0; i < b_count; i++)
                 if(atomic_load(&b_threads[i].done_ticket) != gen)
-                    printf("   b #%lli stuck\n", i);
+                    printf("   b #%lli stuck\n", (lli) i);
             printf("   Wait stuck done\n");
         }
 
@@ -605,8 +609,19 @@ void test_channel_sequential(isize capacity, bool block)
     else
         info = _CHAN_SINIT(Channel_Info){sizeof(int), chan_wait_yield};
 
-    Channel* chan = channel_malloc(capacity, info);
     int dummy = 0;
+    {
+        Channel* chan = channel_malloc(1, info);
+        channel_deinit(chan);
+    }
+    {
+
+        Channel* chan = channel_malloc(1, info);
+        TEST(channel_push(chan, &dummy, info));
+        channel_deinit(chan);
+    }
+
+    Channel* chan = channel_malloc(capacity, info);
     
     //Test blocking interface
     {
@@ -833,7 +848,6 @@ void test_channel(double total_time)
     printf("done\n");
 }
 
-
 #if 0
 
 typedef struct _Test_Channel_Throughput_Thread {
@@ -916,7 +930,7 @@ void test_channel_throughput(isize buffer_capacity, isize a_count, isize b_count
         double duration = (double) (threads[i].ticks_after - threads[i].ticks_before)/chan_perf_frequency();
         double throughput = threads[i].operations / duration;
 
-        printf("thread #%lli throughput %.2e ops/s\n", i+1, throughput);
+        printf("thread #%lli throughput %.2e ops/s\n", (lli) i+1, throughput);
 
         throughput_sum += throughput;
     }
@@ -925,4 +939,13 @@ void test_channel_throughput(isize buffer_capacity, isize a_count, isize b_count
 
     channel_deinit(chan);
 }
+#endif
+
+#ifdef JOT_TEST_CHANNEL_MAIN
+int main()
+{
+    test_channel(1e18);
+}
+#endif
+
 #endif

@@ -28,6 +28,31 @@
                     "ignoreFailures": true
                 }
             ]
+        },
+        {
+            "name": "(gdb) Launch test channel",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/_test_channel.out",
+            "preLaunchTask": "",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}", //"${fileDirname}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ]
         }
     ]
 }
