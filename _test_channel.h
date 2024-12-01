@@ -942,6 +942,7 @@ void test_channel_throughput(isize buffer_capacity, isize a_count, isize b_count
 #endif
 
 #ifdef JOT_TEST_CHANNEL_MAIN
+//compile command: gcc -g -ggdb -DJOT_TEST_CHANNEL_MAIN -x c _test_channel.h -lm -o build/_test_channel.out
 int main()
 {
     test_channel(1e18);
