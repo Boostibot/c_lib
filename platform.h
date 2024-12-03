@@ -198,22 +198,35 @@ typedef struct Platform_Mutex {
 //The thread has stack_size_or_zero bytes of stack sizes rounded up to page size
 //If stack_size_or_zero is zero or lower uses system default stack size.
 //The thread automatically cleans itself up upon completion or termination.
-Platform_Error platform_thread_launch(Platform_Thread* thread, int64_t stack_size_or_zero, int (*func)(void*), const void* context, int64_t context_size);
+Platform_Error platform_thread_launch(Platform_Thread* thread_or_null, int64_t stack_size_or_zero, int (*func)(void*), void* context);
 
 int64_t         platform_thread_get_proccessor_count();
 Platform_Thread platform_thread_get_current(); //Returns handle to the calling thread
 int32_t         platform_thread_get_current_id(); 
+const char*     platform_thread_get_current_name(); 
+void            platform_thread_set_current_name(const char* name, bool dealloc_on_exit); 
 Platform_Thread platform_thread_get_main(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns NULL.
 bool            platform_thread_is_main();
-void            platform_thread_sleep(int64_t ms); //Sleeps the calling thread for ms milliseconds
+void            platform_thread_sleep(double seconds); //Sleeps the calling thread for specified number of seconds. The accuracy is platform and sheduler dependent
 void            platform_thread_exit(int code); //Terminates a thread with an exit code
-void            platform_thread_yield(); //Yields the remainder of this thread's time slice to the OS
+void            platform_thread_yield(); //Yields the remainder of this thread's time slice to another thread
 void            platform_thread_detach(Platform_Thread* thread);
-bool            platform_thread_join(const Platform_Thread* threads, int64_t count, int64_t ms_or_negative_if_infinite); //Blocks calling thread until all threads finish. Must not join the current calling thread!
-int             platform_thread_get_exit_code(Platform_Thread finished_thread); //Returns the exit code of a terminated thread. If the thread is not terminated the result is undefined. 
+bool            platform_thread_join(const Platform_Thread* threads, int64_t count, double seconds_or_negative_if_infinite); //Blocks calling thread until all threads finish. Must not join the current calling thread!
+int64_t         platform_thread_get_exit_code(Platform_Thread finished_thread); //Returns the exit code of a terminated thread. If the thread is not terminated the result is undefined. 
 bool            platform_thread_is_running(Platform_Thread thread, Platform_Error* error_or_null);
 void            platform_thread_attach_deinit(void (*func)(void* context), void* context); //Registers a function to be called when the thread terminates
 
+// //Interface 2
+// Platform_Error  platform_thread_launch(int64_t stack_size_or_zero, void (*func)(void*), void* context, const char* name);
+// int64_t         platform_thread_get_proccessor_count();
+// int32_t         platform_thread_get_current_id(); 
+// int32_t         platform_thread_get_main_id(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns NULL.
+// const char*     platform_thread_get_current_name(); 
+// void            platform_thread_set_current_name(const char* name, bool dealloc_on_exit); 
+// void            platform_thread_sleep(double seconds); //Sleeps the calling thread for specified number of seconds. The accuracy is platform and sheduler dependent
+// void            platform_thread_exit(); //Terminates a thread with an exit code
+// void            platform_thread_yield(); //Yields the remainder of this thread's time slice to another thread
+// void            platform_thread_attach_deinit(void (*func)(void* context), void* context); //Registers a function to be called when the thread terminates
 
 Platform_Error  platform_mutex_init(Platform_Mutex* mutex);
 void            platform_mutex_deinit(Platform_Mutex* mutex);
@@ -221,15 +234,17 @@ void            platform_mutex_lock(Platform_Mutex* mutex);
 void            platform_mutex_unlock(Platform_Mutex* mutex);
 bool            platform_mutex_try_lock(Platform_Mutex* mutex); //Tries to lock a mutex. Returns true if mutex was locked successfully. If it was not returns false without waiting.
 
-bool            platform_futex_wait(volatile void* futex, uint32_t value, int64_t ms_or_negative_if_infinite);
+bool            platform_futex_wait(volatile void* futex, uint32_t value, double seconds_or_negative_if_infinite);
 void            platform_futex_wake(volatile void* futex);
 void            platform_futex_wake_all(volatile void* futex);
 
-//calls the given func with context argument just once, even if racing with other threads.
-//state should point to shared variable between racing threads (ie. global) initialized to 0.
-//This function will set it to 1 while initilization is in progress and finally 2 once initialized.
-//After initialization is complete this function costs just one load and thus is extremely cheap.
-static void     platform_call_once(uint32_t* state, void (*func)(void* context), void* context);
+//Allows a resource to be initialized exactly once even in the case of raacing threads.
+//The first thread that reaches this point attomically sets state to initializing value and return true.
+//  This thread must eventually call platform_once_end() once its done initializing said resource.
+//All other threads are blocked untill platform_once_end() is called.
+//After the resource has been initialized these calls exit imemdiately and are evry cheap (just one load).
+static bool     platform_once_begin(volatile uint32_t* state);
+static void     platform_once_end(volatile uint32_t* state);
 
 //=========================================
 // Atomics 
@@ -251,45 +266,15 @@ PLATFORM_INTRINSIC int32_t platform_find_last_set_bit64(uint64_t num);
 PLATFORM_INTRINSIC int32_t platform_pop_count32(uint32_t num);
 PLATFORM_INTRINSIC int32_t platform_pop_count64(uint64_t num);
 
-//Standard Compare and Set (CAS) semantics.
-//Performs atomically: {
-//   if(*target != old_value)
-//      return false;
-// 
-//   *target = new_value;
-//   return true;
-// }
-PLATFORM_INTRINSIC bool platform_atomic_cas128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi);
-PLATFORM_INTRINSIC bool platform_atomic_cas64(volatile void* target, uint64_t old_value, uint64_t new_value);
-PLATFORM_INTRINSIC bool platform_atomic_cas32(volatile void* target, uint32_t old_value, uint32_t new_value);
-
-PLATFORM_INTRINSIC bool platform_atomic_cas_weak128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi);
-PLATFORM_INTRINSIC bool platform_atomic_cas_weak64(volatile void* target, uint64_t old_value, uint64_t new_value);
-PLATFORM_INTRINSIC bool platform_atomic_cas_weak32(volatile void* target, uint32_t old_value, uint32_t new_value);
-
-//Performs atomically: { return *target; }
-PLATFORM_INTRINSIC uint64_t platform_atomic_load64(const volatile void* target);
-PLATFORM_INTRINSIC uint32_t platform_atomic_load32(const volatile void* target);
-
-//Performs atomically: { *target = value; }
-PLATFORM_INTRINSIC void platform_atomic_store64(volatile void* target, uint64_t value);
-PLATFORM_INTRINSIC void platform_atomic_store32(volatile void* target, uint32_t value);
-
-//Performs atomically: { uint64_t copy = *target; *target = value; return copy; }
-PLATFORM_INTRINSIC uint64_t platform_atomic_exchange64(volatile void* target, uint64_t value);
-PLATFORM_INTRINSIC uint32_t platform_atomic_exchange32(volatile void* target, uint32_t value);
-
-//Performs atomically: { int64_t copy = *target; *target += value; return copy; }
-PLATFORM_INTRINSIC uint32_t platform_atomic_add32(volatile void* target, uint32_t value);
-PLATFORM_INTRINSIC uint64_t platform_atomic_add64(volatile void* target, uint64_t value);
-
-//Performs atomically: { uint64_t copy = *target; *target -= value; return copy; }
-PLATFORM_INTRINSIC uint32_t platform_atomic_sub32(volatile void* target, uint32_t value);
-PLATFORM_INTRINSIC uint64_t platform_atomic_sub64(volatile void* target, uint64_t value);
-
-
-PLATFORM_INTRINSIC uint64_t platform_atomic_or64(volatile void* target, uint64_t value);
-PLATFORM_INTRINSIC uint64_t platform_atomic_and64(volatile void* target, uint64_t value);
+#ifdef __cplusplus
+    #include <atomic>
+    #define PLATFORM_USE_ATOMICS using namespace std
+    #define PLATFORM_ATOMIC(T) std::atomic<T>
+#else
+    #include <stdatomic.h>
+    #define PLATFORM_USE_ATOMICS 
+    #define PLATFORM_ATOMIC(T) _Atomic(T) 
+#endif
 
 //=========================================
 // Timings
@@ -386,6 +371,7 @@ typedef enum Platform_File_Open_Flags {
     PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST = 16,  //Creates the file, if it already exists fails. When supplied alongside PLATFORM_FILE_MODE_CREATE overrides it.
     PLATFORM_FILE_MODE_REMOVE_CONTENT = 32,         //If opening a file that has content, remove it.
     PLATFORM_FILE_MODE_READ_WRITE_APPEND = PLATFORM_FILE_MODE_READ | PLATFORM_FILE_MODE_WRITE | PLATFORM_FILE_MODE_APPEND,
+    PLATFORM_FILE_MODE_TEMPORARY = 64, //TODO
 } Platform_File_Open_Flags;
 
 typedef enum Platform_File_Seek {
@@ -581,7 +567,7 @@ int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t sk
 
 //Translates captured stack into helpful entries. Operates on fixed width strings to guarantee this function
 //will never fail yet translate all needed stack frames. 
-void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void* const* stack, int64_t stack_size);
+void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, void** stack, int64_t stack_size);
 
 typedef enum Platform_Exception {
     PLATFORM_EXCEPTION_NONE = 0,
@@ -787,108 +773,6 @@ const char* platform_exception_to_string(Platform_Exception error);
     {
         return (int32_t) __popcnt64((unsigned long long)num);
     }
-    
-    //Load and store function are a bit weird under MSVC.
-    //Since x86/64 has quite strong sequential consistency gurantees, 
-    //MSVC for the longest time got away with using volatile for 
-    // atomic load/store. However with the support for ARM they added 
-    //were forced to add proper support. Now when acessing a volatile on arm they give warning
-    // "warning C4746: volatile access of '<expression>' is subject to /volatile:<iso|ms> setting; consider using __iso_volatile_load/store intrinsic functions"
-    //
-    // Now even though __iso_volatile_load32 and similar are listed under ARM intrinsics they work just fine even on x86/64. 
-    // All this to say that this is a kind of hacky solution but the best there is at the moment.
-    PLATFORM_INTRINSIC uint64_t platform_atomic_load64(const volatile void* target)
-    {
-        return (uint64_t) __iso_volatile_load64((const volatile long long*) target);
-    }
-    PLATFORM_INTRINSIC uint32_t platform_atomic_load32(const volatile void* target)
-    {
-        return (uint32_t) __iso_volatile_load32((const volatile int*) target);
-    }
-
-    PLATFORM_INTRINSIC void platform_atomic_store64(volatile void* target, uint64_t value)
-    {
-        __iso_volatile_store64((volatile long long*) target, (long long) value);
-    }
-    PLATFORM_INTRINSIC void platform_atomic_store32(volatile void* target, uint32_t value)
-    {
-        __iso_volatile_store32((volatile int*) target, (int) value);
-    }
-    
-    PLATFORM_INTRINSIC bool platform_atomic_cas128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi)
-    {
-        long long new_val[] = {(long long) old_value_lo, (long long) old_value_hi};
-        return (bool) _InterlockedCompareExchange128((volatile long long*) target, (long long) new_value_hi, (long long) new_value_lo, new_val);
-    }
-    PLATFORM_INTRINSIC bool platform_atomic_cas64(volatile void* target, uint64_t old_value, uint64_t new_value)
-    {
-        return _InterlockedCompareExchange64((volatile long long*) target, (long long) new_value, (long long) old_value) == (long long) old_value;
-    }
-    PLATFORM_INTRINSIC bool platform_atomic_cas32(volatile void* target, uint32_t old_value, uint32_t new_value)
-    {
-        return _InterlockedCompareExchange((volatile long*) target, (long) new_value, (long) old_value) == (long) old_value;
-    }
-    
-    PLATFORM_INTRINSIC bool platform_atomic_cas_weak128(volatile void* target, uint64_t old_value_lo, uint64_t old_value_hi, uint64_t new_value_lo, uint64_t new_value_hi)
-    {
-        long long new_val[] = {(long long) old_value_lo, (long long) old_value_hi};
-        return (bool) _InterlockedCompareExchange128((volatile long long*) target, (long long) new_value_hi, (long long) new_value_lo, new_val);
-    }
-    PLATFORM_INTRINSIC bool platform_atomic_cas_weak64(volatile void* target, uint64_t old_value, uint64_t new_value)
-    {
-        return _InterlockedCompareExchange64((volatile long long*) target, (long long) new_value, (long long) old_value) == (long long) old_value;
-    }
-    PLATFORM_INTRINSIC bool platform_atomic_cas_weak32(volatile void* target, uint32_t old_value, uint32_t new_value)
-    {
-        return _InterlockedCompareExchange((volatile long*) target, (long) new_value, (long) old_value) == (long) old_value;
-    }
-
-    PLATFORM_INTRINSIC uint64_t platform_atomic_exchange64(volatile void* target, uint64_t value)
-    {
-        return (uint64_t) _InterlockedExchange64((volatile long long*) target, (long long) value);
-    }
-
-    PLATFORM_INTRINSIC uint32_t platform_atomic_exchange32(volatile void* target, uint32_t value)
-    {
-        return (uint32_t) _InterlockedExchange((volatile long*) target, (long) value);
-    }
-    
-    PLATFORM_INTRINSIC uint64_t platform_atomic_add64(volatile void* target, uint64_t value)
-    {
-        return (uint64_t) _InterlockedExchangeAdd64((volatile long long*) (void*) target, (long long) value);
-    }
-
-    PLATFORM_INTRINSIC uint32_t platform_atomic_add32(volatile void* target, uint32_t value)
-    {
-        return (uint32_t) _InterlockedExchangeAdd((volatile long*) (void*) target, (long) value);
-    }
-
-    PLATFORM_INTRINSIC uint64_t platform_atomic_sub64(volatile void* target, uint64_t value)
-    {
-        return platform_atomic_add64(target, (uint64_t) -(int64_t) value);
-    }
-   
-    PLATFORM_INTRINSIC uint32_t platform_atomic_sub32(volatile void* target, uint32_t value)
-    {
-        return platform_atomic_add32(target, (uint32_t) -(int32_t) value);
-    }
-   
-    PLATFORM_INTRINSIC uint64_t platform_atomic_or64(volatile void* target, uint64_t value)
-    {
-        return (uint64_t) _InterlockedOr64((volatile long long*) (void*) target, (long long) value);
-    }
-    PLATFORM_INTRINSIC uint32_t platform_atomic_or32(volatile void* target, uint32_t value)
-    {
-        return (uint32_t) _InterlockedOr((volatile long*) (void*) target, (long) value);
-    }
-    PLATFORM_INTRINSIC uint64_t platform_atomic_and64(volatile void* target, uint64_t value)
-    {
-        return (uint64_t) _InterlockedAnd64((volatile long long*) (void*) target, (long long) value);
-    }
-    PLATFORM_INTRINSIC uint32_t platform_atomic_and32(volatile void* target, uint32_t value)
-    {
-        return (uint32_t) _InterlockedAnd((volatile long*) (void*) target, (long) value);
-    }
 
     PLATFORM_INTRINSIC int64_t platform_rdtsc()
     {
@@ -974,96 +858,38 @@ const char* platform_exception_to_string(Platform_Exception error);
         return __builtin_popcountll((uint64_t) num);
     }
 
-    //for reference see: https://gcc.gnu.org/onlinedocs/gcc/_005f_005fatomic-Builtins.html
-    PLATFORM_INTRINSIC bool platform_atomic_cas64(volatile int64_t* target, int64_t old_value, int64_t new_value)
-    {
-        return __atomic_compare_exchange_n(target, &old_value, new_value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
-    }
-
-    PLATFORM_INTRINSIC bool platform_atomic_cas32(volatile int32_t* target, int32_t old_value, int32_t new_value)
-    {
-        return __atomic_compare_exchange_n(target, &old_value, new_value, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
-    }
-
-    PLATFORM_INTRINSIC int64_t platform_atomic_load64(volatile const int64_t* target)
-    {
-        return (int64_t) __atomic_load_n(target, __ATOMIC_SEQ_CST);
-    }
-    PLATFORM_INTRINSIC int32_t platform_atomic_load32(volatile const int32_t* target)
-    {
-        return (int32_t) __atomic_load_n(target, __ATOMIC_SEQ_CST);
-    }
-
-    PLATFORM_INTRINSIC void platform_atomic_store64(volatile int64_t* target, int64_t value)
-    {
-        __atomic_store_n(target, value, __ATOMIC_SEQ_CST);
-    }
-    PLATFORM_INTRINSIC void platform_atomic_store32(volatile int32_t* target, int32_t value)
-    {
-        __atomic_store_n(target, value, __ATOMIC_SEQ_CST);
-    }
-
-    PLATFORM_INTRINSIC int64_t platform_atomic_exchange64(volatile int64_t* target, int64_t value)
-    {
-        return (int64_t) __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
-    }
-    PLATFORM_INTRINSIC int32_t platform_atomic_exchange32(volatile int32_t* target, int32_t value)
-    {
-        return (int32_t) __atomic_exchange_n(target, value, __ATOMIC_SEQ_CST);
-    }
-
-    PLATFORM_INTRINSIC int32_t platform_atomic_add32(volatile int32_t* target, int32_t value)
-    {
-        return (int32_t) __atomic_add_fetch(target, value, __ATOMIC_SEQ_CST);
-    }
-    PLATFORM_INTRINSIC int64_t platform_atomic_add64(volatile int64_t* target, int64_t value)
-    {
-        return (int64_t) __atomic_add_fetch(target, value, __ATOMIC_SEQ_CST);
-    }
-
-    PLATFORM_INTRINSIC int32_t platform_atomic_sub32(volatile int32_t* target, int32_t value)
-    {
-        return (int32_t) __atomic_sub_fetch(target, value, __ATOMIC_SEQ_CST);
-    }
-    PLATFORM_INTRINSIC int64_t platform_atomic_sub64(volatile int64_t* target, int64_t value)
-    {
-        return (int64_t) __atomic_sub_fetch(target, value, __ATOMIC_SEQ_CST);
-    }
-
-
 #endif
 
-static void platform_call_once(uint32_t* state, void (*func)(void* context), void* context)
+static bool platform_once_begin(volatile uint32_t* once)
 {
     enum {
-        NOT_INIT,
-        INITIALIZING,
-        INIT,
+        NOT_INIT = 0,
+        INITIALIZING = 1,
+        INIT = 2,
     };
 
-    //These 3 lines could be removed and the impleemntation would stay correct.
-    //However most of the time the init code will already be init
-    uint32_t before_value = platform_atomic_load32(state);
-    if(before_value == INIT)
-        return;
-
-    if(platform_atomic_cas32(state, NOT_INIT, INITIALIZING))
-    {
-        func(context);
-        platform_atomic_store32(state, INIT);
-        platform_futex_wake_all(state);
-    }
-    else
-    {
-        while(true)
-        {
-            uint32_t curr_value = platform_atomic_load32(state);
-            if(curr_value == INIT)
+    PLATFORM_ATOMIC(uint32_t)* atomic_once = (PLATFORM_ATOMIC(uint32_t)*) (void*) once; 
+    bool out = false;
+    for(;;) {
+        uint32_t current = atomic_load(once);
+        if(current == INIT)
+            break;
+        
+        if(current == NOT_INIT) {
+            if(atomic_compare_exchange_strong(atomic_once, &current, INITIALIZING)) {
+                out = true;
                 break;
-            
-            platform_futex_wait(state, INITIALIZING, -1);
+            }
         }
+        
+        platform_futex_wait(atomic_once, current, -1);
     }
+    return out;
+}
+static void platform_once_end(volatile uint32_t* once)
+{
+    atomic_store((PLATFORM_ATOMIC(uint32_t)*) (void*) once, 2);
+    platform_futex_wake_all(once);
 }
 
 #endif
@@ -1391,7 +1217,7 @@ static bool _platform_test_report(Platform_Error error, bool is_error, const cha
         if(error != 0)
         {
             int64_t size = platform_translate_error(error, NULL, 0);
-            char* message = (char*) malloc(size);
+            char* message = (char*) malloc((size_t) size);
             platform_translate_error(error, message, size);
             printf("Error: %s\n", message);
             free(message);

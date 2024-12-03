@@ -112,7 +112,7 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL String string_of(const char* str)
     {
-        return string_make(str, str == NULL ? 0 : strlen(str));
+        return string_make(str, str == NULL ? 0 : (isize) strlen(str));
     }
 
     EXTERNAL String string_make(const char* data, isize size)
@@ -187,13 +187,13 @@ EXTERNAL bool char_is_id(char c);
             isize remaining_length = in_str.len - (found - in_str.data) - search_for.len + 1;
             ASSERT(remaining_length >= 0);
 
-            found = (const char*) memchr(found, first_char, remaining_length);
+            found = (const char*) memchr(found, first_char, (size_t) remaining_length);
             if(found == NULL)
                 return if_not_found;
                 
             char last_char_of_found = found[search_for.len - 1];
             if (last_char_of_found == last_char)
-                if (memcmp(found + 1, search_for.data + 1, search_for.len - 2) == 0)
+                if (memcmp(found + 1, search_for.data + 1, (size_t) search_for.len - 2) == 0)
                     return found - in_str.data;
 
             found += 1;
@@ -251,7 +251,7 @@ EXTERNAL bool char_is_id(char c);
     
     EXTERNAL isize string_find_first_char_or(String string, char search_for, isize from, isize if_not_found)
     {
-        char* ptr = (char*) memchr(string.data + from, search_for, string.len - from);
+        char* ptr = (char*) memchr(string.data + from, search_for, (size_t) (string.len - from));
         return ptr ? (isize) (ptr - string.data) : if_not_found; 
     }
     
@@ -468,7 +468,7 @@ EXTERNAL bool char_is_id(char c);
         if(buffer_size > 0)
         {
             isize min_size = MIN(buffer_size - 1, string.len);
-            memcpy(buffer, string.data, min_size);
+            memcpy(buffer, string.data, (size_t) min_size);
             buffer[min_size] = '\0';
         }
     }
@@ -477,7 +477,7 @@ EXTERNAL bool char_is_id(char c);
     {
         PROFILE_START();
         char* data = allocator_allocate(alloc, string.len + 1, 1);
-        memcpy(data, string.data, string.len);
+        memcpy(data, string.data, (size_t) string.len);
         data[string.len] = '\0';
         String out = {data, string.len};
         PROFILE_STOP();
@@ -663,9 +663,9 @@ EXTERNAL bool char_is_id(char c);
     {
         ASSERT(0 <= at && at <= builder->len);
         builder_reserve(builder, builder->len + hole_size);
-        memmove(builder->data + at + hole_size, builder->data + at, hole_size);
+        memmove(builder->data + at + hole_size, builder->data + at, (size_t) hole_size);
         if(fill_with_char_or_minus_one != -1)
-            memset(builder->data + at, fill_with_char_or_minus_one, hole_size);
+            memset(builder->data + at, fill_with_char_or_minus_one, (size_t) hole_size);
 
         builder->len += hole_size;
         builder->data[builder->len] = '\0';
@@ -674,7 +674,7 @@ EXTERNAL bool char_is_id(char c);
     EXTERNAL void builder_insert(String_Builder* builder, isize at, String string)
     {
         builder_insert_hole(builder, at, string.len, -1);
-        memcpy(builder->data + at, string.data, string.len);
+        memcpy(builder->data + at, string.data, (size_t) string.len);
     }
 
     EXTERNAL void builder_assign(String_Builder* builder, String string)

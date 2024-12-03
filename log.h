@@ -85,7 +85,7 @@ EXTERNAL String_Buffer_16 format_nanoseconds(int64_t ns); //returns "153ns", "10
 
 EXTERNAL void log_captured_callstack(Log stream, void** callstack, isize callstack_size);
 EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format, ...);
-#define log_callstack(stream, skip, format, ...) (sizeof printf((format), ##__VA_ARGS__), log_callstack_no_check((stream), (skip), (format), ##__VA_ARGS__))
+#define log_callstack(stream, skip, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), log_callstack_no_check((stream), (skip), (format), ##__VA_ARGS__))
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_LOG_IMPL)) && !defined(JOT_LOG_HAS_IMPL)
@@ -217,7 +217,7 @@ EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format,
         else if(abs >= KB)
             snprintf(out.data, sizeof out.data, "%.1lfKB", (double) bytes / (double) KB);
         else
-            snprintf(out.data, sizeof out.data, "%lliB"+1, (long long) bytes);
+            snprintf(out.data, sizeof out.data, "%lliB", (long long) bytes);
 
         return out;
     }
@@ -231,7 +231,7 @@ EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format,
         int64_t abs = ns > 0 ? ns : -ns;
         String_Buffer_16 out = {0};
         if(abs >= sec)
-            snprintf(out.data, sizeof out.data, "%.2lfs"+1, (double) ns / (double) sec);
+            snprintf(out.data, sizeof out.data, "%.2lfs", (double) ns / (double) sec);
         else if(abs >= milli)
             snprintf(out.data, sizeof out.data, "%.2lfms", (double) ns / (double) milli);
         else if(abs >= micro)
@@ -316,6 +316,7 @@ EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format,
         }
     #endif
     
+    #if 0
     EXTERNAL Allocator_Stats log_allocator_stats(Log log, Allocator* allocator)
     {
         Allocator_Stats stats = {0};
@@ -343,6 +344,7 @@ EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format,
 
         return stats;
     }
+    #endif
 
     #ifndef ALLOCATOR_CUSTOM_OUT_OF_MEMORY
         EXTERNAL void allocator_panic(Allocator_Error error)

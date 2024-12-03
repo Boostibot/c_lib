@@ -1,3 +1,11 @@
+#define JOT_PROFILE
+#define JOT_PROFILE_HAS_IMPL
+
+#define PROFILE_START(...) 
+#define PROFILE_STOP(...) 
+#define PROFILE_INSTANT(...)
+#define PROFILE_SCOPE(...) for(int i = 0; i == 0; i = 1)
+
 #ifndef JOT_PROFILE
 #define JOT_PROFILE
 
@@ -1004,7 +1012,7 @@ void _profile_fprintf_wrapper(void* context, const char* format, ...)
     va_end(args);
 }
 
-#define FORMATED_WRITE(error_log, error_context, ...)  (sizeof(printf(__VA_ARGS__)), ((error_log) ? (error_log) : printf_error_log)(error_context, __VA_ARGS__))
+#define FORMATED_WRITE(error_log, error_context, ...)  ((void) sizeof(printf(__VA_ARGS__)), ((error_log) ? (error_log) : printf_error_log)(error_context, __VA_ARGS__))
 
 isize profile_decompress_block(
 	Profile_Block_Header* out_header, int block_id,

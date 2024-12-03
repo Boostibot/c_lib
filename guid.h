@@ -6,6 +6,8 @@
 #include "hash_func.h"
 #include "random.h"
 
+#include <stdatomic.h>
+
 //64 bit program-unique-identifier.
 typedef struct _Opaque_ID_Dummy* Id;  
 
@@ -30,7 +32,6 @@ EXTERNAL u64 guid_hash32(Guid guid);
 
 #endif
 
-
 #if (defined(JOT_ALL_IMPL) || defined(JOT_GUID_IMPL)) && !defined(JOT_GUID_HAS_IMPL)
 #define JOT_GUID_HAS_IMPL
 
@@ -39,8 +40,8 @@ EXTERNAL Id id_generate()
     //We generate the random values by doing atomic add on a counter and hashing the result.
     //We add salt to the hash to make the sequence random between program runs.
     //Note that the hash64_bijective function is bijective and maps 0 -> 0
-    static i64 salt = 0;
-    static i64 counter = 0;
+    static _Atomic i64 salt = 0;
+    static _Atomic i64 counter = 0;
     
     //This works even in multithreaded because the worst that could happen is we twice assign 
     // the salt to the same value. Even in partially filled states this branch will not run.
@@ -48,7 +49,7 @@ EXTERNAL Id id_generate()
         salt = platform_perf_counter_startup(); 
     
     //... and the rest is atomic ...
-    u64 ordered_id = platform_atomic_add64(&counter, 1) + salt;
+    u64 ordered_id = atomic_fetch_add(&counter, 1) + salt;
     u64 hashed_id = hash64_bijective(ordered_id);
 
     //In case we wrap around (which will almost certainly never even happen)...

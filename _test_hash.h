@@ -206,8 +206,8 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 
 					if(hash_found.len > 1)
 					{
-						qsort(hash_found.data, hash_found.len, sizeof *hash_found.data, u64_comp_func);
-						qsort(truth_found.data, truth_found.len, sizeof *truth_found.data, u64_comp_func);
+						qsort(hash_found.data, (size_t) hash_found.len, sizeof *hash_found.data, u64_comp_func);
+						qsort(truth_found.data, (size_t) truth_found.len, sizeof *truth_found.data, u64_comp_func);
 					}
 
 					for(isize l = 0; l < hash_found.len; l++)

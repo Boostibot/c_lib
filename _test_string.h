@@ -53,8 +53,8 @@ const void* memcheck_trivial(const void* ptr, uint8_t byte, isize size)
 
 static void test_memcheck_single(const char* str, char byte)
 {
-    const char* trivial = (const char*) memcheck_trivial(str, (uint8_t) byte, strlen(str));
-    const char* actual = (const char*) memcheck(str, (uint8_t) byte, strlen(str));
+    const char* trivial = (const char*) memcheck_trivial(str, (uint8_t) byte, (isize) strlen(str));
+    const char* actual = (const char*) memcheck(str, (uint8_t) byte, (isize) strlen(str));
 
     TEST(trivial == actual);
 }

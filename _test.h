@@ -2,6 +2,7 @@
 #define JOT_TEST
 
 #include "defines.h"
+#include "assert.h"
 #include "array.h"
 #include "time.h"
 #include "random.h"
@@ -19,9 +20,9 @@ typedef void (*Test_Func_Custom)(void* user_data);
 
 EXTERNAL bool run_test(void* func, const char* name, Test_Func_Type type, f64 max_time, void* user_data);
 
-#define RUN_TEST(func)                  (sizeof((Test_Func)0 == (func)),           run_test((void*) (func), #func, TEST_FUNC_TYPE_SIMPLE, 0, NULL))
-#define RUN_TEST_TIMED(func, time)      (sizeof((Test_Func_Timed)0 == (func)),     run_test((void*) (func), #func, TEST_FUNC_TYPE_TIMED, (time), NULL))
-#define RUN_TEST_CUSTOM(func, context)  (sizeof((Test_Func_Custom)0 == (func)),    run_test((void*) (func), #func, TEST_FUNC_TYPE_CUSTOM, 0, context))
+#define RUN_TEST(func)                  ((void) sizeof(*(Test_Func*)0 = (func)),           run_test((void*) (func), #func, TEST_FUNC_TYPE_SIMPLE, 0, NULL))
+#define RUN_TEST_TIMED(func, time)      ((void) sizeof(*(Test_Func_Timed*)0 = (func)),     run_test((void*) (func), #func, TEST_FUNC_TYPE_TIMED, (time), NULL))
+#define RUN_TEST_CUSTOM(func, context)  ((void) sizeof(*(Test_Func_Custom*)0 = (func)),    run_test((void*) (func), #func, TEST_FUNC_TYPE_CUSTOM, 0, context))
 
 //@NOTE: The first part of these macros is a type check. The comparison never gets executed but the expression goes though type checking.
 #endif

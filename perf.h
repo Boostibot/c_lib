@@ -345,7 +345,7 @@ static void perf_benchmark_example()
 	void perf_do_not_optimize(const void* ptr) 
 	{ 
 		#if defined(__GNUC__) || defined(__clang__)
-			__asm__ __volatile__("" : "+r"(ptr))
+			__asm__ __volatile__("" : "+r"(ptr));
 		#else
 			static volatile int __perf_always_zero = 0;
 			if(__perf_always_zero != 0)

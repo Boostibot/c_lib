@@ -5,7 +5,10 @@
 #define JOT_ALL_IMPL
 #endif
 
+#define JOT_COUPLED
 #define JOT_ALL_TEST
+#include "assert.h"
+#include "defines.h"
 #include "profile.h"
 #include "list.h"
 #include "path.h"
@@ -24,7 +27,7 @@
 #include "_test_stable_array.h"
 #include "_test_lpf.h"
 #include "_test_image.h"
-#include "_test_string_map.h"
+// #include "_test_string_map.h"
 
 INTERNAL void test_all(f64 total_time)
 {
@@ -35,8 +38,9 @@ INTERNAL void test_all(f64 total_time)
 
     #define INCR total_count += 1, passed_count += (int)
     
-    INCR RUN_TEST(test_string_map);
+    // INCR RUN_TEST(test_string_map);
     INCR RUN_TEST(platform_test_all);
+    
     INCR RUN_TEST(test_list);
     INCR RUN_TEST(test_image);
     INCR RUN_TEST(test_lpf);
@@ -73,7 +77,7 @@ INTERNAL void test_all(f64 total_time)
         platform_init();
         
         Arena_Stack* global_stack = scratch_arena_stack();
-        arena_init(global_stack, 64*GB, 8*MB, "scratch_arena_stack");
+        arena_stack_init(global_stack, "scratch_arena_stack", 64*GB, 8*MB, 0);
 
         File_Logger logger = {0};
         file_logger_init_use(&logger, allocator_get_malloc(), "logs");

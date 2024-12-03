@@ -7,17 +7,17 @@
 
 EXTERNAL void vformat_append_into(String_Builder* append_to, const char* format, va_list args);
 EXTERNAL void format_append_into_no_check(String_Builder* append_to, const char* format, ...);
-#define  format_append_into(append_to, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_append_into_no_check((append_to), (format), ##__VA_ARGS__))
+#define  format_append_into(append_to, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), format_append_into_no_check((append_to), (format), ##__VA_ARGS__))
 
 EXTERNAL void vformat_into(String_Builder* into, const char* format, va_list args);
 EXTERNAL void format_into_no_check(String_Builder* into, const char* format, ...);
-#define  format_into(into, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_append_into_no_check((into), (format), ##__VA_ARGS__))
+#define  format_into(into, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), format_append_into_no_check((into), (format), ##__VA_ARGS__))
 
 EXTERNAL String_Builder vformat(Allocator* alloc, const char* format, va_list args);
 EXTERNAL String_Builder format_no_check(Allocator* alloc, const char* format, ...);
 
-#define  format(alloc, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_no_check((alloc), (format), ##__VA_ARGS__))
-#define  formata(allocator, format, ...) (sizeof printf((format), ##__VA_ARGS__), format_no_check((allocator).alloc, (format), ##__VA_ARGS__)).string
+#define  format(alloc, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), format_no_check((alloc), (format), ##__VA_ARGS__))
+#define  formata(allocator, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), format_no_check((allocator).alloc, (format), ##__VA_ARGS__)).string
 
 EXTERNAL String translate_error(Allocator* alloc, Platform_Error error);
 EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error error);

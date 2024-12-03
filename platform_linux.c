@@ -102,86 +102,6 @@
     X(EWOULDBLOCK) \
     X(EXDEV) \
 
-void _print_errno(int errno_val)
-{
-    const char* name = "None";
-    #define X(ERRNO_CODE) \
-        if(errno_val == ERRNO_CODE) name = #ERRNO_CODE;
-
-    POSIX_ERRNO_CODES_X()
-    printf("errno %s: %s\n", name, strerror(errno_val));
-    #undef X
-}
-
-#include <sys/mman.h>
-void* platform_virtual_reallocate(void* allocate_at, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection)
-{
-    void* out = NULL;
-    bool had_action = false;
-    if(action & PLATFORM_VIRTUAL_ALLOC_RESERVE)   
-    {
-        had_action = true;
-        out = mmap(allocate_at, (size_t) bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-
-        if(out == MAP_FAILED)
-        {
-            _print_errno(errno);
-            out = NULL;
-        }
-    }
-    else if(action & PLATFORM_VIRTUAL_ALLOC_RELEASE)
-    {
-        had_action = true;
-        munmap(allocate_at, (size_t) bytes);
-    }
-
-    if(action & PLATFORM_VIRTUAL_ALLOC_COMMIT)
-    {
-        if(action & PLATFORM_VIRTUAL_ALLOC_RESERVE)
-            allocate_at = out;
-
-        if(allocate_at) 
-        {
-            had_action = true;
-            int prot = PROT_NONE;
-            if(protection & PLATFORM_MEMORY_PROT_READ) prot |= PROT_READ;
-            if(protection & PLATFORM_MEMORY_PROT_WRITE) prot |= PROT_WRITE;
-            if(protection & PLATFORM_MEMORY_PROT_EXECUTE) prot |= PROT_EXEC;
-
-            mprotect(allocate_at, (size_t) bytes, prot);
-            madvise(allocate_at, (size_t) bytes, MADV_WILLNEED);
-            out = allocate_at;
-        }
-    }
-    if(action & PLATFORM_VIRTUAL_ALLOC_DECOMMIT && had_action == false)
-    {
-        had_action = true;
-        mprotect(allocate_at, (size_t) bytes, PROT_NONE);
-        madvise(allocate_at, (size_t) bytes, MADV_DONTNEED);
-        out = allocate_at;
-    }
-
-    if(had_action == false)
-        printf("Strange combination of arguments (commit and decommit)\n");
-
-    return out;
-}
-
-#include <unistd.h>
-int64_t platform_page_size()
-{
-    return (int64_t) getpagesize();
-}
-
-//=========================================
-// Threading
-//=========================================
-#define _GNU_SOURCE
-#include <sched.h>
-#include <stdio.h>
-#include <pthread.h>
-#include <unistd.h>
-
 Platform_Error _platform_error_code(bool state)
 {
     if(state)
@@ -197,7 +117,101 @@ Platform_Error _platform_error_code(bool state)
     }
 }
 
-int64_t         platform_thread_get_proccessor_count()
+void _print_errno(int errno_val)
+{
+    const char* name = "None";
+    #define X(ERRNO_CODE) \
+        if(errno_val == ERRNO_CODE) name = #ERRNO_CODE;
+
+    POSIX_ERRNO_CODES_X()
+    printf("errno %s: %s\n", name, strerror(errno_val));
+    #undef X
+}
+
+#include <sys/mman.h>
+#include <errno.h>
+Platform_Error platform_virtual_reallocate(void** output_adress_or_null, void* allocate_at, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection)
+{
+    Platform_Error error = PLATFORM_ERROR_OK;
+    void* out = NULL;
+
+    if(action & PLATFORM_VIRTUAL_ALLOC_RESERVE)   
+    {
+        out = mmap(allocate_at, (size_t) bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if(out == MAP_FAILED)
+        {
+            error = (Platform_Error) errno;
+            out = NULL;
+        }
+    }
+    if(action & PLATFORM_VIRTUAL_ALLOC_RELEASE)
+    {
+        if(munmap(allocate_at, (size_t) bytes) == -1)
+            error = (Platform_Error) errno;
+    }
+
+    if(action & PLATFORM_VIRTUAL_ALLOC_COMMIT)
+    {
+        if(action & PLATFORM_VIRTUAL_ALLOC_RESERVE)
+            allocate_at = out;
+
+        if(allocate_at) 
+        {
+            int prot = PROT_NONE;
+            if(protection & PLATFORM_MEMORY_PROT_READ) prot |= PROT_READ;
+            if(protection & PLATFORM_MEMORY_PROT_WRITE) prot |= PROT_WRITE;
+            if(protection & PLATFORM_MEMORY_PROT_EXECUTE) prot |= PROT_EXEC;
+
+            assert((size_t) allocate_at % platform_page_size() == 0);
+            if(mprotect(allocate_at, (size_t) bytes, prot) == 0)
+            {
+                madvise(allocate_at, (size_t) bytes, MADV_WILLNEED);
+                out = allocate_at;
+            }
+            else
+                error = (Platform_Error) errno;
+        }
+    }
+    if(action & PLATFORM_VIRTUAL_ALLOC_DECOMMIT)
+    {
+        if(mprotect(allocate_at, (size_t) bytes, PROT_NONE) == 0)
+        {
+            madvise(allocate_at, (size_t) bytes, MADV_DONTNEED);
+            out = allocate_at;
+        }
+        else
+            error = (Platform_Error) errno;
+    }
+
+    if(output_adress_or_null)
+        *output_adress_or_null = out;
+
+    return error;
+}
+
+#include <unistd.h>
+int64_t platform_page_size()
+{
+    return (int64_t) getpagesize();
+}
+
+int64_t platform_allocation_granularity()
+{
+    //@TEMP
+    return (int64_t) getpagesize();
+}
+
+//=========================================
+// Threading
+//=========================================
+#define _GNU_SOURCE
+#include <sched.h>
+#include <stdio.h>
+#include <pthread.h>
+#include <unistd.h>
+
+
+int64_t platform_thread_get_proccessor_count()
 {
     cpu_set_t cs;
     CPU_ZERO(&cs);
@@ -207,88 +221,96 @@ int64_t         platform_thread_get_proccessor_count()
 
 typedef struct Platform_Pthread_State {
     pthread_t thread;
-    void (*func)(void*);
+    int (*func)(void*);
     void* context;
 } Platform_Pthread_State;
 
-typedef struct Platform_Mutex_State {
-    pthread_mutex_t mutex;
-} Platform_Mutex_State;
-
-void _pthread_cleanup_routine(void* arg)
-{
-    assert(arg != NULL);
-    Platform_Pthread_State* thread_state = (Platform_Pthread_State*) arg;
-    free(thread_state);
-}
 
 void* _platform_pthread_start_routine(void* arg)
 {
     assert(arg != NULL);
-
-    //Sandly broken on WSL
-    // pthread_cleanup_push(_pthread_cleanup_routine, arg);
     Platform_Pthread_State* thread_state = (Platform_Pthread_State*) arg;
-    thread_state->func(thread_state->context);
+    int result = thread_state->func(thread_state->context);
     free(thread_state);
-    return NULL;
+    return (void*) (size_t) result;
 }
 
-Platform_Error platform_thread_launch(Platform_Thread* thread, void (*func)(void*), void* context, int64_t stack_size_or_zero)
+Platform_Error platform_thread_launch(Platform_Thread* thread_or_null, int64_t stack_size_or_zero, int (*func)(void*), void* context)
 {
-    bool state = true;
-    pthread_attr_t attr = {0};
-    pthread_attr_t* attr_ptr = {0};
-
-    Platform_Pthread_State* thread_state = NULL;
-    if(stack_size_or_zero > 0)
-    {
-        attr_ptr = &attr;
-        pthread_attr_init(&attr);
-        state = state && 0 == pthread_attr_setstacksize(&attr, (size_t) stack_size_or_zero);
-    }
-    
+    Platform_Pthread_State* thread_state = (Platform_Pthread_State*) malloc(sizeof(Platform_Pthread_State));
+    bool state = thread_state != NULL;
     if(state)
     {
-        thread_state = (Platform_Pthread_State*) malloc(sizeof(Platform_Pthread_State));
-        state = thread_state != NULL;
-        if(state)
+        memset(thread_state, 0, sizeof *thread_state);
+
+        pthread_attr_t attr = {0};
+        pthread_attr_init(&attr);
+        if(stack_size_or_zero > 0)
+            pthread_attr_setstacksize(&attr, (size_t) stack_size_or_zero);
+
+        thread_state->func = func;
+        thread_state->context = context;
+        if(pthread_create(&thread_state->thread, &attr, _platform_pthread_start_routine, thread_state) != 0)
         {
-            memset(thread_state, 0, sizeof *thread_state);
-
-            thread_state->func = func;
-            thread_state->context = context;
-            if(pthread_create(&thread_state->thread, attr_ptr, _platform_pthread_start_routine, thread_state) != 0)
-            {
-                state = false;
-                free(thread_state);
-            }
-
+            state = false;
+            free(thread_state);
         }
-    }
 
-    if(stack_size_or_zero > 0)
         pthread_attr_destroy(&attr);
-
-    if(state && thread_state && thread)
-    {
-        thread->handle = thread_state;
-        thread->id = 0;
     }
+
+    if(state && thread_state && thread_or_null)
+        thread_or_null->handle = (void*) thread_state;
 
     return _platform_error_code(state);
 }
 
-void platform_thread_sleep(int64_t ms)
+void platform_thread_sleep(double seconds)
 {
-    if(ms > 10)
-        sleep((unsigned) ms);
-    else
+    if(seconds > 0)
     {
-        struct timespec req = {0};
-        req.tv_nsec = ms*1000;
-        nanosleep(&req, NULL);
+        int64_t nanosecs = (int64_t) (seconds*1000000000LL);
+        struct timespec ts = {0};
+        ts.tv_sec = nanosecs / 1000000000LL; 
+        ts.tv_nsec = nanosecs % 1000000000LL; 
+
+        while(nanosleep(&ts, &ts) == -1);
     }
+}
+
+Platform_Thread platform_thread_get_current()
+{
+    Platform_Thread out = {0};
+    return out;
+}
+int32_t platform_thread_get_current_id()
+{
+    return 0;
+}
+const char* platform_thread_get_current_name()
+{
+    return "uninint";
+}
+void platform_thread_set_current_name(const char* name, bool dealloc_on_exit)
+{
+    (void) name, (void) dealloc_on_exit;
+}
+Platform_Thread platform_thread_get_main()
+{
+    return platform_thread_get_current();
+}
+bool platform_thread_is_main()
+{
+    return true;
+}
+int64_t platform_thread_get_exit_code(Platform_Thread finished_thread)
+{
+    return INT64_MIN;
+}
+
+void platform_thread_attach_deinit(void (*func)(void* context), void* context)
+{
+    // pthread_cleanup_push(func, context); //wtf
 }
 
 void platform_thread_exit(int code)
@@ -301,36 +323,66 @@ void platform_thread_yield()
     sched_yield();
 }
 
-void platform_thread_detach(Platform_Thread thread)
+void platform_thread_detach(Platform_Thread* thread)
 {
-    Platform_Pthread_State* thread_state = (Platform_Pthread_State*) thread.handle;
+    Platform_Pthread_State* thread_state = (Platform_Pthread_State*) thread->handle;
     bool state = pthread_detach(thread_state->thread) == 0;
     (void) state;
     // return _platform_error_code(state);
 }
 
-void platform_thread_join(const Platform_Thread* threads, int64_t count) 
+bool platform_thread_join(const Platform_Thread* threads, int64_t count, double seconds_or_negative_if_infinite)
 {
-    Platform_Error last_error = _platform_error_code(true);
-    for(int64_t i = 0; i < count; i++)
-    {
-        Platform_Pthread_State* thread_state = (Platform_Pthread_State*) threads[i].handle;
-        if(pthread_join(thread_state->thread, NULL) != 0)
-            last_error = _platform_error_code(false);
-    }
+    //debug
+    Platform_Error last_error = 0;
     (void) last_error;
-    // return last_error;
+
+    bool out = true;
+    if(seconds_or_negative_if_infinite > 0)
+    {
+        struct timespec now_ts = {0};
+        (void) clock_gettime(CLOCK_REALTIME, &now_ts);
+        int64_t now_nanosecs = now_ts.tv_sec*1000000000LL + now_ts.tv_nsec;
+
+        struct timespec wait_till_ts = {0};
+        int64_t wait_nanosecs = (int64_t) (seconds_or_negative_if_infinite*1000000000LL);
+        int64_t nanosecs = wait_nanosecs + now_nanosecs;
+        wait_till_ts.tv_sec = nanosecs / 1000000000LL; 
+        wait_till_ts.tv_nsec = nanosecs % 1000000000LL; 
+
+        for(int64_t i = 0; i < count; i++)
+        {
+            Platform_Pthread_State* thread_state = (Platform_Pthread_State*) threads[i].handle;
+            int err = pthread_timedjoin_np(thread_state->thread, NULL, &wait_till_ts); 
+            if(err != 0)
+                last_error = (Platform_Error) err;
+            if(err == ETIMEDOUT)
+                out = false;
+        }
+    }
+    else
+    {
+        for(int64_t i = 0; i < count; i++)
+        {
+            Platform_Pthread_State* thread_state = (Platform_Pthread_State*) threads[i].handle;
+            int err = pthread_join(thread_state->thread, NULL); 
+            if(err != 0)
+                last_error = (Platform_Error) err;
+        }
+    }
+
+    return out;
 }
 
 Platform_Error platform_mutex_init(Platform_Mutex* mutex)
 {
     platform_mutex_deinit(mutex);
     bool state = true;
-    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) malloc(sizeof(Platform_Mutex_State));
+    pthread_mutex_t* mutex_state = (pthread_mutex_t*) malloc(sizeof(pthread_mutex_t));
 
     state = mutex_state != NULL;
     if(state)
-        state = pthread_mutex_init(&mutex_state->mutex, NULL) == 0;
+        state = pthread_mutex_init(mutex_state, NULL) == 0;
 
     Platform_Error error = _platform_error_code(state);
     mutex->handle = mutex_state;
@@ -341,10 +393,10 @@ Platform_Error platform_mutex_init(Platform_Mutex* mutex)
 }
 void platform_mutex_deinit(Platform_Mutex* mutex)
 {
-    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex->handle;
+    pthread_mutex_t* mutex_state = (pthread_mutex_t*) mutex->handle;
     if(mutex_state)
     {
-        pthread_mutex_destroy(&mutex_state->mutex);
+        pthread_mutex_destroy(mutex_state);
         free(mutex_state);
     }
 
@@ -353,22 +405,47 @@ void platform_mutex_deinit(Platform_Mutex* mutex)
 
 void platform_mutex_lock(Platform_Mutex* mutex)
 {
-    bool state = false;
-    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex->handle;
+    pthread_mutex_t* mutex_state = (pthread_mutex_t*) mutex->handle;
     if(mutex_state)
-        state = pthread_mutex_lock(&mutex_state->mutex) == 0; 
-    (void) state;
-    // return _platform_error_code(state);
+        pthread_mutex_lock(mutex_state); 
 }
 
 void platform_mutex_unlock(Platform_Mutex* mutex)
 {
-    bool state = false;
-    Platform_Mutex_State* mutex_state = (Platform_Mutex_State*) mutex->handle;
+    pthread_mutex_t* mutex_state = (pthread_mutex_t*) mutex->handle;
     if(mutex_state)
-        state = pthread_mutex_unlock(&mutex_state->mutex) == 0;
-    (void) state;
-    // return _platform_error_code(state);
+        pthread_mutex_unlock(mutex_state);
+}
+
+
+#include <linux/futex.h> 
+#include <sys/syscall.h> 
+#include <unistd.h>
+#include <sched.h>
+#include <errno.h>
+void platform_futex_wake_all(volatile void* state) {
+    syscall(SYS_futex, (void*) state, FUTEX_WAKE | FUTEX_PRIVATE_FLAG, INT32_MAX, NULL, NULL, 0);
+}
+
+void platform_futex_wake(volatile void* state) {
+    syscall(SYS_futex, (void*) state, FUTEX_WAKE | FUTEX_PRIVATE_FLAG, 1, NULL, NULL, 0);
+}
+
+bool platform_futex_wait(volatile void* state, uint32_t undesired, double seconds_or_negatove_if_infinite)
+{
+    struct timespec tm = {0};
+    struct timespec* tm_ptr = NULL;
+    if(seconds_or_negatove_if_infinite >= 0)
+    {
+        int64_t nanosecs = (int64_t) (seconds_or_negatove_if_infinite*1000000000LL);
+        tm.tv_sec = nanosecs / 1000000000LL; 
+        tm.tv_nsec = nanosecs % 1000000000LL; 
+        tm_ptr = &tm;
+    }
+    long ret = syscall(SYS_futex, (void*) state, FUTEX_WAIT | FUTEX_PRIVATE_FLAG, undesired, tm_ptr, NULL, 0);
+    if (ret == -1 && errno == ETIMEDOUT) 
+        return false;
+    return true;
 }
 
 //=========================================
@@ -426,7 +503,7 @@ void _platform_perf_counters_deinit()
 
 const char* _ephemeral_null_terminate(Platform_String string)
 {
-    if(string.data == NULL || string.size <= 0)
+    if(string.data == NULL || string.len <= 0)
         return "";
 
     //We use a trick to not pointlessly copy and null terminate strings that are null terminated.
@@ -448,7 +525,7 @@ const char* _ephemeral_null_terminate(Platform_String string)
 
     if(DO_CONDTIONAL_NULL_TERMINATION)
     {
-        const char* potential_null_termination = string.data + string.size;
+        const char* potential_null_termination = string.data + string.len;
         bool is_null_termianted = false;
 
         //if the potential_null_termination is on the same page as the rest of the string...
@@ -473,9 +550,9 @@ const char* _ephemeral_null_terminate(Platform_String string)
 
     bool had_error = false;
     //If we need a bigger buffer OR the previous allocation was too big and the new one isnt
-    if(*curr_size <= string.size || (*curr_size > MAX_COPIED_SIZE && string.size <= MAX_COPIED_SIZE))
+    if(*curr_size <= string.len || (*curr_size > MAX_COPIED_SIZE && string.len <= MAX_COPIED_SIZE))
     {
-        int64_t alloc_size = string.size + 1;
+        int64_t alloc_size = string.len + 1;
         if(alloc_size < MIN_COPIED_SIZE)
             alloc_size = MIN_COPIED_SIZE;
 
@@ -496,8 +573,8 @@ const char* _ephemeral_null_terminate(Platform_String string)
 
     if(had_error == false)
     {
-        memmove(*curr_data, string.data, (size_t) string.size);
-        (*curr_data)[string.size] = '\0';
+        memmove(*curr_data, string.data, (size_t) string.len);
+        (*curr_data)[string.len] = '\0';
         out_string = *curr_data;
     }
 
@@ -819,47 +896,21 @@ Platform_Error platform_directory_set_current_working(Platform_String new_workin
     bool state = chdir(_ephemeral_null_terminate(new_working_dir)) == 0;
     return _platform_error_code(state);
 }
-const char* platform_directory_get_current_working()
+
+Platform_Error platform_directory_get_current_working(void* buffer, int64_t buffer_size, bool* needs_bigger_buffer_or_null)
 {
-    static char* dir_path = NULL;
-    static int64_t dir_path_size = 0;
-
-    for(int i = 0; i < 24; i++)
-    {
-        if(dir_path_size > 0 && dir_path != NULL)
-        {
-            //if success
-            if(getcwd(dir_path, (size_t) dir_path_size) != NULL)
-                break;
-            //if error was caused by something else then small buffer
-            //returne error
-            if(errno != ERANGE)
-                dir_path[0] = '\0';
-            //Else continue reallocating
-            else
-            {}
-        }
-
-        dir_path_size *= 2;
-        if(dir_path_size < 256)
-            dir_path_size = 256;
-            
-        void* realloced_to = realloc(dir_path, (size_t) dir_path_size);
-        if(realloced_to == NULL)
-        {
-            PLATFORM_PRINT_OUT_OF_MEMORY(dir_path_size);
-            dir_path_size = 0;
-            break;
-        }
-
-        dir_path = (char*) realloced_to;
-    }
-
-    if(dir_path)
-        return dir_path;
-    else    
-        return "";
+    Platform_Error error = 0;
+    if(getcwd((char*) buffer, (size_t) buffer_size) == NULL)
+        error = (Platform_Error) errno;
+    if(needs_bigger_buffer_or_null)
+        *needs_bigger_buffer_or_null = error == ERANGE;
+    return error;
 }    
+
+const char* platform_directory_get_startup_working()
+{
+    return "."; //TEMP
+}
 
 const char* platform_get_executable_path()
 {
@@ -1081,17 +1132,25 @@ Platform_Error platform_file_memory_map(Platform_String file_path, int64_t desir
 //Unmpas the previously mapped file. If mapping is a result of failed platform_file_memory_map does nothing.
 void platform_file_memory_unmap(Platform_Memory_Mapping* mapping);
 
-const char* platform_translate_error(Platform_Error error)
+int64_t platform_translate_error(Platform_Error error, char* translated, int64_t translated_size)
 {
-    switch(error)
-    {
-        default:
-        case PLATFORM_ERROR_OK:
-            return strerror((int) error);
+    const char* str = NULL;
+    if(error == PLATFORM_ERROR_OK)
+        str = "okay";
+    if(error == PLATFORM_ERROR_OTHER)
+        str = "Other platform specific error occurred";
+    else
+        str = strerror((int) error);
 
-        case PLATFORM_ERROR_OTHER:
-            return "Other platform specific error occurred";
+    int64_t needed_size = (int64_t) strlen(str);
+    int64_t availible_size = needed_size < translated_size - 1 ? needed_size : translated_size - 1;
+    if(translated_size > 0)
+    {
+        memcpy(translated, str, (size_t) availible_size);
+        translated[availible_size] = '\0';
     }
+
+    return needed_size + 1;
 }
 
 #include <malloc.h>
@@ -1176,7 +1235,7 @@ int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t sk
 #define _MAX(a, b)   ((a) > (b) ? (a) : (b))
 #define _CLAMP(value, low, high) _MAX((low), _MIN((value), (high)))
 
-void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, const void* const* stack, int64_t stack_size)
+void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, void** stack, int64_t stack_size)
 {
     assert(stack_size >= 0);
     memset(translated, 0, (size_t) stack_size * sizeof *translated);
@@ -1395,7 +1454,7 @@ Platform_Exception platform_exception_sandbox(
                 
                 Platform_Sandbox_Error sanbox_error = {PLATFORM_EXCEPTION_NONE};
                 sanbox_error.exception = had_exception;
-                sanbox_error.call_stack = (const void * const*) (void*) handler->stack;
+                sanbox_error.call_stack = (void **) (void*) handler->stack;
                 sanbox_error.call_stack_size = handler->stack_size;
                 sanbox_error.epoch_time = handler->epoch_time;
                 

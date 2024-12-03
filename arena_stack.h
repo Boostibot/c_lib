@@ -306,6 +306,8 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
         if((u8*) new_used_to > channel->commit_to)
         {
             commit = DIV_CEIL(size, stack->commit_granularity)*stack->commit_granularity;
+            ASSERT((size_t) channel->commit_to % platform_allocation_granularity() == 0);
+
             if(commit > stack->channel_reserved_size)
             {
                 out = NULL;
@@ -315,8 +317,7 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
                 goto end;
             }
             
-            u8* new_commit_to = *max_alive_level + commit;
-            Platform_Error platform_error = platform_virtual_reallocate(NULL, channel->commit_to, new_commit_to - channel->commit_to, PLATFORM_VIRTUAL_ALLOC_COMMIT, PLATFORM_MEMORY_PROT_READ_WRITE);
+            Platform_Error platform_error = platform_virtual_reallocate(NULL, channel->commit_to, commit, PLATFORM_VIRTUAL_ALLOC_COMMIT, PLATFORM_MEMORY_PROT_READ_WRITE);
             if(platform_error)
             {
                 out = NULL;
@@ -328,7 +329,7 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
             }
 
             stack->commit_count += 1;
-            channel->commit_to = new_commit_to;
+            channel->commit_to += commit;
         }
 
         channel->active_level = max_alive_level;

@@ -306,7 +306,7 @@ EXTERNAL void stable_array_remove(Stable_Array* stable, isize index)
     }
         
     if(stable->fill_empty_with != STABLE_ARRAY_KEEP_DATA_FLAG)
-        memset(lookup.item, stable->fill_empty_with, (size_t) stable->item_size);
+        memset(lookup.item, (int) stable->fill_empty_with, (size_t) stable->item_size);
 
     stable->len -= 1;
     block->filled_mask = block->filled_mask & ~bit;
@@ -353,7 +353,7 @@ EXTERNAL void stable_array_reserve(Stable_Array* stable, isize to_size)
         memset(alloced_blocks, 0, (size_t) alloced_blocks_bytes);
 
         //Add the blocks into our array (backwards so that the next added item has lowest index)
-        uintptr_t curr_block_addr = (uintptr_t) alloced_blocks + alloced_blocks_bytes;
+        uintptr_t curr_block_addr = (uintptr_t) (alloced_blocks + alloced_blocks_bytes);
         for(u32 i = blocks_after; i-- > blocks_before;)
         {
             curr_block_addr -= stable->item_size*STABLE_ARRAY_BLOCK_SIZE;

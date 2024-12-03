@@ -156,8 +156,6 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_IMPL)) && !defined(JOT_ALLOCATOR_HAS_IMPL)
 #define JOT_ALLOCATOR_HAS_IMPL
 
-    
-
     EXTERNAL void* arena_frame_allocator_func(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
 
     EXTERNAL ATTRIBUTE_ALLOCATOR(2, 5) 

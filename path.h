@@ -2,6 +2,7 @@
 #define JOT_PATH
 
 #include "string.h"
+#include "arena_stack.h"
 #include "log.h"
 
 // This is a not exhaustive filepath handling facility. 
@@ -1018,33 +1019,17 @@ EXTERNAL Path_Builder path_make_absolute(Allocator* alloc, Path relative_to, Pat
     return out;
 }
 
-INTERNAL void _path_get_executable_once(void* context)
-{
-    Path_Builder* builder = (Path_Builder*) context; 
-    Path path = path_parse_cstring(platform_get_executable_path());
-    *builder = path_normalize(allocator_get_static(), path, PATH_FLAG_TRANSFORM_TO_FILE);
-}
-
-INTERNAL void _path_get_executable_directory_once(void* context)
-{
-    Path_Builder* builder = (Path_Builder*) context; 
-    Path exe_path = path_parse_cstring(platform_get_executable_path());
-    Path containing = path_strip_to_containing_directory(exe_path);
-    *builder = path_normalize(allocator_get_static(), containing, 0);
-}
-
-INTERNAL void _path_get_startup_working_directory_once(void* context)
-{
-    Path_Builder* builder = (Path_Builder*) context; 
-    Path exe_path = path_parse_cstring(platform_directory_get_startup_working());
-    *builder = path_normalize(allocator_get_static(), exe_path, 0);
-}
-
 EXTERNAL Path path_get_executable()
 {
     static uint32_t init = 0;
     static Path_Builder builder = {0};
-    platform_call_once(&init, _path_get_executable_once, &builder);
+    if(platform_once_begin(&init))
+    {
+        Path path = path_parse_cstring(platform_get_executable_path());
+        builder = path_normalize(allocator_get_static(), path, PATH_FLAG_TRANSFORM_TO_FILE);
+        platform_once_end(&init);
+    }
+
     return builder.path;
 }
 
@@ -1052,7 +1037,14 @@ EXTERNAL Path path_get_executable_directory()
 {
     static uint32_t init = 0;
     static Path_Builder builder = {0};
-    platform_call_once(&init, _path_get_executable_directory_once, &builder);
+    if(platform_once_begin(&init))
+    {
+        Path exe_path = path_parse_cstring(platform_get_executable_path());
+        Path containing = path_strip_to_containing_directory(exe_path);
+        builder = path_normalize(allocator_get_static(), containing, PATH_FLAG_TRANSFORM_TO_DIR);
+        platform_once_end(&init);
+    }
+
     return builder.path;
 }
 
@@ -1060,8 +1052,13 @@ EXTERNAL Path path_get_startup_working_directory()
 {
     static uint32_t init = 0;
     static Path_Builder builder = {0};
+    if(platform_once_begin(&init))
+    {
+        Path working_path = path_parse_cstring(platform_directory_get_startup_working());
+        builder = path_normalize(allocator_get_static(), working_path, PATH_FLAG_TRANSFORM_TO_DIR);
+        platform_once_end(&init);
+    }
     
-    platform_call_once(&init, _path_get_startup_working_directory_once, &builder);
     return builder.path;
 }
 

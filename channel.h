@@ -1193,7 +1193,7 @@ CHANAPI void chan_wake_block(volatile void* state)
         struct timespec* tm_ptr = NULL;
         if(timeout_or_negatove_if_infinite >= 0)
         {
-            uint64_t nanosecs = (uint64_t) (timeout_or_negatove_if_infinite*1000000000LL);
+            int64_t nanosecs = (int64_t) (timeout_or_negatove_if_infinite*1000000000LL);
             tm.tv_sec = nanosecs / 1000000000LL; 
             tm.tv_nsec = nanosecs % 1000000000LL; 
             tm_ptr = &tm;

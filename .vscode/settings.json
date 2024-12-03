@@ -45,6 +45,21 @@
         "unistd.h": "c",
         "stat.h": "c",
         "optional": "cpp",
-        "atomic": "cpp"
+        "atomic": "cpp",
+        "iterator": "c",
+        "*.tcc": "cpp",
+        "system_error": "c",
+        "exception": "cpp",
+        "map": "c",
+        "mman.h": "c",
+        "shared_mutex": "c",
+        "__mutex_base": "c",
+        "__threading_support": "c",
+        "thread": "c",
+        "iosfwd": "c",
+        "__tree": "c",
+        "set": "c",
+        "condition_variable": "c",
+        "cstdint": "c"
     }
 }

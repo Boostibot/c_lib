@@ -38,7 +38,6 @@
     #include "defines.h"
 #endif
 
-
 #if !defined(ASSERT_CUSTOM_SETTINGS) && !defined(NDEBUG)
     //Locally enables/disables asserts. If we wish to disable for part of
     // code we simply undefine them then redefine them after.
@@ -56,7 +55,7 @@
 #define STATIC_ASSERT(x) typedef char PP_CONCAT(__static_assertion__, __LINE__)[(x) ? 1 : -1]
 
 //If x evaluates to false executes assertion_report() with optional provided message
-#define TEST(x, ...)                            (!(x) ? (assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, " " __VA_ARGS__), sizeof printf(" " __VA_ARGS__), abort(), 0) : 1)
+#define TEST(x, ...)                            (!(x) ? (assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, " " __VA_ARGS__), (void) sizeof printf(" " __VA_ARGS__), abort()) : (void) 1)
 #define _DISSABLED_TEST(x, ...)                 sizeof(printf(" " __VA_ARGS__), (x))
 
 //In debug builds do the same as TEST() else do nothing

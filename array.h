@@ -45,7 +45,7 @@
     {
         (void) from_allocator; (void) old_size; (void) align;
         if(new_size != 0)
-            return realloc(old_ptr, new_size);
+            return realloc(old_ptr, (size_t) new_size);
         else
         {
             free(old_ptr);
@@ -157,7 +157,7 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
 #define array_append(array_ptr, items, item_count) (\
         /* Here is a little hack to typecheck the items array.*/ \
         /* We do a comparison that emmits a warning on incompatible types but doesnt get executed */ \
-        sizeof((array_ptr)->data == (items)), \
+        (void) sizeof((array_ptr)->data == (items)), \
         generic_array_append(array_make_generic(array_ptr), (items), (item_count)) \
     ) \
     

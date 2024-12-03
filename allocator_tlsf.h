@@ -336,7 +336,7 @@ EXTERNAL void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node
     INTERNAL int32_t _tlsf_find_last_set_bit64(uint64_t num)
     {
         ASSERT(num != 0);
-        return 64 - __builtin_ctzll((unsigned long long) num) - 1;
+        return 64 - __builtin_clzll((unsigned long long) num) - 1;
     }
     
     INTERNAL int32_t _tlsf_find_first_set_bit64(uint64_t num)
@@ -1283,6 +1283,7 @@ void test_allocator_tlsf(double seconds)
             {
                 int32_t should_be_i = tlsf_bin_index_from_size(k, false);
                 int32_t should_be_i_plus_one = tlsf_bin_index_from_size(k, true);
+
                 TEST(should_be_i == i);
                 TEST(should_be_i_plus_one == i + 1);
                 TEST(should_be_i_plus_one == i + 1);
@@ -1306,6 +1307,7 @@ void test_allocator_tlsf(double seconds)
     #include "perf.h"
     #include "random.h"
     #include "log.h"
+    #include "arena.h"
     void benchmark_allocator_tlsf_single(double seconds, bool touch, isize at_once, isize min_size, isize max_size, isize min_align_log2, isize max_align_log2)
     {
         LOG_INFO("BENCH", "Running benchmarks for %s with touch:%s at_once:%lli size:[%lli, %lli) align_log:[%lli %lli)", 

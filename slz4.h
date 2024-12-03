@@ -520,24 +520,25 @@ SLZ4_EXPORT int slz4_decompress(void* output, int output_size, const void* input
             if(match_offset > out_i || match_offset == 0 || out_i + match_size > out_size) // (*)
                 break;
 
-            if(out)
-            if(match_size <= match_offset)
-            {
-                for(uint32_t i = 0; i < match_size; i += 32)
+            if(out) {
+                if(match_size <= match_offset)
                 {
-                    //We the source and destination for the copy operation *can* overlap
-                    // as such we need to use "temporary buffer". This does not make any difference
-                    // however, because the data will be coppied to registers and then back from registers
-                    // to memory regrdless. This is just not to trigger UB.
-                    uint64_t buff[4] = {0};
-                    memcpy(buff, out + out_i - match_offset + i, 32);
-                    memcpy(out + out_i + i, buff, 32);
+                    for(uint32_t i = 0; i < match_size; i += 32)
+                    {
+                        //We the source and destination for the copy operation *can* overlap
+                        // as such we need to use "temporary buffer". This does not make any difference
+                        // however, because the data will be coppied to registers and then back from registers
+                        // to memory regrdless. This is just not to trigger UB.
+                        uint64_t buff[4] = {0};
+                        memcpy(buff, out + out_i - match_offset + i, 32);
+                        memcpy(out + out_i + i, buff, 32);
+                    }
                 }
-            }
-            else
-            {
-                for(uint32_t i = 0; i < match_size; i++)
-                    out[out_i + i] = out[out_i - match_offset+i];
+                else
+                {
+                    for(uint32_t i = 0; i < match_size; i++)
+                        out[out_i + i] = out[out_i - match_offset+i];
+                }
             }
 
             out_i += match_size;

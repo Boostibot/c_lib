@@ -553,7 +553,7 @@ SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_it
         {
             //i32
             {
-                int size = _sort_rand_exponential_distribution(MAX_SIZE_LOG2, 0.5)/sizeof(int32_t);
+                int size = _sort_rand_exponential_distribution(MAX_SIZE_LOG2, 0.5)/(int)sizeof(int32_t);
                 int32_t* items_val = (int32_t*) items_randomized;
                 for(int i = 0; i < size; i++)
                     items_val[i] = rand();
@@ -616,14 +616,14 @@ SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_it
 
             //cstring
             {
-                int size = _sort_rand_exponential_distribution(MAX_SIZE_LOG2, 0.5)/sizeof(const char*);
+                int size = _sort_rand_exponential_distribution(MAX_SIZE_LOG2, 0.5)/(int)sizeof(const char*);
                 const char** items_val = (const char**) items_randomized;
                 for(int i = 0; i < size; i++)
-                    items_val[i] = words[rand() % (sizeof(words)/sizeof(*words))];
+                    items_val[i] = words[(size_t) rand() % (sizeof(words)/sizeof(*words))];
 
                 size_t bytes = (size_t) size * sizeof(const char*);
                 memcpy(items_refernce_sorted, items_randomized, bytes);
-                qsort(items_refernce_sorted, size, sizeof(const char*), _sort_test_cstring_comp);
+                qsort(items_refernce_sorted, (size_t) size, sizeof(const char*), _sort_test_cstring_comp);
                 
                 memcpy(items_sorted, items_randomized, bytes);
                 insertion_sort(items_sorted, items_temp, size, sizeof(const char*), _sort_test_cstring_less, NULL);

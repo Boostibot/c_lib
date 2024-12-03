@@ -121,7 +121,7 @@ HASH_FN_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed)
     const uint8_t* end = data + size;
     for(; data < end - 3; data += 4)
     {
-        uint64_t read = 0; 
+        uint32_t read = 0; 
         memcpy(&read, data, sizeof read);
 
         read *= magic;
@@ -244,7 +244,7 @@ HASH_FN_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed)
         hash = (hash ^ _xxhash64_process_single(0, state[2])) * XXHASH_FN64_PRIME_1 + XXHASH_FN64_PRIME_4;
         hash = (hash ^ _xxhash64_process_single(0, state[3])) * XXHASH_FN64_PRIME_1 + XXHASH_FN64_PRIME_4;
     }
-    hash += size;
+    hash += (uint64_t) size;
 
     //Consume last <32 Bytes
     for (; data + 8 <= end; data += 8)
