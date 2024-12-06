@@ -83,10 +83,10 @@ void string_map_hash_string_store(void* stored, const void* provided, String_Map
 INTERNAL void test_string_map_stress(f64 max_seconds)
 {
 	Debug_Allocator debug = {0};
-	debug_allocator_init(&debug, allocator_get_malloc(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_CAPTURE_CALLSTACK);
+	debug_allocator_init(&debug, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_CAPTURE_CALLSTACK);
 	
 	Debug_Allocator strings = {0};
-	debug_allocator_init(&strings, allocator_get_malloc(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_CAPTURE_CALLSTACK);
+	debug_allocator_init(&strings, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_CAPTURE_CALLSTACK);
 	{
 		typedef enum {
 			REINIT,

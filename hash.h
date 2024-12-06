@@ -87,11 +87,6 @@
     typedef int64_t isize; //can also be usnigned if desired
     typedef struct Allocator Allocator;
     
-    static Allocator* allocator_get_default() 
-    { 
-        return NULL; 
-    }
-
     static void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         (void) from_allocator; (void) old_size; (void) align;
@@ -382,7 +377,6 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         PROFILE_STOP();
         return out;
     }
-
     
     INTERNAL bool _hash_needs_rehash(isize current_size, isize to_size, isize load_factor)
     {
@@ -391,10 +385,8 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
 
     INTERNAL void _hash_init_if_not_init(Hash* table, Allocator* allocator, isize load_factor_percent, isize load_factor_gravestone_percent)
     {
+        ASSERT(allocator != NULL);
         table->allocator = allocator;
-        if(table->allocator == NULL)
-            table->allocator = allocator_get_default();
-        
         if(load_factor_percent <= 0 || load_factor_percent >= 100)
             table->load_factor = 75;
         else
@@ -450,8 +442,9 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
 
         if(rehash_to > to_table->entries_count)
         {   
+            ASSERT(to_table->allocator != NULL);
             isize elem_size = sizeof(Hash_Entry);
-            to_table->entries = (Hash_Entry*) allocator_reallocate(to_table->allocator, rehash_to * elem_size, to_table->entries, to_table->entries_count * elem_size, sizeof(Hash_Entry));
+            to_table->entries = (Hash_Entry*) allocator_reallocate(to_table->allocator, rehash_to * elem_size, to_table->entries, to_table->entries_count * elem_size, elem_size);
             to_table->entries_count = (int32_t) rehash_to;
         }
         

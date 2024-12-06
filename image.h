@@ -436,8 +436,7 @@ EXTERNAL void image_reserve(Image* image, isize capacity)
 {
     if(capacity > image->capacity)
     {
-        if(image->allocator == NULL)
-            image->allocator = allocator_get_default();
+        ASSERT(image->allocator != NULL);
 
         isize old_byte_size = image_byte_size(*image);
         u8* new_pixels = (u8*) allocator_allocate(image->allocator, capacity, DEF_ALIGN);
@@ -455,8 +454,7 @@ EXTERNAL void image_reshape(Image* image, isize width, isize height, isize pixel
     isize needed_size = width*height*pixel_size;
     if(needed_size > image->capacity)
     {
-        if(image->allocator == NULL)
-            image->allocator = allocator_get_default();
+        ASSERT(image->allocator != NULL);
 
         u8* new_pixels = (u8*) allocator_allocate(image->allocator, needed_size, DEF_ALIGN);
         allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN);
@@ -490,9 +488,7 @@ EXTERNAL void image_resize(Image* image, isize width, isize height)
     if(image->width == width && image->height == height)
         return;
 
-    if(image->allocator == NULL)
-        image->allocator = allocator_get_default();
-
+    ASSERT(image->allocator != NULL);
     if(image->pixel_size == 0)
     {
         ASSERT(image->width == 0 && image->height == 0);

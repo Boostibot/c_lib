@@ -534,8 +534,7 @@ EXTERNAL bool char_is_id(char c);
         builder_deinit(builder);
         builder->allocator = allocator;
         builder->data = _builder_null_termination;
-        if(builder->allocator == NULL)
-            builder->allocator = allocator_get_default();
+        ASSERT(allocator != NULL);
     }
 
     EXTERNAL void builder_init_with_capacity(String_Builder* builder, Allocator* allocator, isize capacity_or_zero)
@@ -559,14 +558,10 @@ EXTERNAL bool char_is_id(char c);
     {
         PROFILE_START();
         ASSERT(builder_is_invariant(*builder));
-        ASSERT(capacity >= 0);
+        ASSERT(capacity >= 0 && builder->allocator != NULL);
 
         //@TEMP: just for transition
         //ASSERT(builder->data != NULL);
-
-        //If allocator is not set grab one from the context
-        if(builder->allocator == NULL)
-            builder->allocator = allocator_get_default();
 
         void* old_data = NULL;
         isize old_alloced = 0;

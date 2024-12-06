@@ -8,10 +8,9 @@ INTERNAL void test_image_builder_copy()
 {
     Debug_Allocator allocator = {0};
     debug_allocator_init_use(&allocator, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_CAPTURE_CALLSTACK);
-
     {
         Image from_image  = {0};
-        image_init(&from_image, allocator_get_default(), sizeof(u16), PIXEL_TYPE_U16);
+        image_init(&from_image, allocator.alloc, sizeof(u16), PIXEL_TYPE_U16);
         image_reserve(&from_image, 1000);
         image_resize(&from_image, 4, 4);
 
@@ -26,7 +25,7 @@ INTERNAL void test_image_builder_copy()
         TEST(memcmp(from_image.pixels, pattern, sizeof(pattern)) == 0);
 
         Image to_image = {0};
-        image_init(&to_image, allocator_get_default(), sizeof(u16), PIXEL_TYPE_U16);
+        image_init(&to_image, allocator.alloc, sizeof(u16), PIXEL_TYPE_U16);
         image_resize(&to_image, 2, 2);
 
         Subimage from_imagev = image_portion(from_image, 1, 1, 2, 2);
@@ -49,7 +48,6 @@ INTERNAL void test_image_builder_copy()
         
         TEST(allocator.allocation_count <= 2);
     }
-
     debug_allocator_deinit(&allocator);
 }
 

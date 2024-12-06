@@ -105,12 +105,14 @@ typedef struct Debug_Allocator
     Allocator_Set allocator_backup;
 } Debug_Allocator;
 
-#define DEBUG_ALLOCATOR_CONTINUOUS          (u64) 1  /* do_continual_checks = true */
-#define DEBUG_ALLOCATOR_PRINT               (u64) 2  /* do_printing = true */
-#define DEBUG_ALLOCATOR_LARGE_DEAD_ZONE     (u64) 4  /* dead_zone_size = 64 */
-#define DEBUG_ALLOCATOR_NO_DEAD_ZONE        (u64) 8  /* dead_zone_size = 0 */
-#define DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK   (u64) 16 /* do_deinit_leak_check = true */
-#define DEBUG_ALLOCATOR_CAPTURE_CALLSTACK   (u64) 32 /* captured_callstack_size = 16 */
+#define DEBUG_ALLOCATOR_CONTINUOUS          1  /* do_continual_checks = true */
+#define DEBUG_ALLOCATOR_PRINT               2  /* do_printing = true */
+#define DEBUG_ALLOCATOR_LARGE_DEAD_ZONE     4  /* dead_zone_size = 64 */
+#define DEBUG_ALLOCATOR_NO_DEAD_ZONE        8  /* dead_zone_size = 0 */
+#define DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK   16 /* do_deinit_leak_check = true */
+#define DEBUG_ALLOCATOR_CAPTURE_CALLSTACK   32 /* captured_callstack_size = 16 */
+#define DEBUG_ALLOCATOR_USE                 64
+
 
 //Initalizes the debug allocator using a parent and options. 
 //Many options cannot be changed during the life of the debug allocator.

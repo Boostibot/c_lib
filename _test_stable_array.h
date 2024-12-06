@@ -9,7 +9,7 @@ static void test_stable_array()
     debug_allocator_init(&resources_alloc, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_CAPTURE_CALLSTACK);
     {
         Stable_Array stable = {0};
-        stable_array_init(&stable, allocator_get_default(), sizeof(i32));
+        stable_array_init(&stable, resources_alloc.alloc, sizeof(i32));
 
         i32* val = NULL;
         isize i1 = stable_array_insert(&stable, (void**) &val);

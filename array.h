@@ -31,16 +31,11 @@
     
     #define EXTERNAL
     #define INTERNAL static
-    #define DEF_ALIGN sizeof(void*)
     #define ASSERT(x) assert(x)
 
     typedef int64_t isize; //can also be usnigned if desired
     typedef struct Allocator Allocator;
-    
-    static Allocator* allocator_get_default() 
-    { 
-        return NULL; 
-    }
+
     static void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
     {
         (void) from_allocator; (void) old_size; (void) align;
@@ -218,10 +213,8 @@ EXTERNAL bool generic_array_is_invariant(Generic_Array gen)
 EXTERNAL void generic_array_init(Generic_Array gen, Allocator* allocator)
 {
     generic_array_deinit(gen);
-
     gen.array->allocator = allocator;
-    if(gen.array->allocator == NULL)
-        gen.array->allocator = allocator_get_default();
+    ASSERT(generic_array_is_invariant(gen));
 }
 
 EXTERNAL void generic_array_deinit(Generic_Array gen)
@@ -229,7 +222,7 @@ EXTERNAL void generic_array_deinit(Generic_Array gen)
     ASSERT(gen.array != NULL);
     ASSERT(generic_array_is_invariant(gen));
     if(gen.array->capacity > 0)
-        allocator_reallocate(gen.array->allocator, 0, gen.array->data, gen.array->capacity * gen.item_size, DEF_ALIGN);
+        allocator_reallocate(gen.array->allocator, 0, gen.array->data, gen.array->capacity * gen.item_size, gen.item_align);
     
     memset(gen.array, 0, sizeof *gen.array);
 }
@@ -243,14 +236,11 @@ EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity)
     PROFILE_SCOPE()
     {
         ASSERT(generic_array_is_invariant(gen));
-        ASSERT(capacity >= 0);
+        ASSERT(capacity >= 0 && gen.array->allocator != NULL);
 
         isize old_byte_size = gen.item_size * gen.array->capacity;
         isize new_byte_size = gen.item_size * capacity;
-        if(gen.array->allocator == NULL)
-            gen.array->allocator = allocator_get_default();
-
-        gen.array->data = (uint8_t*) allocator_reallocate(gen.array->allocator, new_byte_size, gen.array->data, old_byte_size, DEF_ALIGN);
+        gen.array->data = (uint8_t*) allocator_reallocate(gen.array->allocator, new_byte_size, gen.array->data, old_byte_size, gen.item_align);
 
         //trim the size if too big
         gen.array->capacity = capacity;
