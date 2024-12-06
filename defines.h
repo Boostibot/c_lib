@@ -58,7 +58,7 @@ typedef unsigned long long llu;
     void* x = (a); \
     void* y = (b); \
     size_t N = (n); \
-    void* t = STACK_ALLOC(N); \
+    char t[n]; \
     memcpy(t, x, N); \
     memcpy(x, y, N); \
     memcpy(y, t, N); \
@@ -79,7 +79,6 @@ typedef unsigned long long llu;
 
 // Attributes
 #if defined(_MSC_VER)
-    #define ASSUME_UNREACHABLE()                                    __assume(0)
     #define ATTRIBUTE_RESTRICT                                      __restrict
     #define ATTRIBUTE_INLINE_ALWAYS                                 __forceinline
     #define ATTRIBUTE_INLINE_NEVER                                  __declspec(noinline)
@@ -87,9 +86,7 @@ typedef unsigned long long llu;
     #define ATTRIBUTE_ALIGNED(bytes)                                __declspec(align(bytes))
     #define ATTRIBUTE_NORETURN                                      __declspec(noreturn)
     #define ATTRIBUTE_ALLOCATOR(size_arg_index, align_arg_index)    __declspec(restrict)
-    #define STACK_ALLOC(bytes)                                      _alloca(bytes)
 #elif defined(__GNUC__) || defined(__clang__)
-    #define ASSUME_UNREACHABLE()                                    __builtin_unreachable() 
     #define ATTRIBUTE_RESTRICT                                      __restrict__
     #define ATTRIBUTE_INLINE_ALWAYS                                 __attribute__((always_inline)) inline
     #define ATTRIBUTE_INLINE_NEVER                                  __attribute__((noinline))
@@ -97,17 +94,15 @@ typedef unsigned long long llu;
     #define ATTRIBUTE_ALIGNED(bytes)                                __attribute__((aligned(bytes)))
     #define ATTRIBUTE_NORETURN                                      __attribute__((noreturn))
     #define ATTRIBUTE_ALLOCATOR(size_arg_index, align_arg_index)    __attribute__((malloc, alloc_size(size_arg_index), alloc_align(align_arg_index)))
-    #define STACK_ALLOC(bytes)                                      __builtin_alloca(bytes)
 #else
     #define ASSUME_UNREACHABLE()                                (*(int*)0 = 0)
     #define ATTRIBUTE_RESTRICT                                  /* C's restrict keyword. see: https://en.cppreference.com/w/c/language/restrict */
-    #define ATTRIBUTE_INLINE_ALWAYS                             /* Ensures function will get inlined. Applied before function declartion. */
+    #define ATTRIBUTE_INLINE_ALWAYS                             inline /* Ensures function will get inlined. Applied before function declartion. */
     #define ATTRIBUTE_INLINE_NEVER                              /* Ensures function will not get inlined. Applied before function declartion. */
     #define ATTRIBUTE_THREAD_LOCAL                              _Thread_local /* Declares a variable thread local. Applied before variable declarition. */
     #define ATTRIBUTE_ALIGNED(align)                            _Alignas(align) /* Places a variable on the stack aligned to 'align' */
     #define ATTRIBUTE_NORETURN                                  /* Specifices that this function will not return (for example abort, exit ...) . Applied before function declartion. */
     #define ATTRIBUTE_ALLOCATOR(size_arg_index, align_arg_index)
-    #define STACK_ALLOC(bytes)                                  size_t t[(bytes) / sizeof(size_t)]
 #endif
 
 #ifndef EXTERNAL

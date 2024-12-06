@@ -414,9 +414,7 @@ INTERNAL void* _debug_allocator_panic(Debug_Allocator* self, Debug_Allocator_Pan
 
         LOG_FATAL("MEMORY", "PANIC because of %s at pointer 0x%08llx (penetration: %lli)", reason_str, (lli) allocation.ptr, interpenetration);
         debug_allocator_print_alive_allocations("MEMORY", LOG_FATAL, *self, 0);
-    
-        log_flush();
-        abort();
+        PANIC("debug allocator panic");
     }
 
     return NULL;

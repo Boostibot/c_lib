@@ -2,22 +2,18 @@
 #define JOT_FILE
 
 #include "string.h"
-#include "path.h"
-#include "arena_stack.h"
+#include "platform.h"
 
-EXTERNAL Platform_Error file_read_entire_into_no_log(String file_path, String_Builder* append_into, Platform_File_Info* info_or_null);
-EXTERNAL Platform_Error file_read_entire_no_log(String file_path, String_Builder* data, Platform_File_Info* info_or_null);
-
-EXTERNAL bool file_read_entire_into(String file_path, String_Builder* append_into, Log log);
-EXTERNAL bool file_read_entire(String file_path, String_Builder* data, Log log);
-EXTERNAL bool file_append_entire(String file_path, String data, Log log);
-EXTERNAL bool file_write_entire(String file_path, String data, Log log);
+EXTERNAL Platform_Error file_read_entire_append(String file_path, String_Builder* append_into, Platform_File_Info* info_or_null);
+EXTERNAL Platform_Error file_read_entire(String file_path, String_Builder* data, Platform_File_Info* info_or_null);
+EXTERNAL Platform_Error file_append_entire(String file_path, String data);
+EXTERNAL Platform_Error file_write_entire(String file_path, String data);
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_FILE_IMPL)) && !defined(JOT_FILE_HAS_IMPL)
 #define JOT_FILE_HAS_IMPL
 
-EXTERNAL Platform_Error file_read_entire_into_no_log(String file_path, String_Builder* append_into, Platform_File_Info* info_or_null)
+EXTERNAL Platform_Error file_read_entire_append(String file_path, String_Builder* append_into, Platform_File_Info* info_or_null)
 {
     PROFILE_START();
     Platform_File_Info info = {0};
@@ -44,28 +40,12 @@ EXTERNAL Platform_Error file_read_entire_into_no_log(String file_path, String_Bu
     return error;
 }
 
-EXTERNAL Platform_Error file_read_entire_no_log(String file_path, String_Builder* data, Platform_File_Info* info_or_null)
+EXTERNAL Platform_Error file_read_entire(String file_path, String_Builder* data, Platform_File_Info* info_or_null)
 {
     builder_clear(data);
-    return file_read_entire_into_no_log(file_path, data, info_or_null);
+    return file_read_entire_append(file_path, data, info_or_null);
 }
-
-EXTERNAL bool file_read_entire_into(String file_path, String_Builder* append_into, Log log)
-{
-    Platform_Error error = file_read_entire_into_no_log(file_path, append_into, NULL);
-    if(error != 0)
-        SCRATCH_ARENA(arena)
-            LOG(log, "error reading file '%.*s': %s", STRING_PRINT(file_path), translate_error(arena.alloc, error).data);
-
-    return error == 0;
-}
-
-EXTERNAL bool file_read_entire(String file_path, String_Builder* data, Log log)
-{
-    builder_clear(data);
-    return file_read_entire_into(file_path, data, log);
-}
-EXTERNAL bool file_append_entire(String file_path, String data, Log log)
+EXTERNAL bool file_append_entire(String file_path, String data)
 {
     PROFILE_START();
     Platform_File file = {0};
@@ -77,14 +57,11 @@ EXTERNAL bool file_append_entire(String file_path, String data, Log log)
         error = platform_file_write(&file, data.data, data.len);
     }
 
-    if(error != 0)
-        SCRATCH_ARENA(arena)
-            LOG(log, "error appending file '%.*s': %s", STRING_PRINT(file_path), translate_error(arena.alloc, error).data);
     platform_file_close(&file);
     PROFILE_STOP();
-    return error == 0;
+    return error;
 }
-EXTERNAL bool file_write_entire(String file_path, String data, Log log)
+EXTERNAL bool file_write_entire(String file_path, String data)
 {
     PROFILE_START();
     Platform_File file = {0};
@@ -93,12 +70,8 @@ EXTERNAL bool file_write_entire(String file_path, String data, Log log)
     if(error == 0)
         error = platform_file_write(&file, data.data, data.len);
 
-    if(error != 0)
-        SCRATCH_ARENA(arena)
-            LOG(log, "error writing file '%.*s': %s", STRING_PRINT(file_path), translate_error(arena.alloc, error).data);
-
     platform_file_close(&file);
     PROFILE_STOP();
-    return error == 0;
+    return error;
 }
 #endif

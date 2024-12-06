@@ -68,7 +68,8 @@ EXTERNAL void builder_init(String_Builder* builder, Allocator* alloc);
 EXTERNAL void builder_init_with_capacity(String_Builder* builder, Allocator* alloc, isize capacity_or_zero);
 EXTERNAL void builder_deinit(String_Builder* builder);             
 EXTERNAL void builder_set_capacity(String_Builder* builder, isize capacity);             
-EXTERNAL void builder_resize(String_Builder* builder, isize capacity);             
+EXTERNAL void builder_resize(String_Builder* builder, isize capacity);        
+EXTERNAL void builder_resize_for_overwrite(String_Builder* builder, isize to_size);
 EXTERNAL void builder_reserve(String_Builder* builder, isize capacity);
 EXTERNAL void builder_clear(String_Builder* builder);             
 EXTERNAL void builder_push(String_Builder* builder, char c);             
@@ -80,6 +81,7 @@ EXTERNAL void builder_insert(String_Builder* builder, isize at, String string);
 EXTERNAL void builder_assign(String_Builder* builder, String string); //Sets the contents of the builder to be equal to string
 EXTERNAL bool builder_is_equal(String_Builder a, String_Builder b); //Returns true if the contents and sizes of the strings match
 EXTERNAL int  builder_compare(String_Builder a, String_Builder b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
+EXTERNAL bool builder_is_invariant(String_Builder builder);
 
 EXTERNAL void builder_array_deinit(String_Builder_Array* array);
 EXTERNAL String_Builder string_concat(Allocator* allocator, String a, String b);
@@ -622,6 +624,17 @@ EXTERNAL bool char_is_id(char c);
 
         builder_set_capacity(builder, new_capacity);
     }
+
+    EXTERNAL void builder_resize_for_overwrite(String_Builder* builder, isize to_size)
+    {
+        builder_reserve(builder, to_size);
+        if(to_size >= builder->len)
+            builder->data[to_size] = '\0';
+        else
+            //We clear the memory when shrinking so that we dont have to clear it when pushing!
+            memset(builder->data + to_size, 0, (size_t) ((builder->len - to_size)));
+    }
+
     EXTERNAL void builder_resize(String_Builder* builder, isize to_size)
     {
         builder_reserve(builder, to_size);

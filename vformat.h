@@ -16,8 +16,8 @@ EXTERNAL void format_into_no_check(String_Builder* into, const char* format, ...
 EXTERNAL String_Builder vformat(Allocator* alloc, const char* format, va_list args);
 EXTERNAL String_Builder format_no_check(Allocator* alloc, const char* format, ...);
 
-#define  format(alloc, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), format_no_check((alloc), (format), ##__VA_ARGS__))
-#define  formata(allocator, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), format_no_check((allocator).alloc, (format), ##__VA_ARGS__)).string
+#define  format_builder(alloc, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), format_no_check((alloc), (format), ##__VA_ARGS__))
+#define  format(allocator, format, ...) format_builder((alloc), (format), ##__VA_ARGS__).string
 
 EXTERNAL String translate_error(Allocator* alloc, Platform_Error error);
 EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error error);
@@ -31,42 +31,26 @@ EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error
     EXTERNAL void vformat_append_into(String_Builder* append_to, const char* format, va_list args)
     {
         PROFILE_START();
-
-        if(format == NULL)
-            format = "";
-
-        //An attempt to estimate the needed size so we dont need to call vsnprintf twice.
-        //We use some heuristic or the maximum capacity whichever is bigger. This saves us
-        // 99% of double calls to vsnprintf which makes this function almost twice as fast
-        //Because its used for pretty much all logging and setting shader uniforms thats
-        // a big difference.
-        isize format_size = (isize) strlen(format);
-        isize estimated_size = format_size + 64 + format_size/4;
-        isize base_size = append_to->len; 
-        // array_resize(append_to, base_size + estimated_size);
-        isize first_resize_size = MAX(base_size + estimated_size, append_to->capacity - 1);
-        builder_resize(append_to, first_resize_size);
-
-        //gcc modifies va_list on use! make sure to copy it!
-        va_list args_copy;
-        va_copy(args_copy, args);
-        isize count = vsnprintf(append_to->data + base_size, (size_t) (append_to->len - base_size), format, args);
-        
-        if(count > estimated_size)
+        if(format != NULL)
         {
-            PROFILE_START(format_twice);
-            builder_resize(append_to, base_size + count + 3);
-            count = vsnprintf(append_to->data + base_size, (size_t) (append_to->len - base_size), format, args_copy);
-            PROFILE_STOP(format_twice);
+            char local[512];
+            va_list args_copy;
+            va_copy(args_copy, args);
+
+            int size = vsnprintf(local, sizeof local, format, args_copy);
+            isize base_size = append_to->len; 
+            builder_resize_for_overwrite(append_to, append_to->len + size);
+
+            if(size > sizeof local) {
+                PROFILE_INSTANT("format twice")
+                vsnprintf(append_to->data + base_size, size + 1, format, args);
+            }
+            else
+                memcpy(append_to->data + base_size, local, size);
+
         }
-    
-        //Sometimes apparently the MSVC standard library screws up and returns negative...
-        if(count < 0)
-            count = 0;
-        builder_resize(append_to, base_size + count);
-        ASSERT(append_to->data[base_size + count] == '\0');
-        
         PROFILE_STOP();
+        ASSERT(builder_is_invariant(*append_to));
         return;
     }
     
@@ -120,9 +104,6 @@ EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error
 
     EXTERNAL String translate_error(Allocator* alloc, Platform_Error error)
     {
-        isize size = platform_translate_error(error, NULL, 0);
-        char* data = allocator_allocate(alloc, size, 1);
-        platform_translate_error(error, data, size);
-        return string_make(data, size - 1);
+        return translate_error_builder(alloc, error).string;
     }
 #endif

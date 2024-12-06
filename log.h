@@ -457,16 +457,4 @@ INTERNAL char* _log_builder_append_fmt(_Log_Builder* builder_or_null, const char
     }
 #endif
 
-#if defined(_WIN32) || defined(_WIN64)
-    #include <direct.h>
-    INTERNAL void _log_mkdir(const char* name) {
-        _mkdir(name);
-    }
-#else
-    #include <sys/stat.h>
-    #include <sys/types.h>
-    INTERNAL void _log_mkdir(const char* name) {
-        mkdir(name, 0700);
-    }
-#endif
 #endif
