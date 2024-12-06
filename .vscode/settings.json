@@ -60,6 +60,7 @@
         "__tree": "c",
         "set": "c",
         "condition_variable": "c",
-        "cstdint": "c"
+        "cstdint": "c",
+        "typeinfo": "cpp"
     }
 }

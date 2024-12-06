@@ -283,13 +283,30 @@ Platform_Thread platform_thread_get_current()
     Platform_Thread out = {0};
     return out;
 }
+
 int32_t platform_thread_get_current_id()
 {
-    return 0;
+    return (int32_t) gettid();
 }
+
+static _Thread_local char* _thread_name = NULL;
+static _Thread_local char _thread_id_string[9] = {0};
+
+#include <stdio.h>
 const char* platform_thread_get_current_name()
 {
-    return "uninint";
+    if(_thread_name)
+        return _thread_name;
+    else
+    {
+        if(_thread_id_string[0] == 0)
+            snprintf(_thread_id_string, sizeof _thread_id_string, "<%i>", platform_thread_get_current_id());
+
+        if(platform_thread_is_main())
+            return "main";
+        else
+            return _thread_id_string;
+    }
 }
 void platform_thread_set_current_name(const char* name, bool dealloc_on_exit)
 {

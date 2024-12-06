@@ -7,6 +7,7 @@
 #include "time.h"
 #include "random.h"
 #include "log.h"
+#include "profile.h"
 
 typedef enum Test_Func_Type {
     TEST_FUNC_TYPE_SIMPLE,
@@ -65,7 +66,7 @@ EXTERNAL void _run_test_recover(void* context, Platform_Sandbox_Error error)
     {
         PROFILE_INSTANT("failed test");
         LOG_ERROR("TEST", "Exception occurred in test '%s': %s", c->name, platform_exception_to_string(error.exception));
-        log_captured_callstack(log_trace(">TEST"), error.call_stack, error.call_stack_size);
+        // log_captured_callstack(log_trace(">TEST"), error.call_stack, error.call_stack_size);
     }
 }
 

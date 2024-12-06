@@ -131,14 +131,14 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL String string_head(String string, isize to)
     {
-        CHECK_BOUNDS(to, string.len + 1);
+        ASSERT_BOUNDS(to, string.len + 1);
         String head = {string.data, to};
         return head;
     }
 
     EXTERNAL String string_tail(String string, isize from)
     {
-        CHECK_BOUNDS(from, string.len + 1);
+        ASSERT_BOUNDS(from, string.len + 1);
         String tail = {string.data + from, string.len - from};
         return tail;
     }
@@ -228,7 +228,7 @@ EXTERNAL bool char_is_id(char c);
             bool found = true;
             for(isize j = 0; j < search_for.len; j++)
             {
-                CHECK_BOUNDS(i + j, in_str.len);
+                ASSERT_BOUNDS(i + j, in_str.len);
                 if(in_str.data[i + j] != search_for.data[j])
                 {
                     found = false;

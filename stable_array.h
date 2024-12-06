@@ -227,7 +227,7 @@ INTERNAL _Stable_Array_Lookup _stable_array_lookup(const Stable_Array* stable, i
 
 EXTERNAL void* stable_array_at(const Stable_Array* stable, isize index)
 {
-    CHECK_BOUNDS(index, stable_array_capacity(stable));
+    ASSERT_BOUNDS(index, stable_array_capacity(stable));
     _Stable_Array_Lookup lookup = _stable_array_lookup(stable, index);
     u32 bit = (u32) 1 << lookup.item_i;
     ASSERT(!!(lookup.block->filled_mask & bit));
@@ -256,7 +256,7 @@ EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out)
 
     ASSERT(stable->first_not_filled_i1 != 0, "needs to have a place thats not filled when we reserved one!");
     isize block_i = stable->first_not_filled_i1 - 1;
-    CHECK_BOUNDS(block_i, stable->blocks_size);
+    ASSERT_BOUNDS(block_i, stable->blocks_size);
 
     Stable_Array_Block* block = &stable->blocks[block_i];
     ASSERT(block->filled_mask != STABLE_ARRAY_FILLED_MASK_FULL, "Needs to have a free slot");
@@ -291,7 +291,7 @@ EXTERNAL void stable_array_remove(Stable_Array* stable, isize index)
 {
     PROFILE_START();
     _stable_array_check_invariants(stable);
-    CHECK_BOUNDS(index, stable_array_capacity(stable));
+    ASSERT_BOUNDS(index, stable_array_capacity(stable));
 
     _Stable_Array_Lookup lookup = _stable_array_lookup(stable, index);
     Stable_Array_Block* block = lookup.block;

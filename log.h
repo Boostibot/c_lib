@@ -1,73 +1,73 @@
 ﻿#ifndef JOT_LOG
 #define JOT_LOG
 
+#ifndef EXTERNAL
+    #define EXTERNAL
+#endif
+
+#ifndef INTERNAL
+    #define INTERNAL static
+#endif
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#include "platform.h"
-#include "defines.h"
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <time.h>
 
-typedef struct Log {
-    void (*log)(void* context, int indent, int custom, int is_flush, const char* name, const char* format, va_list args);
-    void* context;
+typedef enum Log_Type {
+    LOG_FLUSH,      //only flushes the log but doesnt log anything
+    LOG_TRACE,      //step debug (prinf("HERE") etc.)
+    LOG_DEBUG,      //debug messages/bugs
+    LOG_INFO,       //general info.
+    LOG_OKAY,       //the opposites of errors
+    LOG_WARN,       //near error conditions
+    LOG_ERROR,      //errors
+    LOG_FATAL,      //just before aborting thread/process
+} Log_Type;
+
+typedef struct Log_Event {
     const char* name;
-    int indent;
-    int custom;
-} Log;
+    const char* file;
+    const char* function;
+    Log_Type type;
+    int32_t line;
+    int64_t indentation;
+} Log_Event;
 
-typedef struct Log_Set {
-    Log trace;
-    Log debug;
-    Log okay;
-    Log info;
-    Log warn;
-    Log error;
-    Log fatal;
-    
-    int indent;
-    int _;
-} Log_Set;
+typedef struct Logger {
+    void (*log)(struct Logger* self, Log_Event event, const char* format, va_list args);
+} Logger;
 
-EXTERNAL Log_Set* get_log_set();
-EXTERNAL Log_Set set_log_set(Log_Set new_set);
+EXTERNAL Logger* console_logger(); //returns the default logger which only logs to console
+EXTERNAL Logger* silent_logger(); //returns a logger that does nothing
+EXTERNAL Logger* log_get_logger();
+EXTERNAL Logger* log_set_logger(Logger* logger);
+EXTERNAL const char* log_type_to_string(Log_Type type);
 
-EXTERNAL Log log_trace(const char* name);
-EXTERNAL Log log_debug(const char* name);
-EXTERNAL Log log_okay(const char* name);
-EXTERNAL Log log_info(const char* name);
-EXTERNAL Log log_warn(const char* name);
-EXTERNAL Log log_error(const char* name);
-EXTERNAL Log log_fatal(const char* name);
-EXTERNAL Log log_none();
-EXTERNAL Log log_indented(Log);
+EXTERNAL void log_fmt(Log_Type type, const char* module, int32_t line, const char* file, const char* function, const char* format, ...);
+EXTERNAL void log_vfmt(Log_Type type, const char* module, int32_t line, const char* file, const char* function, const char* format, va_list args);
+EXTERNAL void log_flush();
 
-EXTERNAL void log_flush(Log log);
-EXTERNAL void log_flush_all();
-EXTERNAL void log_indent();
-EXTERNAL void log_outdent();
-EXTERNAL void _log_local_call(Log stream, const char* format, ...);
-EXTERNAL void _log_global_call(Log stream, const char* log_module, const char* format, ...);
+EXTERNAL static void log_group() {}
+EXTERNAL static void log_ungroup() {}
+EXTERNAL static void log_indent() {}
+EXTERNAL static void log_outdent() {}
 
-#define LOG(stream, ...) \
-    ((stream).log \
-        ? _log_local_call((stream), "" __VA_ARGS__) \
-        : (void) sizeof printf("" __VA_ARGS__)) \
+#define LOG(module, log_type, format, ...)   log_fmt(module, log_type, __LINE__, __FILE__, __func__, format, ##__VA_ARGS__)
+#define VLOG(module, log_type, format, args) log_vfmt(module, log_type, __LINE__, __FILE__, __func__, format, args)
+#define LOG_INFO(module, format, ...)  LOG(LOG_INFO,  module, format, ##__VA_ARGS__)
+#define LOG_OKAY(module, format, ...)  LOG(LOG_OKAY,  module, format, ##__VA_ARGS__)
+#define LOG_WARN(module, format, ...)  LOG(LOG_WARN,  module, format, ##__VA_ARGS__)
+#define LOG_ERROR(module, format, ...) LOG(LOG_ERROR, module, format, ##__VA_ARGS__)
+#define LOG_FATAL(module, format, ...) LOG(LOG_FATAL, module, format, ##__VA_ARGS__)
+#define LOG_DEBUG(module, format, ...) LOG(LOG_DEBUG, module, format, ##__VA_ARGS__)
+#define LOG_TRACE(module, format, ...) LOG(LOG_TRACE, module, format, ##__VA_ARGS__)
+#define LOG_HERE(...) LOG_TRACE("here", "%s %s:%i", __func__, __FILE__, __LINE__)
 
-#define GLOBAL_LOG(stream, name, ...) \
-    ((stream).log \
-        ? _log_global_call((stream), (name), "" __VA_ARGS__) \
-        : (void) sizeof printf("" __VA_ARGS__)) \
-
-#define LOG_TRACE(name, ...) GLOBAL_LOG(get_log_set()->trace, (name), ##__VA_ARGS__)
-#define LOG_DEBUG(name, ...) GLOBAL_LOG(get_log_set()->debug, (name), ##__VA_ARGS__)
-#define LOG_OKAY(name, ...)  GLOBAL_LOG(get_log_set()->okay,  (name), ##__VA_ARGS__)
-#define LOG_INFO(name, ...)  GLOBAL_LOG(get_log_set()->info,  (name), ##__VA_ARGS__)
-#define LOG_WARN(name, ...)  GLOBAL_LOG(get_log_set()->warn,  (name), ##__VA_ARGS__)
-#define LOG_ERROR(name, ...) GLOBAL_LOG(get_log_set()->error, (name), ##__VA_ARGS__)
-#define LOG_FATAL(name, ...) GLOBAL_LOG(get_log_set()->fatal, (name), ##__VA_ARGS__)
-
-#define LOG_HERE             LOG_TRACE("HERE", "HERE %15s() %25s:%i", __func__, __FILE__, __LINE__);
-
+//Printing helpers
 #define STRING_PRINT(str) (int) (str).len, (str).data
 
 typedef struct String_Buffer_16 {
@@ -83,305 +83,390 @@ EXTERNAL String_Buffer_16 format_bytes(int64_t bytes); //returns "39B" "64KB", "
 EXTERNAL String_Buffer_16 format_seconds(double seconds); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
 EXTERNAL String_Buffer_16 format_nanoseconds(int64_t ns); //returns "153ns", "10μs", "6.3ms", "15.2s". But doesnt go to hours, days etc.
 
-EXTERNAL void log_captured_callstack(Log stream, void** callstack, isize callstack_size);
-EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format, ...);
-#define log_callstack(stream, skip, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), log_callstack_no_check((stream), (skip), (format), ##__VA_ARGS__))
+//File logger - logs to console and/or file. Is safe to be used across multiple threads
+enum {
+    FILE_LOGGER_FILE_PATH = 1,
+    FILE_LOGGER_FILE_APPEND = 2,
+    FILE_LOGGER_NO_CONSOLE_PRINT = 4,
+    FILE_LOGGER_NO_CONSOLE_COLORS = 8,
+    FILE_LOGGER_USE = 16,
+};
+typedef struct File_Logger {
+    Logger logger;
+    FILE* file;
+    char* path;
+    uint32_t flags;
+    uint32_t _;
+    Logger* prev_logger;
+} File_Logger;
+
+EXTERNAL void file_logger_log(Logger* self, Log_Event event, const char* format, va_list args);
+EXTERNAL bool file_logger_init(File_Logger* logger, const char* path, uint32_t flags);
+EXTERNAL void file_logger_deinit(File_Logger* logger);
+
+EXTERNAL void silent_logger_log(Logger* self, Log_Event event, const char* format, va_list args);
 #endif
 
+#define JOT_ALL_IMPL
 #if (defined(JOT_ALL_IMPL) || defined(JOT_LOG_IMPL)) && !defined(JOT_LOG_HAS_IMPL)
 #define JOT_LOG_HAS_IMPL
-    static ATTRIBUTE_THREAD_LOCAL Log_Set global_log_set = {0};
 
-    EXTERNAL Log_Set* get_log_set() 
+static File_Logger _console_logger = {file_logger_log};
+static Logger _silent_logger = {silent_logger_log};
+static _Thread_local Logger* _thread_logger = &_console_logger.logger;
+
+EXTERNAL Logger* log_get_logger()
+{
+    return _thread_logger;
+}
+
+EXTERNAL Logger* log_set_logger(Logger* logger)
+{
+    Logger* before = _thread_logger;
+    _thread_logger = logger;
+    return before;
+}
+
+EXTERNAL void log_vfmt(Log_Type type, const char* module, int line, const char* file, const char* function, const char* format, va_list args)
+{
+    Logger* logger = log_get_logger();
+    if(logger)
     {
-        return &global_log_set; 
+        size_t extra_indentation = 0;
+        for(; module[extra_indentation] == '>'; extra_indentation++);
+
+        Log_Event event = {0};
+        event.file = file;
+        event.function = function;
+        event.line = line;
+        event.type = type;
+        event.name = module + extra_indentation;
+        event.indentation = extra_indentation;
+        logger->log(logger, event, format, args);
     }
-    EXTERNAL Log_Set set_log_set(Log_Set new_set)
+}
+
+EXTERNAL void log_fmt(Log_Type type, const char* module, int line, const char* file, const char* function, const char* format, ...)
+{
+    va_list args;               
+    va_start(args, format);     
+    log_vfmt(type, module, line, file, function, format, args);                    
+    va_end(args);                
+}
+
+EXTERNAL void log_flush()
+{
+    log_fmt(LOG_FLUSH, "", __LINE__, __FILE__, __FUNCTION__, " ");
+}
+
+EXTERNAL const char* log_type_to_string(Log_Type type)
+{
+    switch(type)
     {
-        Log_Set old_set = global_log_set;
-        global_log_set = new_set;
-        return old_set; 
+        case LOG_FLUSH: return "FLUSH"; break;
+        case LOG_INFO: return "INFO"; break;
+        case LOG_OKAY: return "OKAY"; break;
+        case LOG_WARN: return "WARN"; break;
+        case LOG_ERROR: return "ERROR"; break;
+        case LOG_FATAL: return "FATAL"; break;
+        case LOG_DEBUG: return "DEBUG"; break;
+        case LOG_TRACE: return "TRACE"; break;
+        default: return "";
     }
-    
-    EXTERNAL void log_flush(Log log)
+}
+
+//Format helpers
+EXTERNAL String_Buffer_16 format_ptr(void* ptr)
+{
+    String_Buffer_16 out = {0};
+    snprintf(out.data, sizeof out.data, "0x%08llx", (long long) ptr);
+    return out;
+}
+
+EXTERNAL String_Buffer_16 format_bytes(int64_t bytes)
+{
+    int64_t abs = bytes > 0 ? bytes : -bytes;
+    String_Buffer_16 out = {0};
+    int64_t TB_ = (int64_t) 1024*1024*1024*1024;
+    int64_t GB_ = (int64_t) 1024*1024*1024;
+    int64_t MB_ = (int64_t) 1024*1024;
+    int64_t KB_ = (int64_t) 1024;
+
+    if(abs >= TB_)
+        snprintf(out.data, sizeof out.data, "%.3lfTB", (double) bytes / (double) TB_);
+    else if(abs >= GB_)
+        snprintf(out.data, sizeof out.data, "%.2lfGB", (double) bytes / (double) GB_);
+    else if(abs >= MB_)
+        snprintf(out.data, sizeof out.data, "%.2lfMB", (double) bytes / (double) MB_);
+    else if(abs >= KB_)
+        snprintf(out.data, sizeof out.data, "%.1lfKB", (double) bytes / (double) KB_);
+    else
+        snprintf(out.data, sizeof out.data, "%lliB", (long long) bytes);
+
+    return out;
+}
+
+EXTERNAL String_Buffer_16 format_nanoseconds(int64_t ns)
+{
+    int64_t sec = (int64_t) 1000*1000*1000;
+    int64_t milli = (int64_t) 1000*1000;
+    int64_t micro = (int64_t) 1000;
+
+    int64_t abs = ns > 0 ? ns : -ns;
+    String_Buffer_16 out = {0};
+    if(abs >= sec)
+        snprintf(out.data, sizeof out.data, "%.2lfs", (double) ns / (double) sec);
+    else if(abs >= milli)
+        snprintf(out.data, sizeof out.data, "%.2lfms", (double) ns / (double) milli);
+    else if(abs >= micro)
+        snprintf(out.data, sizeof out.data, "%.2lfμs", (double) ns / (double) micro);
+    else
+        snprintf(out.data, sizeof out.data, "%llins", (long long) ns);
+
+    return out;
+}
+
+EXTERNAL String_Buffer_16 format_seconds(double seconds)
+{
+    return format_nanoseconds((int64_t) (seconds * 1000*1000*1000));
+}
+
+// File logger
+typedef struct _Log_Builder {
+    char* data;
+    int64_t capacity;
+    bool is_backed;
+    bool _[7];
+    int64_t size;
+} _Log_Builder;
+
+
+INTERNAL char* _log_builder_append_vfmt(_Log_Builder* builder_or_null, const char* fmt, va_list args);
+INTERNAL char* _log_builder_append_fmt(_Log_Builder* builder_or_null, const char* fmt, ...);
+INTERNAL void _log_builder_deinit(_Log_Builder* builder);
+INTERNAL const char* _log_thread_name();
+
+#include <ctype.h>
+// #include <string.h>
+EXTERNAL void file_logger_log(Logger* self, Log_Event event, const char* format, va_list args)
+{
+    const char* CONSOLE_COLOR_NORMAL =       "\x1B[0m"; (void) CONSOLE_COLOR_NORMAL;
+    const char* CONSOLE_COLOR_RED =          "\x1B[31m"; (void) CONSOLE_COLOR_RED;
+    const char* CONSOLE_COLOR_BRIGHT_RED =   "\x1B[91m"; (void) CONSOLE_COLOR_BRIGHT_RED;
+    const char* CONSOLE_COLOR_GREEN =        "\x1B[32m"; (void) CONSOLE_COLOR_GREEN;
+    const char* CONSOLE_COLOR_YELLOW =       "\x1B[33m"; (void) CONSOLE_COLOR_YELLOW;
+    const char* CONSOLE_COLOR_BLUE =         "\x1B[34m"; (void) CONSOLE_COLOR_BLUE;
+    const char* CONSOLE_COLOR_MAGENTA =      "\x1B[35m"; (void) CONSOLE_COLOR_MAGENTA;
+    const char* CONSOLE_COLOR_CYAN =         "\x1B[36m"; (void) CONSOLE_COLOR_CYAN;
+    const char* CONSOLE_COLOR_WHITE =        "\x1B[37m"; (void) CONSOLE_COLOR_WHITE;
+    const char* CONSOLE_COLOR_GRAY =         "\x1B[90m"; (void) CONSOLE_COLOR_GRAY;
+
+    File_Logger* logger = (File_Logger*) (void*) self;
+    if(event.type == LOG_FLUSH)
     {
-        if(log.log)
-        {
-            va_list list = {0};
-            log.log(log.context, log.indent, log.custom, 1, log.name, "", list);
-        }
+        if(logger->file)
+            fflush(logger->file);
     }
-
-    EXTERNAL void log_flush_all()
+    else
     {
-        log_flush(get_log_set()->trace);
-        log_flush(get_log_set()->debug);
-        log_flush(get_log_set()->okay);
-        log_flush(get_log_set()->info);
-        log_flush(get_log_set()->warn);
-        log_flush(get_log_set()->error);
-        log_flush(get_log_set()->fatal);
-    }
+        //Make log line prefix
+        struct timespec ts = {0};
+        (void) timespec_get(&ts, TIME_UTC);
+        struct tm* now = gmtime(&ts.tv_sec);
 
-    EXTERNAL void vlog_local_call(Log stream, const char* format, va_list args)
-    {
-        if(stream.log == NULL)
-            return;
+        const char* thread_name = _log_thread_name();
 
-        stream.log(stream.context, stream.indent, stream.custom, 0, stream.name, format, args);
-    }
+        size_t prefix_len = 0; (void) prefix_len;
+        char prefix_backing[128]; (void) prefix_backing;
+        prefix_len = snprintf(prefix_backing, sizeof prefix_backing, 
+            "%02i:%02i:%02i %-6.30s %-5.5s %.20s", 
+            now->tm_hour, now->tm_min, now->tm_sec, thread_name, log_type_to_string(event.type), event.name);
 
-    EXTERNAL void _log_local_call(Log stream, const char* format, ...)
-    {
-        if(stream.log == NULL)
-            return;
+        //Format user
+        char user_backing[512]; (void) user_backing;
+        _Log_Builder user_builder = {user_backing, sizeof user_backing, true};
+        _log_builder_append_vfmt(&user_builder, format, args);
 
-        va_list args;               
-        va_start(args, format);    
-        stream.log(stream.context, stream.indent, stream.custom, 0, stream.name, format, args);
-        va_end(args);  
-    }
+        //trim trailing whitespace
+        for(; user_builder.size > 0; user_builder.size--)
+            if(!isspace(user_builder.data[user_builder.size - 1]))
+                break;
 
-    EXTERNAL void _log_global_call(Log stream, const char* name, const char* format, ...)
-    {
-        if(stream.log == NULL)
-            return;
-
-        int indent = 0;
-        for(; name[indent] == '>'; indent++);
-
-        va_list args;               
-        va_start(args, format);    
-        stream.log(stream.context, get_log_set()->indent + indent, stream.custom, 0, name + indent, format, args);
-        va_end(args);  
-    }
-    
-    EXTERNAL Log _log_from_log_set(Log model_after, const char* name)
-    {
-        int indent = 0;
-        for(; name[indent] == '>'; indent++);
-
-        Log out = model_after;
-        out.indent = get_log_set()->indent + indent;
-        out.name = name + indent;
-        return out;
-    }
-
-    EXTERNAL Log log_trace(const char* name) { return _log_from_log_set(global_log_set.trace, name); }
-    EXTERNAL Log log_debug(const char* name) { return _log_from_log_set(global_log_set.debug, name); }
-    EXTERNAL Log log_okay(const char* name)  { return _log_from_log_set(global_log_set.okay, name); }
-    EXTERNAL Log log_info(const char* name)  { return _log_from_log_set(global_log_set.info, name); }
-    EXTERNAL Log log_warn(const char* name)  { return _log_from_log_set(global_log_set.warn, name); }
-    EXTERNAL Log log_error(const char* name) { return _log_from_log_set(global_log_set.error, name); }
-    EXTERNAL Log log_fatal(const char* name) { return _log_from_log_set(global_log_set.fatal, name); }
-    
-    EXTERNAL Log log_none()
-    {
-        Log out = {0};
-        return out;
-    }
-
-    EXTERNAL Log log_indented(Log log)
-    {
-        log.indent += 1;
-        return log;
-    }
-
-    EXTERNAL void log_indent()
-    {
-        get_log_set()->indent += 1;
-    }
-
-    EXTERNAL void log_outdent()
-    {
-        get_log_set()->indent -= 1;
-    }
-    
-    EXTERNAL String_Buffer_16 format_ptr(void* ptr)
-    {
-        String_Buffer_16 out = {0};
-        snprintf(out.data, sizeof out.data, "0x%08llx", (long long) ptr);
-        return out;
-    }
-
-    EXTERNAL String_Buffer_16 format_bytes(int64_t bytes)
-    {
-        int64_t abs = bytes > 0 ? bytes : -bytes;
-        String_Buffer_16 out = {0};
-        if(abs >= TB)
-            snprintf(out.data, sizeof out.data, "%.3lfTB", (double) bytes / (double) TB);
-        else if(abs >= GB)
-            snprintf(out.data, sizeof out.data, "%.2lfGB", (double) bytes / (double) GB);
-        else if(abs >= MB)
-            snprintf(out.data, sizeof out.data, "%.2lfMB", (double) bytes / (double) MB);
-        else if(abs >= KB)
-            snprintf(out.data, sizeof out.data, "%.1lfKB", (double) bytes / (double) KB);
-        else
-            snprintf(out.data, sizeof out.data, "%lliB", (long long) bytes);
-
-        return out;
-    }
-
-    EXTERNAL String_Buffer_16 format_nanoseconds(int64_t ns)
-    {
-        int64_t sec = (int64_t) 1000*1000*1000;
-        int64_t milli = (int64_t) 1000*1000;
-        int64_t micro = (int64_t) 1000;
-
-        int64_t abs = ns > 0 ? ns : -ns;
-        String_Buffer_16 out = {0};
-        if(abs >= sec)
-            snprintf(out.data, sizeof out.data, "%.2lfs", (double) ns / (double) sec);
-        else if(abs >= milli)
-            snprintf(out.data, sizeof out.data, "%.2lfms", (double) ns / (double) milli);
-        else if(abs >= micro)
-            snprintf(out.data, sizeof out.data, "%.2lfμs", (double) ns / (double) micro);
-        else
-            snprintf(out.data, sizeof out.data, "%llins", (long long) ns);
-
-        return out;
-    }
-
-    EXTERNAL String_Buffer_16 format_seconds(double seconds)
-    {
-        return format_nanoseconds((int64_t) (seconds * 1000*1000*1000));
-    }
-    
-    EXTERNAL void log_callstack_no_check(Log stream, isize skip, const char* format, ...)
-    {
-        bool has_msg = format != NULL && strlen(format) != 0;
-        Log inner = stream;
-        if(has_msg)
-        {
-            inner = log_indented(stream);
-            
-            va_list args;               
-            va_start(args, format);     
-            vlog_local_call(stream, format, args);
-            va_end(args);   
-        }
-    
-        void* stack[256] = {0};
-        isize size = platform_capture_call_stack(stack, 256, skip + 1);
-        log_captured_callstack(inner, stack, size);
-    }
-
-    EXTERNAL void log_captured_callstack(Log stream, void** callstack, isize callstack_size)
-    {
-        if(callstack_size < 0 || callstack == NULL)
-            callstack_size = 0;
-    
-        enum {TRANSLATE_AT_ONCE = 8};
-        for(isize i = 0; i < callstack_size; i += TRANSLATE_AT_ONCE)
-        {
-            isize remaining = callstack_size - i;
-            assert(remaining > 0);
-
-            if(remaining > TRANSLATE_AT_ONCE)
-                remaining = TRANSLATE_AT_ONCE;
-
-            Platform_Stack_Trace_Entry translated[TRANSLATE_AT_ONCE] = {0};
-            platform_translate_call_stack(translated, callstack + i, remaining);
+        //prefix each line of user message with log prefix
+        char complete_backing[512]; (void) complete_backing;
+        _Log_Builder complete_builder = {complete_backing, sizeof complete_backing, true};
         
-            for(isize j = 0; j < remaining; j++)
+        int64_t line_from = 0;
+        for(int64_t i = 0; i <= user_builder.size; i++)
+        {
+            if(i == user_builder.size || user_builder.data[i] == '\n')
             {
-                const Platform_Stack_Trace_Entry* entry = &translated[j];
-                LOG(stream, "%-30s %s:%i", entry->function, entry->file, (int) entry->line);
-                if(strcmp(entry->function, "main") == 0) 
-                {
-                    i = callstack_size;
-                    break;
-                }
+                const char* line = user_builder.data + line_from;
+                int line_len = (int)(i - line_from);
+                _log_builder_append_fmt(&complete_builder, "%s: %*.s%.*s\n", prefix_backing, event.indentation*2, "", line_len, line);
+                line_from = i + 1;
             }
         }
-    }
-    
-    #ifndef ASSERT_CUSTOM_REPORT
-        EXTERNAL void assertion_report(const char* expression, int line, const char* file, const char* function, const char* format, ...)
-        {
-            if(0)
-            {
-                LOG_FATAL("assert", "TEST(%s) TEST/ASSERT failed! %s() %s:%i", function, expression, file, line);
-                if(format != NULL && strlen(format) > 1)
-                {
-                    va_list args;               
-                    va_start(args, format);     
-                    vlog_local_call(log_fatal(">assert"), format + 1, args);
-                    va_end(args);  
-                }
 
-                log_callstack(log_trace(">assert"), -1, "");
-                log_flush_all();
+        //print into file and or console
+        if((logger->flags & FILE_LOGGER_NO_CONSOLE_PRINT) == 0)
+        {
+            if(logger->flags & FILE_LOGGER_NO_CONSOLE_COLORS)
+                puts(complete_builder.data);
+            else
+            {
+                const char* line_begin = CONSOLE_COLOR_NORMAL;
+                const char* line_end = CONSOLE_COLOR_NORMAL;
+                if(event.type == LOG_ERROR || event.type == LOG_FATAL)
+                    line_begin = CONSOLE_COLOR_BRIGHT_RED;
+                else if(event.type == LOG_WARN)
+                    line_begin = CONSOLE_COLOR_YELLOW;
+                else if(event.type == LOG_OKAY)
+                    line_begin = CONSOLE_COLOR_GREEN;
+                else if(event.type == LOG_TRACE || event.type == LOG_DEBUG)
+                    line_begin = CONSOLE_COLOR_GRAY;
+
+                printf("%s%s%s", line_begin, complete_builder.data, line_end);
             }
         }
-    #endif
-    
-    #if 0
-    EXTERNAL Allocator_Stats log_allocator_stats(Log log, Allocator* allocator)
-    {
-        Allocator_Stats stats = {0};
-        if(allocator != NULL && allocator->func != NULL)
-        {
-            stats = allocator_get_stats(allocator);
-            if(stats.type_name == NULL)
-                stats.type_name = "<no log_type name>";
-
-            if(stats.name == NULL)
-                stats.name = "<no name>";
-
-            LOG(log, "type_name:           %s", stats.type_name);
-            LOG(log, "name:                %s", stats.name);
-
-            LOG(log, "bytes_allocated:     %s", format_bytes(stats.bytes_allocated).data);
-            LOG(log, "max_bytes_allocated: %s", format_bytes(stats.max_bytes_allocated).data);
-
-            LOG(log, "allocation_count:    %lli", stats.allocation_count);
-            LOG(log, "deallocation_count:  %lli", stats.deallocation_count);
-            LOG(log, "reallocation_count:  %lli", stats.reallocation_count);
-        }
-        else
-            LOG(log, "Allocator NULL or missing get_stats callback.");
-
-        return stats;
-    }
-    #endif
-
-    #ifndef ALLOCATOR_CUSTOM_OUT_OF_MEMORY
-        EXTERNAL void allocator_panic(Allocator_Error error)
-        {
-            if(0)
-            {
-                Allocator_Stats stats = {0};
-                if(error.alloc != NULL && error.alloc->func != NULL)
-                    stats = allocator_get_stats(error.alloc);
         
-                if(stats.type_name == NULL)
-                    stats.type_name = "<no type name>";
+        if(logger->file)
+            fputs(complete_builder.data, logger->file);
 
-                if(stats.name == NULL)
-                    stats.name = "<no name>";
+        _log_builder_deinit(&user_builder);
+        _log_builder_deinit(&complete_builder);
+    }
+}
 
-                LOG_FATAL("memory", "Allocator %s of type %s reported out of memory! Message: '%s'", stats.type_name, stats.name, error.message);
+EXTERNAL void file_logger_deinit(File_Logger* logger)
+{
+    //restore logger
+    if(logger->flags & FILE_LOGGER_USE)
+        log_set_logger(logger->prev_logger);
+    if(logger->file)
+        fclose(logger->file);
+    free(logger->path);
+    memset(logger, 0, sizeof *logger);
+}
 
-                LOG_INFO(">memory", "new_size:    %s", format_bytes(error.new_size).data);
-                LOG_INFO(">memory", "old_size:    %s", format_bytes(error.old_size).data);
-                LOG_INFO(">memory", "old_ptr:     %s", format_ptr(error.old_ptr).data);
-                LOG_INFO(">memory", "align:       %lli", (lli) error.align);
+EXTERNAL bool file_logger_init(File_Logger* logger, const char* path, uint32_t flags)
+{
+    file_logger_deinit(logger);
 
-                LOG_INFO(">memory", "Allocator_Stats:");
-                LOG_INFO(">>memory", "bytes_allocated:     %s", format_bytes(stats.bytes_allocated).data);
-                LOG_INFO(">>memory", "max_bytes_allocated: %s", format_bytes(stats.max_bytes_allocated).data);
+    const char* open_mode = flags & FILE_LOGGER_FILE_APPEND ? "ab" : "wb"; 
+    char* filename = NULL;
+    if((flags & FILE_LOGGER_FILE_PATH) && path)
+        filename = _log_builder_append_fmt(NULL, "%s", path);
+    else
+    {
+        struct timespec ts = {0};
+        (void) timespec_get(&ts, TIME_UTC);
+        struct tm* now = localtime(&ts.tv_sec);
 
-                LOG_INFO(">>memory", "allocation_count:    %lli", (lli) stats.allocation_count);
-                LOG_INFO(">>memory", "deallocation_count:  %lli", (lli) stats.deallocation_count);
-                LOG_INFO(">>memory", "reallocation_count:  %lli", (lli) stats.reallocation_count);
-    
-                log_callstack(log_info(">memory"), 1, "callstack:");
+        filename = _log_builder_append_fmt(NULL, 
+            "%s/%02i-%02i-%02i__%02i-%02i-%02i.log", 
+            path ? path : "logs", now->tm_year, now->tm_mon, now->tm_mday, now->tm_hour, now->tm_min, now->tm_sec);
+    }
 
-                log_flush_all();
-            }
-            abort();
-        }
-    #endif
+    FILE* file = fopen(filename, open_mode);
+    logger->file = file;
+    logger->path = filename;
+    logger->flags = flags;
+    logger->logger.log = file_logger_log;
 
+    if(file != NULL && (flags & FILE_LOGGER_USE))
+        logger->prev_logger = log_set_logger(&logger->logger);
+
+    return file != NULL;
+}
+
+EXTERNAL void silent_logger_log(Logger* self, Log_Event event, const char* format, va_list args)
+{
+    (void) self;
+    (void) event;
+    (void) format;
+    (void) args;
+}
+
+EXTERNAL Logger* console_logger()
+{
+    return &_console_logger.logger;
+}
+
+EXTERNAL Logger* silent_logger()
+{
+    return &_silent_logger;
+}
+
+INTERNAL void _log_builder_deinit(_Log_Builder* builder)
+{
+    if(builder->data && builder->is_backed == false) 
+        free(builder->data);
+    memset(builder, 0, sizeof *builder);
+}
+
+INTERNAL char* _log_builder_append_vfmt(_Log_Builder* builder_or_null, const char* fmt, va_list args)
+{
+    _Log_Builder empty = {0};
+    _Log_Builder* builder = builder_or_null ? builder_or_null : &empty;
+
+    va_list copy;
+    va_copy(copy, args);
+    int64_t remaining = builder->capacity - builder->size;
+    int count = vsnprintf(builder->data + builder->size, (size_t) remaining, fmt, copy);
+
+    if(count >= remaining) {
+        void* old_data = builder->data;
+        builder->data = (char*) malloc((size_t) (builder->size + count + 1));
+        memcpy(builder->data, old_data, (size_t) builder->size);
+        if(builder->is_backed == false)
+            free(old_data);
+
+        builder->is_backed = false;
+        vsnprintf(builder->data + builder->size, (size_t) count + 1, fmt, args);
+    }
+
+    builder->size += count; 
+    return builder->data;
+}
+
+INTERNAL char* _log_builder_append_fmt(_Log_Builder* builder_or_null, const char* fmt, ...)
+{
+    va_list args;               
+    va_start(args, fmt);    
+    char* out = _log_builder_append_vfmt(builder_or_null, fmt, args);
+    va_end(args);
+    return out;  
+}
+
+#if defined(JOT_PLATFORM) || defined(JOT_COUPLED)
+    #include "platform.h"
+    INTERNAL const char* _log_thread_name()
+    {
+        return platform_thread_get_current_name();
+    }
+#else
+    INTERNAL const char* _log_thread_name()
+    {
+        //poor mans thread id - adress of a local variable
+        static _Thread_local char thread_name[16] = {0};
+        if(thread_name[0] == 0)
+            snprintf(thread_name, sizeof thread_name, "<%p>", thread_name);
+
+        return thread_name;
+    }
+#endif
+
+#if defined(_WIN32) || defined(_WIN64)
+    #include <direct.h>
+    INTERNAL void _log_mkdir(const char* name) {
+        _mkdir(name);
+    }
+#else
+    #include <sys/stat.h>
+    #include <sys/types.h>
+    INTERNAL void _log_mkdir(const char* name) {
+        mkdir(name, 0700);
+    }
+#endif
 #endif

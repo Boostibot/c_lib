@@ -87,7 +87,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 			
 			case PUSH: {
 				i64 offset = random_range(0, 64);
-				CHECK_BOUNDS(offset, 64);
+				ASSERT_BOUNDS(offset, 64);
 
 				i64 value = (i64) 1 << offset;
 				ASSERT(arr != NULL);
@@ -130,7 +130,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 				i64 appended[64] = {0};
 				isize append_count = random_range(0, 64);
 				
-				CHECK_BOUNDS(append_count, 64);
+				ASSERT_BOUNDS(append_count, 64);
 				for(isize k = 0; k < append_count; k++)
 				{
 					i64 value = (i64) 1 << random_range(0, 64);

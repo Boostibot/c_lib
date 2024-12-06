@@ -1,3 +1,13 @@
+// Despite its name this is a fully comforming LZ4 compressor/decompressor. 
+// It is heavily tested for all sorts of input as well as buffer overruns, so it *should* be safe.
+// The decompressor is quite optimized being able to compress 2.7GB/s. The official one is a bit faster with 3.4GB/s.
+//   I dont fully know why that is as I am (I believe) using all the same tricks as they are. Perhpas this will change on other compilers.
+// The compressor is about 4x slower then the official LZ4 implementation because it (geedily) checks every possible comfiguration
+//   unlike the official implementation which just checks 1/4-th. The decompression speed is about 130MB/s
+//   This also means it achieves better compression ratio - though surpisingly not by much. 
+//   On the enwik8 dataset it achieves 2.10 compression ration while the official one
+//   achieves about 1.9 (the default/non-high-compression version).
+
 #ifndef JOT_SLZ4
 #define JOT_SLZ4
 

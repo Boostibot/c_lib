@@ -3,6 +3,7 @@
 
 #if defined(TEST_RUNNER)
 #define JOT_ALL_IMPL
+#define JOT_PANIC_IMPL
 #endif
 
 #define JOT_COUPLED
@@ -32,6 +33,7 @@
 INTERNAL void test_all(f64 total_time)
 {
     PROFILE_START();
+    
     LOG_INFO("TEST", "RUNNING ALL TESTS");
     int total_count = 0;
     int passed_count = 0;
@@ -71,7 +73,7 @@ INTERNAL void test_all(f64 total_time)
 #if defined(TEST_RUNNER)
 
     #include "allocator_malloc.h"
-    #include "log_file.h"
+    // #include "log_file.h"
     int main()
     {
         platform_init();
@@ -80,7 +82,7 @@ INTERNAL void test_all(f64 total_time)
         arena_stack_init(global_stack, "scratch_arena_stack", 64*GB, 8*MB, 0);
 
         File_Logger logger = {0};
-        file_logger_init_use(&logger, allocator_get_malloc(), "logs");
+        file_logger_init(&logger, "logs", FILE_LOGGER_USE);
 
         test_all(30);
 
@@ -95,7 +97,6 @@ INTERNAL void test_all(f64 total_time)
     #else
         #error Unsupported OS! Add implementation
     #endif
-
 #endif
 
 #endif

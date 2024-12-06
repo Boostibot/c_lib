@@ -1,97 +1,121 @@
 #ifndef JOT_ASSERT
 #define JOT_ASSERT
 
-//Declaration of convenient and easily debugable asserts. This file is self contained.
-//Provides TEST(x) simply checks always, ASSERT and ASSERT_SLOW which get expanded only in debug builds.
-// All of which can be used as regular 
-//      ASSERT(val > 0) 
-// but also support 
-//      ASSERT(val > 0, "Val: %i needs to be greater than 5", val) 
-// All arguments are fully typechecked. 
-
-#include <stdlib.h>
-#include <stdio.h>
-#if !defined(JOT_INLINE_ASSERT) && !defined(JOT_DEFINES) && !defined(JOT_COUPLED)
-    #define JOT_INLINE_ASSERT
-    #include <string.h>
-    #include <stdarg.h>
-
-    #ifndef ASSUME_UNREACHABLE
-        #define ASSUME_UNREACHABLE() (*(int*)0 = 0)
-    #endif
-
-    #ifndef EXTERNAL 
-        #define EXTERNAL
-    #endif
-    EXTERNAL void assertion_report(const char* expression, int line, const char* file, const char* function, const char* format, ...)
-    {
-        printf("TEST(%s) or ASSERT failed in %s %s:%i\n", expression, function, file, line);
-        if(strlen(format) > 1)
-        {
-            va_list args;               
-            va_start(args, format);   
-            vprintf(format, args);
-            va_end(args);  
-        }
-    }
-#else
-    #include "defines.h"
-#endif
+#define TEST(x, ...)                        //asserts x is true - does NOT get removed in release builds 
+#define ASSERT(x, ...)                      //asserts x is true - gets removed in release builds
+#define ASSERT_SLOW(x, ...)                 //asserts x is true - gets removed in release and optimized debug builds -
+#define ASSERT_BOUNDS(i, to)                //asserts i is in [0, to)
+#define ASSERT_BOUNDS_RANGE(i, from, to)    //asserts i is in [from, to)
+#define STATIC_ASSERT(x)                    //if x is not true compilation fails. x must be constant expression.
+#define TODO(...)                           //declares this code is imcomplete with TEST(FALSE). 
+#define UNREACHABLE(...)                    //asserts this code is unreachable with ASSERT(FALSE). Also adds optimalization hints
+#define DEBUG_BREAK()                       //If code is running under debugger, breaks at the call site as if with an explicit breakpoint
+#define ASSUME_UNREACHABLE(...)             //hints to the compiler this location in code is unreachable. Does not assert.
 
 #if !defined(ASSERT_CUSTOM_SETTINGS) && !defined(NDEBUG)
-    //Locally enables/disables asserts. If we wish to disable for part of
-    // code we simply undefine them then redefine them after.
-    #define DO_ASSERTS       /* enables assertions */
-    #define DO_ASSERTS_SLOW  /* enables slow assertions - expensive assertions or once that change the time complexity of an algorithm */
-    #define DO_BOUNDS_CHECKS /* checks bounds prior to lookup */
+    #define DO_ASSERTS       // enables assertions
+    #define DO_ASSERTS_SLOW  // enables slow assertions - expensive assertions or once that change the time complexity of an algorithm
+    #define DO_BOUNDS_CHECKS // checks bounds prior to lookup 
 #endif
 
-//#undef DO_ASSERTS
-//#undef DO_ASSERTS_SLOW
+#ifndef INTERNAL 
+    #define INTERNAL static
+#endif
 
-//If fails does not compile. 
-//x must be a valid compile time exception. 
-//Is useful for validating if compile time settings are correct
-#define STATIC_ASSERT(x) typedef char PP_CONCAT(__static_assertion__, __LINE__)[(x) ? 1 : -1]
+#include <stdarg.h>
+#include <stdio.h>
+//gets called on assert/test failure. Does not get implemented unless JOT_ASSERT_PANIC_IMPL is defined
+INTERNAL void assert_panic(const char* expression, const char* file, const char* function, int line, const char* format, ...);
 
-//If x evaluates to false executes assertion_report() with optional provided message
-#define TEST(x, ...)                            (!(x) ? (assertion_report(#x, __LINE__, __FILE__, __FUNCTION__, " " __VA_ARGS__), (void) sizeof printf(" " __VA_ARGS__), abort()) : (void) 1)
-#define _DISSABLED_TEST(x, ...)                 sizeof(printf(" " __VA_ARGS__), (x))
+//macro implementation below 
+//===========================================================
+#undef TEST
+#undef ASSERT
+#undef ASSERT_SLOW
+#undef ASSERT_BOUNDS
+#undef ASSERT_BOUNDS_RANGE
+#undef STATIC_ASSERT
+#undef TODO
+#undef UNREACHABLE
+#undef DEBUG_BREAK
+#undef ASSUME_UNREACHABLE
 
-//In debug builds do the same as TEST() else do nothing
+#ifdef _MSC_VER
+    #define DEBUG_BREAK() __debugbreak()
+#else
+    #include <signal.h>
+    #define DEBUG_BREAK() raise(SIGTRAP)
+#endif
+
+#ifdef _MSC_VER
+    #define ASSUME_UNREACHABLE()  __assume(0)
+#elif defined(__GNUC__) || defined(__clang__)
+    #define ASSUME_UNREACHABLE()  __builtin_unreachable() 
+#else
+    #define ASSUME_UNREACHABLE() (*(int*)0 = 0)
+#endif
+
+#define _ASSERT_PANIC_EXPR(expr, ...)  (assert_panic(expr, __FILE__, __FUNCTION__, __LINE__, "" __VA_ARGS__), (void) sizeof printf(" " __VA_ARGS__))
+
+#define TEST(x, ...)                    (!(x) ? _ASSERT_PANIC_EXPR("TEST("#x")") : (void) 0)
+#define _DISSABLED_TEST(x, ...)         (void) sizeof(printf(" " __VA_ARGS__), (x))
+
 #ifdef DO_ASSERTS
-    #define ASSERT(x, ...)              TEST(x, __VA_ARGS__)          
+    #define ASSERT(x, ...)              (!(x) ? _ASSERT_PANIC_EXPR("ASSERT("#x")") : (void) 0) 
 #else
     #define ASSERT(x, ...)              _DISSABLED_TEST(x, ##__VA_ARGS__)
 #endif
 
-//In slow debug builds do the same as TEST() else do nothing
 #ifdef DO_ASSERTS_SLOW
-    #define ASSERT_SLOW(x, ...)          TEST(x, __VA_ARGS__)          
+    #define ASSERT_SLOW(x, ...)          (!(x) ? _ASSERT_PANIC_EXPR("ASSERT_SLOW("#x")") : (void) 0)        
 #else
     #define ASSERT_SLOW(x, ...)          _DISSABLED_TEST(x, ##__VA_ARGS__)
 #endif
 
-//In debug builds checks whether the value falls into the valid range
+#define STATIC_ASSERT(x) typedef char PP_CONCAT(__static_assertion__, __LINE__)[(x) ? 1 : -1]
+
 #ifdef DO_BOUNDS_CHECKS
-    #define CHECK_RANGE_BOUNDS(i, from, to)  TEST((from) <= (i) && (i) < (to), \
-                                                "Bounds check failed! %lli is not from the interval [%lli, %lli)!", \
-                                                (long long) (i), (long long) (from), (long long) (to))          
+    #define ASSERT_BOUNDS_RANGE(i, from, to) \
+        ((from) <= (i) && (i) < (to) \
+            ? (void) 0 \
+            : _ASSERT_PANIC_EXPR("ASSERT_BOUNDS_RANGE("#i", "#from","#to")", \
+                "Bounds check failed! %lli is not from the interval [%lli, %lli)!", \
+                (long long) (i), (long long) (from), (long long) (to)))          
 #else
-    #define CHECK_RANGE_BOUNDS(i, from, to)  _DISSABLED_TEST((from) <= (i) && (i) < (to))
+    #define ASSERT_BOUNDS_RANGE(i, from, to)  ((void) sizeof((from) <= (i) && (i) < (to)))
 #endif
 
-#define CHECK_BOUNDS(i, to)         CHECK_RANGE_BOUNDS(i, 0, to)
-#define UNREACHABLE(...)            (ASSERT(false, "Unreachable code reached! " __VA_ARGS__), ASSUME_UNREACHABLE())
-#define TODO(...)                   TEST(false, "TODO: " __VA_ARGS__)
+#define ASSERT_BOUNDS(i, to)        ASSERT_BOUNDS_RANGE(i, 0, to)
 
-//Gets called when assertion fails. 
-//Does not have to terminate process since that is done at call site by the assert macro itself.
-//if ASSERT_CUSTOM_REPORT is defined is left unimplemented
-EXTERNAL void assertion_report(const char* expression, int line, const char* file, const char* function, const char* format, ...);
+#ifdef DO_ASSERTS
+    #define UNREACHABLE(...)            (_ASSERT_PANIC_EXPR("UNREACHABLE("#__VA_ARGS__")", ##__VA_ARGS__), ASSUME_UNREACHABLE())
+#else
+    #define UNREACHABLE(...)            (_DISSABLED_TEST(0, ##__VA_ARGS__), ASSUME_UNREACHABLE())
+#endif
+
+#define TODO(...)                   _ASSERT_PANIC_EXPR("TODO("#__VA_ARGS__")", ##__VA_ARGS__)
 
 //Pre-Processor (PP) utils
 #define _PP_CONCAT(a, b)        a ## b
 #define PP_CONCAT(a, b)         _PP_CONCAT(a, b)
 #define PP_UNIQ(a)              PP_CONCAT(a, __LINE__)
+
+#ifdef JOT_ASSERT_PANIC_IMPL
+    #include <stdio.h>
+    #include <stdlib.h>
+    INTERNAL void assert_panic(const char* expression, const char* file, const char* function, int line, const char* format, ...)
+    {
+        printf("%s in %s %s:%i\n", expression, function, file, line);
+        //if user format non empty non empty
+        if(format && format[0] != '\0') { 
+            printf("user message: ");
+            va_list args;               
+            va_start(args, format);   
+            vprintf(format, args);
+            va_end(args);  
+        }
+        abort();
+    }
+#endif
+
 #endif

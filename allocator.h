@@ -23,8 +23,9 @@
 #include "defines.h"
 #include "assert.h"
 #include "platform.h"
+#include "panic.h"
 #include "profile.h"
-#include <stdarg.h>
+#include "log.h"
 
 typedef struct Allocator        Allocator;
 typedef struct Allocator_Stats  Allocator_Stats;
@@ -87,13 +88,10 @@ typedef struct Allocator_Stats {
 
 typedef struct Allocator_Set {
     Allocator* allocator_default;
-    Allocator* allocator_static;
 
     bool set_default;
-    bool set_static;
-	bool _[6];
+	bool _[7];
 } Allocator_Set;
-
 
 #define DEF_ALIGN PLATFORM_MAX_ALIGN
 #define SIMD_ALIGN PLATFORM_SIMD_ALIGN
@@ -124,17 +122,13 @@ EXTERNAL void allocator_panic(Allocator_Error error);
 EXTERNAL void allocator_error(Allocator_Error* error_or_null, Allocator_Error_Type error_type, Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align, const char* format, ...);
 
 EXTERNAL Allocator* allocator_get_default(); //returns the default allocator used for returning values from a function
-EXTERNAL Allocator* allocator_get_static(); //returns the static allocator used for allocations with potentially unbound lifetime. This includes things that will never be deallocated.
 EXTERNAL Allocator* allocator_or_default(Allocator* allocator_or_null); //Returns the passed in allocator_or_null. If allocator_or_null is NULL returns the current set default allocator
 EXTERNAL Allocator* allocator_get_malloc(); //returns the global malloc allocator. This is the default allocator.
 
 EXTERNAL bool allocator_is_arena_frame(Allocator* allocator);
 
-//@NOTE: static is useful for example for static dynamic lookup tables, caches inside functions, quick hacks that will not be deallocated for whatever reason.
-
 //All of these return the previously used Allocator_Set. This enables simple set/restore pair. 
 EXTERNAL Allocator_Set allocator_set_default(Allocator* new_default);
-EXTERNAL Allocator_Set allocator_set_static(Allocator* new_static);
 EXTERNAL Allocator_Set allocator_set(Allocator_Set backup); 
 
 EXTERNAL bool  is_power_of_two(isize num);
@@ -298,18 +292,13 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
 
     typedef struct Global_Allocator_State {
         Allocator* default_allocator;
-        Allocator* static_allocator;
     } Global_Allocator_State;
     
-    INTERNAL ATTRIBUTE_THREAD_LOCAL Global_Allocator_State _allocator_state = {&_malloc_alloc, &_malloc_alloc};
+    INTERNAL ATTRIBUTE_THREAD_LOCAL Global_Allocator_State _allocator_state = {&_malloc_alloc};
     
     EXTERNAL Allocator* allocator_get_default()
     {
         return _allocator_state.default_allocator;
-    }
-    EXTERNAL Allocator* allocator_get_static()
-    {
-        return _allocator_state.static_allocator;
     }
     
     EXTERNAL Allocator* allocator_or_default(Allocator* allocator_or_null)
@@ -324,15 +313,6 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
         set_to.set_default = true;
         return allocator_set(set_to);
     }
-
-    EXTERNAL Allocator_Set allocator_set_static(Allocator* new_static)
-    {
-        Allocator_Set set_to = {0};
-        set_to.allocator_static = new_static;
-        set_to.set_static = true;
-        return allocator_set(set_to);
-    }
-
     EXTERNAL Allocator_Set allocator_set(Allocator_Set set_to)
     {
         Global_Allocator_State* state = &_allocator_state;
@@ -344,14 +324,65 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
             prev.set_default = true;
             state->default_allocator = set_to.allocator_default;
         }
-        
-        if(set_to.set_static)
-        {
-            prev.allocator_static = state->static_allocator;
-            prev.set_static = true;
-            state->static_allocator = set_to.allocator_static;
-        }
 
         return prev;
+    }
+
+    EXTERNAL Allocator_Stats log_allocator_stats(const char* log_name, Log_Type log_type, Allocator* allocator)
+    {
+        Allocator_Stats stats = {0};
+        if(allocator != NULL && allocator->func != NULL)
+        {
+            stats = allocator_get_stats(allocator);
+            if(stats.type_name == NULL)
+                stats.type_name = "<no log_type name>";
+
+            if(stats.name == NULL)
+                stats.name = "<no name>";
+
+            LOG(log_type, log_name, "type_name:           %s", stats.type_name);
+            LOG(log_type, log_name, "name:                %s", stats.name);
+
+            LOG(log_type, log_name, "bytes_allocated:     %s", format_bytes(stats.bytes_allocated).data);
+            LOG(log_type, log_name, "max_bytes_allocated: %s", format_bytes(stats.max_bytes_allocated).data);
+
+            LOG(log_type, log_name, "allocation_count:    %lli", stats.allocation_count);
+            LOG(log_type, log_name, "deallocation_count:  %lli", stats.deallocation_count);
+            LOG(log_type, log_name, "reallocation_count:  %lli", stats.reallocation_count);
+        }
+        else
+            LOG(log_type, log_name, "Allocator NULL or missing get_stats callback.");
+
+        return stats;
+    }
+    
+    EXTERNAL void allocator_panic(Allocator_Error error)
+    {
+        Allocator_Stats stats = {0};
+        if(error.alloc != NULL && error.alloc->func != NULL)
+            stats = allocator_get_stats(error.alloc);
+
+        if(stats.type_name == NULL)
+            stats.type_name = "<no type name>";
+
+        if(stats.name == NULL)
+            stats.name = "<no name>";
+
+        LOG_FATAL("memory", "Allocator %s of type %s reported out of memory! Message: '%s'", stats.type_name, stats.name, error.message);
+
+        LOG_INFO(">memory", "new_size:    %s", format_bytes(error.new_size).data);
+        LOG_INFO(">memory", "old_size:    %s", format_bytes(error.old_size).data);
+        LOG_INFO(">memory", "old_ptr:     %s", format_ptr(error.old_ptr).data);
+        LOG_INFO(">memory", "align:       %lli", (lli) error.align);
+
+        LOG_INFO(">memory", "Allocator_Stats:");
+        LOG_INFO(">>memory", "bytes_allocated:     %s", format_bytes(stats.bytes_allocated).data);
+        LOG_INFO(">>memory", "max_bytes_allocated: %s", format_bytes(stats.max_bytes_allocated).data);
+
+        LOG_INFO(">>memory", "allocation_count:    %lli", (lli) stats.allocation_count);
+        LOG_INFO(">>memory", "deallocation_count:  %lli", (lli) stats.deallocation_count);
+        LOG_INFO(">>memory", "reallocation_count:  %lli", (lli) stats.reallocation_count);
+
+        PANIC("Allocation error");
     }
 #endif

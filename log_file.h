@@ -146,7 +146,7 @@ EXTERNAL void file_logger_log_append_into(Allocator* scratch, String_Builder* ap
             if('a' <= c && c <= 'z')
                 c = c - 'a' + 'A';
 
-            CHECK_BOUNDS(written, formatted_module.len);
+            ASSERT_BOUNDS(written, formatted_module.len);
             if(c == '\n' || c == ' ' || c == '\f' || c == '\t' || c == '\r' || c == '\v')
                 formatted_module.data[written++] = '_'; 
             else

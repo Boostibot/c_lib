@@ -1026,7 +1026,7 @@ EXTERNAL Path path_get_executable()
     if(platform_once_begin(&init))
     {
         Path path = path_parse_cstring(platform_get_executable_path());
-        builder = path_normalize(allocator_get_static(), path, PATH_FLAG_TRANSFORM_TO_FILE);
+        builder = path_normalize(allocator_get_malloc(), path, PATH_FLAG_TRANSFORM_TO_FILE);
         platform_once_end(&init);
     }
 
@@ -1041,7 +1041,7 @@ EXTERNAL Path path_get_executable_directory()
     {
         Path exe_path = path_parse_cstring(platform_get_executable_path());
         Path containing = path_strip_to_containing_directory(exe_path);
-        builder = path_normalize(allocator_get_static(), containing, PATH_FLAG_TRANSFORM_TO_DIR);
+        builder = path_normalize(allocator_get_malloc(), containing, PATH_FLAG_TRANSFORM_TO_DIR);
         platform_once_end(&init);
     }
 
@@ -1055,7 +1055,7 @@ EXTERNAL Path path_get_startup_working_directory()
     if(platform_once_begin(&init))
     {
         Path working_path = path_parse_cstring(platform_directory_get_startup_working());
-        builder = path_normalize(allocator_get_static(), working_path, PATH_FLAG_TRANSFORM_TO_DIR);
+        builder = path_normalize(allocator_get_malloc(), working_path, PATH_FLAG_TRANSFORM_TO_DIR);
         platform_once_end(&init);
     }
     

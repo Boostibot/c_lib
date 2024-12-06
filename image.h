@@ -259,8 +259,8 @@ EXTERNAL void image_init_sized(Image* image, Allocator* alloc, isize width, isiz
 
 EXTERNAL void* image_at(Image image, isize x, isize y)
 {
-    CHECK_BOUNDS(x, image.width);
-    CHECK_BOUNDS(y, image.height);
+    ASSERT_BOUNDS(x, image.width);
+    ASSERT_BOUNDS(y, image.height);
 
     isize byte_stride = image_byte_stride(image);
     u8* pixel = image.pixels + x*image.pixel_size + y*byte_stride;
@@ -321,10 +321,10 @@ EXTERNAL bool subimage_is_contiguous(Subimage view)
 EXTERNAL Subimage subimage_range(Subimage view, isize from_x, isize from_y, isize to_x, isize to_y)
 {
     Subimage out = view;
-    CHECK_BOUNDS(from_x, out.width + 1);
-    CHECK_BOUNDS(from_y, out.height + 1);
-    CHECK_BOUNDS(to_x, out.width + 1);
-    CHECK_BOUNDS(to_y, out.height + 1);
+    ASSERT_BOUNDS(from_x, out.width + 1);
+    ASSERT_BOUNDS(from_y, out.height + 1);
+    ASSERT_BOUNDS(to_x, out.width + 1);
+    ASSERT_BOUNDS(to_y, out.height + 1);
 
     ASSERT(from_x <= to_x);
     ASSERT(from_y <= to_y);
@@ -353,8 +353,8 @@ EXTERNAL Subimage image_range(Image image, isize from_x, isize from_y, isize to_
 
 EXTERNAL void* subimage_at(Subimage view, isize x, isize y)
 {
-    CHECK_BOUNDS(x, view.width);
-    CHECK_BOUNDS(y, view.height);
+    ASSERT_BOUNDS(x, view.width);
+    ASSERT_BOUNDS(y, view.height);
 
     i32 containing_x = (i32) x + view.from_x;
     i32 containing_y = (i32) y + view.from_y;

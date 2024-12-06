@@ -2,7 +2,7 @@
 
 #include "_test.h"
 #include "log.h"
-#include "log_file.h"
+// #include "log_file.h"
 #include "allocator_debug.h"
 
 INTERNAL void test_log()
@@ -18,7 +18,7 @@ INTERNAL void test_log()
 
     {
         File_Logger logger = {0};
-        file_logger_init_use(&logger, debug_allocator.alloc, "logs");
+        file_logger_init(&logger, "logs", FILE_LOGGER_USE);
         LOG_TRACE("TEST_LOG", "trace %s", "?");
         LOG_DEBUG("TEST_LOG", "debug %s", "?");
         LOG_INFO("TEST_LOG", "info %s", ".");
