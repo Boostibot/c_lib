@@ -228,20 +228,34 @@ unsigned _thread_func(void* ptr)
     return (unsigned) result;
 }
 
-Platform_Error platform_thread_launch(Platform_Thread* thread, int64_t stack_size_or_zero, int (*func)(void*), const void* context, int64_t context_size)
+
+
+int64_t         platform_thread_get_proccessor_count();
+Platform_Thread platform_thread_get_current(); //Returns handle to the calling thread
+int32_t         platform_thread_get_current_id(); 
+Platform_Thread platform_thread_get_main(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns NULL.
+bool            platform_thread_is_main();
+void            platform_thread_sleep(double seconds); //Sleeps the calling thread for specified number of seconds. The accuracy is platform and sheduler dependent
+void            platform_thread_exit(int code); //Terminates a thread with an exit code
+void            platform_thread_yield(); //Yields the remainder of this thread's time slice to another thread
+void            platform_thread_detach(Platform_Thread* thread);
+bool            platform_thread_join(const Platform_Thread* threads, int64_t count, double seconds_or_negative_if_infinite); //Blocks calling thread until all threads finish. Must not join the current calling thread!
+
+Platform_Error platform_thread_launch(Platform_Thread* thread_or_null, int64_t stack_size_or_zero, int (*func)(void*), void* context)
 {
+    Platform_Thread dummy = {0};
+    Platform_Thread* thread = thread_or_null ? thread_or_null : &dummy;
     assert(stack_size_or_zero >= 0);
-    assert(context_size >= 0);
 
     if(stack_size_or_zero <= 0)
         stack_size_or_zero = 0;
 
     thread->handle = NULL;
-    Platform_Thread_State* thread_state = calloc(1, sizeof(Platform_Thread_State) + context_size);
+    Platform_Thread_State* thread_state = calloc(1, sizeof(Platform_Thread_State) + sizeof(void*));
     if(thread_state)
     {
         thread_state->func = func;
-        memcpy(thread_state + 1, context, context_size);
+        memcpy(thread_state + 1, &context, sizeof(void*));
         thread->handle = (void*) _beginthreadex(NULL, (unsigned int) stack_size_or_zero, _thread_func, thread_state, 0, NULL);
     }
 
@@ -254,21 +268,15 @@ Platform_Error platform_thread_launch(Platform_Thread* thread, int64_t stack_siz
     }
 }
 
-bool platform_thread_is_running(Platform_Thread thread, Platform_Error* error_or_null)
+const char* platform_thread_get_current_name()
 {
-    DWORD result = WaitForSingleObject((HANDLE) thread.handle, 0);
-    bool out = result == WAIT_OBJECT_0;
-
-    if(error_or_null)
-    {
-        if(result == WAIT_FAILED)
-            *error_or_null = GetLastError();
-        else
-            *error_or_null = PLATFORM_ERROR_OK;
-    }
-    return out;
+    return "main";
 }
-
+void platform_thread_set_current_name(const char* name, bool dealloc_on_exit)
+{
+    (void) name;
+    (void) dealloc_on_exit;
+}
 void platform_thread_attach_deinit(void (*func)(void* context), void* context)
 {
     Platform_Thread_State* state = _platform_thread_state();
@@ -309,12 +317,12 @@ volatile void* _main_thread_handle = {0};
 void _platform_thread_get_main_init()
 {
     void* thread = GetCurrentThread();
-    platform_atomic_store64(&_main_thread_handle, (uint64_t) thread);
+    _main_thread_handle = thread;
 }
 
 Platform_Thread platform_thread_get_main()
 {
-    Platform_Thread out = {(void*) platform_atomic_load64(&_main_thread_handle)};
+    Platform_Thread out = {(void*) _main_thread_handle};
     return out;
 }
 bool platform_thread_is_main()
@@ -343,13 +351,13 @@ void platform_thread_exit(int code)
     _endthreadex((unsigned int) code);
 }
 
-int platform_thread_get_exit_code(Platform_Thread finished_thread)
+int64_t platform_thread_get_exit_code(Platform_Thread finished_thread)
 {
-    assert(platform_thread_is_running(finished_thread, NULL) == false);
-    int out = INT_MIN;
-    bool okay = !!GetExitCodeThread((HANDLE) finished_thread.handle, (DWORD*) (void*) &out);
-    assert(okay);
-    return out;
+    DWORD out = 0;
+    if(!!GetExitCodeThread((HANDLE) finished_thread.handle, &out))
+        return INT64_MIN;
+    else
+        return out;
 }
 
 bool platform_thread_join(const Platform_Thread* threads, int64_t count, double seconds_or_negative_if_infinite)
@@ -639,7 +647,7 @@ DEFINE_BUFFER_TYPE(wchar_t,            WString_Buffer)
 #define _CONCAT(a, b) a ## b
 #define CONCAT(a, b) _CONCAT(a, b)
 
-#define buffer_init_backed(buff, backing_size) do {
+#define buffer_init_backed(buff, backing_size) do { \
         char CONCAT(__backing, __LINE__)[(backing_size)* sizeof *(buff)->data]; \
         _buffer_init_backed((Buffer_Base*) (void*) (buff), sizeof *(buff)->data, CONCAT(__backing, __LINE__), (backing_size)); \
     } while(0)
@@ -746,11 +754,11 @@ static wchar_t* _utf8_to_utf16(WString_Buffer* append_to_or_null, const char* st
     return append_to->data;
 }
 
-static wchar_t* _wstring_path(String_Buffer* append_to_or_null, Platform_String path)
+static wchar_t* _wstring_path(WString_Buffer* append_to_or_null, Platform_String path)
 {
     WString_Buffer local = {0};
     WString_Buffer* append_to = append_to_or_null ? append_to_or_null : &local;
-    char* str = _utf8_to_utf16(append_to, path.data, path.len);
+    wchar_t* str = _utf8_to_utf16(append_to, path.data, path.len);
     for(int64_t i = 0; i < append_to->size; i++)
     {
         if(str[i] == '\\')
@@ -841,12 +849,12 @@ int64_t platform_translate_error(Platform_Error error, char* translated, int64_t
 }
 
 //Opens the file in the specified combination of Platform_File_Open_Flags. 
-Platform_Error platform_file_open(Platform_File* file, Platform_String path, int open_flags)
+Platform_Error platform_file_open(Platform_File* file, Platform_String file_path, int open_flags)
 {
     platform_file_close(file);
 
     WString_Buffer buffer = {0}; buffer_init_backed(&buffer, _LOCAL_BUFFER_SIZE);
-    const wchar_t* _path = _wstring_path(&buffer, path);
+    const wchar_t* path = _wstring_path(&buffer, file_path);
     
     DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
     DWORD access = 0;
@@ -878,7 +886,7 @@ Platform_Error platform_file_open(Platform_File* file, Platform_String path, int
     DWORD flags = FILE_ATTRIBUTE_NORMAL;
 
     HANDLE template_handle = NULL;
-    HANDLE handle = CreateFileW(_path, access, share, security, creation, flags, template_handle);
+    HANDLE handle = CreateFileW(path, access, share, security, creation, flags, template_handle);
     bool state = handle != INVALID_HANDLE_VALUE; 
     if(state)
     { 
@@ -1023,7 +1031,7 @@ Platform_Error platform_file_flush(Platform_File* file)
 Platform_Error platform_file_create(Platform_String file_path, bool fail_if_exists)
 {
     WString_Buffer buffer = {0}; buffer_init_backed(&buffer, _LOCAL_BUFFER_SIZE);
-    const wchar_t* _path = _wstring_path(&buffer, file_path);
+    const wchar_t* path = _wstring_path(&buffer, file_path);
 
     HANDLE handle = CreateFileW(path, 0, 0, NULL, OPEN_ALWAYS, 0, NULL);
     bool state = handle != INVALID_HANDLE_VALUE;
@@ -1042,8 +1050,7 @@ Platform_Error platform_file_create(Platform_String file_path, bool fail_if_exis
 Platform_Error platform_file_remove(Platform_String file_path, bool fail_if_does_not_exist)
 {
     WString_Buffer buffer = {0}; buffer_init_backed(&buffer, _LOCAL_BUFFER_SIZE);
-    const wchar_t* _path = _wstring_path(&buffer, path);
-    buffer_deinit(&buffer);
+    const wchar_t* path = _wstring_path(&buffer, file_path);
 
     SetFileAttributesW(path, FILE_ATTRIBUTE_NORMAL);
     bool state = !!DeleteFileW(path);
@@ -1054,7 +1061,7 @@ Platform_Error platform_file_remove(Platform_String file_path, bool fail_if_does
             state = true;
     }
 
-    buffer_deinit(&buffer.buffer);
+    buffer_deinit(&buffer);
     return _platform_error_code(state);
 }
 
@@ -1062,8 +1069,8 @@ Platform_Error platform_file_move(Platform_String new_path, Platform_String old_
 {       
     WString_Buffer new_backed = {0}; buffer_init_backed(&new_backed, _LOCAL_BUFFER_SIZE);
     WString_Buffer old_backed = {0}; buffer_init_backed(&old_backed, _LOCAL_BUFFER_SIZE);
-    const wchar_t* new_path_norm = _wstring_path(new_path, &new_backed);
-    const wchar_t* old_path_norm = _wstring_path(old_path, &old_backed);
+    const wchar_t* new_path_norm = _wstring_path(&new_backed, new_path);
+    const wchar_t* old_path_norm = _wstring_path(&old_backed, old_path);
 
     DWORD flags = MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH;
     if(override_if_used)
@@ -1080,8 +1087,8 @@ Platform_Error platform_file_copy(Platform_String new_path, Platform_String old_
 {
     WString_Buffer new_backed = {0}; buffer_init_backed(&new_backed, _LOCAL_BUFFER_SIZE);
     WString_Buffer old_backed = {0}; buffer_init_backed(&old_backed, _LOCAL_BUFFER_SIZE);
-    const wchar_t* new_path_norm = _wstring_path(new_path, &new_backed);
-    const wchar_t* old_path_norm = _wstring_path(old_path, &old_backed);
+    const wchar_t* new_path_norm = _wstring_path(&new_backed, new_path);
+    const wchar_t* old_path_norm = _wstring_path(&old_backed, old_path);
     //BOOL CopyFileExA(
     //    [in]           LPCSTR             lpExistingFileName,
     //    [in]           LPCSTR             lpNewFileName,
@@ -1103,7 +1110,7 @@ Platform_Error platform_file_copy(Platform_String new_path, Platform_String old_
 Platform_Error platform_file_resize(Platform_String file_path, int64_t size)
 {
     WString_Buffer buffer = {0}; buffer_init_backed(&buffer, _LOCAL_BUFFER_SIZE);
-    const wchar_t* _path = _wstring_path(&buffer, file_path);
+    const wchar_t* path = _wstring_path(&buffer, file_path);
 
     HANDLE handle = CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     bool state = handle != INVALID_HANDLE_VALUE; 
@@ -1268,8 +1275,7 @@ Platform_Error platform_directory_list_contents_alloc(Platform_String path, Plat
 
     {
         Dir_Iterator first = {0};
-        Wstring_Buffer buffer = {0};
-        first.path = _wstring_convert_backed(file_path, &buffer, NULL, 0, true);
+        _wstring_path(&first.path, path);
         buffer_push(&dir_iterators, first);
     }
     
@@ -1330,8 +1336,8 @@ Platform_Error platform_directory_list_contents_alloc(Platform_String path, Plat
                 info.link_type = _get_link_type(temp.data);  
             
             Platform_Directory_Entry entry = {0};
-            entry.info = info;
-            entry.path = _convert_to_utf8_normalize_path(NULL, temp.data, temp.size);
+            entry.info = info; 
+            entry.path = _string_path(NULL, temp.data, temp.size);
             entry.directory_depth = dir_iterators.size - 1;
             buffer_push(&entries, entry);
 
@@ -1415,7 +1421,7 @@ const char* platform_directory_get_startup_working()
 const char* platform_get_executable_path()
 {
     static uint32_t init = 0;
-    static String_Buffer dir = {0};
+    static const char* dir = {0};
     if(platform_once_begin(&init))
     {
         WString_Buffer wide = {0};
@@ -1432,21 +1438,21 @@ const char* platform_get_executable_path()
                 break;
         }
 
-        int64_t needed_size = GetFullPathNameW(local_path, 0, NULL, NULL);
+        int64_t needed_size = GetFullPathNameW(wide.data, (DWORD) full_path.size, full_path.data, NULL);
         if(needed_size > full_path.size)
         {
             buffer_resize(&full_path, needed_size);
-            needed_size = GetFullPathNameW(local_path, (DWORD) full_path.size, full_path.data, NULL);
+            needed_size = GetFullPathNameW(wide.data, (DWORD) full_path.size, full_path.data, NULL);
         }
         
-        _convert_to_utf8_normalize_path(&dir, full_path.data, full_path.size);
+        dir = _string_path(NULL, full_path.data, full_path.size);
         buffer_deinit(&full_path);
         buffer_deinit(&wide);
 
-        assert(dir.data != NULL);
+        assert(dir != NULL);
         platform_once_end(&init);
     }
-    return dir.data;
+    return dir;
 }
 
 void platform_file_memory_unmap(Platform_Memory_Mapping* mapping)
@@ -1601,8 +1607,8 @@ typedef struct _Platform_File_Watch_Context {
     String_Buffer change_path;
     String_Buffer change_old_path;
 
-    int32_t changes;
-    int32_t changes_calls;
+    PLATFORM_ATOMIC(int32_t) changes;
+    PLATFORM_ATOMIC(int32_t) changes_calls;
 
     uint8_t* buffer;
     size_t buffer_size;
@@ -1719,7 +1725,7 @@ Platform_Error platform_file_watch(Platform_File_Watch* file_watch_or_null, Plat
     buffer_append(&context.watched_path, file_path.data, file_path.len);
 
     WString_Buffer buffer = {0}; buffer_init_backed(&buffer, _LOCAL_BUFFER_SIZE);
-    const wchar_t* path = _wstring_path(&buffer, path);
+    const wchar_t* path = _wstring_path(&buffer, file_path);
         context.directory = CreateFileW(path,
             FILE_LIST_DIRECTORY,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
@@ -1786,7 +1792,7 @@ bool platform_file_watch_poll(Platform_File_Watch file_watch, Platform_File_Watc
     if(context)
     {
         //Atomic to not have to enter and leave critical section when its not needed.
-        int32_t changes = platform_atomic_load32(&context->changes);
+        int32_t changes = atomic_load(&context->changes);
         if(changes != 0)
         {
             //... okay some changes *probably* occurred
@@ -1830,9 +1836,9 @@ bool platform_file_watch_poll(Platform_File_Watch file_watch, Platform_File_Watc
                     
                     DWORD path_len = event->FileNameLength / sizeof(wchar_t);
                     if(event->Action == FILE_ACTION_RENAMED_OLD_NAME)
-                        _convert_to_utf8_normalize_path(&context->change_old_path, event->FileName, path_len);
+                        _string_path(&context->change_old_path, event->FileName, path_len);
                     else
-                        _convert_to_utf8_normalize_path(&context->change_path, event->FileName, path_len);
+                        _string_path(&context->change_path, event->FileName, path_len);
 
                     if (event->NextEntryOffset) {
                         //If there is next entry iterate to it
@@ -1936,12 +1942,12 @@ Platform_Window_Popup_Controls platform_window_make_popup(Platform_Window_Popup_
     int value = 0;
     WString_Buffer title_backed = {0}; buffer_init_backed(&title_backed, _LOCAL_BUFFER_SIZE);
     WString_Buffer message_backed = {0}; buffer_init_backed(&message_backed, _LOCAL_BUFFER_SIZE);
-    const wchar_t* title_wide = _wstring_path(&title_backed, path);
-    const wchar_t* message_wide = _wstring_path(&message_backed, path);
-    value = MessageBoxW(0, message_wide, title_wide, style | icon);
+    const wchar_t* title_wide =  _utf8_to_utf16(&title_backed, title.data, title.len);
+    const wchar_t* message_wide = _utf8_to_utf16(&message_backed, message.data, message.len);
+        value = MessageBoxW(0, message_wide, title_wide, style | icon);
     buffer_deinit(&title_backed);
     buffer_deinit(&message_wide);
-
+    
     switch(value)
     {
         case IDABORT: return PLATFORM_POPUP_CONTROL_ABORT;

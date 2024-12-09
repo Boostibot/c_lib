@@ -1,5 +1,3 @@
-#define JOT_ALL_IMPL
-
 #ifndef JOT_CHANNEL
 #define JOT_CHANNEL
 
@@ -32,20 +30,13 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <stdalign.h>
-
-#ifndef ASSERT
-    #include <assert.h>
-    #define ASSERT(x, ...) assert(x)
-#endif
 
 #ifdef __cplusplus
     #include <atomic>
-    #define _CHAN_USE_ATOMICS using namespace std
     #define CHAN_ATOMIC(T) std::atomic<T>
 #else
     #include <stdatomic.h>
-    #define _CHAN_USE_ATOMICS 
+    #include <stdalign.h>
     #define CHAN_ATOMIC(T) _Atomic(T) 
 #endif
 
@@ -217,19 +208,25 @@ CHAN_OS_API int64_t chan_perf_counter();
 CHAN_OS_API int64_t chan_perf_frequency();
 CHAN_OS_API bool chan_start_thread(void (*func)(void* context), void* context);
 
-
-
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_CHANNEL_IMPL)) && !defined(JOT_CHANNEL_HAS_IMPL)
 #define JOT_CHANNEL_HAS_IMPL
 
+#ifdef JOT_COUPLED
+    #include "assert.h"
+#endif
+#ifndef ASSERT
+    #include <assert.h>
+    #define ASSERT(x, ...) assert(x)
+#endif
+
 #ifndef chan_debug_log
     //cheaply logs into memory msg static string followed by up to two uint64_t values
-    #define chan_debug_log(msg, ...)    
+    #define chan_debug_log(msg, ...) (void) sizeof((msg), ##__VA_ARGS__)   
     //performs n atomic additions on piece of global memory causing the caller to wait for a bit   
     // is used to make certain states more likely then others (increases the window between two instructions)
-    #define chan_debug_wait(n)          
+    #define chan_debug_wait(n)      (void) sizeof(n) 
 #endif
 
 #define _CHAN_ID_WAITING_BIT            ((uint32_t) 1)
@@ -262,7 +259,6 @@ CHANAPI bool _channel_id_equals(uint32_t id1, uint32_t id2)
 
 CHANAPI void _channel_advance_id(Channel* chan, uint64_t target, uint32_t id, Channel_Info info)
 {
-    _CHAN_USE_ATOMICS;
     CHAN_ATOMIC(uint32_t)* id_ptr = &chan->ids[target];
     
     uint32_t new_id = (uint32_t) (id + _CHAN_ID_FILLED_BIT);
@@ -280,7 +276,6 @@ CHANAPI void _channel_advance_id(Channel* chan, uint64_t target, uint32_t id, Ch
 _CHAN_INLINE_NEVER
 static bool _channel_ticket_push_potentially_cancel(Channel* chan, uint64_t ticket, uint32_t closing)
 {
-    _CHAN_USE_ATOMICS;
     bool canceled = false;
     if(closing & _CHAN_CLOSING_HARD)
         canceled = true;
@@ -735,6 +730,7 @@ CHANAPI bool channel_close_push(Channel* chan, Channel_Info info)
 
 CHANAPI bool channel_is_invariant_converged_state(Channel* chan, Channel_Info info) 
 {
+    (void) info;
     bool out = true;
     if(channel_is_hard_closed(chan) == false)
     {

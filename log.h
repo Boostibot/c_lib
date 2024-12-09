@@ -47,17 +47,19 @@ EXTERNAL Logger* log_get_logger();
 EXTERNAL Logger* log_set_logger(Logger* logger);
 EXTERNAL const char* log_type_to_string(Log_Type type);
 
-EXTERNAL void log_fmt(Log_Type type, const char* module, int32_t line, const char* file, const char* function, const char* format, ...);
-EXTERNAL void log_vfmt(Log_Type type, const char* module, int32_t line, const char* file, const char* function, const char* format, va_list args);
-EXTERNAL void log_flush();
+EXTERNAL void log_fmt(Logger* logger, Log_Type type, const char* module, int32_t line, const char* file, const char* function, const char* format, ...);
+EXTERNAL void log_vfmt(Logger* logger, Log_Type type, const char* module, int32_t line, const char* file, const char* function, const char* format, va_list args);
+EXTERNAL void log_flush(Logger* logger);
 
-EXTERNAL static void log_group() {}
-EXTERNAL static void log_ungroup() {}
-EXTERNAL static void log_indent() {}
-EXTERNAL static void log_outdent() {}
+EXTERNAL void log_group() {}
+EXTERNAL void log_ungroup() {}
+EXTERNAL void log_indent() {}
+EXTERNAL void log_outdent() {}
 
-#define LOG(module, log_type, format, ...)   log_fmt(module, log_type, __LINE__, __FILE__, __func__, format, ##__VA_ARGS__)
-#define VLOG(module, log_type, format, args) log_vfmt(module, log_type, __LINE__, __FILE__, __func__, format, args)
+#define LOGGER_LOG(logger, log_type, module, format, ...) log_fmt(logger, log_type, module, __LINE__, __FILE__, __func__, format, ##__VA_ARGS__)
+#define LOGGER_LOGV(logger, log_type, module, format, ...) log_vfmt(logger, log_type, module, __LINE__, __FILE__, __func__, format, args)
+#define LOG(log_type, module, format, ...)   LOGGER_LOG(log_get_logger(), (log_type), (module), (format), ##__VA_ARGS__)
+#define LOGV(log_type, module, format, args) LOGGER_LOGV(log_get_logger(), (log_type), (module), (format), (args))
 #define LOG_INFO(module, format, ...)  LOG(LOG_INFO,  module, format, ##__VA_ARGS__)
 #define LOG_OKAY(module, format, ...)  LOG(LOG_OKAY,  module, format, ##__VA_ARGS__)
 #define LOG_WARN(module, format, ...)  LOG(LOG_WARN,  module, format, ##__VA_ARGS__)
@@ -126,10 +128,8 @@ EXTERNAL Logger* log_set_logger(Logger* logger)
     _thread_logger = logger;
     return before;
 }
-
-EXTERNAL void log_vfmt(Log_Type type, const char* module, int line, const char* file, const char* function, const char* format, va_list args)
+EXTERNAL void log_vfmt(Logger* logger, Log_Type type, const char* module, int32_t line, const char* file, const char* function, const char* format, va_list args)
 {
-    Logger* logger = log_get_logger();
     if(logger)
     {
         size_t extra_indentation = 0;
@@ -145,18 +145,17 @@ EXTERNAL void log_vfmt(Log_Type type, const char* module, int line, const char* 
         logger->log(logger, event, format, args);
     }
 }
-
-EXTERNAL void log_fmt(Log_Type type, const char* module, int line, const char* file, const char* function, const char* format, ...)
+EXTERNAL void log_fmt(Logger* logger, Log_Type type, const char* module, int32_t line, const char* file, const char* function, const char* format, ...)
 {
     va_list args;               
     va_start(args, format);     
-    log_vfmt(type, module, line, file, function, format, args);                    
-    va_end(args);                
+    log_vfmt(logger, type, module, line, file, function, format, args);                    
+    va_end(args);      
 }
 
-EXTERNAL void log_flush()
+EXTERNAL void log_flush(Logger* logger)
 {
-    log_fmt(LOG_FLUSH, "", __LINE__, __FILE__, __FUNCTION__, " ");
+    log_fmt(logger, LOG_FLUSH, "", __LINE__, __FILE__, __FUNCTION__, " ");
 }
 
 EXTERNAL const char* log_type_to_string(Log_Type type)

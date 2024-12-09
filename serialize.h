@@ -29,6 +29,7 @@
 #include "vformat.h"
 #include "math.h"
 #include "guid.h"
+#include "arena_stack.h"
 
 typedef enum Read_Or_Write {
     SERIALIZE_READ = 0,
@@ -508,7 +509,7 @@ EXTERNAL bool serialize_int_typed(Lpf_Entry* entry, void* int_value, isize int_t
     {
         value = get_variable_sized_int(int_value, int_type_size);
         SCRATCH_ARENA(arena)
-            serialize_entry_set_identity(entry, formata(arena, "%lli", value), LPF_ENTRY);
+            serialize_entry_set_identity(entry, format(arena.alloc, "%lli", value), LPF_ENTRY);
         return true;
     }
 }
@@ -534,7 +535,7 @@ EXTERNAL bool serialize_uint_typed(Lpf_Entry* entry, void* int_value, isize int_
     {
         value = (u64) get_variable_sized_int(int_value, int_type_size);
         SCRATCH_ARENA(arena)
-        serialize_entry_set_identity(entry, formata(arena, "%llu", value), LPF_ENTRY);
+        serialize_entry_set_identity(entry, format(arena.alloc, "%llu", value), LPF_ENTRY);
         return true;
     }
 }
@@ -577,9 +578,9 @@ EXTERNAL bool serialize_float_typed(Lpf_Entry* entry, void* float_value, isize f
     {
         SCRATCH_ARENA(arena)
             if(float_type_size == 8)
-                serialize_entry_set_identity(entry, formata(arena, "%lf", *(f64*) float_value), LPF_ENTRY);
+                serialize_entry_set_identity(entry, format(arena.alloc, "%lf", *(f64*) float_value), LPF_ENTRY);
             else
-                serialize_entry_set_identity(entry, formata(arena, "%f", *(f32*) float_value), LPF_ENTRY);
+                serialize_entry_set_identity(entry, format(arena.alloc, "%f", *(f32*) float_value), LPF_ENTRY);
             
         return true;
     }
@@ -720,7 +721,7 @@ EXTERNAL bool serialize_vec2(Lpf_Entry* entry, Vec2* val, Vec2 def, Read_Or_Writ
     else
     {
         SCRATCH_ARENA(arena)
-            serialize_entry_set_identity(entry, formata(arena, "%f %f", val->x, val->y), LPF_ENTRY);
+            serialize_entry_set_identity(entry, format(arena.alloc, "%f %f", val->x, val->y), LPF_ENTRY);
         return true;
     }
 }
@@ -751,7 +752,7 @@ EXTERNAL bool serialize_vec3(Lpf_Entry* entry, Vec3* val, Vec3 def, Read_Or_Writ
     {
         
         SCRATCH_ARENA(arena)
-            serialize_entry_set_identity(entry, formata(arena, "%f %f %f", val->x, val->y, val->z), LPF_ENTRY);
+            serialize_entry_set_identity(entry, format(arena.alloc, "%f %f %f", val->x, val->y, val->z), LPF_ENTRY);
         return true;
     }
 }
@@ -784,7 +785,7 @@ EXTERNAL bool serialize_vec4_typed(Lpf_Entry* entry, Vec4* val, Vec4 def, Read_O
     else
     {
         SCRATCH_ARENA(arena)
-            serialize_entry_set_identity(entry, formata(arena, "%f %f %f %f", val->x, val->y, val->z, val->w), LPF_ENTRY);
+            serialize_entry_set_identity(entry, format(arena.alloc, "%f %f %f %f", val->x, val->y, val->z, val->w), LPF_ENTRY);
         return true;
     }
 }
@@ -826,7 +827,7 @@ EXTERNAL bool serialize_mat2(Lpf_Entry* entry, Mat2* val, Mat2 def, Read_Or_Writ
     {
         
         SCRATCH_ARENA(arena)
-            serialize_entry_set_identity(entry, formata(arena, 
+            serialize_entry_set_identity(entry, format(arena.alloc, 
                 "%f %f\n"
                 "%f %f", 
                 val->m11, val->m12,
@@ -864,7 +865,7 @@ EXTERNAL bool serialize_mat3(Lpf_Entry* entry, Mat3* val, Mat3 def, Read_Or_Writ
     else
     {
         SCRATCH_ARENA(arena)
-            serialize_entry_set_identity(entry, formata(arena, 
+            serialize_entry_set_identity(entry, format(arena.alloc, 
                 "%f %f %f\n"
                 "%f %f %f\n"
                 "%f %f %f",
@@ -904,7 +905,7 @@ EXTERNAL bool serialize_mat4(Lpf_Entry* entry, Mat4* val, Mat4 def, Read_Or_Writ
     else
     {   
         SCRATCH_ARENA(arena)
-            serialize_entry_set_identity(entry, formata(arena, 
+            serialize_entry_set_identity(entry, format(arena.alloc, 
                 "%f %f %f %f\n"
                 "%f %f %f %f\n"
                 "%f %f %f %f\n"

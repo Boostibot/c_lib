@@ -10,15 +10,17 @@
 //  and can even dealloc the node without any risk of use after free.
 #define sync_list_push(head_ptr_ptr, node_ptr) sync_list_push_chain(head_ptr_ptr, node_ptr, node_ptr)
 #define sync_list_pop_all(head_ptr_ptr) atomic_exchange((head_ptr_ptr), NULL)
-#define sync_list_push_chain(head_ptr_ptr, first_node_ptr, last_node_ptr) \
-    for(;;) { \
-        uint64_t __curr = atomic_load((CHAN_ATOMIC(uint64_t*) (void*) (head_ptr_ptr)); \
-        atomic_store((CHAN_ATOMIC(uint64_t*) (void*) &(last_node_ptr)->next, __curr); \
-        if(atomic_compare_exchange_weak((CHAN_ATOMIC(uint64_t*) (void*) (head_ptr_ptr), &__curr, (uint64_t) (first_node_ptr))) \
-            break; \
-    } \
-
-
+#define sync_list_push_chain(head_ptr_ptr, first_node_ptr, last_node_ptr)                   \
+    for(;;) {                                                                               \
+        CHAN_ATOMIC(void*)* __head = (void*) (head_ptr_ptr);                                \
+        CHAN_ATOMIC(void*)* __last_next = (void*) &(last_node_ptr)->next;                   \
+                                                                                            \
+        void* __curr = atomic_load(__head);                                                 \
+        atomic_store(__last_next, __curr);                                                  \
+        if(atomic_compare_exchange_weak(__head, &__curr, (void*) (first_node_ptr)))         \
+            break;                                                                          \
+    }                                                                                       \
+    
 //==========================================================================
 // Wait/Wake helpers
 //==========================================================================
@@ -113,6 +115,47 @@ enum {
 CHANAPI bool sync_once(volatile Sync_Once* once, void(*func)(void* context), void* context, Sync_Wait wait);
 CHANAPI bool sync_once_begin(volatile Sync_Once* once, Sync_Wait wait);
 CHANAPI void sync_once_end(volatile Sync_Once* once, Sync_Wait wait);
+
+
+typedef union Ticket_Lock {
+    struct {
+        uint32_t requested;
+        uint32_t completed;
+    };
+    struct {
+        CHAN_ATOMIC(uint32_t) atomic_requested;
+        CHAN_ATOMIC(uint32_t) atomic_completed;
+    };
+
+    uint64_t combined;
+    CHAN_ATOMIC(uint64_t) atomic_combined;
+} Ticket_Lock;
+
+CHANAPI void ticket_lock(Ticket_Lock* lock, Sync_Wait wait);
+CHANAPI void ticket_unlock(Ticket_Lock* lock, Sync_Wait wait);
+
+CHANAPI void ticket_lock(Ticket_Lock* lock, Sync_Wait wait)
+{
+    uint32_t ticket = atomic_fetch_add(&lock->atomic_requested, 1);
+    for(;;) {
+        uint32_t curr_completed = atomic_load(&lock->atomic_completed);
+        if(curr_completed == ticket)
+            break;
+
+        if(wait.wait)
+            wait.wait((void*) &lock->atomic_completed, curr_completed, -1);
+        else
+            chan_pause();
+    }
+}
+
+CHANAPI void ticket_unlock(Ticket_Lock* lock, Sync_Wait wait)
+{
+    atomic_fetch_add(&lock->atomic_completed, 1);
+    if(wait.wake)
+        wait.wake((void*) &lock->atomic_completed);
+}
+
 
 #if 0
 CHANAPI bool sync_wait(volatile void* state, uint32_t current, isize timeout, Sync_Wait wait)

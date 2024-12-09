@@ -871,7 +871,7 @@ static bool platform_once_begin(volatile uint32_t* once)
     PLATFORM_ATOMIC(uint32_t)* atomic_once = (PLATFORM_ATOMIC(uint32_t)*) (void*) once; 
     bool out = false;
     for(;;) {
-        uint32_t current = atomic_load(once);
+        uint32_t current = atomic_load(atomic_once);
         if(current == INIT)
             break;
         
@@ -882,7 +882,7 @@ static bool platform_once_begin(volatile uint32_t* once)
             }
         }
         
-        platform_futex_wait(atomic_once, current, -1);
+        platform_futex_wait((void*) atomic_once, current, -1);
     }
     return out;
 }

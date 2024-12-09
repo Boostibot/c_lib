@@ -91,10 +91,11 @@ EXTERNAL void panic_default_handler_func(Panic_Handler* self, const char* expres
     (void) self;
     LOG_FATAL("panic", "%s in %s %s:%i\n", expression, function, file, line);
     if(format && format[0] != '\0') 
-        VLOG(LOG_FATAL, ">panic", format, args);
+        LOGV(LOG_FATAL, ">panic", format, args);
     
-    log_callstack(LOG_FATAL, "panic", 2);
-    log_flush();
+    LOG_TRACE("panic", "printing execution callstack:");
+    log_callstack(LOG_TRACE, ">panic", 2);
+    log_flush(log_get_logger());
     abort();
 }
 

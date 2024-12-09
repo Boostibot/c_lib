@@ -45,7 +45,7 @@ EXTERNAL Platform_Error file_read_entire(String file_path, String_Builder* data,
     builder_clear(data);
     return file_read_entire_append(file_path, data, info_or_null);
 }
-EXTERNAL bool file_append_entire(String file_path, String data)
+EXTERNAL Platform_Error file_append_entire(String file_path, String data)
 {
     PROFILE_START();
     Platform_File file = {0};
@@ -61,7 +61,8 @@ EXTERNAL bool file_append_entire(String file_path, String data)
     PROFILE_STOP();
     return error;
 }
-EXTERNAL bool file_write_entire(String file_path, String data)
+
+EXTERNAL Platform_Error file_write_entire(String file_path, String data)
 {
     PROFILE_START();
     Platform_File file = {0};

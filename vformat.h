@@ -16,8 +16,8 @@ EXTERNAL void format_into_no_check(String_Builder* into, const char* format, ...
 EXTERNAL String_Builder vformat(Allocator* alloc, const char* format, va_list args);
 EXTERNAL String_Builder format_no_check(Allocator* alloc, const char* format, ...);
 
-#define  format_builder(alloc, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), format_no_check((alloc), (format), ##__VA_ARGS__))
-#define  format(allocator, format, ...) format_builder((alloc), (format), ##__VA_ARGS__).string
+#define  format_builder(allocator, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), format_no_check((allocator), (format), ##__VA_ARGS__))
+#define  format(allocator, format, ...) format_builder((allocator), (format), ##__VA_ARGS__).string
 
 EXTERNAL String translate_error(Allocator* alloc, Platform_Error error);
 EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error error);
