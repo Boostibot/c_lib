@@ -12,7 +12,6 @@
     #define CL_QUEUE_THREAD_LOCAL thread_local
 #else
     #include <stdatomic.h>
-    #include <stdalign.h>
     #define CL_QUEUE_ATOMIC(T)    _Atomic(T) 
     #define CL_QUEUE_THREAD_LOCAL _Thread_local
 #endif
@@ -49,15 +48,10 @@ typedef struct CL_Queue_Block {
 } CL_Queue_Block;
 
 typedef struct CL_Queue {
-    alignas(CL_QUEUE_CACHE_LINE) 
     CL_QUEUE_ATOMIC(uint64_t) top; //owned by consumers
-
-    alignas(CL_QUEUE_CACHE_LINE) 
     CL_QUEUE_ATOMIC(uint64_t) bot; //owned by producer = "owner"
-    CL_QUEUE_ATOMIC(int*) owner;
-    
-    alignas(CL_QUEUE_CACHE_LINE) 
     CL_QUEUE_ATOMIC(CL_Queue_Block*) block;
+    CL_QUEUE_ATOMIC(int*) owner;
     CL_QUEUE_ATOMIC(uint64_t) max_capacity;
     CL_QUEUE_ATOMIC(int32_t) references;
     CL_QUEUE_ATOMIC(uint32_t) item_size;
