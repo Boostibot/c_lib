@@ -10,6 +10,11 @@
     #include <atomic>
     #define CL_QUEUE_ATOMIC(T)    std::atomic<T>
     #define CL_QUEUE_THREAD_LOCAL thread_local
+    using std::memory_order_acquire;
+    using std::memory_order_release;
+    using std::memory_order_seq_cst;
+    using std::memory_order_relaxed;
+    using std::memory_order_consume;
 #else
     #include <stdatomic.h>
     #define CL_QUEUE_ATOMIC(T)    _Atomic(T) 
@@ -48,11 +53,11 @@ typedef struct CL_Queue_Block {
 } CL_Queue_Block;
 
 typedef struct CL_Queue {
-    CL_QUEUE_ATOMIC(uint64_t) top; //owned by consumers
-    CL_QUEUE_ATOMIC(uint64_t) bot; //owned by producer = "owner"
+    CL_QUEUE_ATOMIC(uint64_t) top; 
+    CL_QUEUE_ATOMIC(uint64_t) bot;
     CL_QUEUE_ATOMIC(CL_Queue_Block*) block;
     CL_QUEUE_ATOMIC(int*) owner;
-    CL_QUEUE_ATOMIC(uint64_t) max_capacity;
+    CL_QUEUE_ATOMIC(isize) max_capacity;
     CL_QUEUE_ATOMIC(int32_t) references;
     CL_QUEUE_ATOMIC(uint32_t) item_size;
 } CL_Queue;
@@ -67,13 +72,13 @@ CL_QUEUE_API void cl_queue_take_ownership(CL_Queue* queue);
 CL_QUEUE_API void cl_queue_deinit(CL_Queue* queue);
 CL_QUEUE_API void cl_queue_init(CL_Queue* queue, isize item_size, isize max_capacity_or_negative_if_infinite);
 CL_QUEUE_API CL_Queue* cl_queue_share(CL_Queue* queue);
-CL_QUEUE_API CL_Queue_Block* cl_queue_reserve(CL_Queue* queue, isize to_size);
+CL_QUEUE_API void cl_queue_reserve(CL_Queue* queue, isize to_size);
 CL_QUEUE_API_INLINE bool cl_queue_push(CL_Queue *q, const void* item, isize item_size);
 CL_QUEUE_API_INLINE bool cl_queue_pop(CL_Queue *q, void* item, isize item_size);
 CL_QUEUE_API_INLINE bool cl_queue_pop_back(CL_Queue *q, void* item, isize item_size); 
 CL_QUEUE_API_INLINE CL_Queue_Pop_State cl_queue_pop_weak(CL_Queue *q, void* item, isize item_size);
-CL_QUEUE_API_INLINE uint64_t cl_queue_capacity(const CL_Queue *q);
-CL_QUEUE_API_INLINE uint64_t cl_queue_count(const CL_Queue *q);
+CL_QUEUE_API_INLINE isize cl_queue_capacity(const CL_Queue *q);
+CL_QUEUE_API_INLINE isize cl_queue_count(const CL_Queue *q);
 
 #endif
 
@@ -89,12 +94,21 @@ CL_QUEUE_API_INLINE uint64_t cl_queue_count(const CL_Queue *q);
     #define ASSERT(x, ...) assert(x)
 #endif
 
-#ifdef _MSC_VER
-    #define cl_queue_aligned_alloc(size, align) _aligned_malloc((size), (align))
-    #define cl_queue_aligned_free _aligned_free
-#else
-    #define cl_queue_aligned_alloc(size, align) aligned_alloc((align), (size))
-    #define cl_queue_aligned_free free
+//TODO: add memory swapping?
+//TODO: remove aligned alloc?
+//TODO: remove ref counting nonsense?
+//I need to swap the last 4 bits from size 2^(4+4)=256=min size will be the same => if item is bigger than 4B each write will be to different cache line
+// -> If I instead swap only 3 bits min size will be 64 (OK) but will only write to different cache lines for items of size at least 8 (OK)
+// -> will need to be benchmarked to determine if this is worth it at all...
+
+#ifndef cl_queue_aligned_alloc
+    #ifdef _MSC_VER
+        #define cl_queue_aligned_alloc(size, align) _aligned_malloc((size), (align))
+        #define cl_queue_aligned_free _aligned_free
+    #else
+        #define cl_queue_aligned_alloc(size, align) aligned_alloc((align), (size))
+        #define cl_queue_aligned_free free
+    #endif
 #endif
 
 static CL_QUEUE_THREAD_LOCAL int _cl_queue_thread_dummy = 0;
@@ -105,7 +119,7 @@ CL_QUEUE_API void cl_queue_take_ownership(CL_Queue* queue)
 
 CL_QUEUE_API void cl_queue_deinit(CL_Queue* queue)
 {
-    int32_t refs = atomic_fetch_sub(&queue->references, 1);
+    int32_t refs = atomic_fetch_sub(&queue->references, 1) - 1;
     ASSERT(refs >= 0);
     if(refs == 0)
     {
@@ -124,7 +138,7 @@ CL_QUEUE_API void cl_queue_init(CL_Queue* queue, isize item_size, isize max_capa
 {
     memset(queue, 0, sizeof *queue);
     queue->item_size = (uint32_t) item_size;
-    queue->max_capacity = max_capacity_or_negative_if_infinite >= 0 ? (uint64_t) max_capacity_or_negative_if_infinite : UINT64_MAX;
+    queue->max_capacity = max_capacity_or_negative_if_infinite >= 0 ? max_capacity_or_negative_if_infinite : INT64_MAX;
     cl_queue_take_ownership(queue);
     cl_queue_share(queue);
     atomic_thread_fence(memory_order_seq_cst);
@@ -138,11 +152,12 @@ CL_QUEUE_API CL_Queue* cl_queue_share(CL_Queue* queue)
 
 CL_QUEUE_API_INLINE void* _cl_queue_slot(CL_Queue_Block* block, uint64_t i, isize item_size)
 {
-    uint8_t* data = (int*) (void*) (block + 1);
+    uint8_t* data = (uint8_t*) (void*) (block + 1);
     return data + (i & block->mask)*item_size;
 }
 
-CL_QUEUE_API CL_Queue_Block* cl_queue_reserve(CL_Queue* queue, isize to_size)
+CL_QUEUE_INLINE_NEVER
+CL_QUEUE_API CL_Queue_Block* _cl_queue_reserve(CL_Queue* queue, isize to_size)
 {
     ASSERT(atomic_load_explicit(&queue->owner, memory_order_relaxed) == &_cl_queue_thread_dummy, 
         "Must only be called by the owning thread."
@@ -150,8 +165,8 @@ CL_QUEUE_API CL_Queue_Block* cl_queue_reserve(CL_Queue* queue, isize to_size)
 
     CL_Queue_Block* old_block = atomic_load(&queue->block);
     CL_Queue_Block* out_block = old_block;
-    uint64_t old_cap = old_block ? (old_block->mask + 1) : 0;
-    uint64_t max_capacity  = queue->max_capacity;
+    isize old_cap = old_block ? (isize) (old_block->mask + 1) : 0;
+    isize max_capacity = (isize) queue->max_capacity;
     isize item_size = queue->item_size;
 
     if(old_cap < to_size && to_size <= max_capacity)
@@ -160,7 +175,7 @@ CL_QUEUE_API CL_Queue_Block* cl_queue_reserve(CL_Queue* queue, isize to_size)
         while((isize) new_cap < to_size)
             new_cap *= 2;
 
-        CL_Queue_Block* new_block = (CL_Queue_Block*) cl_queue_aligned_alloc(sizeof(CL_Queue_Block) + new_cap*item_size, NULL, CL_QUEUE_CACHE_LINE);
+        CL_Queue_Block* new_block = (CL_Queue_Block*) cl_queue_aligned_alloc(sizeof(CL_Queue_Block) + new_cap*item_size, CL_QUEUE_CACHE_LINE);
         new_block->next = old_block;
         new_block->mask = new_cap - 1;
 
@@ -180,15 +195,20 @@ CL_QUEUE_API CL_Queue_Block* cl_queue_reserve(CL_Queue* queue, isize to_size)
     return out_block;
 }
 
+CL_QUEUE_API void cl_queue_reserve(CL_Queue* queue, isize to_size)
+{
+    _cl_queue_reserve(queue, to_size);
+}
+
 CL_QUEUE_API_INLINE bool cl_queue_pop_back(CL_Queue *q, void* item, isize item_size) 
 {
-    ASSERT(atomic_load_explicit(&item_size, memory_order_relaxed) == item_size);
+    ASSERT(atomic_load_explicit(&q->item_size, memory_order_relaxed) == item_size);
     ASSERT(atomic_load_explicit(&q->owner, memory_order_relaxed) == &_cl_queue_thread_dummy, 
         "Must only be called by the owning thread."
         "If the queue was transfered, the owning thread must call cl_queue_take_ownership");
 
     uint64_t b = atomic_load_explicit(&q->bot, memory_order_relaxed) - 1;
-    CL_Queue_Block* a = atomic_load(&q->block, memory_order_relaxed);
+    CL_Queue_Block* a = atomic_load_explicit(&q->block, memory_order_relaxed);
     atomic_store_explicit(&q->bot, b, memory_order_relaxed);
     atomic_thread_fence(memory_order_seq_cst);
     uint64_t t = atomic_load_explicit(&q->top, memory_order_relaxed);
@@ -222,7 +242,7 @@ CL_QUEUE_API_INLINE bool cl_queue_pop_back(CL_Queue *q, void* item, isize item_s
 
 CL_QUEUE_API_INLINE bool cl_queue_push(CL_Queue *q, const void* item, isize item_size) 
 {
-    ASSERT(atomic_load_explicit(&item_size, memory_order_relaxed) == item_size);
+    ASSERT(atomic_load_explicit(&q->item_size, memory_order_relaxed) == item_size);
     ASSERT(atomic_load_explicit(&q->owner, memory_order_relaxed) == &_cl_queue_thread_dummy, 
         "Must only be called by the owning thread."
         "If the queue was transfered, the owning thread must call cl_queue_take_ownership");
@@ -231,7 +251,7 @@ CL_QUEUE_API_INLINE bool cl_queue_push(CL_Queue *q, const void* item, isize item
     uint64_t t = atomic_load_explicit(&q->top, memory_order_acquire);
     CL_Queue_Block *a = atomic_load_explicit(&q->block, memory_order_relaxed);
     if (a == NULL || b - t > a->mask) { 
-        CL_Queue_Block* new_a = cl_queue_reserve(q, a->mask);
+        CL_Queue_Block* new_a = _cl_queue_reserve(q, b - t + 1);
         if(new_a == a)
             return false;
 
@@ -248,7 +268,7 @@ CL_QUEUE_API_INLINE bool cl_queue_push(CL_Queue *q, const void* item, isize item
 
 CL_QUEUE_API_INLINE CL_Queue_Pop_State cl_queue_pop_weak(CL_Queue *q, void* item, isize item_size) 
 {
-    ASSERT(atomic_load_explicit(&item_size, memory_order_relaxed) == item_size);
+    ASSERT(atomic_load_explicit(&q->item_size, memory_order_relaxed) == item_size);
 
     uint64_t t = atomic_load_explicit(&q->top, memory_order_acquire);
     atomic_thread_fence(memory_order_seq_cst);
@@ -258,7 +278,7 @@ CL_QUEUE_API_INLINE CL_Queue_Pop_State cl_queue_pop_weak(CL_Queue *q, void* item
     if (t < b) {
         CL_Queue_Block *a = atomic_load_explicit(&q->block, memory_order_consume);
         
-        void* slot = _cl_queue_slot(a, b, item_size);
+        void* slot = _cl_queue_slot(a, t, item_size);
         memcpy(item, slot, item_size);
 
         if (!atomic_compare_exchange_strong_explicit(&q->top, &t, t + 1, memory_order_seq_cst, memory_order_relaxed))
@@ -278,20 +298,18 @@ CL_QUEUE_API_INLINE bool cl_queue_pop(CL_Queue *q, void* item, isize item_size)
     }
 }
 
-CL_QUEUE_API_INLINE uint64_t cl_queue_capacity(const CL_Queue *q)
+CL_QUEUE_API_INLINE isize cl_queue_capacity(const CL_Queue *q)
 {
     CL_Queue_Block *a = atomic_load_explicit(&q->block, memory_order_relaxed);
-    return a ? a->mask + 1 : 0;
+    return a ? (isize) a->mask + 1 : 0;
 }
 
-CL_QUEUE_API_INLINE uint64_t cl_queue_count(const CL_Queue *q)
+CL_QUEUE_API_INLINE isize cl_queue_count(const CL_Queue *q)
 {
     uint64_t t = atomic_load_explicit(&q->top, memory_order_relaxed);
     uint64_t b = atomic_load_explicit(&q->bot, memory_order_relaxed);
-    if (t < b)
-        return t - b;
-    else
-        return 0;
+    uint64_t diff = (isize) (b - t);
+    return diff >= 0 ? diff : 0;
 }
 
 #endif

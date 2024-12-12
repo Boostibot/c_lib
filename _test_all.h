@@ -28,6 +28,7 @@
 #include "_test_stable_array.h"
 #include "_test_lpf.h"
 #include "_test_image.h"
+#include "_test_chase_lev_queue.h"
 // #include "_test_string_map.h"
 
 INTERNAL void test_all(f64 total_time)
@@ -59,6 +60,7 @@ INTERNAL void test_all(f64 total_time)
     INCR RUN_TEST_TIMED(test_string, total_time/8);
     INCR RUN_TEST_TIMED(test_allocator_tlsf, total_time/8);
     INCR RUN_TEST_TIMED(slz4_test, total_time/8);
+    INCR RUN_TEST_TIMED(test_chase_lev_queue, total_time/8);
     
     #undef INCR
 

@@ -1095,7 +1095,8 @@ CHANAPI void chan_wake_block(volatile void* state)
 
 #if CHAN_OS == CHAN_OS_WINDOWS
     #pragma comment(lib, "synchronization.lib")
-
+    #include <process.h>
+    
     //Instead of including windows.h we 
     typedef int BOOL;
     typedef unsigned long DWORD;
@@ -1156,12 +1157,6 @@ CHANAPI void chan_wake_block(volatile void* state)
         (void) QueryPerformanceFrequency((LARGE_INTEGER*) (void*) &ticks);
         return ticks;
     }
-
-    uintptr_t _beginthread(
-        void( __cdecl *start_address )( void * ),
-        unsigned stack_size,
-        void *arglist
-    );
 
     CHAN_OS_API bool chan_start_thread(void (*func)(void* context), void* context)
     {
