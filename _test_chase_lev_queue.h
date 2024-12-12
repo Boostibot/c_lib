@@ -97,7 +97,7 @@ static void test_chase_lev_producer_consumers_thread_func(void *arg)
     while(*thread->run_test == 0); 
     
     //run for as long as we can
-    while(*thread->run_test)
+    while(*thread->run_test == 1)
     {
         isize val = 0;
         if(cl_queue_pop_weak(thread->queue, &val, sizeof(isize)) == 0)
@@ -160,7 +160,7 @@ static void test_chase_lev_producer_consumers(isize reserve_size, isize consumer
             }
         }
 
-        run_test = 0;
+        run_test = 2;
         while(finished != consumer_count);
     }
 

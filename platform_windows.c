@@ -784,7 +784,7 @@ static char* _string_path(String_Buffer* append_to_or_null, const wchar_t* strin
 
 int64_t platform_translate_error(Platform_Error error, char* translated, int64_t translated_size)
 {
-    char buffer[4096];
+    char buffer[1024];
     const char* source = NULL;
     bool was_allocated = false;
 
@@ -822,29 +822,29 @@ int64_t platform_translate_error(Platform_Error error, char* translated, int64_t
                 0, NULL );
         }
     }
-    
-    //Strips annoying trailing whitespace and null termination
     int64_t needed_size = strlen(source);
-    for(; needed_size > 0; needed_size --)
-    {
-        char c = translated[needed_size - 1];
-        if(!isspace(c) && c != '\0')
-            break;
-    }
+    if(translated) {
+        //Strips annoying trailing whitespace and null termination
+        for(; needed_size > 0; needed_size --)
+        {
+            char c = translated[needed_size - 1];
+            if(!isspace(c) && c != '\0')
+                break;
+        }
 
-    int64_t min_size = needed_size < translated_size ? needed_size : translated_size;
-    memcpy(translated, source, min_size);
+        int64_t min_size = needed_size < translated_size ? needed_size : translated_size;
+        memcpy(translated, source, min_size);
     
-    //Null terminate right after
-    if(needed_size < translated_size) 
-        translated[needed_size] = '\0';
-    //Null terminate the whole buffer 
-    else if(translated_size > 0) 
-        translated[translated_size - 1] = '\0';
+        //Null terminate right after
+        if(needed_size < translated_size) 
+            translated[needed_size] = '\0';
+        //Null terminate the whole buffer 
+        else if(translated_size > 0) 
+            translated[translated_size - 1] = '\0';
+    }
 
     if(was_allocated)
         LocalFree((void*) source);
-
     return needed_size + 1;
 }
 
