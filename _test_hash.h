@@ -72,7 +72,7 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 		Hash other_table = {debug_alloc.alloc};
 
 		Array(Action) history = {debug_alloc.alloc};
-		*random_state() = random_state_from_clock();
+		*random_state() = random_state_make(random_seed());
 
 		i32 max_size = 0;
 		i32 max_capacity = 0;

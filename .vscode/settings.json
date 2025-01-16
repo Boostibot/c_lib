@@ -62,6 +62,7 @@
         "condition_variable": "c",
         "cstdint": "c",
         "typeinfo": "cpp",
-        "__node_handle": "cpp"
+        "__node_handle": "cpp",
+        "bit": "cpp"
     }
 }

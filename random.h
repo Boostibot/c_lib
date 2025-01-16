@@ -3,117 +3,118 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 #ifndef ASSERT
-#include <assert.h>
-#define ASSERT(x) assert(x)
+	#include <assert.h>
+	#define ASSERT(x) assert(x)
 #endif
 
 #ifndef EXTERNAL
     #define EXTERNAL
 #endif
 
-//Generates next random value
-//Seed can be any value
-//Taken from: https://prng.di.unimi.it/splitmix64.c
-EXTERNAL uint64_t random_splitmix(uint64_t* state);
+EXTERNAL bool     random_bool(); //generates random bool
+EXTERNAL float    random_f32(); //generates random float in range [0, 1)
+EXTERNAL double   random_f64(); //generates random double in range [0, 1)
+EXTERNAL uint64_t random_u64(); //generates random u64 in range [0, U64_MAX] 
+EXTERNAL int64_t  random_i64(); //generates random i64 in range [I64_MIN, U64_MAX] 
+EXTERNAL int64_t  random_range(int64_t from, int64_t to); //generates unbiased random integer in range [from, to)
+EXTERNAL double   random_range_f64(double from, double to); 
+EXTERNAL float    random_range_f32(float from, float to); 
 
-//Generates next random value
-//Seed must not be anywhere zero. Lower 3 bits have bias. Good for floating point
-//Taken from: https://prng.di.unimi.it/xoshiro256plus.c
-EXTERNAL uint64_t random_xiroshiro256(uint64_t state[4]);
+EXTERNAL double   random_bits_to_f64(uint64_t random);
+EXTERNAL float    random_bits_to_f32(uint32_t random);
 
-//generates random bool
-EXTERNAL bool     random_bool();	
-//generates random float in range [0, 1)
-EXTERNAL float    random_f32();
-//generates random double in range [0, 1)
-EXTERNAL double   random_f64(); 
-//generates random u64 in range [0, U64_MAX] 
-EXTERNAL uint64_t random_u64();  
-//generates random i64 in range [I64_MIN, U64_MAX] 
-EXTERNAL int64_t  random_i64();  
-//generates unbiased random integer in range [from, to)
-EXTERNAL int64_t  random_range(int64_t from, int64_t to); 
-
-EXTERNAL double   random_interval_f64(double from, double to); 
-EXTERNAL float    random_interval_f32(float from, float to); 
-//writes size bytes of random data into into
-EXTERNAL void     random_bytes(void* into, int64_t size);
-//Randomly shuffles the provided array
-EXTERNAL void     random_shuffle(void* elements, int64_t element_count, int64_t element_size); 
-//Swaps two values of the given size
-EXTERNAL void     swap_any(void* a, void* b, int64_t size); 
+EXTERNAL void     random_bytes(void* into, int64_t size); //writes size bytes of random data into into
+EXTERNAL void     random_shuffle(void* elements, int64_t element_count, int64_t element_size); //Randomly shuffles the provided array
+EXTERNAL void     swap_any(void* a, void* b, int64_t size); //Swaps two values of the given size
 
 typedef struct Random_State {
-	uint64_t seed;
-	uint64_t state_splitmix[1];
-	uint64_t state_xiroshiro256[4];
+	uint64_t state[4];
 } Random_State;
 
-//Generates a random seed using system clock and internal state
-EXTERNAL uint64_t     random_clock_seed();
-//initializes Random_State using given seed
-EXTERNAL Random_State random_state_from_seed(uint64_t seed); 
-//initialized Random_State using system clock
-EXTERNAL Random_State random_state_from_clock();
-//Returns pointer to the global state currently used
-EXTERNAL Random_State* random_state();
+EXTERNAL uint64_t     random_seed(); //Generates a random seed using system clock and this threads id
+EXTERNAL Random_State random_state_make(uint64_t seed); //initializes Random_State using given seed
+EXTERNAL Random_State* random_state(); //Returns pointer to the global state currently used
 
-//generates random bool
-EXTERNAL bool     random_bool_state(Random_State* state);	
-//generates random float in range [0, 1)
-EXTERNAL float    random_f32_state(Random_State* state);
-//generates random double in range [0, 1)
-EXTERNAL double   random_f64_state(Random_State* state); 
-//generates random u64 in range [0, U64_MAX] 
-EXTERNAL uint64_t random_u64_state(Random_State* state);  
-//generates random i64 in range [I64_MIN, U64_MAX] 
-EXTERNAL int64_t  random_i64_state(Random_State* state);  
-//generates unbiased random integer in range [from, to)
-EXTERNAL int64_t  random_range_state(Random_State* state, int64_t from, int64_t to); 
+EXTERNAL bool     random_bool_from(Random_State* state); //generates random bool
+EXTERNAL float    random_f32_from(Random_State* state); //generates random float in range [0, 1)
+EXTERNAL double   random_f64_from(Random_State* state); //generates random double in range [0, 1)
+EXTERNAL uint64_t random_u64_from(Random_State* state); //generates random u64 in range [0, U64_MAX] 
+EXTERNAL int64_t  random_i64_from(Random_State* state); //generates random i64 in range [I64_MIN, U64_MAX] 
+EXTERNAL int64_t  random_range_from(Random_State* state, int64_t from, int64_t to); //generates unbiased random integer in range [from, to)
+EXTERNAL double   random_range_f64_from(Random_State* state, double from, double to); 
+EXTERNAL float    random_range_f32_from(Random_State* state, float from, float to); 
+
 //Randomly shuffles the provided array
-EXTERNAL void     random_shuffle_state(Random_State* state, void* elements, int64_t element_count, int64_t element_size); 
-EXTERNAL void	  random_bytes_state(Random_State* state, void* into, int64_t size);
+EXTERNAL void     random_shuffle_from(Random_State* state, void* elements, int64_t element_count, int64_t element_size); 
+//fill the given memory with random bytes
+EXTERNAL void	  random_bytes_from(Random_State* state, void* into, int64_t size);
 
 typedef struct Discrete_Distribution{
-    int64_t user_value;			//set by user. This is what gets returned.
+    int64_t value;			//set by user. This is what gets returned.
     int64_t chance;				//set by user. 
     int64_t _chance_cumulative; //set in random_discrete_make()
 } Discrete_Distribution;
 
 //Fills the remaining values of Discrete_Distribution
 EXTERNAL void    random_discrete_make(Discrete_Distribution distribution[], int64_t distribution_size);
-//Samples the discrete random distribution using provided state. Returns user_value.
-EXTERNAL int64_t random_discrete_state(Random_State* state, const Discrete_Distribution distribution[], int64_t distribution_size);
-//Samples the discrete random distribution using global state. Returns user_value.
+//Samples the discrete random distribution using provided state. Returns value.
+EXTERNAL int64_t random_discrete_from(Random_State* state, const Discrete_Distribution distribution[], int64_t distribution_size);
+//Samples the discrete random distribution using global state. Returns value.
 EXTERNAL int64_t random_discrete(const Discrete_Distribution distribution[], int64_t distribution_size);
+
+//Generates next random value
+//Seed can be any value
+//Taken from: https://prng.di.unimi.it/splitmix64.c
+static inline uint64_t random_splitmix(uint64_t* state) 
+{
+	uint64_t z = (*state += 0x9e3779b97f4a7c15);
+	z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9;
+	z = (z ^ (z >> 27)) * 0x94d049bb133111eb;
+	return z ^ (z >> 31);
+}
+
+//the xiroshiro256 algorithm
+//Seed must not be anywhere zero
+//Taken from: https://prng.di.unimi.it/xoshiro256plusplus.c
+static inline uint64_t random_xiroshiro256(uint64_t s[4]) 
+{
+	#define ROTL(x, k) (((x) << (k)) | ((x) >> (64 - (k))))
+
+	const uint64_t result = ROTL(s[0] + s[3], 23) + s[0];
+	const uint64_t t = s[1] << 17;
+
+	s[2] ^= s[0];
+	s[3] ^= s[1];
+	s[1] ^= s[2];
+	s[0] ^= s[3];
+	s[2] ^= t;
+	s[3] = ROTL(s[3], 45);
+
+	return result;
+	#undef ROTL
+}
 
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_RANDOM_IMPL)) && !defined(JOT_RANDOM_HAS_IMPL)
 	#define JOT_RANDOM_HAS_IMPL
-	#include <time.h>
-	#include <string.h>
-
-	#ifndef __cplusplus
-	#include <stdbool.h>
-	#endif
 
 	#if defined(__GNUC__) || defined(__clang__)
 		#define _RAND_THREAD_LOCAL __thread
-
 		static uint32_t _count_leading_zeros(uint64_t number)
 		{
 			return (uint32_t) __builtin_clzll(number);
 		}
 
+		#include <time.h>
 		static uint64_t _precise_clock_time()
 		{
 			struct timespec ts;
-			(void) clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-
-			return (uint64_t) ts.tv_nsec;
+			(void) clock_gettime(CLOCK_REALTIME, &ts);
+			return (uint64_t) ts.tv_nsec + (uint64_t) ts.tv_sec * 1000000000LL;
 		}
 	#elif defined(_MSC_VER)
 		#define _RAND_THREAD_LOCAL __declspec(thread)
@@ -123,140 +124,72 @@ EXTERNAL int64_t random_discrete(const Discrete_Distribution distribution[], int
 		{
 			unsigned long index = 0;
 			_BitScanReverse64(&index, number);
-			uint32_t zeros = 63 - index;
-			return (uint32_t) zeros;
+			return (uint32_t) (63 - index);
 		}
-		
+
 		static uint64_t _precise_clock_time()
 		{
-			return (uint64_t) __rdtsc();
+			#if defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64) 
+				return (uint64_t) __rdtsc();
+			#else
+				typedef int BOOL;
+				typedef union _LARGE_INTEGER LARGE_INTEGER;
+				BOOL __stdcall QueryPerformanceCounter(LARGE_INTEGER* ticks);
+				
+				uint64_t now = 0;
+				QueryPerformanceCounter((LARGE_INTEGER*) (void*) &now);
+				return (uint64_t) now;
+			#endif
 		}
 
 	#else
 		#define _RAND_THREAD_LOCAL
-
 		static uint32_t _count_leading_zeros(uint64_t number);
 		static uint64_t _precise_clock_time()
 
 		#error "add a custom implementation for this compiler!"
 	#endif
 
-	
-	#ifndef INTERNAL
-		#define INTERNAL static
-	#endif
-	
-	EXTERNAL uint64_t random_splitmix(uint64_t* state) 
+	EXTERNAL double random_bits_to_f64(uint64_t random)
 	{
-		uint64_t z = (*state += 0x9e3779b97f4a7c15);
-		z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9;
-		z = (z ^ (z >> 27)) * 0x94d049bb133111eb;
-		return z ^ (z >> 31);
+		return (double) (random >> 11) * 0x1.0p-53;
+	}
+	EXTERNAL float random_bits_to_f32(uint32_t random)
+	{
+		return (float) (random >> 8) * 0x1.0p-23f;
 	}
 
-	INTERNAL uint64_t _random_rotl(const uint64_t x, int k) {
-		return (x << k) | (x >> (64 - k));
+	EXTERNAL float random_f32_from(Random_State* state)
+	{
+		uint64_t random = random_xiroshiro256(state->state);
+		return random_bits_to_f32((uint32_t) (random >> 32 ^ random));
 	}
 
-	EXTERNAL uint64_t random_xiroshiro256(uint64_t state[4]) 
+	EXTERNAL double random_f64_from(Random_State* state)
 	{
-		const uint64_t result = state[0] + state[3];
-
-		const uint64_t t = state[1] << 17;
-
-		state[2] ^= state[0];
-		state[3] ^= state[1];
-		state[1] ^= state[2];
-		state[0] ^= state[3];
-
-		state[2] ^= t;
-
-		state[3] = _random_rotl(state[3], 45);
-
-		return result;
+		uint64_t random = random_xiroshiro256(state->state);
+		return random_bits_to_f64(random);
 	}
 
-	EXTERNAL uint64_t random_clock_seed()
+	EXTERNAL bool random_bool_from(Random_State* state)
 	{
-		uint64_t precise_time_point = _precise_clock_time();
-		uint64_t seed = random_splitmix(&precise_time_point);
-		return seed;
+		int64_t random = (int64_t) random_xiroshiro256(state->state);
+		return random < 0;
 	}
 	
-	EXTERNAL Random_State random_state_from_seed(uint64_t seed)
+	EXTERNAL int64_t random_i64_from(Random_State* state)
 	{
-		Random_State out = {0};
-		out.seed = seed;
-		out.state_splitmix[0] = seed;
-
-		//We use seed to generate longer seed ensuring none of the ints are ever 0
-		for(uint64_t i = 0; i < 4; i++)
-		{
-			out.state_xiroshiro256[i] = random_splitmix(out.state_splitmix); 
-			if(out.state_xiroshiro256[i] == 0)
-				out.state_xiroshiro256[i] = 1;
-		}
-
-		return out;
-	}
-
-	EXTERNAL Random_State random_state_from_clock()
-	{
-		uint64_t seed = random_clock_seed();
-		Random_State out = random_state_from_seed(seed);
-		return out;
-	}
-
-	INTERNAL double _make_f64(uint64_t sign, uint64_t expoment, uint64_t mantissa)
-	{
-		uint64_t composite = (sign << 63) | (expoment << 52) | mantissa;
-		double out = *(double*) (void*) &composite;
-		return out;
-	}
-
-	INTERNAL float _make_f32(uint32_t sign, uint32_t expoment, uint32_t mantissa)
-	{
-		uint32_t composite = (sign << 31) | (expoment << 23) | mantissa;
-		float out = *(float*) (void*) &composite;
-		return out;
-	}
-
-	EXTERNAL float random_f32_state(Random_State* state)
-	{
-		uint64_t random = random_xiroshiro256(state->state_xiroshiro256);
-		uint64_t mantissa = random >> (64 - 23);
-		float random_f32 = _make_f32(0, 127, (uint32_t) mantissa) - 1;
-		return random_f32;
-	}
-
-	EXTERNAL double random_f64_state(Random_State* state)
-	{
-		uint64_t random = random_xiroshiro256(state->state_xiroshiro256);
-		uint64_t mantissa = random >> (64 - 52);
-		double random_f64 = _make_f64(0, 1023, mantissa) - 1;
-		return random_f64;
-	}
-
-	EXTERNAL bool random_bool_state(Random_State* state)
-	{
-		uint64_t random = random_splitmix(state->state_splitmix);
-		bool out = random % 2 == 0;
-		return out;
-	}
-	
-	EXTERNAL int64_t random_i64_state(Random_State* state)
-	{
-		int64_t random_i64 = (int64_t) random_splitmix(state->state_splitmix);
+		int64_t random_i64 = (int64_t) random_xiroshiro256(state->state);
 		return random_i64;
 	}
 
-	EXTERNAL uint64_t random_u64_state(Random_State* state)
+	EXTERNAL uint64_t random_u64_from(Random_State* state)
 	{
-		uint64_t random_u64 = random_splitmix(state->state_splitmix);
+		uint64_t random_u64 = random_xiroshiro256(state->state);
 		return random_u64;
 	}
 
-	INTERNAL uint64_t _random_bounded(Random_State* state, uint64_t range) 
+	static uint64_t _random_bounded(Random_State* state, uint64_t range) 
 	{
 		--range;
 		uint64_t index = _count_leading_zeros(range | 1);
@@ -264,13 +197,13 @@ EXTERNAL int64_t random_discrete(const Discrete_Distribution distribution[], int
 		uint64_t x = 0;
 		do 
 		{
-			x = random_splitmix(state->state_splitmix) & mask;
+			x = random_xiroshiro256(state->state) & mask;
 		} 
 		while (x > range);
 		return x;
 	}
 
-	EXTERNAL int64_t random_range_state(Random_State* state, int64_t from, int64_t to)
+	EXTERNAL int64_t random_range_from(Random_State* state, int64_t from, int64_t to)
 	{
 		int64_t out = from;
 		if(from < to)
@@ -280,6 +213,104 @@ EXTERNAL int64_t random_discrete(const Discrete_Distribution distribution[], int
 			out = (int64_t) bounded + from;
 		}
 		return out;
+	}
+
+	//This function generates random nondeterministic seed using a sequence of hacks.
+	//The reasoning is as follows:
+	// 1. we want to use precise time to get nondeterminism
+	// 2. we want to include the calling threads id to gurantee no two threads will get the same seed.
+	// 3. we want the function to always return distinct numbers even when called in rapid succession
+	//    from the same thread. Notably when the precise time is not so precise we could risk its
+	//    value not changing between the calls.
+	//
+	// We start off with a simple counter satisfying 1.
+	//
+	// Then we satisfy 3. by keeping a thread local counter which gets increased on each call.
+	// We add this counter to the current time thus making up for the possible lack of precision.
+	// You can verify that this indeed satisfies 3 and does cause very little problems. The worst thing 
+	// that can happen is that both the clock and the counter increase at the same rate, making the clock
+	// iterate only half the possible numbers. This is in itself not too problematic since the clock 
+	// realistically never makes one full revolutions around the u64 range.
+	// 
+	// Next we satisfy 2. by getting an adress of thread local variable and hashing it. 
+	// This gives some thread unique hash with bits spread all over. We simply xor this with our value 
+	// from the previous points.
+	// 
+	// Last we hash everything to make the final output appear lot more random - without it the 
+	// random_seed simply counts up at random intervals. This last step is optional.
+	//
+	// Note that random_splitmix also happens to be a lovely hash function and whats more its 
+	// bijective - this means we cant run into hash collisions thus dont lose any information when hashing.
+	EXTERNAL uint64_t random_seed()
+	{
+		uint64_t now = _precise_clock_time();
+		static _RAND_THREAD_LOCAL uint64_t thread_hash = 0;
+		static _RAND_THREAD_LOCAL uint64_t local = 0;
+		if(local == 0)
+		{
+			thread_hash = (uint64_t) &local;
+			thread_hash = random_splitmix(&thread_hash);
+		}
+
+		uint64_t out = (now + local) ^ thread_hash;
+		out = random_splitmix(&out);
+		local += 1;
+		return out;
+	}
+	
+	EXTERNAL Random_State random_state_make(uint64_t seed)
+	{
+		Random_State out = {0};
+		out.state[0] = seed;
+		out.state[1] = random_splitmix(out.state);
+		out.state[2] = random_splitmix(out.state);
+		out.state[3] = random_splitmix(out.state);
+		return out;
+	}
+	
+	EXTERNAL Random_State* random_state()
+	{
+		static _RAND_THREAD_LOCAL Random_State _random_state = {0};
+		Random_State* state = &_random_state;
+		if(state->state[0] == 0)
+			*state = random_state_make(random_seed());
+
+		return state;
+	}
+	
+	EXTERNAL bool     random_bool() { return random_bool_from(random_state()); }	
+	EXTERNAL float    random_f32()  { return random_f32_from(random_state()); }
+	EXTERNAL double   random_f64()  { return random_f64_from(random_state()); } 
+	EXTERNAL uint64_t random_u64()  { return random_u64_from(random_state()); }  
+	EXTERNAL int64_t  random_i64()  { return random_i64_from(random_state()); }  
+
+	EXTERNAL int64_t random_range(int64_t from, int64_t to) 
+	{ 
+		return random_range_from(random_state(), from, to); 
+	}
+	
+	EXTERNAL double random_range_f64(double from, double to)
+	{
+		double range = to - from;
+		double random = random_f64();
+		return random*range + from;
+	}
+
+	EXTERNAL float random_range_f32(float from, float to)
+	{
+		float range = to - from;
+		float random = random_f32();
+		return random*range + from;
+	}
+
+	EXTERNAL void random_shuffle(void* elements, int64_t element_count, int64_t element_size) 
+	{ 
+		random_shuffle_from(random_state(), elements, element_count, element_size); 
+	}
+
+	EXTERNAL void random_bytes(void* into, int64_t size)
+	{
+		random_bytes_from(random_state(), into, size);
 	}
 
 	EXTERNAL void swap_any(void* a, void* b, int64_t size)
@@ -307,7 +338,7 @@ EXTERNAL int64_t random_discrete(const Discrete_Distribution distribution[], int
 		memcpy(elemsj + exact,   temp,           (size_t) remainder);
 	}
 
-	EXTERNAL void random_shuffle_state(Random_State* state, void* elements, int64_t element_count, int64_t element_size)
+	EXTERNAL void random_shuffle_from(Random_State* state, void* elements, int64_t element_count, int64_t element_size)
 	{
 		ASSERT(element_count >= 0 && element_size >= 0);
 		enum {LOCAL = 256};
@@ -339,72 +370,28 @@ EXTERNAL int64_t random_discrete(const Discrete_Distribution distribution[], int
 		}
 	}
 	
-	EXTERNAL void random_bytes_state(Random_State* state, void* into, int64_t size)
+	EXTERNAL void random_bytes_from(Random_State* state, void* into, int64_t size)
 	{
-		int64_t full_randoms = size / 8;
-		int64_t remainder = size % 8;
-		u64* fulls = (u64*) into;
+		ASSERT(size >= 0);
+		uint64_t full_randoms = (uint64_t) size / 8;
+		uint64_t remainder = (uint64_t) size % 8;
+		uint64_t* fulls = (uint64_t*) into;
 	
 		for(int64_t i = 0; i < full_randoms; i++)
-			fulls[i] = random_u64_state(state);
+			fulls[i] = random_u64_from(state);
 
-		u64 last = random_u64_state(state);
-		memcpy(&fulls[full_randoms], &last, (size_t) remainder);
+		if(remainder)
+		{
+			union {
+				uint64_t val; 
+				char bytes[8];
+			} last = {random_u64_from(state)};	
+
+			char* bytes = (char*) into + full_randoms*sizeof(uint64_t);
+			for(uint64_t i = 0; i < remainder; i++)
+				bytes[i] = last.bytes[i];
+		}
 	}
-
-	EXTERNAL Random_State* random_state()
-	{
-		//If uninit initializes to random
-		static _RAND_THREAD_LOCAL Random_State _random_state = {0};
-
-		Random_State* state = &_random_state;
-		if(state->state_xiroshiro256[0] == 0)
-			*state = random_state_from_clock();
-
-		return state;
-	}
-
-	EXTERNAL void random_set_state(Random_State state)
-	{
-		Random_State* state_ptr = random_state();
-		*state_ptr = state;
-	}
-	
-	EXTERNAL bool     random_bool() { return random_bool_state(random_state()); }	
-	EXTERNAL float    random_f32()  { return random_f32_state(random_state()); }
-	EXTERNAL double   random_f64()  { return random_f64_state(random_state()); } 
-	EXTERNAL uint64_t random_u64()  { return random_u64_state(random_state()); }  
-	EXTERNAL int64_t  random_i64()  { return random_i64_state(random_state()); }  
-
-	EXTERNAL int64_t random_range(int64_t from, int64_t to) 
-	{ 
-		return random_range_state(random_state(), from, to); 
-	}
-	
-	EXTERNAL double random_interval_f64(double from, double to)
-	{
-		double range = to - from;
-		double random = random_f64();
-		return random*range + from;
-	}
-
-	EXTERNAL float random_interval_f32(float from, float to)
-	{
-		float range = to - from;
-		float random = random_f32();
-		return random*range + from;
-	}
-
-	EXTERNAL void random_shuffle(void* elements, int64_t element_count, int64_t element_size) 
-	{ 
-		random_shuffle_state(random_state(), elements, element_count, element_size); 
-	}
-
-	EXTERNAL void random_bytes(void* into, int64_t size)
-	{
-		random_bytes_state(random_state(), into, size);
-	}
-
 
 	EXTERNAL void random_discrete_make(Discrete_Distribution distribution[], int64_t distribution_size)
 	{
@@ -416,14 +403,14 @@ EXTERNAL int64_t random_discrete(const Discrete_Distribution distribution[], int
 		}
 	}
 
-	EXTERNAL int64_t random_discrete_state(Random_State* state, const Discrete_Distribution distribution[], int64_t distribution_size)
+	EXTERNAL int64_t random_discrete_from(Random_State* state, const Discrete_Distribution distribution[], int64_t distribution_size)
 	{
 		if(distribution_size <= 0)  
 			return 0;
 
 		int64_t range_lo = distribution[0]._chance_cumulative;
 		int64_t range_hi = distribution[distribution_size - 1]._chance_cumulative;
-		int64_t random = random_range_state(state, range_lo, range_hi);
+		int64_t random = random_range_from(state, range_lo, range_hi);
 
 		int64_t low_i = 0;
 		int64_t count = distribution_size;
@@ -442,12 +429,12 @@ EXTERNAL int64_t random_discrete(const Discrete_Distribution distribution[], int
 		}
 		
 		ASSERT(0 <= low_i && low_i < distribution_size);
-		int64_t user_value = distribution[low_i].user_value;
-		return user_value;
+		int64_t value = distribution[low_i].value;
+		return value;
 	}
 
 	EXTERNAL int64_t random_discrete(const Discrete_Distribution distribution[], int64_t distribution_size)
 	{
-		return random_discrete_state(random_state(), distribution, distribution_size);
+		return random_discrete_from(random_state(), distribution, distribution_size);
 	}
 #endif

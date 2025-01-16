@@ -125,8 +125,8 @@ static void test_arena_stress(f64 time)
     Arena_Frame frames[MAX_LEVELS] = {0};
     isize levels = 0;
     
-	uint64_t random_seed = 0x6b3979953b41cf7d;
-	*random_state() = random_state_from_seed(random_seed);
+	// uint64_t random_seed = 0x6b3979953b41cf7d;
+	// *random_state() = random_state_make(random_seed);
 
     f64 start = clock_s();
 	for(isize i = 0; i < MAX_ITERS; i++)
