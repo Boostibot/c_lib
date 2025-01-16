@@ -26,13 +26,6 @@ EXTERNAL int64_t clock_ns();
 EXTERNAL f64 clock_s();
 EXTERNAL f32 clock_s32();
 
-#include <time.h>
-typedef struct tm Posix_Date;
-EXTERNAL int64_t epoch_time_from_global_date(Posix_Date date);
-EXTERNAL int64_t epoch_time_from_local_date(Posix_Date date);
-EXTERNAL Posix_Date global_date_from_epoch_time(int64_t epoch_time);
-EXTERNAL Posix_Date local_date_from_epoch_time(int64_t epoch_time);
-
 #endif
 
 #if (defined(JOT_ALL_IMPL) || defined(JOT_TIME_IMPL)) && !defined(JOT_TIME_HAS_IMPL)
@@ -100,40 +93,4 @@ EXTERNAL f32 clock_s32()
     f32 counter = (f32) (platform_perf_counter() - platform_perf_counter_startup());
     return counter / freq;
 }
-
-EXTERNAL int64_t epoch_time_from_global_date(Posix_Date date)
-{
-    return (int64_t) mktime(&date) * 1000 * 1000;
-}
-
-EXTERNAL int64_t epoch_time_from_local_date(Posix_Date date)
-{
-    int64_t now = platform_epoch_time();
-
-    //Only recalculate time delta every second.
-    static int64_t last_now = 0;
-    static int64_t diff = 0;
-    if(now - last_now > SECOND_MIRCOSECONDS)
-    {
-        int64_t local_now = epoch_time_from_global_date(local_date_from_epoch_time(now));
-        diff = now - local_now;
-    }
-
-    int64_t time = epoch_time_from_global_date(date);
-    int64_t local_time = time + diff;
-    return local_time;
-}
-
-EXTERNAL Posix_Date global_date_from_epoch_time(int64_t epoch_time)
-{
-    time_t copy = (time_t) (epoch_time / 1000 / 1000);
-    return *gmtime(&copy);
-}
-
-EXTERNAL Posix_Date local_date_from_epoch_time(int64_t epoch_time)
-{
-    time_t copy = (time_t) (epoch_time / 1000 / 1000);
-    return *localtime(&copy);
-}
-
 #endif // !JOT_TIME

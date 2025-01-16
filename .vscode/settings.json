@@ -63,6 +63,7 @@
         "cstdint": "c",
         "typeinfo": "cpp",
         "__node_handle": "cpp",
-        "bit": "cpp"
+        "bit": "cpp",
+        "sched.h": "c"
     }
 }

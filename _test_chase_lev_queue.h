@@ -291,7 +291,7 @@ static int test_cl_isize_comp_func(const void* a, const void* b)
         pthread_attr_init(&attr);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
         int error = pthread_create(&handle, &attr, test_chase_lev_launch_caster, func_and_context);
-        pthread_attr_deinit(&attr);
+        pthread_attr_destroy(&attr);
         assert(error == 0);
     }
 #endif

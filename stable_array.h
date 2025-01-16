@@ -229,8 +229,7 @@ EXTERNAL void* stable_array_at(const Stable_Array* stable, isize index)
 {
     ASSERT_BOUNDS(index, stable_array_capacity(stable));
     _Stable_Array_Lookup lookup = _stable_array_lookup(stable, index);
-    u32 bit = (u32) 1 << lookup.item_i;
-    ASSERT(!!(lookup.block->filled_mask & bit));
+    ASSERT(lookup.block->filled_mask & (1u << lookup.item_i));
 
     return lookup.item;
 }
@@ -254,15 +253,11 @@ EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out)
     if(stable->len + 1 > stable_array_capacity(stable))
         stable_array_reserve(stable, stable->len + 1);
 
-    ASSERT(stable->first_not_filled_i1 != 0, "needs to have a place thats not filled when we reserved one!");
     isize block_i = stable->first_not_filled_i1 - 1;
-    ASSERT_BOUNDS(block_i, stable->blocks_size);
-
     Stable_Array_Block* block = &stable->blocks[block_i];
-    ASSERT(block->filled_mask != STABLE_ARRAY_FILLED_MASK_FULL, "Needs to have a free slot");
 
     isize first_empty_index = platform_find_first_set_bit32(~block->filled_mask);
-    block->filled_mask |= (u64) 1 << first_empty_index;
+    block->filled_mask |= (u32) 1 << first_empty_index;
 
     //If is full remove from the linked list
     if(block->filled_mask == STABLE_ARRAY_FILLED_MASK_FULL)
@@ -277,13 +272,13 @@ EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out)
         memset(out_ptr, 0, (size_t) stable->item_size);
 
     stable->len += 1;
-    _stable_array_check_invariants(stable);
 
     if(out)
         *out = out_ptr;
         
     isize out_i = block_i*STABLE_ARRAY_BLOCK_SIZE + first_empty_index;
     PROFILE_STOP();
+    _stable_array_check_invariants(stable);
     return out_i;
 }
 
@@ -295,8 +290,7 @@ EXTERNAL void stable_array_remove(Stable_Array* stable, isize index)
 
     _Stable_Array_Lookup lookup = _stable_array_lookup(stable, index);
     Stable_Array_Block* block = lookup.block;
-    u32 bit = (u32) 1 << lookup.item_i;
-    ASSERT(!!(block->filled_mask & bit));
+    ASSERT(block->filled_mask & (1u << lookup.item_i));
 
     //If was full before removal add to free list
     if(block->filled_mask == STABLE_ARRAY_FILLED_MASK_FULL)
@@ -309,7 +303,7 @@ EXTERNAL void stable_array_remove(Stable_Array* stable, isize index)
         memset(lookup.item, (int) stable->fill_empty_with, (size_t) stable->item_size);
 
     stable->len -= 1;
-    block->filled_mask = block->filled_mask & ~bit;
+    block->filled_mask &= ~(1u << lookup.item_i);
     _stable_array_check_invariants(stable);
     PROFILE_STOP();
 }
@@ -369,6 +363,8 @@ EXTERNAL void stable_array_reserve(Stable_Array* stable, isize to_size)
         _stable_array_check_invariants(stable);
         PROFILE_STOP();
     }
+
+    ASSERT(stable->first_not_filled_i1 != 0, "needs to have a place thats not filled when we reserved one!");
 }
 
 EXTERNAL void stable_array_test_invariants(const Stable_Array* stable, bool slow_checks)
