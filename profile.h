@@ -12,8 +12,6 @@
 #pragma warning(disable:4028)
 #pragma warning(disable:4100)
 
-
-
 #include <stdbool.h>
 #include <math.h>
 #include <stdint.h>
@@ -26,9 +24,6 @@
 #ifndef EXTERNAL
 	#define EXTERNAL 
 #endif
-
-#include <stdint.h>
-#include <stdbool.h>
 
 #include "platform.h"
 #include "defines.h"

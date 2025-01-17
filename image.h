@@ -60,7 +60,7 @@ typedef struct Image {
 typedef struct Subimage {
     u8* pixels;
     i32 pixel_size;
-    i32 type;
+    Pixel_Type type;
 
     i32 containing_width;
     i32 containing_height;
@@ -239,7 +239,7 @@ EXTERNAL void image_init(Image* image, Allocator* alloc, isize pixel_size, Pixel
     image_deinit(image);
     image->allocator = alloc;
     image->pixel_size = (i32) pixel_size;
-    image->type = (i32) type;
+    image->type = type;
 }
 
 EXTERNAL void image_init_unshaped(Image* image, Allocator* alloc)
@@ -296,7 +296,7 @@ EXTERNAL Subimage subimage_make(void* pixels, isize width, isize height, isize p
     Subimage view = {0};
     view.pixels = (u8*) pixels;
     view.pixel_size = (i32) pixel_size;
-    view.type = (i32) type;
+    view.type = type;
 
     view.containing_width = (i32) width;
     view.containing_height = (i32) height;

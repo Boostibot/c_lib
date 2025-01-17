@@ -97,7 +97,7 @@ ATTRIBUTE_ALIGNED(16) typedef struct Quat {
     float w;
 } Quat;
 
-typedef union Mat2 {
+ATTRIBUTE_ALIGNED(16) typedef union Mat2 {
     Vec2 col[2];
     float m[2][2];
     struct {
@@ -118,7 +118,7 @@ typedef union Mat3 {
     float floats[9];
 } Mat3;
 
-typedef union Mat4 {
+ATTRIBUTE_ALIGNED(16) typedef union Mat4 {
     Vec4 col[4];
     float m[4][4];
     struct {

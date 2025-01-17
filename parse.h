@@ -3,6 +3,7 @@
 
 #include "defines.h"
 #include "string.h"
+#include <math.h>
 
 typedef enum Match_Kind {
     MATCH_NORMAL,

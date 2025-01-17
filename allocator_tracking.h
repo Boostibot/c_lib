@@ -1,41 +1,17 @@
 #ifndef JOT_ALLOCATOR_MALLOC
 #define JOT_ALLOCATOR_MALLOC
 
-// A tracking allocator building block and its use in Malloc_Allocator (allocator which simply wraps malloc).
+// A tracking allocator building block and its use in Tracking_Allocator.
 // 
 // Works by prepending each allocation with a header that tracks its attributes packet to only 24B.
 // (which is a bigger achievement then how it sounds). This also enables us to traverse all active allocations
 // and deinit them if need be. Offers basic correctness checking.
 // 
-// The main purpose of Malloc_Allocator is to be a quick substitute until more complex allocators are built.
-// Malloc_Allocator also exposes a malloc like interface for some basic control over allocations
+// The main purpose of Tracking_Allocator is to be a quick substitute until more complex allocators are built.
+// Tracking_Allocator also exposes a malloc like interface for some basic control over allocations
 
 #include "allocator.h"
-
-typedef struct Allocation_List_Block Allocation_List_Block;
-
-typedef struct Allocation_List {
-    Allocation_List_Block* last_block;
-} Allocation_List;
-
-typedef struct Malloc_Allocator {
-    Allocator allocator;
-    Allocator* parent; //parent allocator. If parent is null uses malloc/free
-    Allocation_List list;
-
-    const char* name;
-    isize bytes_allocated;
-    isize max_bytes_allocated;
-
-    isize allocation_count;
-    isize deallocation_count;
-    isize reallocation_count;
-
-    Allocator_Set allocator_backup;
-} Malloc_Allocator;
-
-#define ALLOCATION_LIST_DEBUG
-#define ALLOCATION_LIST_MAGIC "MallocA"
+#define ALLOCATION_LIST_MAGIC "TrackAl"
 
 typedef struct Allocation_List_Block {
     Allocation_List_Block* next_block; 
@@ -50,22 +26,42 @@ typedef struct Allocation_List_Block {
     #endif
 } Allocation_List_Block;
 
+typedef struct Allocation_List {
+    Allocation_List_Block* last_block;
+} Allocation_List;
+
+typedef struct Tracking_Allocator {
+    Allocator allocator;
+    Allocator* parent; //parent allocator. If parent is null uses malloc/free
+    Allocation_List list;
+
+    const char* name;
+    isize bytes_allocated;
+    isize max_bytes_allocated;
+
+    isize allocation_count;
+    isize deallocation_count;
+    isize reallocation_count;
+
+    Allocator_Set allocator_backup;
+} Tracking_Allocator;
+
 EXTERNAL void  allocation_list_free_all(Allocation_List* self, Allocator* parent_or_null);
 EXTERNAL void* allocation_list_allocate(Allocation_List* self, Allocator* parent_or_null, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
 
 EXTERNAL isize allocation_list_get_block_size(Allocation_List* self, void* old_ptr);
 EXTERNAL Allocation_List_Block* allocation_list_get_block_header(Allocation_List* self, void* old_ptr);
 
-EXTERNAL void malloc_allocator_init(Malloc_Allocator* self, const char* name);
-EXTERNAL void malloc_allocator_init_use(Malloc_Allocator* self, const char* name, u64 flags);  //convenience function that inits the allocator then imidietely makes it the default or scratch. On deinit restores to previous defaults
-EXTERNAL void malloc_allocator_deinit(Malloc_Allocator* self);
+EXTERNAL void tracking_allocator_init(Tracking_Allocator* self, const char* name);
+EXTERNAL void tracking_allocator_init_use(Tracking_Allocator* self, const char* name, u64 flags);  //convenience function that inits the allocator then imidietely makes it the default or scratch. On deinit restores to previous defaults
+EXTERNAL void tracking_allocator_deinit(Tracking_Allocator* self);
  
-EXTERNAL void* malloc_allocator_malloc(Malloc_Allocator* self, isize size);
-EXTERNAL void* malloc_allocator_realloc(Malloc_Allocator* self, void* old_ptr, isize new_size);
-EXTERNAL void malloc_allocator_free(Malloc_Allocator* self, void* old_ptr);
+EXTERNAL void* tracking_allocator_malloc(Tracking_Allocator* self, isize size);
+EXTERNAL void* tracking_allocator_realloc(Tracking_Allocator* self, void* old_ptr, isize new_size);
+EXTERNAL void tracking_allocator_free(Tracking_Allocator* self, void* old_ptr);
 
-EXTERNAL void* malloc_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
-EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
+EXTERNAL void* tracking_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
+EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
 
 #endif
 
@@ -243,34 +239,34 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         return block->size;
     }
 
-    EXTERNAL void malloc_allocator_init(Malloc_Allocator* self, const char* name)
+    EXTERNAL void tracking_allocator_init(Tracking_Allocator* self, const char* name)
     {
         if(self == NULL)
             return;
 
-        malloc_allocator_deinit(self);
-        self->allocator.func = malloc_allocator_func;
-        self->allocator.get_stats = malloc_allocator_get_stats;
+        tracking_allocator_deinit(self);
+        self->allocator.func = tracking_allocator_func;
+        self->allocator.get_stats = tracking_allocator_get_stats;
         self->name = name;
     }
 
-    EXTERNAL void malloc_allocator_init_use(Malloc_Allocator* self, const char* name, u64 flags)
+    EXTERNAL void tracking_allocator_init_use(Tracking_Allocator* self, const char* name, u64 flags)
     {
         (void) flags;
-        malloc_allocator_init(self, name);
+        tracking_allocator_init(self, name);
         self->allocator_backup = allocator_set_default(&self->allocator);
     }
     
-    EXTERNAL void malloc_allocator_deinit(Malloc_Allocator* self)
+    EXTERNAL void tracking_allocator_deinit(Tracking_Allocator* self)
     {
         allocation_list_free_all(&self->list, self->parent);
         allocator_set(self->allocator_backup);
         memset(self, 0, sizeof *self);
     }
 
-    EXTERNAL void* malloc_allocator_func(Allocator* self_, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
+    EXTERNAL void* tracking_allocator_func(Allocator* self_, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
     {
-        Malloc_Allocator* self = (Malloc_Allocator*) (void*) self_;
+        Tracking_Allocator* self = (Tracking_Allocator*) (void*) self_;
         void* out = allocation_list_allocate(&self->list, self->parent, new_size, old_ptr, old_size, align, error);
 
         if(old_size == 0)
@@ -287,11 +283,11 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         return out;
     }
 
-    EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self_)
+    EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self_)
     {
-        Malloc_Allocator* self = (Malloc_Allocator*) (void*) self_;
+        Tracking_Allocator* self = (Tracking_Allocator*) (void*) self_;
         Allocator_Stats out = {0};
-        out.type_name = "Malloc_Allocator";
+        out.type_name = "Tracking_Allocator";
         out.name = self->name;
         out.parent = NULL;
         out.is_top_level = true;
@@ -307,19 +303,19 @@ EXTERNAL Allocator_Stats malloc_allocator_get_stats(Allocator* self);
         return out;
     }
 
-    EXTERNAL void* malloc_allocator_malloc(Malloc_Allocator* self, isize size)
+    EXTERNAL void* tracking_allocator_malloc(Tracking_Allocator* self, isize size)
     {
         return allocation_list_allocate(&self->list, self->parent, size, NULL, 0, DEF_ALIGN, NULL);
     }
 
-    EXTERNAL void* malloc_allocator_realloc(Malloc_Allocator* self, void* old_ptr, isize new_size)
+    EXTERNAL void* tracking_allocator_realloc(Tracking_Allocator* self, void* old_ptr, isize new_size)
     {
         isize old_size = allocation_list_get_block_size(&self->list, old_ptr);
         void* out = allocation_list_allocate(&self->list, self->parent, new_size, old_ptr, old_size, DEF_ALIGN, NULL);
         return out;
     }
 
-    EXTERNAL void malloc_allocator_free(Malloc_Allocator* self, void* old_ptr)
+    EXTERNAL void tracking_allocator_free(Tracking_Allocator* self, void* old_ptr)
     {
         if(old_ptr != NULL)
         {

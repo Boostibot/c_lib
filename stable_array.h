@@ -84,7 +84,7 @@ EXTERNAL void stable_array_test_invariants(const Stable_Array* stable, bool slow
         bool _did_break = false;                                                                                    \
         Stable_Array_Block* _block = &(stable).blocks[_block_i];                                                    \
         if(_block->mask) { \
-            for(isize _item_i = 0; _item_i < STABLE_ARRAY_BLOCK_SIZE; _item_i++) {      \                                                                                                     \
+            for(isize _item_i = 0; _item_i < STABLE_ARRAY_BLOCK_SIZE; _item_i++) {      \
                 if(_block->mask & ((u64) 1 << _item_i))                                                          \
                 {                                                                                                       \
                     _did_break = true;                                                                                  \

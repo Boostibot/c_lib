@@ -26,7 +26,6 @@
 #include "_test_log.h"
 #include "_test_math.h"
 #include "_test_stable_array.h"
-#include "_test_lpf.h"
 #include "_test_image.h"
 #include "_test_chase_lev_queue.h"
 // #include "_test_string_map.h"
@@ -46,7 +45,6 @@ INTERNAL void test_all(f64 total_time)
     
     INCR RUN_TEST(test_list);
     INCR RUN_TEST(test_image);
-    INCR RUN_TEST(test_lpf);
     INCR RUN_TEST(test_stable_array);
     INCR RUN_TEST(test_log);
     //INCR RUN_TEST(test_random);
@@ -73,9 +71,6 @@ INTERNAL void test_all(f64 total_time)
 }
 
 #if defined(TEST_RUNNER)
-
-    #include "allocator_malloc.h"
-    // #include "log_file.h"
     int main()
     {
         platform_init();

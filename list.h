@@ -28,10 +28,6 @@
     #define ASSERT(x) assert(x)
 #endif
 
-#ifndef ASSERT_SLOW
-    #define ASSERT_SLOW(x) ASSERT(x)
-#endif
-
 #ifdef LIST_DEBUB
     #define _is_properly_linked(node, next, prev, NULL) (1                                  \
             && ((node) != NULL && (node)->next != NULL ? (node)->next->prev == (node) : 1)  \
