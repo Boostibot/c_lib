@@ -41,40 +41,31 @@
 // and mask 4B (if mask was 8B the structure would get padded to 24B which is way too much for consideration (1) ).
 
 #include "allocator.h"
-#include "profile.h"
 
-#define STABLE_ARRAY_BLOCK_SIZE             32
-#define STABLE_ARRAY_FILLED_MASK_FULL       0xffffffffu
-#define STABLE_ARRAY_KEEP_DATA_FLAG         0xffffffffu
+#define STABLE_ARRAY_BLOCK_SIZE 64
 
 typedef struct Stable_Array_Block {
     u8* ptr;
-    u32 filled_mask;
+    u64 mask;
     u32 next_free;
+    u32 was_alloced;
 } Stable_Array_Block;
 
 typedef struct Stable_Array {
     Allocator* allocator;
     Stable_Array_Block* blocks;
+
     u32 blocks_count;
     u32 blocks_capacity;
 
     isize count;
-    u32 first_free;
     u32 item_size;
     u32 item_align;
     u32 allocation_size;
-
-    //Specifies the value to set the empty slots with. 
-    //This happens when the blocks are first allocated but also when
-    // the item at the slot is removed. We may set to :
-    // - 0x00 to make sure everything is zero-init (default option)
-    // - 0x55 (or other garbage value between 0x00 and 0xFF) to indicate errors. Used for debugging.
-    // - STABLE_ARRAY_KEEP_DATA_FLAG to not fill at all when removing. Used for keeping generation counters per slots etc.
-    u32 fill_empty_with; 
+    u32 first_free;
 } Stable_Array;
 
-EXTERNAL void stable_array_init_custom(Stable_Array* stable, Allocator* alloc, isize item_size, isize item_align, u32 allocation_size, u32 fill_empty_with);
+EXTERNAL void  stable_array_init_custom(Stable_Array* stable, Allocator* alloc, isize item_size, isize item_align, u32 allocation_size);
 EXTERNAL void  stable_array_init(Stable_Array* stable, Allocator* alloc, isize item_size);
 EXTERNAL void  stable_array_deinit(Stable_Array* stable);
 
@@ -92,18 +83,18 @@ EXTERNAL void stable_array_test_invariants(const Stable_Array* stable, bool slow
     {                                                                                                               \
         bool _did_break = false;                                                                                    \
         Stable_Array_Block* _block = &(stable).blocks[_block_i];                                                    \
-        for(isize _item_i = 0; _item_i < STABLE_ARRAY_BLOCK_SIZE; _item_i++)                                        \
-        {                                                                                                           \
-            if(_block->filled_mask & ((u64) 1 << _item_i))                                                          \
-            {                                                                                                       \
-                _did_break = true;                                                                                  \
-                Ptr_Type ptr_name = (Ptr_Type) (_block->ptr + _item_i*(stable).item_size); (void) ptr_name;           \
-                Index_Type index = (Index_Type) (_item_i + _block_i * STABLE_ARRAY_BLOCK_SIZE); (void) index;       \
-                
+        if(_block->mask) { \
+            for(isize _item_i = 0; _item_i < STABLE_ARRAY_BLOCK_SIZE; _item_i++) {      \                                                                                                     \
+                if(_block->mask & ((u64) 1 << _item_i))                                                          \
+                {                                                                                                       \
+                    _did_break = true;                                                                                  \
+                    Ptr_Type ptr_name = (Ptr_Type) (_block->ptr + _item_i*(stable).item_size); (void) ptr_name;           \
+                    Index_Type index = (Index_Type) (_item_i + _block_i * STABLE_ARRAY_BLOCK_SIZE); (void) index;       \
 
 #define STABLE_ARRAY_FOR_EACH_END   \
-                _did_break = false; \
-             }                      \
+                    _did_break = false; \
+                }                      \
+            }                       \
          }                          \
          if(_did_break)             \
             break;                  \
@@ -133,7 +124,7 @@ INTERNAL void _stable_array_check_invariants(const Stable_Array* stable)
     #endif
 }
 
-EXTERNAL void stable_array_init_custom(Stable_Array* stable, Allocator* alloc, isize item_size, isize item_align, u32 allocation_size, u32 fill_empty_with)
+EXTERNAL void stable_array_init_custom(Stable_Array* stable, Allocator* alloc, isize item_size, isize item_align, u32 allocation_size)
 {
     ASSERT(item_size > 0 && item_align > 0 && is_power_of_two(item_align));
 
@@ -141,14 +132,13 @@ EXTERNAL void stable_array_init_custom(Stable_Array* stable, Allocator* alloc, i
     stable->allocator = alloc;
     stable->item_size = (u32) item_size;
     stable->item_align = (u32) item_align;
-    stable->fill_empty_with = fill_empty_with;
     stable->allocation_size = allocation_size;
     _stable_array_check_invariants(stable);
 }
 
 EXTERNAL void stable_array_init(Stable_Array* stable, Allocator* alloc, isize item_size)
 {
-    stable_array_init_custom(stable, alloc, item_size, 4096, DEF_ALIGN, 0x00);
+    stable_array_init_custom(stable, alloc, item_size, 4096, DEF_ALIGN);
 }
 
 EXTERNAL isize stable_array_capacity(const Stable_Array* stable)
@@ -158,54 +148,40 @@ EXTERNAL isize stable_array_capacity(const Stable_Array* stable)
 
 EXTERNAL void stable_array_deinit(Stable_Array* stable)
 {
-    if(stable->blocks_capacity > 0)
-        _stable_array_check_invariants(stable);
+    _stable_array_check_invariants(stable);
+    for(u32 i = 0; i < stable->blocks_count; )
+    {
+        u32 k = i;
+        for(; i < stable->blocks_count; i++)
+            if(stable->blocks[i].was_alloced)
+                break;
 
-    isize desired_items = stable->allocation_size/stable->item_size;
-    isize added_blocks = (desired_items + STABLE_ARRAY_BLOCK_SIZE - 1)/STABLE_ARRAY_BLOCK_SIZE;
-    if(added_blocks < 1)
-        added_blocks = 1;
+        allocator_deallocate(stable->allocator, stable->blocks[k].ptr, (i - k)*STABLE_ARRAY_BLOCK_SIZE*stable->item_size, stable->item_align);
+    }
 
-    for(u32 i = 0; i < stable->blocks_count; i += added_blocks)
-        allocator_deallocate(stable->allocator, stable->blocks[i].ptr, added_blocks*STABLE_ARRAY_BLOCK_SIZE, stable->item_align);
-
-    allocator_deallocate(stable->allocator, stable->blocks, stable->blocks_count * isizeof(Stable_Array_Block), _STABLE_ARRAY_BLOCKS_ARR_ALIGN);
+    allocator_deallocate(stable->allocator, stable->blocks, stable->blocks_count*isizeof(Stable_Array_Block), _STABLE_ARRAY_BLOCKS_ARR_ALIGN);
     memset(stable, 0, sizeof *stable);
-}
-
-typedef struct _Stable_Array_Lookup {
-    isize block_i;
-    isize item_i;
-    Stable_Array_Block* block;
-    void* item;
-} _Stable_Array_Lookup;
-
-INTERNAL _Stable_Array_Lookup _stable_array_lookup(const Stable_Array* stable, isize index)
-{
-    _Stable_Array_Lookup out = {0};
-    out.block_i = (isize) ((size_t) index / STABLE_ARRAY_BLOCK_SIZE);
-    out.item_i = (isize) ((size_t) index %  STABLE_ARRAY_BLOCK_SIZE);
-    out.block = &stable->blocks[out.block_i];
-    out.item = out.block->ptr + stable->item_size*out.item_i;
-    return out;
 }
 
 EXTERNAL void* stable_array_at(const Stable_Array* stable, isize index)
 {
     ASSERT_BOUNDS(index, stable_array_capacity(stable));
-    _Stable_Array_Lookup lookup = _stable_array_lookup(stable, index);
-    ASSERT(lookup.block->filled_mask & (1u << lookup.item_i));
-
-    return lookup.item;
+    size_t block_i = (size_t) index / STABLE_ARRAY_BLOCK_SIZE;
+    size_t item_i = (size_t) index %  STABLE_ARRAY_BLOCK_SIZE;
+    Stable_Array_Block* block = &stable->blocks[block_i];
+    ASSERT(block->mask & (1ull << item_i));
+    return block->ptr + stable->item_size*item_i;
 }
 
 EXTERNAL void* stable_array_alive_at(const Stable_Array* stable, isize index, void* if_not_found)
 {
     if(0 <= index && index <= stable_array_capacity(stable))
     {
-        _Stable_Array_Lookup lookup = _stable_array_lookup(stable, index);
-        if(lookup.block->filled_mask & (u64) 1 << lookup.item_i)
-            return lookup.item;
+        size_t block_i = (size_t) index / STABLE_ARRAY_BLOCK_SIZE;
+        size_t item_i = (size_t) index %  STABLE_ARRAY_BLOCK_SIZE;
+        Stable_Array_Block* block = &stable->blocks[block_i];
+        if(block->mask & (1ull << item_i))
+            return block->ptr + stable->item_size*item_i;
     }
 
     return if_not_found;
@@ -213,7 +189,6 @@ EXTERNAL void* stable_array_alive_at(const Stable_Array* stable, isize index, vo
 
 EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out)
 {
-    PROFILE_START();
     _stable_array_check_invariants(stable);
     if(stable->count + 1 > stable_array_capacity(stable))
         stable_array_reserve(stable, stable->count + 1);
@@ -221,80 +196,69 @@ EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out)
     isize block_i = stable->first_free - 1;
     Stable_Array_Block* block = &stable->blocks[block_i];
 
-    isize first_empty_index = platform_find_first_set_bit32(~block->filled_mask);
-    block->filled_mask |= (u32) 1 << first_empty_index;
+    isize empty_i = platform_find_first_set_bit64(~block->mask);
+    block->mask |= (u64) 1 << empty_i;
 
     //If is full remove from the linked list
-    if(block->filled_mask == STABLE_ARRAY_FILLED_MASK_FULL)
+    if(~block->mask == 0)
     {
         stable->first_free = block->next_free;
         block->next_free = 0;
     }
 
-    void* out_ptr = block->ptr + first_empty_index * stable->item_size;
-    if(stable->fill_empty_with != STABLE_ARRAY_KEEP_DATA_FLAG)
-        memset(out_ptr, 0, (size_t) stable->item_size);
-
+    isize out_i = block_i*STABLE_ARRAY_BLOCK_SIZE + empty_i;
     stable->count += 1;
-
     if(out)
-        *out = out_ptr;
-        
-    isize out_i = block_i*STABLE_ARRAY_BLOCK_SIZE + first_empty_index;
+        *out = block->ptr + empty_i * stable->item_size;
+
     _stable_array_check_invariants(stable);
-    PROFILE_STOP();
     return out_i;
 }
 
 EXTERNAL void stable_array_remove(Stable_Array* stable, isize index)
 {
-    PROFILE_START();
     _stable_array_check_invariants(stable);
     ASSERT_BOUNDS(index, stable_array_capacity(stable));
 
-    _Stable_Array_Lookup lookup = _stable_array_lookup(stable, index);
-    Stable_Array_Block* block = lookup.block;
-    ASSERT(block->filled_mask & (1u << lookup.item_i));
+    size_t block_i = (size_t) index / STABLE_ARRAY_BLOCK_SIZE;
+    size_t item_i = (size_t) index %  STABLE_ARRAY_BLOCK_SIZE;
+    Stable_Array_Block* block = &stable->blocks[block_i];
+    ASSERT(block->mask & (1ull << item_i));
 
     //If was full before removal add to free list
-    if(block->filled_mask == STABLE_ARRAY_FILLED_MASK_FULL)
+    if(~block->mask == 0)
     {
         block->next_free = stable->first_free;
-        stable->first_free = (u32) lookup.block_i + 1;
+        stable->first_free = (u32) block_i + 1;
     }
-        
-    if(stable->fill_empty_with != STABLE_ARRAY_KEEP_DATA_FLAG)
-        memset(lookup.item, (int) stable->fill_empty_with, (size_t) stable->item_size);
 
     stable->count -= 1;
-    block->filled_mask &= ~(1u << lookup.item_i);
+    block->mask &= ~(1ull << item_i);
     _stable_array_check_invariants(stable);
-    PROFILE_STOP();
 }
 
 EXTERNAL void stable_array_reserve(Stable_Array* stable, isize to_size)
 {
-    while(to_size > stable_array_capacity(stable))
+    if(to_size > stable_array_capacity(stable))
     {
-        PROFILE_START();
         _stable_array_check_invariants(stable);
         
         isize desired_items = stable->allocation_size/stable->item_size;
+        if(desired_items < to_size)
+            desired_items = to_size;
         isize added_blocks = (desired_items + STABLE_ARRAY_BLOCK_SIZE - 1)/STABLE_ARRAY_BLOCK_SIZE;
-        if(added_blocks < 1)
-            added_blocks = 1;
 
         //If the ptr array needs reallocating
         if(stable->blocks_count + added_blocks > stable->blocks_capacity)
         {
-            isize new_capacity = 8;
+            isize new_capacity = 16;
             while(new_capacity < stable->blocks_count + added_blocks)
                 new_capacity *= 2;
 
-            isize old_alloced = stable->blocks_capacity * isizeof(Stable_Array_Block);
-            isize new_alloced = new_capacity * isizeof(Stable_Array_Block);
+            isize old_alloced = stable->blocks_capacity * sizeof(Stable_Array_Block);
+            isize new_alloced = new_capacity * sizeof(Stable_Array_Block);
             
-            u8* alloced = (u8*) allocator_reallocate(stable->allocator, new_alloced, stable->blocks, old_alloced, _STABLE_ARRAY_BLOCKS_ARR_ALIGN);
+            u8* alloced = (u8*) allocator_reallocate(stable->allocator, new_alloced, stable->blocks, stable->blocks_capacity, _STABLE_ARRAY_BLOCKS_ARR_ALIGN);
             memset(alloced + old_alloced, 0, (size_t) (new_alloced - old_alloced));
 
             stable->blocks = (Stable_Array_Block*) alloced;
@@ -310,15 +274,16 @@ EXTERNAL void stable_array_reserve(Stable_Array* stable, isize to_size)
         //Add the blocks into our array (backwards so that the next added item has lowest index)
         for(u32 i = added_blocks; i-- > 0;)
         {
-            stable->blocks[i].ptr = alloced_blocks + i*stable->item_size*STABLE_ARRAY_BLOCK_SIZE;
-            stable->blocks[i].filled_mask = 0;
-            stable->blocks[i].next_free = stable->first_free;
-            stable->first_free = stable->blocks_count + i + 1;
+            u32 block_i = i + stable->blocks_count;
+            stable->blocks[block_i].ptr = alloced_blocks + i*stable->item_size*STABLE_ARRAY_BLOCK_SIZE;
+            stable->blocks[block_i].mask = 0;
+            stable->blocks[block_i].next_free = stable->first_free;
+            stable->first_free = block_i + 1;
         }
         
+        stable->blocks[stable->blocks_count].was_alloced = true;
         stable->blocks_count += added_blocks;
         _stable_array_check_invariants(stable);
-        PROFILE_STOP();
     }
 
     ASSERT(stable->first_free != 0, "needs to have a place thats not filled when we reserved one!");
@@ -326,7 +291,6 @@ EXTERNAL void stable_array_reserve(Stable_Array* stable, isize to_size)
 
 EXTERNAL void stable_array_test_invariants(const Stable_Array* stable, bool slow_checks)
 {
-    PROFILE_START();
     TEST((stable->allocator != NULL));
     TEST(stable->blocks_count <= stable->blocks_capacity);
     TEST(stable->count <= stable_array_capacity(stable));
@@ -365,7 +329,7 @@ EXTERNAL void stable_array_test_invariants(const Stable_Array* stable, bool slow
             for(isize k = 0; k < STABLE_ARRAY_BLOCK_SIZE; k++)
             {
                 u64 bit = (u64) 1 << k;
-                if(block->filled_mask & bit)
+                if(block->mask & bit)
                     item_count_in_block += 1;
             }
 
@@ -392,13 +356,11 @@ EXTERNAL void stable_array_test_invariants(const Stable_Array* stable, bool slow
             linked_list_size += 1;
 
             TEST(linked_list_size <= stable->blocks_count, "needs to not get stuck in an infinite loop");
-            TEST(~block->filled_mask > 0,                 "needs to have an empty slot");
+            TEST(~block->mask > 0,                 "needs to have an empty slot");
         }
 
         TEST(linked_list_size == not_filled_blocks, "the number of not_filled blocks needs to be the lenght of the free list");
     }
-
-    PROFILE_STOP();
 }
 
 #endif
