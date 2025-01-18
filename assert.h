@@ -21,14 +21,16 @@
     #define CAST(T, x)                          //performs checked integer cast ensuring no information is lost.
     #endif
 
+
     #if !defined(ASSERT_CUSTOM_SETTINGS)
+        #define DO_ASSERTS              // enables assertions
+        #define DO_BOUNDS_CHECKS        // checks bounds prior to lookup 
+        #define DO_PARAMETER_CHECKS
         #if !defined(NDEBUG)
-            #define DO_ASSERTS       // enables assertions
+            #define DO_ASSERTS_DEBUG // enables debug assertions - usually post conditions, sanity checks for my own implementation
             #define DO_ASSERTS_SLOW  // enables slow assertions - expensive assertions or once that change the time complexity of an algorithm
             #define DO_INVARIANT_CHECKS
         #endif
-        #define DO_PARAMETER_CHECKS
-        #define DO_BOUNDS_CHECKS // checks bounds prior to lookup 
     #endif
 
     //Pre-Processor (PP) utils

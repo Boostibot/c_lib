@@ -221,7 +221,6 @@ EXTERNAL void generic_array_init(Generic_Array gen, Allocator* allocator)
 
 EXTERNAL void generic_array_deinit(Generic_Array gen)
 {
-    ASSERT(gen.array != NULL);
     ASSERT(generic_array_is_invariant(gen));
     if(gen.array->capacity > 0)
         allocator_reallocate(gen.array->allocator, 0, gen.array->data, gen.array->capacity * gen.item_size, gen.item_align);

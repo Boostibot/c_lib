@@ -522,8 +522,7 @@ EXTERNAL bool char_is_id(char c);
     }
     EXTERNAL void builder_deinit(String_Builder* builder)
     {
-        ASSERT_PARAMS(builder != NULL);
-        ASSERT(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_invariant(*builder));
 
         if(builder->data != NULL && builder->data != _builder_null_termination)
             allocator_deallocate(builder->allocator, builder->data, builder->capacity + 1, 1);
@@ -559,7 +558,7 @@ EXTERNAL bool char_is_id(char c);
     EXTERNAL void builder_set_capacity(String_Builder* builder, isize capacity)
     {
         PROFILE_START();
-        ASSERT(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_invariant(*builder));
         ASSERT_PARAMS(capacity >= 0 && builder && builder->allocator != NULL);
 
         void* old_data = NULL;
@@ -602,7 +601,7 @@ EXTERNAL bool char_is_id(char c);
             builder->data[builder->capacity] = '\0'; 
         }
         PROFILE_STOP();
-        ASSERT(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_invariant(*builder));
     }
     
     EXTERNAL void builder_reserve(String_Builder* builder, isize to_fit)
@@ -639,7 +638,7 @@ EXTERNAL bool char_is_id(char c);
             memset(builder->data + to_size, 0, (size_t) ((builder->count - to_size)));
         
         builder->count = to_size;
-        ASSERT(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_invariant(*builder));
     }
 
     EXTERNAL void builder_clear(String_Builder* builder)
@@ -653,7 +652,7 @@ EXTERNAL bool char_is_id(char c);
         builder_reserve(builder, builder->count+string.count);
         memcpy(builder->data + builder->count, string.data, (size_t) string.count);
         builder->count += string.count;
-        ASSERT(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_invariant(*builder));
     }
 
     EXTERNAL void builder_append_line(String_Builder* builder, String string)
@@ -663,12 +662,11 @@ EXTERNAL bool char_is_id(char c);
         memcpy(builder->data + builder->count, string.data, (size_t) string.count);
         builder->data[builder->count + string.count] = '\n';
         builder->count += string.count + 1;
-        ASSERT(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_invariant(*builder));
     }
     
     EXTERNAL void builder_insert_hole(String_Builder* builder, isize at, isize hole_size, int fill_with_char_or_minus_one)
     {
-        ASSERT_PARAMS(builder);
         ASSERT_BOUNDS(0 <= at && at <= builder->count);
         builder_reserve(builder, builder->count + hole_size);
         memmove(builder->data + at + hole_size, builder->data + at, (size_t) hole_size);
@@ -689,7 +687,7 @@ EXTERNAL bool char_is_id(char c);
     {
         builder_resize(builder, string.count);
         memcpy(builder->data, string.data, (size_t) string.count);
-        ASSERT(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_invariant(*builder));
     }
 
     EXTERNAL void builder_push(String_Builder* builder, char c)
