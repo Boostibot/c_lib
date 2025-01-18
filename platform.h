@@ -1,6 +1,14 @@
 ﻿#ifndef JOT_PLATFORM
 #define JOT_PLATFORM
 
+//Because I cant be bothered making sure 
+#define _GNU_SOURCE
+#define _GNU_SOURCE_
+#define __USE_GNU
+#define __USE_LARGEFILE64
+#define _LARGEFILE64_SOURCE
+#define _FILE_OFFSET_BITS 64 
+
 #include <stdint.h>
 #include <limits.h>
 
@@ -545,6 +553,9 @@ Platform_Window_Popup_Controls platform_window_make_popup(Platform_Window_Popup_
 //=========================================
 //Could be separate file or project from here on...
 
+//checks wheter the debugger is attached. Returns 0 if not 1 if yes, -1 if error
+int platform_is_debugger_atached();
+
 typedef struct {
     char function[256]; //mangled or unmangled function name
     char module[256];   //mangled or unmangled module name ie. name of dll/executable
@@ -552,11 +563,6 @@ typedef struct {
     int64_t line;       //0 if not supported;
     void* address;
 } Platform_Stack_Trace_Entry;
-
-//Stops the debugger at the call site
-#define platform_debug_break() (*(char*)0 = 0)
-//Marks a piece of code as unreachable for the compiler
-#define platform_assume_unreachable() (*(char*)0 = 0)
 
 //Captures the current stack frame pointers. 
 //Saves up to stack_size pointers into the stack array and returns the number of
@@ -702,9 +708,6 @@ const char* platform_exception_to_string(Platform_Exception error);
         #error Unsupported hardware!
     #endif
 
-    #undef platform_debug_break
-    #define platform_debug_break() __debugbreak() 
-
     PLATFORM_INTRINSIC void platform_compiler_barrier() 
     {
         _ReadWriteBarrier();
@@ -791,11 +794,6 @@ const char* platform_exception_to_string(Platform_Exception error);
 #elif defined(__GNUC__) || defined(__clang__)
     #define _GNU_SOURCE
     #include <signal.h>
-
-    #undef platform_debug_break
-    // #define platform_debug_break() __builtin_trap() /* bad looks like a fault in program! */
-    #define platform_debug_break() raise(SIGTRAP)
-    
 
     typedef char __MAX_ALIGN_TESTER__[
         __alignof__(long long int) == PLATFORM_MAX_ALIGN || 

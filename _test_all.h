@@ -33,7 +33,8 @@
 INTERNAL void test_all(f64 total_time)
 {
     PROFILE_START();
-    
+    PANIC("hello from panic!");
+
     LOG_INFO("TEST", "RUNNING ALL TESTS");
     int total_count = 0;
     int passed_count = 0;

@@ -8,7 +8,6 @@
 INTERNAL void test_log()
 {
     LOG_INFO("TEST", "Ignore all logs below since they are a test!");
-    log_indent();
 
     Debug_Allocator debug_allocator = {0};
     debug_allocator_init_use(&debug_allocator, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_CAPTURE_CALLSTACK);
@@ -41,7 +40,6 @@ INTERNAL void test_log()
         file_logger_deinit(&logger);
     }
     debug_allocator_deinit(&debug_allocator);
-    log_outdent();
     
     LOG_INFO("TEST", "Tetsing log finished!");
 }

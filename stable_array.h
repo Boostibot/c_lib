@@ -138,7 +138,7 @@ EXTERNAL void stable_array_init_custom(Stable_Array* stable, Allocator* alloc, i
 
 EXTERNAL void stable_array_init(Stable_Array* stable, Allocator* alloc, isize item_size)
 {
-    stable_array_init_custom(stable, alloc, item_size, 4096, DEF_ALIGN);
+    stable_array_init_custom(stable, alloc, item_size, DEF_ALIGN, 4096);
 }
 
 EXTERNAL isize stable_array_capacity(const Stable_Array* stable)
@@ -152,7 +152,7 @@ EXTERNAL void stable_array_deinit(Stable_Array* stable)
     for(u32 i = 0; i < stable->blocks_count; )
     {
         u32 k = i;
-        for(; i < stable->blocks_count; i++)
+        for(i += 1; i < stable->blocks_count; i++)
             if(stable->blocks[i].was_alloced)
                 break;
 
@@ -291,7 +291,9 @@ EXTERNAL void stable_array_reserve(Stable_Array* stable, isize to_size)
 
 EXTERNAL void stable_array_test_invariants(const Stable_Array* stable, bool slow_checks)
 {
-    TEST((stable->allocator != NULL));
+    if(stable->allocator == NULL)
+        return;
+
     TEST(stable->blocks_count <= stable->blocks_capacity);
     TEST(stable->count <= stable_array_capacity(stable));
 

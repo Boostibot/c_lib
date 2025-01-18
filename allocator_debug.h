@@ -52,7 +52,6 @@
 #include "hash_func.h"
 #include "log.h"
 
-#include "panic.h"
 #include "profile.h"
 #include "vformat.h"
 

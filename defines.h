@@ -45,23 +45,13 @@ typedef unsigned long long llu;
 #define TB   (1LL << 40)
 
 #define SWAP(a, b) do { \
-    void* x = (a); \
-    void* y = (b); \
-    char t[sizeof *(a)]; \
-    size_t N = sizeof *(a); \
-    memcpy(t, x, N); \
-    memcpy(x, y, N); \
-    memcpy(y, t, N); \
-} while(0) \
-
-#define SWAP_N(a, b, n) do { \
-    void* x = (a); \
-    void* y = (b); \
-    size_t N = (n); \
-    char t[n]; \
-    memcpy(t, x, N); \
-    memcpy(x, y, N); \
-    memcpy(y, t, N); \
+    void* _x = (a); \
+    void* _y = (b); \
+    char _t[sizeof *(a)]; \
+    size_t _N = sizeof *(a); \
+    memcpy(_t, _x, _N); \
+    memcpy(_x, _y, _N); \
+    memcpy(_y, _t, _N); \
 } while(0) \
 
 #ifdef __cplusplus

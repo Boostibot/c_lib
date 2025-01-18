@@ -1271,7 +1271,6 @@ void test_allocator_tlsf_stress(double seconds, isize at_once)
 
 void test_allocator_tlsf(double seconds)
 {
-    printf("[TEST]: Tlsf allocator sizes below:\n");
     for(int32_t i = 0; i < TLSF_BINS; i++)
     {
         if(i < 50)
@@ -1289,7 +1288,6 @@ void test_allocator_tlsf(double seconds)
                 TEST(should_be_i_plus_one == i + 1);
             }
         }
-        printf("[TEST]: %3i -> %lli\n", i, tlsf_size_from_bin_index(i));
     }
 
     test_tlsf_alloc_unit();

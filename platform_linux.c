@@ -1,7 +1,7 @@
-#define __USE_LARGEFILE64
-#define __USE_GNU
 #define _GNU_SOURCE
 #define _GNU_SOURCE_
+#define __USE_GNU
+#define __USE_LARGEFILE64
 #define _LARGEFILE64_SOURCE
 #define _FILE_OFFSET_BITS 64 
 
@@ -17,6 +17,7 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sched.h>
 
 //=========================================
 // Virtual memory
@@ -204,7 +205,6 @@ int64_t platform_allocation_granularity()
 //=========================================
 // Threading
 //=========================================
-#define _GNU_SOURCE
 #include <sched.h>
 #include <stdio.h>
 #include <pthread.h>
@@ -1311,6 +1311,78 @@ void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, void*
     }
 
     free(semi_translated);
+}
+
+#include <unistd.h>
+#include <stdint.h>
+#include <sys/ptrace.h>
+#include <sys/wait.h>
+
+//taken from https://stackoverflow.com/a/24419586
+int platform_is_debugger_atached()
+{
+    #if !defined(PTRACE_ATTACH) && defined(PT_ATTACH)
+    #  define PTRACE_ATTACH PT_ATTACH
+    #endif
+    #if !defined(PTRACE_DETACH) && defined(PT_DETACH)
+    #  define PTRACE_DETACH PT_DETACH
+    #endif
+
+    int from_child[2] = {-1, -1};
+    if (pipe(from_child) < 0) {
+        fprintf(stderr, "Debugger check failed: Error opening internal pipe: %s", strerror(errno));
+        return -1;
+    }
+
+    int pid = fork();
+    if (pid == -1) {
+        fprintf(stderr, "Debugger check failed: Error forking: %s", strerror(errno));
+        return -1;
+    }
+
+    //child
+    if (pid == 0) {
+        int ppid = getppid();
+
+        // Close parent's side
+        close(from_child[0]);
+
+        if (ptrace(PTRACE_ATTACH, ppid, 0, 0) == 0) {
+            // Wait for the parent to stop
+            waitpid(ppid, NULL, 0);
+
+            // Tell the parent what happened
+            uint8_t ret = 0;
+            write(from_child[1], &ret, sizeof(ret));
+
+            // Detach
+            ptrace(PTRACE_DETACH, ppid, 0, 0);
+            exit(0);
+        }
+        else {
+            //Tell the parent what happened
+            uint8_t ret = 1;
+            write(from_child[1], &ret, sizeof(ret));
+
+            exit(0);
+        }
+    // Parent
+    } else {
+        uint8_t ret = -1;
+        while ((read(from_child[0], &ret, sizeof(ret)) < 0) && (errno == EINTR));
+
+        // Ret not updated 
+        if (ret < 0) 
+            fprintf(stderr, "Debugger check failed: Error getting status from child: %s", strerror(errno));
+
+        // Close the pipes here, to avoid races with pattach (if we did it above) 
+        close(from_child[1]);
+        close(from_child[0]);
+
+        // Collect the status of the child 
+        waitpid(pid, NULL, 0);
+        return ret;
+    }
 }
 
 #include <signal.h>

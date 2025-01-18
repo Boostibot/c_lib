@@ -88,9 +88,7 @@ EXTERNAL bool run_test(void* func, const char* name, Test_Func_Type type, f64 ma
         default: UNREACHABLE();
     }
 
-    log_indent();
     bool success = platform_exception_sandbox(_run_test_try, &context, _run_test_recover, &context) == 0;
-    log_outdent();
     if(success)
         LOG_OKAY("TEST", "%s OK", name);
     else

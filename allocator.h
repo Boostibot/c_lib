@@ -23,7 +23,6 @@
 #include "defines.h"
 #include "assert.h"
 #include "platform.h"
-#include "panic.h"
 #include "profile.h"
 #include "log.h"
 

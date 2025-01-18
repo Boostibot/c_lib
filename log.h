@@ -51,10 +51,8 @@ EXTERNAL void log_fmt(Logger* logger, Log_Type type, const char* module, int32_t
 EXTERNAL void log_vfmt(Logger* logger, Log_Type type, const char* module, int32_t line, const char* file, const char* function, const char* format, va_list args);
 EXTERNAL void log_flush(Logger* logger);
 
-EXTERNAL void log_group() {}
-EXTERNAL void log_ungroup() {}
-EXTERNAL void log_indent() {}
-EXTERNAL void log_outdent() {}
+EXTERNAL void log_callstack(Log_Type type, const char* module, int64_t skip);
+EXTERNAL void log_captured_callstack(Log_Type type, const char* module, void** callstack, int64_t callstack_size);
 
 #define LOGGER_LOG(logger, log_type, module, format, ...) log_fmt(logger, log_type, module, __LINE__, __FILE__, __func__, format, ##__VA_ARGS__)
 #define LOGGER_LOGV(logger, log_type, module, format, ...) log_vfmt(logger, log_type, module, __LINE__, __FILE__, __func__, format, args)
@@ -444,6 +442,50 @@ INTERNAL char* _log_builder_append_fmt(_Log_Builder* builder_or_null, const char
     {
         return platform_thread_get_current_name();
     }
+
+    EXTERNAL void log_callstack(Log_Type type, const char* module, int64_t skip)
+    {
+        void* stack[256] = {0};
+        int64_t size = platform_capture_call_stack(stack, 256, skip + 1);
+        log_captured_callstack(type, module, stack, size);
+    }
+
+    #include <string.h>
+    EXTERNAL void log_captured_callstack(Log_Type type, const char* module, void** callstack, int64_t callstack_size)
+    {
+        if(callstack_size < 0 || callstack == NULL)
+            callstack_size = 0;
+
+        enum {TRANSLATE_AT_ONCE = 8};
+        for(int64_t i = 0; i < callstack_size; i += TRANSLATE_AT_ONCE)
+        {
+            int64_t remaining = callstack_size - i;
+            ASSERT(remaining > 0);
+
+            if(remaining > TRANSLATE_AT_ONCE)
+                remaining = TRANSLATE_AT_ONCE;
+
+            Platform_Stack_Trace_Entry translated[TRANSLATE_AT_ONCE] = {0};
+            platform_translate_call_stack(translated, callstack + i, remaining);
+        
+            for(int64_t j = 0; j < remaining; j++)
+            {
+                const Platform_Stack_Trace_Entry* entry = &translated[j];
+                LOG(type, module, "%-30s %s:%i", entry->function, entry->file, (int) entry->line);
+
+                if(strcmp(entry->function, "main") == 0) {
+                    i = callstack_size;
+                    break;
+                }
+            }
+        }
+    }
+
+    EXTERNAL bool panic_default_handler_break_into_debugger(void* context)
+    {
+        (void) context;
+        return platform_is_debugger_atached() == 1;
+    }
 #else
     INTERNAL const char* _log_thread_name()
     {
@@ -454,6 +496,38 @@ INTERNAL char* _log_builder_append_fmt(_Log_Builder* builder_or_null, const char
 
         return thread_name;
     }
+
+    EXTERNAL void log_callstack(Log_Type type, const char* module, int64_t skip)
+    {
+        (void) type;
+        (void) module;
+        (void) skip;
+    }
+    EXTERNAL void log_captured_callstack(Log_Type type, const char* module, void** callstack, int64_t callstack_size)
+    {
+        (void) type;
+        (void) module;
+        (void) callstack;
+        (void) callstack_size;
+    }
+    
+    EXTERNAL bool panic_default_handler_break_into_debugger(void* context)
+    {
+        (void) context;
+        return false;        
+    }
 #endif
+
+EXTERNAL void panic_default_handler_func(void* context, const char* type, const char* expression, const char* file, const char* function, int line, const char* format, va_list args)
+{
+    LOG_FATAL("panic", "%s in %s %s:%i\n", expression, function, file, line);
+    if(format && format[0] != '\0') 
+        LOGV(LOG_FATAL, ">panic", format, args);
+    
+    LOG_TRACE("panic", "printing execution callstack:");
+    log_callstack(LOG_TRACE, ">panic", 2);
+    log_flush(log_get_logger());
+    abort();
+}
 
 #endif

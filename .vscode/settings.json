@@ -64,6 +64,9 @@
         "typeinfo": "cpp",
         "__node_handle": "cpp",
         "bit": "cpp",
-        "sched.h": "c"
+        "sched.h": "c",
+        "__memory": "cpp",
+        "__functional_03": "cpp",
+        "ptrace.h": "c"
     }
 }

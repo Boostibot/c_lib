@@ -2189,6 +2189,11 @@ static int64_t _platform_stack_trace_walk(CONTEXT context, HANDLE process, HANDL
     return i;
 }
 
+int platform_is_debugger_atached()
+{
+    return IsDebuggerPresent() ? 1 : 0;
+}
+
 
 //=========================================
 // SANDBOX
