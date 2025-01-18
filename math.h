@@ -614,7 +614,7 @@ JMAPI Mat4 mat4_inverse(Mat4 matrix)
         return null;
     }
 
-    ASSERT(determinant > 0 && "determinant must not be 0!");
+    ASSERT(determinant != 0 && "determinant must not be 0!");
 	float invdet = 1.0f/determinant;
 	
     Mat4 result = {0};

@@ -165,11 +165,11 @@ EXTERNAL void stable_array_deinit(Stable_Array* stable)
 
 EXTERNAL void* stable_array_at(const Stable_Array* stable, isize index)
 {
-    ASSERT_BOUNDS(index, stable_array_capacity(stable));
+    CHECK_BOUNDS(index, stable_array_capacity(stable));
     size_t block_i = (size_t) index / STABLE_ARRAY_BLOCK_SIZE;
     size_t item_i = (size_t) index %  STABLE_ARRAY_BLOCK_SIZE;
     Stable_Array_Block* block = &stable->blocks[block_i];
-    ASSERT(block->mask & (1ull << item_i));
+    TEST(block->mask & (1ull << item_i));
     return block->ptr + stable->item_size*item_i;
 }
 
@@ -218,12 +218,12 @@ EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out)
 EXTERNAL void stable_array_remove(Stable_Array* stable, isize index)
 {
     _stable_array_check_invariants(stable);
-    ASSERT_BOUNDS(index, stable_array_capacity(stable));
+    CHECK_BOUNDS(index, stable_array_capacity(stable));
 
     size_t block_i = (size_t) index / STABLE_ARRAY_BLOCK_SIZE;
     size_t item_i = (size_t) index %  STABLE_ARRAY_BLOCK_SIZE;
     Stable_Array_Block* block = &stable->blocks[block_i];
-    ASSERT(block->mask & (1ull << item_i));
+    TEST(block->mask & (1ull << item_i));
 
     //If was full before removal add to free list
     if(~block->mask == 0)

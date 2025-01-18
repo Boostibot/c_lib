@@ -215,9 +215,9 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
         arena_stack_deinit(stack);
         isize alloc_granularity = platform_allocation_granularity();
     
-        ASSERT(reserve_size_or_zero >= 0);
-        ASSERT(commit_granularity_or_zero >= 0);
-        ASSERT(alloc_granularity >= 0);
+        ASSERT_PARAMS(reserve_size_or_zero >= 0);
+        ASSERT_PARAMS(commit_granularity_or_zero >= 0);
+        ASSERT_PARAMS(alloc_granularity >= 0);
     
         isize commit_granularity = commit_granularity_or_zero > 0 ? commit_granularity_or_zero : ARENA_STACK_DEF_COMMIT_SIZE;
         commit_granularity = DIV_CEIL(commit_granularity, alloc_granularity)*alloc_granularity;
@@ -345,7 +345,7 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
     EXTERNAL ATTRIBUTE_INLINE_ALWAYS void* arena_frame_push_nonzero_error(Arena_Frame* frame, isize size, isize align, Allocator_Error* error)
     {
         PROFILE_START();
-        ASSERT(frame->stack && frame->channel && 0 <= frame->level && frame->level <= frame->stack->max_alive_level, 
+        ASSERT_PARAMS(frame->stack && frame->channel && 0 <= frame->level && frame->level <= frame->stack->max_alive_level, 
             "Using an invalid frame! Its not initialized or it was used after it or a parent frame was released!");
         Arena_Stack_Channel* channel = frame->channel;
         _arena_stack_check_invariants(frame->stack);
@@ -378,7 +378,7 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
     EXTERNAL ATTRIBUTE_INLINE_ALWAYS Arena_Frame arena_frame_acquire(Arena_Stack* stack)
     {
         PROFILE_START();
-        ASSERT(stack->max_alive_level < stack->total_level_count, "Too many arena levels!");
+        ASSERT_PARAMS(stack->max_alive_level < stack->total_level_count, "Too many arena levels!");
         _arena_stack_check_invariants(stack);
 
         u32 level_i   = stack->max_alive_level / ARENA_STACK_CHANNELS;
@@ -414,7 +414,7 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
     EXTERNAL ATTRIBUTE_INLINE_ALWAYS void arena_frame_release(Arena_Frame* frame)
     {
         PROFILE_START();
-        ASSERT(frame->stack && 0 <= frame->level && frame->level <= frame->stack->max_alive_level, 
+        ASSERT_PARAMS(frame->stack && 0 <= frame->level && frame->level <= frame->stack->max_alive_level, 
             "Using an invalid frame! Its not initialized or it was used after it or a parent frame was released!");
 
         Arena_Stack* stack = frame->stack;
@@ -472,7 +472,7 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
 
     EXTERNAL ATTRIBUTE_INLINE_ALWAYS Arena_Frame scratch_arena_frame_acquire()
     {
-        ASSERT(scratch_arena_stack()->total_reserved_size > 0, "Must be already init!");
+        ASSERT_PARAMS(scratch_arena_stack()->total_reserved_size > 0, "Must be already init!");
         return arena_frame_acquire(scratch_arena_stack());
     }
 

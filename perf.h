@@ -280,7 +280,7 @@ static void perf_benchmark_example()
 		if(stats.average_s > 0)
 			stats.normalized_standard_deviation_s = stats.standard_deviation_s / stats.average_s;
 
-		//statss must be plausible
+		//stats must be plausible
 		ASSERT(stats.runs >= 0);
 		ASSERT(stats.batch_size >= 0);
 		ASSERT(stats.total_s >= 0.0);

@@ -55,8 +55,7 @@ EXTERNAL isize  string_find_first_char_or(String string, char search_for, isize 
 EXTERNAL isize  string_find_last_char_from(String in_str, char search_for, isize from);
 EXTERNAL isize  string_find_last_char(String string, char search_for); 
 
-
-EXTERNAL void string_to_null_terminated(char* buffer, isize buffer_size, String string);
+EXTERNAL void   string_to_null_terminated(char* buffer, isize buffer_size, String string);
 EXTERNAL String string_allocate(Allocator* alloc, String string);
 EXTERNAL void   string_deallocate(Allocator* alloc, String* string);
 
@@ -133,14 +132,14 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL String string_head(String string, isize to)
     {
-        ASSERT_BOUNDS(to, string.count + 1);
+        CHECK_BOUNDS(to, string.count + 1);
         String head = {string.data, to};
         return head;
     }
 
     EXTERNAL String string_tail(String string, isize from)
     {
-        ASSERT_BOUNDS(from, string.count + 1);
+        CHECK_BOUNDS(from, string.count + 1);
         String tail = {string.data + from, string.count - from};
         return tail;
     }
@@ -169,7 +168,7 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL isize string_find_first_or(String in_str, String search_for, isize from, isize if_not_found)
     {
-        ASSERT(from >= 0);
+        ASSERT_PARAMS(from >= 0);
 
         if(from + search_for.count > in_str.count)
             return if_not_found;
@@ -230,7 +229,7 @@ EXTERNAL bool char_is_id(char c);
             bool found = true;
             for(isize j = 0; j < search_for.count; j++)
             {
-                ASSERT_BOUNDS(i + j, in_str.count);
+                CHECK_BOUNDS(i + j, in_str.count);
                 if(in_str.data[i + j] != search_for.data[j])
                 {
                     found = false;
@@ -265,7 +264,9 @@ EXTERNAL bool char_is_id(char c);
     EXTERNAL void memtile(void *field, isize field_size, const void* pattern, isize pattern_size)
     {
         PROFILE_START();
-	    ASSERT(field_size >= 0 && pattern_size >= 0);
+	    ASSERT_PARAMS(field_size >= 0 && (field || field_size == 0));
+	    ASSERT_PARAMS(pattern_size >= 0 && (pattern || pattern_size == 0));
+
         if (field_size <= pattern_size)
             memcpy(field, pattern, (size_t) field_size);
         else if(pattern_size == 0)
@@ -293,7 +294,7 @@ EXTERNAL bool char_is_id(char c);
     
     EXTERNAL const void* memcheck(const void* ptr, uint8_t byte, isize size)
     {
-	    ASSERT(size >= 0);
+	    ASSERT_PARAMS(size >= 0 && (ptr != NULL || size == 0));
 
         //pattern is 8 repeats of byte
         uint64_t pattern = (uint64_t) 0x0101010101010101ULL * (uint64_t) byte;
@@ -333,7 +334,7 @@ EXTERNAL bool char_is_id(char c);
     EXTERNAL void memswap_generic(void* a, void* b, isize size)
     {
         PROFILE_START();
-	    ASSERT(size >= 0);
+	    ASSERT_PARAMS(size >= 0 && ((a && b) || size == 0));
         enum {LOCAL = 8};
         char temp[LOCAL] = {0};
 
@@ -362,6 +363,7 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL void memswap(void* a, void* b, isize size)
     {
+	    ASSERT_PARAMS(size >= 0 && ((a && b) || size == 0));
         PROFILE_START();
         char temp[32] = {0};
         switch(size) {
@@ -520,7 +522,7 @@ EXTERNAL bool char_is_id(char c);
     }
     EXTERNAL void builder_deinit(String_Builder* builder)
     {
-        ASSERT(builder != NULL);
+        ASSERT_PARAMS(builder != NULL);
         ASSERT(builder_is_invariant(*builder));
 
         if(builder->data != NULL && builder->data != _builder_null_termination)
@@ -534,7 +536,7 @@ EXTERNAL bool char_is_id(char c);
         builder_deinit(builder);
         builder->allocator = allocator;
         builder->data = _builder_null_termination;
-        ASSERT(allocator != NULL);
+        ASSERT_PARAMS(allocator != NULL);
     }
 
     EXTERNAL void builder_init_with_capacity(String_Builder* builder, Allocator* allocator, isize capacity_or_zero)
@@ -558,10 +560,7 @@ EXTERNAL bool char_is_id(char c);
     {
         PROFILE_START();
         ASSERT(builder_is_invariant(*builder));
-        ASSERT(capacity >= 0 && builder->allocator != NULL);
-
-        //@TEMP: just for transition
-        //ASSERT(builder->data != NULL);
+        ASSERT_PARAMS(capacity >= 0 && builder && builder->allocator != NULL);
 
         void* old_data = NULL;
         isize old_alloced = 0;
@@ -669,7 +668,8 @@ EXTERNAL bool char_is_id(char c);
     
     EXTERNAL void builder_insert_hole(String_Builder* builder, isize at, isize hole_size, int fill_with_char_or_minus_one)
     {
-        ASSERT(0 <= at && at <= builder->count);
+        ASSERT_PARAMS(builder);
+        ASSERT_BOUNDS(0 <= at && at <= builder->count);
         builder_reserve(builder, builder->count + hole_size);
         memmove(builder->data + at + hole_size, builder->data + at, (size_t) hole_size);
         if(fill_with_char_or_minus_one != -1)
@@ -700,7 +700,7 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL char builder_pop(String_Builder* builder)
     {
-        ASSERT(builder->count > 0);
+        ASSERT_BOUNDS(builder->count > 0);
         char popped = builder->data[--builder->count];
         builder->data[builder->count] = '\0';
         return popped;

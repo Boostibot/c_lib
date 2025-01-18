@@ -21,7 +21,7 @@ typedef struct Allocation_List_Block {
     u64 size        : 47;
     u64 is_offset   : 1;
 
-    #ifdef ALLOCATION_LIST_DEBUG
+    #ifdef DO_ASSERTS_SLOW
     char magic[8];
     #endif
 } Allocation_List_Block;
@@ -95,9 +95,7 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
             return;
 
         #ifdef DO_ASSERTS_SLOW
-            #ifdef ALLOCATION_LIST_DEBUG
-                ASSERT_SLOW(memcmp(block->magic, ALLOCATION_LIST_MAGIC, sizeof ALLOCATION_LIST_MAGIC) == 0);
-            #endif
+            ASSERT_SLOW(memcmp(block->magic, ALLOCATION_LIST_MAGIC, sizeof ALLOCATION_LIST_MAGIC) == 0);
             ASSERT_SLOW((block->next_block == NULL) == (self->last_block == block));
             if(block->prev_block != NULL)
                 ASSERT_SLOW(block->prev_block->next_block == block);
@@ -163,7 +161,7 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
             new_block_ptr->size = (u64) new_size; 
             #pragma GCC diagnostic pop
             
-            #ifdef ALLOCATION_LIST_DEBUG
+            #ifdef DO_ASSERTS_SLOW
                 memcpy(new_block_ptr->magic, ALLOCATION_LIST_MAGIC, sizeof ALLOCATION_LIST_MAGIC);
             #endif
 

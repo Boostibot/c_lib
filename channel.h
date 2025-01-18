@@ -219,6 +219,7 @@ CHAN_OS_API bool chan_start_thread(void (*func)(void* context), void* context);
 #ifndef ASSERT
     #include <assert.h>
     #define ASSERT(x, ...) assert(x)
+    #define ASSERT_PARAMS(x, ...) assert(x)    
 #endif
 
 #ifndef chan_debug_log
@@ -313,7 +314,7 @@ static bool _channel_ticket_push_potentially_cancel(Channel* chan, uint64_t tick
 CHANAPI bool channel_ticket_push(Channel* chan, const void* item, uint64_t* out_ticket_or_null, Channel_Info info) 
 {
     ASSERT(memcmp(&chan->info, &info, sizeof info) == 0, "info must be matching");
-    ASSERT(item || (item == NULL && info.item_size == 0), "item must be provided");
+    ASSERT_PARAMS(item || (item == NULL && info.item_size == 0), "item must be provided");
     
     uint64_t tail = atomic_fetch_add(&chan->tail, _CHAN_TICKET_INCREMENT);
     uint64_t ticket = tail / _CHAN_TICKET_INCREMENT;
@@ -407,7 +408,7 @@ static bool _channel_ticket_pop_potentially_cancel(Channel* chan, uint64_t ticke
 CHANAPI bool channel_ticket_pop(Channel* chan, void* item, uint64_t* out_ticket_or_null, Channel_Info info) 
 {
     ASSERT(memcmp(&chan->info, &info, sizeof info) == 0, "info must be matching");
-    ASSERT(item || (item == NULL && info.item_size == 0), "item must be provided");
+    ASSERT_PARAMS(item || (item == NULL && info.item_size == 0), "item must be provided");
 
     uint64_t head = atomic_fetch_add(&chan->head, _CHAN_TICKET_INCREMENT);
     uint64_t ticket = head / _CHAN_TICKET_INCREMENT;
@@ -469,7 +470,7 @@ CHANAPI bool channel_ticket_pop(Channel* chan, void* item, uint64_t* out_ticket_
 CHANAPI Channel_Res channel_ticket_try_push_weak(Channel* chan, const void* item, uint64_t* out_ticket_or_null, Channel_Info info) 
 {
     ASSERT(memcmp(&chan->info, &info, sizeof info) == 0, "info must be matching");
-    ASSERT(item || (item == NULL && info.item_size == 0), "item must be provided");
+    ASSERT_PARAMS(item || (item == NULL && info.item_size == 0), "item must be provided");
 
     uint64_t tail = atomic_load(&chan->tail);
     uint64_t ticket = tail / _CHAN_TICKET_INCREMENT;
@@ -516,7 +517,7 @@ CHANAPI Channel_Res channel_ticket_try_push_weak(Channel* chan, const void* item
 CHANAPI Channel_Res channel_ticket_try_pop_weak(Channel* chan, void* item, uint64_t* out_ticket_or_null, Channel_Info info) 
 {
     ASSERT(memcmp(&chan->info, &info, sizeof info) == 0, "info must be matching");
-    ASSERT(item || (item == NULL && info.item_size == 0), "item must be provided");
+    ASSERT_PARAMS(item || (item == NULL && info.item_size == 0), "item must be provided");
 
     uint64_t head = atomic_load(&chan->head);
     uint64_t ticket = head / _CHAN_TICKET_INCREMENT;
@@ -795,7 +796,7 @@ CHANAPI bool channel_is_invariant_converged_state(Channel* chan, Channel_Info in
 
 CHANAPI bool channel_reopen(Channel* chan, Channel_Info info) 
 {
-    ASSERT(memcmp(&chan->info, &info, sizeof info) == 0, "info must be matching");
+    ASSERT_PARAMS(memcmp(&chan->info, &info, sizeof info) == 0, "info must be matching");
 
     chan_debug_log("channel_reopen called");
     bool out = false;
@@ -827,7 +828,7 @@ CHANAPI bool channel_reopen(Channel* chan, Channel_Info info)
 
 CHANAPI bool channel_close_hard(Channel* chan, Channel_Info info)
 {
-    ASSERT(memcmp(&chan->info, &info, sizeof info) == 0, "info must be matching");
+    ASSERT_PARAMS(memcmp(&chan->info, &info, sizeof info) == 0, "info must be matching");
     
     chan_debug_log("channel_close_hard called");
     bool out = (atomic_fetch_or(&chan->closing_state, _CHAN_CLOSING_HARD) & _CHAN_CLOSING_HARD) == 0;
@@ -931,10 +932,10 @@ CHANAPI bool channel_ticket_is_less_or_eq(uint64_t ticket_a, uint64_t ticket_b)
 
 CHANAPI void channel_init(Channel* chan, void* items, uint32_t* ids, isize capacity, Channel_Info info)
 {
-    ASSERT(ids);
-    ASSERT(capacity > 0 && "must be nonzero");
-    ASSERT(items != NULL || (items == NULL && info.item_size == 0));
-;
+    ASSERT_PARAMS(ids);
+    ASSERT_PARAMS(capacity > 0 && "must be nonzero");
+    ASSERT_PARAMS(items != NULL || (items == NULL && info.item_size == 0));
+
     memset(chan, 0, sizeof* chan);
     chan->items = (uint8_t*) items;
     chan->ids = (CHAN_ATOMIC(uint32_t)*) (void*) ids;

@@ -259,8 +259,8 @@ EXTERNAL void image_init_sized(Image* image, Allocator* alloc, isize width, isiz
 
 EXTERNAL void* image_at(Image image, isize x, isize y)
 {
-    ASSERT_BOUNDS(x, image.width);
-    ASSERT_BOUNDS(y, image.height);
+    CHECK_BOUNDS(x, image.width);
+    CHECK_BOUNDS(y, image.height);
 
     isize byte_stride = image_byte_stride(image);
     u8* pixel = image.pixels + x*image.pixel_size + y*byte_stride;
@@ -321,13 +321,13 @@ EXTERNAL bool subimage_is_contiguous(Subimage view)
 EXTERNAL Subimage subimage_range(Subimage view, isize from_x, isize from_y, isize to_x, isize to_y)
 {
     Subimage out = view;
-    ASSERT_BOUNDS(from_x, out.width + 1);
-    ASSERT_BOUNDS(from_y, out.height + 1);
-    ASSERT_BOUNDS(to_x, out.width + 1);
-    ASSERT_BOUNDS(to_y, out.height + 1);
+    CHECK_BOUNDS(from_x, out.width + 1);
+    CHECK_BOUNDS(from_y, out.height + 1);
+    CHECK_BOUNDS(to_x, out.width + 1);
+    CHECK_BOUNDS(to_y, out.height + 1);
 
-    ASSERT(from_x <= to_x);
-    ASSERT(from_y <= to_y);
+    CHECK_BOUNDS(from_x, to_x);
+    CHECK_BOUNDS(from_y, to_y);
 
     out.from_x = (i32) from_x;
     out.from_y = (i32) from_y;
@@ -353,8 +353,8 @@ EXTERNAL Subimage image_range(Image image, isize from_x, isize from_y, isize to_
 
 EXTERNAL void* subimage_at(Subimage view, isize x, isize y)
 {
-    ASSERT_BOUNDS(x, view.width);
-    ASSERT_BOUNDS(y, view.height);
+    CHECK_BOUNDS(x, view.width);
+    CHECK_BOUNDS(y, view.height);
 
     i32 containing_x = (i32) x + view.from_x;
     i32 containing_y = (i32) y + view.from_y;
@@ -377,8 +377,7 @@ EXTERNAL void subimage_copy(Subimage to_image, Subimage from_image, isize offset
         return;
 
     Subimage to_portion = subimage_portion(to_image, offset_x, offset_y, copy_width, copy_height);
-    ASSERT(from_image.type == to_image.type, "formats must match!");
-    ASSERT(from_image.pixel_size == to_image.pixel_size, "formats must match!");
+    ASSERT_PARAMS(from_image.type == to_image.type && from_image.pixel_size == to_image.pixel_size, "formats must match!");
 
     isize to_image_stride = subimage_byte_stride(to_image); 
     isize from_image_stride = subimage_byte_stride(from_image); 
@@ -434,9 +433,10 @@ EXTERNAL Image image_from_image(Image to_copy, Allocator* alloc)
 
 EXTERNAL void image_reserve(Image* image, isize capacity)
 {
+    ASSERT_PARAMS(image != NULL);
     if(capacity > image->capacity)
     {
-        ASSERT(image->allocator != NULL);
+        ASSERT_PARAMS(image->allocator != NULL);
 
         isize old_byte_size = image_byte_size(*image);
         u8* new_pixels = (u8*) allocator_allocate(image->allocator, capacity, DEF_ALIGN);
@@ -451,10 +451,11 @@ EXTERNAL void image_reserve(Image* image, isize capacity)
 
 EXTERNAL void image_reshape(Image* image, isize width, isize height, isize pixel_size, Pixel_Type type, const void* data_or_null)
 {
+    ASSERT_PARAMS(image != NULL && width >= 0 && height >= 0);
     isize needed_size = width*height*pixel_size;
     if(needed_size > image->capacity)
     {
-        ASSERT(image->allocator != NULL);
+        ASSERT_PARAMS(image->allocator != NULL);
 
         u8* new_pixels = (u8*) allocator_allocate(image->allocator, needed_size, DEF_ALIGN);
         allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN);
@@ -483,7 +484,7 @@ EXTERNAL void image_assign(Image* to_image, Subimage from_image)
 
 EXTERNAL void image_resize(Image* image, isize width, isize height)
 {
-    ASSERT(image != NULL && width >= 0 && height >= 0);
+    ASSERT_PARAMS(image != NULL && width >= 0 && height >= 0);
     
     if(image->width == width && image->height == height)
         return;

@@ -32,6 +32,8 @@
     #define EXTERNAL
     #define INTERNAL static
     #define ASSERT(x) assert(x)
+    #define ASSERT_BOUNDS(x) assert(x)
+    #define ASSERT_PARAMS(x) assert(x)
 
     typedef int64_t isize; //can also be usnigned if desired
     typedef struct Allocator Allocator;
@@ -173,13 +175,13 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
 
 //Removes a single item from the end of the array
 #define array_pop(array_ptr) (\
-        ASSERT((array_ptr)->count > 0 && "cannot pop from empty array!"), \
+        ASSERT_BOUNDS((array_ptr)->count > 0 && "cannot pop from empty array!"), \
         (array_ptr)->data[--(array_ptr)->count] \
     ) \
     
 //Returns the value of the last item. The array must not be empty!
 #define array_last(array) (\
-        ASSERT((array).count > 0 && "cannot get last from empty array!"), \
+        ASSERT_BOUNDS((array).count > 0 && "cannot get last from empty array!"), \
         &(array).data[(array).count - 1] \
     ) \
 
@@ -236,7 +238,7 @@ EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity)
     PROFILE_SCOPE()
     {
         ASSERT(generic_array_is_invariant(gen));
-        ASSERT(capacity >= 0 && gen.array->allocator != NULL);
+        ASSERT_PARAMS(capacity >= 0 && gen.array->allocator != NULL);
 
         isize old_byte_size = gen.item_size * gen.array->capacity;
         isize new_byte_size = gen.item_size * capacity;
@@ -264,7 +266,6 @@ EXTERNAL void generic_array_resize(Generic_Array gen, isize to_size, bool zero_n
 EXTERNAL void generic_array_reserve(Generic_Array gen, isize to_fit)
 {
     ASSERT(generic_array_is_invariant(gen));
-    ASSERT(to_fit >= 0);
     if(gen.array->capacity > to_fit)
         return;
         
@@ -278,7 +279,7 @@ EXTERNAL void generic_array_reserve(Generic_Array gen, isize to_fit)
 
 EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize data_count)
 {
-    ASSERT(data_count >= 0);
+    ASSERT_PARAMS(data_count >= 0 && (data || data_count == 0));
     generic_array_reserve(gen, gen.array->count+data_count);
     memcpy(gen.array->data + gen.item_size * gen.array->count, data, (size_t) (gen.item_size * data_count));
     gen.array->count += data_count;

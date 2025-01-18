@@ -21,11 +21,14 @@
 #include <stddef.h>
 
 //#define to enable extra checks 
-//#define LIST_DEBUB
+#ifdef DO_ASSERTS_SLOW
+    #define LIST_DEBUB
+#endif
 
 #ifndef ASSERT
     #include <assert.h>
     #define ASSERT(x) assert(x)
+    #define ASSERT_PARAMS(x) assert(x)
 #endif
 
 #ifdef LIST_DEBUB
@@ -39,7 +42,7 @@
 
 //Chain
 #define chain_push_nil(first, node, next, NULL)                     \
-    ASSERT("node must not be null and isolated"                     \
+    ASSERT_PARAMS("node must not be null and isolated"                     \
         && (node) != NULL                                           \
         /* && (node)->next == NULL*/                                     \
     ),                                                              \
@@ -52,7 +55,7 @@
 
 //List
 #define list_push_nil(first, last, node, next, NULL) (              \
-    ASSERT("node must not be null and isolated, list must be valid" \
+    ASSERT_PARAMS("node must not be null and isolated, list must be valid" \
         && (node) != NULL                                           \
         && (node)->next == NULL                                     \
         && ((first) == NULL) == ((last) == NULL)                    \
@@ -63,7 +66,7 @@
     )                                                               \
     
 #define list_push_front_nil(first, last, node, next, NULL) (        \
-    ASSERT("node must not be null and isolated, list must be valid" \
+    ASSERT_PARAMS("node must not be null and isolated, list must be valid" \
         && (node) != NULL                                           \
         /* && (node)->next == NULL */                               \
         && ((first) == NULL) == ((last) == NULL)                    \
@@ -74,7 +77,7 @@
     )                                                               \
 
 #define list_pop_nil(first, last, next, NULL) (                     \
-    ASSERT("list must be valid"                                     \
+    ASSERT_PARAMS("list must be valid"                                     \
         && ((first) == NULL) == ((last) == NULL)                    \
     ),                                                              \
     (first)==(last)                                                 \
@@ -85,7 +88,7 @@
 
 //Bilist
 #define bilist_insert_nil_cond(first, last, after, insert_first, node, next, prev, NULL) (      \
-    ASSERT("node must not be null and isolated, after must be properly linked," \
+    ASSERT_PARAMS("node must not be null and isolated, after must be properly linked," \
            "list must be valid"                                                 \
         && (node) != NULL                                                       \
         /*&& (node)->next == NULL && (node)->prev == NULL*/                     \
@@ -123,7 +126,7 @@
     bilist_insert_nil_cond((first), (last), (after), (after) == NULL, (node), next, prev, NULL);
 
 #define bilist_remove_nil(first, last, node, next, prev, NULL) (                \
-    ASSERT("node must not be null and must be properly linked. List must be valid"                  \
+    ASSERT_PARAMS("node must not be null and must be properly linked. List must be valid"                  \
         && (node) != NULL                                                       \
         && ((first) == NULL) == ((last) == NULL)                                \
         && _is_properly_linked((node),next,prev,NULL)                           \
@@ -182,6 +185,11 @@
 
 #if (defined(JOT_ALL_TEST) || defined(JOT_LIST_TEST)) && !defined(JOT_LIST_HAS_TEST)
 #define JOT_LIST_HAS_TEST
+
+#ifndef TEST
+    #define TEST(x) assert(x)
+#endif
+
 static void test_list()
 {
     enum {NODES = 10};
@@ -203,12 +211,12 @@ static void test_list()
 
         //now the list looks like: NODES -1, ... 2, 1, 0, 0, 1, 2, ... NODES - 1
         // so popping from front should first produce descending series 
-        ASSERT(first != NULL);
-        ASSERT(last != NULL);
+        TEST(first != NULL);
+        TEST(last != NULL);
         for(int i = 0; i < NODES; i++)
         {
             int first_val = first->val;
-            ASSERT(first_val == NODES - i - 1);
+            TEST(first_val == NODES - i - 1);
             list_pop(&first, &last);
         }
         
@@ -222,12 +230,12 @@ static void test_list()
         for(int i = 0; i < NODES; i++)
         {
             int first_val = first->val;
-            ASSERT(first_val == i);
+            TEST(first_val == i);
             list_pop(&first, &last);
         }
 
-        ASSERT(first == NULL);
-        ASSERT(last == NULL);
+        TEST(first == NULL);
+        TEST(last == NULL);
     }   
     
     {
@@ -249,28 +257,28 @@ static void test_list()
         for(int i = 0; i < NODES; i++)
             bilist_push_back(&first, &last, &nodes[i]);
             
-        ASSERT(first != NULL);
-        ASSERT(last != NULL);
+        TEST(first != NULL);
+        TEST(last != NULL);
         for(int i = 0; i < NODES; i++)
         {
             int first_val = first->val;
-            ASSERT(first_val == i);
+            TEST(first_val == i);
             bilist_pop_front(&first, &last);
         }
 
-        ASSERT(first == NULL);
-        ASSERT(last == NULL);
+        TEST(first == NULL);
+        TEST(last == NULL);
         
         //push_front, pop_back
         for(int i = 0; i < NODES; i++)
             bilist_push_front(&first, &last, &nodes[i]);
 
-        ASSERT(first != NULL);
-        ASSERT(last != NULL);
+        TEST(first != NULL);
+        TEST(last != NULL);
         for(int i = 0; i < NODES; i++)
         {
             int popped = last->val;
-            ASSERT(popped == i);
+            TEST(popped == i);
             bilist_pop_back(&first, &last);
         }
     }   
