@@ -82,12 +82,12 @@ MAPAPI void _string_map_key_deinit(Hash_String* key, String_Map* map)
 }
 
 #define STRING_MAP_INTERFACE(map) BINIT(Map_Interface){     \
-        (Map_Hash_Func) (void*) _string_map_key_hash,       \
-        (Map_Key_Eq_Func) (void*) _string_map_key_eq,       \
-        (Map_Store_Func) (void*) _string_map_key_store,     \
-        (Map_Store_Func) (void*) (map)->value_store,        \
-        (Map_Deinit_Func) (void*) _string_map_key_deinit,   \
-        (Map_Deinit_Func) (void*) (map)->value_deinit,      \
+        _string_map_key_hash,       \
+        _string_map_key_eq,       \
+        _string_map_key_store,     \
+        (map)->value_store,        \
+        _string_map_key_deinit,   \
+        (map)->value_deinit,      \
         sizeof(Hash_String),                                \
         16,                                                 \
         (map)->value_size,                                  \

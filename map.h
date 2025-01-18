@@ -69,34 +69,44 @@ typedef struct Map_Found {
     };
 } Map_Found;
 
-//Note that stored and supplied keys may be different types!
-// (ie String_Builder stored_key and String supplied_key or similar).
-typedef u64 (*Map_Hash_Func)(const void* stored_key, void* context);
-typedef bool (*Map_Key_Eq_Func)(const void* stored_key, const void* supplied_key, void* context);
-typedef void (*Map_Store_Func)(const void* stored_key, const void* supplied_key, void* context);
-typedef void (*Map_Deinit_Func)(const void* key_or_value, void* context);
-
-typedef struct Map_Interface {
-    u64 (*hash)(const void* stored_key, void* context);
-    //Checks stored key and supplied key for equality. If is null uses memcmp instead.
-    bool (*is_eq_or_null)(const void* stored_key, const void* supplied_key, void* context);
-
-    //Transforms supplied_key into stored_key. If is null uses memcpy instead.
-    void (*key_store_or_null)(void* stored_key, const void* supplied_key, void* context);
-    void (*value_store_or_null)(void* stored_value, const void* supplied_value, void* context);
-
-    //Gets called on removed keys/values during explicit remove, clear or deinit. If is null does nothing.
-    void (*key_deinit_or_null)(void* key, void* context);
-    void (*value_deinit_or_null)(void* value, void* context);
-
+typedef struct Void_Map_Interface {
+    void* hash;
+    void* is_eq_or_null;
+    void* key_store_or_null;
+    void* value_store_or_null;
+    void* key_deinit_or_null;
+    void* value_deinit_or_null;
     i32 key_size;
     i32 key_align;
-    
-    //Value size can be zero in which case the hash map effectively becomes a hash set.
     i32 value_size;
     i32 value_align;
-
     void* context;
+} Void_Map_Interface;
+
+typedef union Map_Interface {
+    Void_Map_Interface untyped;
+    struct {
+        u64 (*hash)(const void* stored_key, void* context);
+        //Checks stored key and supplied key for equality. If is null uses memcmp instead.
+        bool (*is_eq_or_null)(const void* stored_key, const void* supplied_key, void* context);
+
+        //Transforms supplied_key into stored_key. If is null uses memcpy instead.
+        void (*key_store_or_null)(void* stored_key, const void* supplied_key, void* context);
+        void (*value_store_or_null)(void* stored_value, const void* supplied_value, void* context);
+
+        //Gets called on removed keys/values during explicit remove, clear or deinit. If is null does nothing.
+        void (*key_deinit_or_null)(void* key, void* context);
+        void (*value_deinit_or_null)(void* value, void* context);
+
+        i32 key_size;
+        i32 key_align;
+        
+        //Value size can be zero in which case the hash map effectively becomes a hash set.
+        i32 value_size;
+        i32 value_align;
+
+        void* context;   
+    };
 } Map_Interface;
 
 MAPAPI void      map_init(Map* map, Allocator* alloc, Map_Interface info);
