@@ -224,8 +224,8 @@ MAPAPI_INTERNAL void _map_reserve_values(Map* map, isize to_size, Map_Interface 
         isize old_capacity = map->capacity;
         isize new_capacity = MAX(map->capacity*3/2 + 8, to_size);
 
-        map->values = allocator_reallocate(map->allocator, new_capacity*info.value_size, map->values, old_capacity*info.value_size, info.value_align);
-        map->keys = allocator_reallocate(map->allocator, new_capacity*info.key_size, map->keys, old_capacity*info.key_size, info.key_align);
+        map->values = (u8*) allocator_reallocate(map->allocator, new_capacity*info.value_size, map->values, old_capacity*info.value_size, info.value_align);
+        map->keys = (u8*) allocator_reallocate(map->allocator, new_capacity*info.key_size, map->keys, old_capacity*info.key_size, info.key_align);
         map->capacity = (i32) new_capacity;
     }
 }

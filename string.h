@@ -168,7 +168,7 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL isize string_find_first_or(String in_str, String search_for, isize from, isize if_not_found)
     {
-        ASSERT_PARAMS(from >= 0);
+        REQUIRE(from >= 0);
 
         if(from + search_for.count > in_str.count)
             return if_not_found;
@@ -264,8 +264,8 @@ EXTERNAL bool char_is_id(char c);
     EXTERNAL void memtile(void *field, isize field_size, const void* pattern, isize pattern_size)
     {
         PROFILE_START();
-	    ASSERT_PARAMS(field_size >= 0 && (field || field_size == 0));
-	    ASSERT_PARAMS(pattern_size >= 0 && (pattern || pattern_size == 0));
+	    REQUIRE(field_size >= 0 && (field || field_size == 0));
+	    REQUIRE(pattern_size >= 0 && (pattern || pattern_size == 0));
 
         if (field_size <= pattern_size)
             memcpy(field, pattern, (size_t) field_size);
@@ -294,7 +294,7 @@ EXTERNAL bool char_is_id(char c);
     
     EXTERNAL const void* memcheck(const void* ptr, uint8_t byte, isize size)
     {
-	    ASSERT_PARAMS(size >= 0 && (ptr != NULL || size == 0));
+	    REQUIRE(size >= 0 && (ptr != NULL || size == 0));
 
         //pattern is 8 repeats of byte
         uint64_t pattern = (uint64_t) 0x0101010101010101ULL * (uint64_t) byte;
@@ -334,7 +334,7 @@ EXTERNAL bool char_is_id(char c);
     EXTERNAL void memswap_generic(void* a, void* b, isize size)
     {
         PROFILE_START();
-	    ASSERT_PARAMS(size >= 0 && ((a && b) || size == 0));
+	    REQUIRE(size >= 0 && ((a && b) || size == 0));
         enum {LOCAL = 8};
         char temp[LOCAL] = {0};
 
@@ -363,7 +363,7 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL void memswap(void* a, void* b, isize size)
     {
-	    ASSERT_PARAMS(size >= 0 && ((a && b) || size == 0));
+	    REQUIRE(size >= 0 && ((a && b) || size == 0));
         PROFILE_START();
         char temp[32] = {0};
         switch(size) {
@@ -535,7 +535,7 @@ EXTERNAL bool char_is_id(char c);
         builder_deinit(builder);
         builder->allocator = allocator;
         builder->data = _builder_null_termination;
-        ASSERT_PARAMS(allocator != NULL);
+        REQUIRE(allocator != NULL);
     }
 
     EXTERNAL void builder_init_with_capacity(String_Builder* builder, Allocator* allocator, isize capacity_or_zero)
@@ -559,7 +559,7 @@ EXTERNAL bool char_is_id(char c);
     {
         PROFILE_START();
         ASSERT_SLOW(builder_is_invariant(*builder));
-        ASSERT_PARAMS(capacity >= 0 && builder && builder->allocator != NULL);
+        REQUIRE(capacity >= 0 && builder && builder->allocator != NULL);
 
         void* old_data = NULL;
         isize old_alloced = 0;

@@ -208,10 +208,10 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
         isize alloc_granularity = platform_allocation_granularity();
     
         //validate and normalize arguments
-        ASSERT_PARAMS(reserve_size_or_zero >= 0);
-        ASSERT_PARAMS(commit_granularity_or_zero >= 0);
-        ASSERT_PARAMS(frame_count_or_zero >= 0);
-        ASSERT_PARAMS(alloc_granularity >= 1);
+        REQUIRE(reserve_size_or_zero >= 0);
+        REQUIRE(commit_granularity_or_zero >= 0);
+        REQUIRE(frame_count_or_zero >= 0);
+        REQUIRE(alloc_granularity >= 1);
     
         isize commit_granularity = commit_granularity_or_zero > 0 ? commit_granularity_or_zero : ARENA_STACK_DEF_COMMIT_SIZE;
         isize reserve_size = reserve_size_or_zero > 0 ? reserve_size_or_zero : ARENA_STACK_DEF_RESERVE_SIZE;
@@ -311,7 +311,7 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
 
     EXTERNAL ATTRIBUTE_INLINE_ALWAYS void* arena_frame_push_nonzero_error(Arena_Frame* frame, isize size, isize align, Allocator_Error* error)
     {
-        ASSERT_PARAMS(frame->stack && frame->channel && 1 <= frame->index && frame->index < frame->stack->frame_count, 
+        REQUIRE(frame->stack && frame->channel && 1 <= frame->index && frame->index < frame->stack->frame_count, 
             "Using an invalid frame! Its not initialized or it was used after it or a parent frame was released!");
 
         Arena_Stack_Channel* channel = frame->channel;
@@ -370,12 +370,12 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
 
     EXTERNAL ATTRIBUTE_INLINE_ALWAYS void arena_frame_release(Arena_Frame* frame)
     {
-        ASSERT_PARAMS(frame->stack && 1 <= frame->index && frame->index < frame->stack->frame_count, 
+        REQUIRE(frame->stack && 1 <= frame->index && frame->index < frame->stack->frame_count, 
             "Using an invalid frame! Its not initialized or it was used after it or a parent frame was released!");
 
         Arena_Stack* stack = frame->stack;
         Arena_Stack_Channel* channel = frame->channel;
-        ASSERT_PARAMS(channel->curr_frame >= frame->ptr);
+        REQUIRE(channel->curr_frame >= frame->ptr);
         _arena_stack_check_invariants(stack);
     
         u8* old_used_to = *channel->curr_frame;
@@ -425,7 +425,7 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
 
     EXTERNAL ATTRIBUTE_INLINE_ALWAYS Arena_Frame scratch_arena_frame_acquire()
     {
-        ASSERT_PARAMS(scratch_arena_stack()->reserved_size > 0, "Must be already init!");
+        REQUIRE(scratch_arena_stack()->reserved_size > 0, "Must be already init!");
         return arena_frame_acquire(scratch_arena_stack());
     }
 

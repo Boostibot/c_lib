@@ -72,7 +72,7 @@ SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_it
     #ifndef ASSERT
         #include <assert.h>
         #define ASSERT(x) assert(x)
-        #define ASSERT_PARAMS(x) assert(x)
+        #define REQUIRE(x) assert(x)
     #endif
 
     //================= Convenience macros ==================
@@ -97,7 +97,7 @@ SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_it
 
     SORT_API void insertion_sort(void* items, void* space_for_one_item, isize item_count, isize item_size, Is_Less_Func is_less, void* context)
     {
-        ASSERT_PARAMS(item_count >= 0 && item_size > 0 && (item_count == 0 || (items && space_for_one_item && is_less)));
+        REQUIRE(item_count >= 0 && item_size > 0 && (item_count == 0 || (items && space_for_one_item && is_less)));
 
         // This is a version of insertion sort inspired by the implementation one can 
         // find in pdqsort https://github.com/orlp/pdqsort/blob/b1ef26a55cdb60d236a5cb199c4234c704f46726/pdqsort.h#L77.
@@ -123,7 +123,7 @@ SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_it
 
     SORT_API void heap_sort(void* items, void* space_for_one_item, isize item_count, isize item_size, Is_Less_Func is_less, void* context)
     {
-        ASSERT_PARAMS(item_count >= 0 && item_size > 0 && (item_count == 0 || (items && space_for_one_item && is_less)));
+        REQUIRE(item_count >= 0 && item_size > 0 && (item_count == 0 || (items && space_for_one_item && is_less)));
 
         //Make heap (if we are not just calling insertion sort)
         if(item_count > INSERTION_SORT_TO) {
@@ -185,7 +185,7 @@ SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_it
 
     SORT_API void heap_bubble_down_traditional(void* items, void* space_for_one_item, isize heap_top, isize heap_one_past_last, isize item_size, Is_Less_Func is_less, void* context)
     {
-        ASSERT_PARAMS(heap_top < heap_one_past_last && items != NULL);
+        REQUIRE(heap_top < heap_one_past_last && items != NULL);
         while(true) 
         {
             isize max_i = heap_top;
@@ -383,7 +383,7 @@ SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_it
     
     SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_items, isize item_count, isize item_size, Is_Less_Func is_less, void* context)
     {
-        ASSERT_PARAMS(item_count >= 0 && item_size > 0 && (item_count == 0 || (search_for && sorted_items && is_less)));
+        REQUIRE(item_count >= 0 && item_size > 0 && (item_count == 0 || (search_for && sorted_items && is_less)));
         const void* items = sorted_items; 
         isize count = item_count;
         while (count > 1) {

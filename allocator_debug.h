@@ -579,7 +579,7 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
         
         new_ptr = (u8*) new_pre.user_ptr;
         u64 hashed = hash64_bijective((u64) new_ptr);
-        ASSERT(hash_find(self->alive_allocations_hash, hashed).index == -1 && "Must not be added already!");
+        REQUIRE(hash_find(self->alive_allocations_hash, hashed).index == -1 && "Must not be added already!");
 
         hash_insert(&self->alive_allocations_hash, hashed, (u64) new_ptr);
         _debug_allocator_assert_block(self, new_ptr);

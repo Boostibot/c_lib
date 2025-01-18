@@ -8,7 +8,7 @@
 #ifndef ASSERT
 	#include <assert.h>
 	#define ASSERT(x) assert(x)
-	#define ASSERT_PARAMS(x) assert(x)
+	#define REQUIRE(x) assert(x)
 #endif
 
 #ifndef EXTERNAL
@@ -316,7 +316,7 @@ static inline uint64_t random_xiroshiro256(uint64_t s[4])
 
 	EXTERNAL void swap_any(void* a, void* b, int64_t size)
 	{
-		ASSERT_PARAMS(size >= 0);
+		REQUIRE(size >= 0);
 		enum {LOCAL = 64};
 		char temp[LOCAL] = {0};
 	
@@ -341,7 +341,7 @@ static inline uint64_t random_xiroshiro256(uint64_t s[4])
 
 	EXTERNAL void random_shuffle_from(Random_State* state, void* elements, int64_t element_count, int64_t element_size)
 	{
-		ASSERT_PARAMS(element_count >= 0 && element_size >= 0);
+		REQUIRE(element_count >= 0 && element_size >= 0);
 		enum {LOCAL = 256};
 		char temp[LOCAL] = {0};
 		char* elems = (char*) elements;
@@ -373,7 +373,7 @@ static inline uint64_t random_xiroshiro256(uint64_t s[4])
 	
 	EXTERNAL void random_bytes_from(Random_State* state, void* into, int64_t size)
 	{
-		ASSERT_PARAMS(size >= 0);
+		REQUIRE(size >= 0);
 		uint64_t full_randoms = (uint64_t) size / 8;
 		uint64_t remainder = (uint64_t) size % 8;
 		uint64_t* fulls = (uint64_t*) into;

@@ -21,15 +21,12 @@
     #define CAST(T, x)                          //performs checked integer cast ensuring no information is lost.
     #endif
 
-
     #if !defined(ASSERT_CUSTOM_SETTINGS)
-        #define DO_ASSERTS              // enables assertions
         #define DO_BOUNDS_CHECKS        // checks bounds prior to lookup 
-        #define DO_PARAMETER_CHECKS
+        #define DO_REQUIRES
         #if !defined(NDEBUG)
-            #define DO_ASSERTS_DEBUG // enables debug assertions - usually post conditions, sanity checks for my own implementation
-            #define DO_ASSERTS_SLOW  // enables slow assertions - expensive assertions or once that change the time complexity of an algorithm
-            #define DO_INVARIANT_CHECKS
+            #define DO_ASSERTS          // enables debug assertions - usually post conditions, sanity checks for my own implementation
+            #define DO_ASSERTS_SLOW     // enables slow assertions - expensive assertions or once that change the time complexity of an algorithm
         #endif
     #endif
 
@@ -113,10 +110,10 @@
         #define ASSERT_SLOW(x, ...)         _DISSABLED_TEST(x, ##__VA_ARGS__)
     #endif
 
-    #ifdef DO_PARAMETER_CHECKS
-        #define ASSERT_PARAMS(x, ...)        (!(x) ? PANIC_EXPR("PARAMETER", "ASSERT_PARAMS("#x")", ##__VA_ARGS__) : (void) 0) 
+    #ifdef DO_REQUIRES
+        #define REQUIRE(x, ...)             (!(x) ? PANIC_EXPR("PARAMETER", "REQUIRE("#x")", ##__VA_ARGS__) : (void) 0) 
     #else
-        #define ASSERT_PARAMS(x, ...)        _DISSABLED_TEST(x, ##__VA_ARGS__)
+        #define REQUIRE(x, ...)             _DISSABLED_TEST(x, ##__VA_ARGS__)
     #endif
 
     #ifdef DO_ASSERTS

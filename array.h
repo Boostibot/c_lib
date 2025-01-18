@@ -33,7 +33,7 @@
     #define INTERNAL static
     #define ASSERT(x) assert(x)
     #define ASSERT_BOUNDS(x) assert(x)
-    #define ASSERT_PARAMS(x) assert(x)
+    #define REQUIRE(x) assert(x)
 
     typedef int64_t isize; //can also be usnigned if desired
     typedef struct Allocator Allocator;
@@ -237,7 +237,7 @@ EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity)
     PROFILE_SCOPE()
     {
         ASSERT(generic_array_is_invariant(gen));
-        ASSERT_PARAMS(capacity >= 0 && gen.array->allocator != NULL);
+        REQUIRE(capacity >= 0 && gen.array->allocator != NULL);
 
         isize old_byte_size = gen.item_size * gen.array->capacity;
         isize new_byte_size = gen.item_size * capacity;
@@ -278,7 +278,7 @@ EXTERNAL void generic_array_reserve(Generic_Array gen, isize to_fit)
 
 EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize data_count)
 {
-    ASSERT_PARAMS(data_count >= 0 && (data || data_count == 0));
+    REQUIRE(data_count >= 0 && (data || data_count == 0));
     generic_array_reserve(gen, gen.array->count+data_count);
     memcpy(gen.array->data + gen.item_size * gen.array->count, data, (size_t) (gen.item_size * data_count));
     gen.array->count += data_count;

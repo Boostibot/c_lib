@@ -49,9 +49,9 @@ EXTERNAL Platform_Error arena_init(Arena* arena, const char* name, isize reserve
     arena_deinit(arena);
     isize alloc_granularity = platform_allocation_granularity();
     
-    ASSERT_PARAMS(reserve_size_or_zero >= 0);
-    ASSERT_PARAMS(commit_granularity_or_zero >= 0);
-    ASSERT_PARAMS(alloc_granularity >= 0);
+    REQUIRE(reserve_size_or_zero >= 0);
+    REQUIRE(commit_granularity_or_zero >= 0);
+    REQUIRE(alloc_granularity >= 0);
 
     isize reserve_size = reserve_size_or_zero > 0 ? reserve_size_or_zero : ARENA_DEF_RESERVE_SIZE;
     isize commit_granularity = commit_granularity_or_zero > 0 ? commit_granularity_or_zero : ARENA_DEF_COMMIT_SIZE;
@@ -158,9 +158,9 @@ EXTERNAL void* arena_single_allocator_func(Allocator* self, isize new_size, void
 {
     Arena* arena = (Arena*) (void*) self;
 
-    ASSERT_PARAMS(old_ptr == arena->data);
-    ASSERT_PARAMS(old_size == arena->used_to - arena->data);
-    ASSERT_PARAMS(is_power_of_two(align));
+    REQUIRE(old_ptr == arena->data);
+    REQUIRE(old_size == arena->used_to - arena->data);
+    REQUIRE(is_power_of_two(align));
 
     arena_reset_ptr(arena, arena->data);
     return arena_push_nonzero(arena, new_size, align, error);

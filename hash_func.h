@@ -47,9 +47,9 @@ HASH_FN_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed);
 #if (defined(JOT_ALL_IMPL) || defined(JOT_HASH_FN_IMPL)) && !defined(JOT_HASH_FN_HAS_IMPL)
 #define JOT_HASH_FN_HAS_IMPL
 
-#ifndef ASSERT_PARAMS
+#ifndef REQUIRE
     #include <assert.h>
-    #define ASSERT_PARAMS(x) assert(x)
+    #define REQUIRE(x) assert(x)
 #endif
 
 HASH_FN_API uint64_t hash64_bijective(uint64_t x) 
@@ -109,8 +109,8 @@ HASH_FN_API uint32_t hash64_fold(uint64_t hash)
 HASH_FN_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed)
 {
     uint32_t endian_check = 0x33221100;
-    ASSERT_PARAMS(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
-    ASSERT_PARAMS((key != NULL || size == 0) && size >= 0);
+    REQUIRE(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
+    REQUIRE((key != NULL || size == 0) && size >= 0);
 
     const uint32_t magic = 0x5bd1e995;
     const int r = 24;
@@ -149,8 +149,8 @@ HASH_FN_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed)
 HASH_FN_API uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed)
 {
     uint32_t endian_check = 0x33221100;
-    ASSERT_PARAMS(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
-    ASSERT_PARAMS((key != NULL || size == 0) && size >= 0);
+    REQUIRE(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
+    REQUIRE((key != NULL || size == 0) && size >= 0);
 
     const uint64_t magic = 0xc6a4a7935bd1e995;
     const int r = 47;
@@ -209,8 +209,8 @@ static inline uint64_t _xxhash64_process_single(uint64_t previous, uint64_t inpu
 HASH_FN_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed)
 {
     uint32_t endian_check = 0x33221100;
-    ASSERT_PARAMS(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
-    ASSERT_PARAMS((key != NULL || size == 0) && size >= 0);
+    REQUIRE(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
+    REQUIRE((key != NULL || size == 0) && size >= 0);
 
     uint8_t* data = (uint8_t*) (void*) key;
     uint8_t* end = data + size;
@@ -274,7 +274,7 @@ HASH_FN_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed)
 
 HASH_FN_API uint32_t hash32_fnv(const void* key, int64_t size, uint32_t seed)
 {
-    ASSERT_PARAMS((key != NULL || size == 0) && size >= 0);
+    REQUIRE((key != NULL || size == 0) && size >= 0);
 
     uint32_t hash = seed ^ 2166136261UL;
     const uint8_t* data = (const uint8_t*) key;
@@ -288,7 +288,7 @@ HASH_FN_API uint32_t hash32_fnv(const void* key, int64_t size, uint32_t seed)
 
 HASH_FN_API uint64_t hash64_fnv(const void* key, int64_t size, uint32_t seed)
 {
-    ASSERT_PARAMS((key != NULL || size == 0) && size >= 0);
+    REQUIRE((key != NULL || size == 0) && size >= 0);
 
     const uint8_t* data = (const uint8_t*) key;
     uint64_t hash = seed ^ 0x27D4EB2F165667C5ULL;

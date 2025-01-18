@@ -377,7 +377,7 @@ EXTERNAL void subimage_copy(Subimage to_image, Subimage from_image, isize offset
         return;
 
     Subimage to_portion = subimage_portion(to_image, offset_x, offset_y, copy_width, copy_height);
-    ASSERT_PARAMS(from_image.type == to_image.type && from_image.pixel_size == to_image.pixel_size, "formats must match!");
+    REQUIRE(from_image.type == to_image.type && from_image.pixel_size == to_image.pixel_size, "formats must match!");
 
     isize to_image_stride = subimage_byte_stride(to_image); 
     isize from_image_stride = subimage_byte_stride(from_image); 
@@ -433,10 +433,10 @@ EXTERNAL Image image_from_image(Image to_copy, Allocator* alloc)
 
 EXTERNAL void image_reserve(Image* image, isize capacity)
 {
-    ASSERT_PARAMS(image != NULL);
+    REQUIRE(image != NULL);
     if(capacity > image->capacity)
     {
-        ASSERT_PARAMS(image->allocator != NULL);
+        REQUIRE(image->allocator != NULL);
 
         isize old_byte_size = image_byte_size(*image);
         u8* new_pixels = (u8*) allocator_allocate(image->allocator, capacity, DEF_ALIGN);
@@ -451,11 +451,11 @@ EXTERNAL void image_reserve(Image* image, isize capacity)
 
 EXTERNAL void image_reshape(Image* image, isize width, isize height, isize pixel_size, Pixel_Type type, const void* data_or_null)
 {
-    ASSERT_PARAMS(image != NULL && width >= 0 && height >= 0);
+    REQUIRE(image != NULL && width >= 0 && height >= 0);
     isize needed_size = width*height*pixel_size;
     if(needed_size > image->capacity)
     {
-        ASSERT_PARAMS(image->allocator != NULL);
+        REQUIRE(image->allocator != NULL);
 
         u8* new_pixels = (u8*) allocator_allocate(image->allocator, needed_size, DEF_ALIGN);
         allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN);
@@ -484,7 +484,7 @@ EXTERNAL void image_assign(Image* to_image, Subimage from_image)
 
 EXTERNAL void image_resize(Image* image, isize width, isize height)
 {
-    ASSERT_PARAMS(image != NULL && width >= 0 && height >= 0);
+    REQUIRE(image != NULL && width >= 0 && height >= 0);
     
     if(image->width == width && image->height == height)
         return;

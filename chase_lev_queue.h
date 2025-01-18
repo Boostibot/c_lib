@@ -72,9 +72,9 @@ CL_QUEUE_API_INLINE isize cl_queue_count(const CL_Queue *q);
     #include "assert.h"
 #endif
 
-#ifndef ASSERT_PARAMS
+#ifndef REQUIRE
     #include <assert.h>
-    #define ASSERT_PARAMS(x, ...) assert(x)
+    #define REQUIRE(x, ...) assert(x)
 #endif
 
 #ifdef __cplusplus
@@ -162,7 +162,7 @@ CL_QUEUE_API void cl_queue_reserve(CL_Queue* queue, isize to_size)
 
 CL_QUEUE_API_INLINE bool cl_queue_pop_back(CL_Queue *q, void* item, isize item_size) 
 {
-    ASSERT_PARAMS(atomic_load_explicit(&q->item_size, memory_order_relaxed) == item_size);
+    REQUIRE(atomic_load_explicit(&q->item_size, memory_order_relaxed) == item_size);
 
     uint64_t b = atomic_load_explicit(&q->bot, memory_order_relaxed) - 1;
     CL_Queue_Block* a = atomic_load_explicit(&q->block, memory_order_relaxed);
@@ -199,7 +199,7 @@ CL_QUEUE_API_INLINE bool cl_queue_pop_back(CL_Queue *q, void* item, isize item_s
 
 CL_QUEUE_API_INLINE bool cl_queue_push(CL_Queue *q, const void* item, isize item_size) 
 {
-    ASSERT_PARAMS(atomic_load_explicit(&q->item_size, memory_order_relaxed) == item_size);
+    REQUIRE(atomic_load_explicit(&q->item_size, memory_order_relaxed) == item_size);
 
     uint64_t b = atomic_load_explicit(&q->bot, memory_order_relaxed);
     uint64_t t = atomic_load_explicit(&q->top, memory_order_acquire);
@@ -222,7 +222,7 @@ CL_QUEUE_API_INLINE bool cl_queue_push(CL_Queue *q, const void* item, isize item
 
 CL_QUEUE_API_INLINE CL_Queue_Pop_State cl_queue_pop_weak(CL_Queue *q, void* item, isize item_size) 
 {
-    ASSERT_PARAMS(atomic_load_explicit(&q->item_size, memory_order_relaxed) == item_size);
+    REQUIRE(atomic_load_explicit(&q->item_size, memory_order_relaxed) == item_size);
 
     uint64_t t = atomic_load_explicit(&q->top, memory_order_acquire);
     atomic_thread_fence(memory_order_seq_cst);

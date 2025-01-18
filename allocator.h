@@ -156,7 +156,7 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
     {
         PROFILE_START();
         void* out = NULL;
-        ASSERT_PARAMS(alloc != NULL && new_size >= 0 && old_size >= 0 && is_power_of_two(align) && "provided arguments must be valid!");
+        REQUIRE(alloc != NULL && new_size >= 0 && old_size >= 0 && is_power_of_two(align) && "provided arguments must be valid!");
         
         //If is arena use the arena function directly (inlined)
         if(allocator_is_arena_frame(alloc))

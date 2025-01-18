@@ -460,8 +460,6 @@ INTERNAL char* _log_builder_append_fmt(_Log_Builder* builder_or_null, const char
         for(int64_t i = 0; i < callstack_size; i += TRANSLATE_AT_ONCE)
         {
             int64_t remaining = callstack_size - i;
-            ASSERT(remaining > 0);
-
             if(remaining > TRANSLATE_AT_ONCE)
                 remaining = TRANSLATE_AT_ONCE;
 
