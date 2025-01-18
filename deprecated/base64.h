@@ -109,16 +109,16 @@ EXTERNAL int64_t base64_encode_max_output_length(int64_t input_length)
     return olen;
 }
 
-EXTERNAL int64_t base64_encode(void* _out, const void* _data, int64_t len, Base64_Encoding encoding)
+EXTERNAL int64_t base64_encode(void* _out, const void* _data, int64_t count, Base64_Encoding encoding)
 {
     ASSERT(_out != NULL && _data != NULL);
     uint8_t* src = (uint8_t*) _data;
-    uint8_t* end = src + len;
+    uint8_t* end = src + count;
     uint8_t* in = src;
     uint8_t* out = (uint8_t*) _out;
 
     #ifndef NDEBUG
-    int64_t olen = base64_encode_max_output_length(len);
+    int64_t olen = base64_encode_max_output_length(count);
     #endif // !NDEBUG
 
     while (end - in >= 3) {

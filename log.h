@@ -68,7 +68,7 @@ EXTERNAL void log_captured_callstack(Log_Type type, const char* module, void** c
 #define LOG_HERE(...) LOG_TRACE("here", "%s %s:%i", __func__, __FILE__, __LINE__)
 
 //Printing helpers
-#define STRING_PRINT(str) (int) (str).len, (str).data
+#define STRING_PRINT(str) (int) (str).count, (str).data
 
 typedef struct String_Buffer_16 {
     char data[16];

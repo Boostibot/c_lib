@@ -25,7 +25,7 @@ INTERNAL void test_string_map_unit()
 			string_map_assign_or_insert(&map, b, VPTR(i32, 2));
 			string_map_assign_or_insert(&map, a, VPTR(i32, 3));
 
-			TEST(map.len == 2);
+			TEST(map.count == 2);
 			TEST(map.map.max_collision_count == 0);
 			{
 				Map_Found af = string_map_find(&map, a);
@@ -41,7 +41,7 @@ INTERNAL void test_string_map_unit()
 			string_map_insert(&map, a, VPTR(i32, 6));
 			string_map_insert(&map, a, VPTR(i32, 7));
 			
-			TEST(map.len == 7);
+			TEST(map.count == 7);
 			TEST(map.map.max_collision_count == 4);
 
 			string_map_assign_or_insert(&map, HSTRING("Hello"), VPTR(i32, 4));
@@ -145,7 +145,7 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 			{
 				case REINIT: {
 					string_map_deinit(&map);
-					for(isize i = 0; i < truth_key_array.len; i++)
+					for(isize i = 0; i < truth_key_array.count; i++)
 					{
 						hash_string_deallocate(strings.alloc, &truth_key_array.data[i]);
 						hash_string_deallocate(strings.alloc, &truth_val_array.data[i]);
@@ -159,7 +159,7 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 				case CLEAR: {
 					string_map_clear(&map);
 
-					for(isize i = 0; i < truth_key_array.len; i++)
+					for(isize i = 0; i < truth_key_array.count; i++)
 					{
 						hash_string_deallocate(strings.alloc, &truth_key_array.data[i]);
 						hash_string_deallocate(strings.alloc, &truth_val_array.data[i]);
@@ -172,8 +172,8 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 					Hash_String val = string_map_generate_random_hstring(strings.alloc);
 					Hash_String key = {0};
 						
-					isize index = random_range(0, truth_key_array.len);
-					bool duplicit = (truth_key_array.len > 0) && random_f64() > 0.75;
+					isize index = random_range(0, truth_key_array.count);
+					bool duplicit = (truth_key_array.count > 0) && random_f64() > 0.75;
 					if(duplicit)
 						key = hash_string_allocate(strings.alloc, truth_key_array.data[index]);
 					else
@@ -185,7 +185,7 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 					isize inserted = string_map_insert(&map, key, &val).index;
 					isize found = string_map_find(&map, key).index;
 				
-					TEST(map.keys != NULL && map.values != NULL && map.len > 0);
+					TEST(map.keys != NULL && map.values != NULL && map.count > 0);
 					TEST(found != -1 && inserted != -1 && "The inserted value must be findable");
 				} break;
 					
@@ -194,8 +194,8 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 					Hash_String val = string_map_generate_random_hstring(strings.alloc);
 					Hash_String key = {0};
 
-					isize index = random_range(0, truth_key_array.len);
-					bool duplicit = (truth_key_array.len > 0) && random_f64() > 0.75;
+					isize index = random_range(0, truth_key_array.count);
+					bool duplicit = (truth_key_array.count > 0) && random_f64() > 0.75;
 					if(duplicit)
 						key = hash_string_allocate(strings.alloc, truth_key_array.data[index]);
 					else
@@ -208,7 +208,7 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 						inserted = string_map_assign_or_insert(&map, key, &val).index;
 						
 					isize found = string_map_find(&map, key).index;
-					TEST(map.keys != NULL && map.values != NULL && map.len > 0);
+					TEST(map.keys != NULL && map.values != NULL && map.count > 0);
 					TEST(found != -1 && inserted != -1 && "The inserted value must be findable");
 
 					if(duplicit)
@@ -235,13 +235,13 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 				}
 
 				case REMOVE: SCRATCH_ARENA(arena) {
-					if(truth_val_array.len > 0)
+					if(truth_val_array.count > 0)
 					{
-						isize index = random_range(0, truth_key_array.len);
+						isize index = random_range(0, truth_key_array.count);
 						Hash_String removed_key = hash_string_allocate(arena.alloc, truth_key_array.data[index]);
 
 						i32 removed_truth_count = 0;
-						for(isize j = 0; j < truth_key_array.len; j++)
+						for(isize j = 0; j < truth_key_array.count; j++)
 							if(hash_string_is_equal(truth_key_array.data[j], removed_key))
 							{
 								SWAP(&truth_key_array.data[j], array_last(truth_key_array));
@@ -264,17 +264,17 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 				} break;
 			}
 
-			if(max_size < map.len)
-				max_size = map.len;
+			if(max_size < map.count)
+				max_size = map.count;
 			if(max_capacity < map.capacity)
 				max_capacity = map.capacity;
 				
 			string_map_test_invariants(&map, true);
-			ASSERT(truth_key_array.len == truth_val_array.len);
-			TEST(truth_key_array.len == map.len);
+			ASSERT(truth_key_array.count == truth_val_array.count);
+			TEST(truth_key_array.count == map.count);
 				
 			//Find every single key. 
-			for(isize k = 0; k < truth_key_array.len; k++)
+			for(isize k = 0; k < truth_key_array.count; k++)
 			{
 				Hash_String key = truth_key_array.data[k];
 				SCRATCH_ARENA(arena)
@@ -282,21 +282,21 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 					Hash_String_Array truth_found = {arena.alloc};
 					Hash_String_Array hash_found = {arena.alloc};
 						
-					for(isize j = 0; j < truth_key_array.len; j++)
+					for(isize j = 0; j < truth_key_array.count; j++)
 						if(hash_string_is_equal(truth_key_array.data[j], key))
 							array_push(&truth_found, truth_val_array.data[j]);
 
 					for(Map_Found found = string_map_find(&map, key); found.index != -1; found = string_map_find_next(&map, key, found))
 						array_push(&hash_found, *found.value_hstring);
 							
-					TEST(hash_found.len == truth_found.len);
-					if(hash_found.len > 1)
+					TEST(hash_found.count == truth_found.count);
+					if(hash_found.count > 1)
 					{
-						qsort(hash_found.data, hash_found.len, sizeof *hash_found.data, _hash_string_compare_func);
-						qsort(truth_found.data, truth_found.len, sizeof *truth_found.data, _hash_string_compare_func);
+						qsort(hash_found.data, hash_found.count, sizeof *hash_found.data, _hash_string_compare_func);
+						qsort(truth_found.data, truth_found.count, sizeof *truth_found.data, _hash_string_compare_func);
 					}
 
-					for(isize l = 0; l < hash_found.len; l++)
+					for(isize l = 0; l < hash_found.count; l++)
 						TEST(hash_string_is_equal(hash_found.data[l], truth_found.data[l]));
 				}
 			}
@@ -309,9 +309,9 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 					Hash_String key = string_map_generate_random_hstring(arena.alloc);
 				
 					//Only if the genrated key is unique 
-					//(again extrenely statistically unlikely that it will fail truth_key_array.len/10^19 chance)
+					//(again extrenely statistically unlikely that it will fail truth_key_array.count/10^19 chance)
 					bool key_found = false;
-					for(isize j = 0; j < truth_key_array.len; j++)
+					for(isize j = 0; j < truth_key_array.count; j++)
 						if(hash_string_is_equal(truth_key_array.data[j], key))
 						{
 							key_found = true;
@@ -671,7 +671,7 @@ INTERNAL String_Builder generate_random_text(Allocator* alloc, isize word_count,
 		builder_append(&out, selected);
 	}
 	
-	if(capitilize && out.len > 0)
+	if(capitilize && out.count > 0)
 		out.data[0] = (char) toupper(out.data[0]);
 		
 	builder_append(&out, postfix);

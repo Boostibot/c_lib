@@ -8,7 +8,7 @@ typedef struct Hash_String {
     union {
         struct {
             const char* data;
-            isize len;
+            isize count;
         };
         String string;
     };
@@ -27,7 +27,7 @@ EXTERNAL void hash_string_deallocate(Allocator* alloc, Hash_String* hstring);
 //Makes a hashed string out of string literal, with optimizations evaluating the hash at compile time (except on GCC). Fails for anything but string literals
 #define HSTRING(string_literal) BINIT(Hash_String){string_literal "", sizeof(string_literal "") - 1, hash64_fnv_inline(string_literal "", sizeof(string_literal "") - 1)}
 #define HSTRING_FMT "[%08llx]:'%.*s'" 
-#define HSTRING_PRINT(hstring) (hstring).hash, (int) (hstring).len, (hstring).data
+#define HSTRING_PRINT(hstring) (hstring).hash, (int) (hstring).count, (hstring).data
 
 //@NOTE: We use fnv because of its extreme simplicity making it very likely to be inlined
 //       and thus for static strings be evaluated at compile time. 
@@ -60,15 +60,15 @@ EXTERNAL Hash_String hash_string_from_cstring(const char* cstr)
 
 EXTERNAL u64 hash_string(String string)
 {
-    return hash64_fnv_inline(string.data, string.len);
+    return hash64_fnv_inline(string.data, string.count);
 }
 
 EXTERNAL bool hash_string_is_equal(Hash_String a, Hash_String b)
 {
-    if(a.hash != b.hash || a.len != b.len)
+    if(a.hash != b.hash || a.count != b.count)
         return false;
 
-    return memcmp(a.data, b.data, a.len) == 0;
+    return memcmp(a.data, b.data, a.count) == 0;
 }
 
 EXTERNAL bool hash_string_is_equal_approx(Hash_String a, Hash_String b)
@@ -76,7 +76,7 @@ EXTERNAL bool hash_string_is_equal_approx(Hash_String a, Hash_String b)
     #ifndef DISSABLE_APPROXIMATE_EQUAL
         return hash_string_is_equal(a, b);
     #else
-        return a.hash == b.hash && a.len == b.len;
+        return a.hash == b.hash && a.count == b.count;
     #endif
 }
 

@@ -384,13 +384,13 @@ SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_it
     {
         ASSERT(item_count >= 0 && item_size > 0 && (item_count == 0 || (search_for && sorted_items && is_less)));
         const void* items = sorted_items; 
-        isize len = item_count;
-        while (len > 1) {
-            isize half = (len + 1) / 2;
-            len -= half;
+        isize count = item_count;
+        while (count > 1) {
+            isize half = (count + 1) / 2;
+            count -= half;
 
-            _SORT_PREFETCH(AT(len / 2 - 1));
-            _SORT_PREFETCH(AT(half + len / 2 - 1));
+            _SORT_PREFETCH(AT(count / 2 - 1));
+            _SORT_PREFETCH(AT(half + count / 2 - 1));
         
             bool was_less = is_less(AT(half - 1), search_for, context);
             items = AT(was_less * half);

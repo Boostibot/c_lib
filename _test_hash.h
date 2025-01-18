@@ -112,10 +112,10 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 				} break;
 
 				case INSERT_DUPLICIT: {
-					if(truth_key_array.len > 0)
+					if(truth_key_array.count > 0)
 					{
 						u64 val = random_hash_value();
-						u64 key = truth_key_array.data[random_range(0, truth_key_array.len)];
+						u64 key = truth_key_array.data[random_range(0, truth_key_array.count)];
 
 						array_push(&truth_key_array, key);
 						array_push(&truth_val_array, val);
@@ -127,11 +127,11 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 				} break;
 
 				case REMOVE: {
-					if(truth_val_array.len > 0)
+					if(truth_val_array.count > 0)
 					{
-						u64 removed_key = truth_key_array.data[random_range(0, truth_key_array.len)];
+						u64 removed_key = truth_key_array.data[random_range(0, truth_key_array.count)];
 						i32 removed_truth_count = 0;
-						for(isize j = 0; j < truth_key_array.len; j++)
+						for(isize j = 0; j < truth_key_array.count; j++)
 							if(truth_key_array.data[j] == removed_key)
 							{
 								SWAP(&truth_key_array.data[j], array_last(truth_key_array));
@@ -169,21 +169,21 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 				} break;
 
 				case REHASH: {
-					hash_rehash(&table, table.len);
+					hash_rehash(&table, table.count);
 				} break;
 			}
 
-			if(max_size < table.len)
-				max_size = table.len;
+			if(max_size < table.count)
+				max_size = table.count;
 			if(max_capacity < table.entries_count)
 				max_capacity = table.entries_count;
 					
 			TEST(hash_is_invariant(table, true));
 			{
-				ASSERT(truth_key_array.len == truth_val_array.len);
-				TEST(truth_key_array.len == table.len);
+				ASSERT(truth_key_array.count == truth_val_array.count);
+				TEST(truth_key_array.count == table.count);
 
-				for(isize k = 0; k < truth_key_array.len; k++)
+				for(isize k = 0; k < truth_key_array.count; k++)
 				{
 					u64 key = truth_key_array.data[k];
 					SCRATCH_ARENA(arena)
@@ -193,22 +193,22 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 						array_init_with_capacity(&truth_found, arena.alloc, 8);
 						array_init_with_capacity(&hash_found, arena.alloc, 8);
 							
-						for(isize j = 0; j < truth_key_array.len; j++)
+						for(isize j = 0; j < truth_key_array.count; j++)
 							if(truth_key_array.data[j] == key)
 								array_push(&truth_found, truth_val_array.data[j]);
 
 						for(Hash_Found found = hash_find(table, key); found.index != -1; found = hash_find_next(table, found))
 							array_push(&hash_found, found.value);
 								
-						TEST(hash_found.len == truth_found.len);
+						TEST(hash_found.count == truth_found.count);
 
-						if(hash_found.len > 1)
+						if(hash_found.count > 1)
 						{
-							qsort(hash_found.data, (size_t) hash_found.len, sizeof *hash_found.data, u64_comp_func);
-							qsort(truth_found.data, (size_t) truth_found.len, sizeof *truth_found.data, u64_comp_func);
+							qsort(hash_found.data, (size_t) hash_found.count, sizeof *hash_found.data, u64_comp_func);
+							qsort(truth_found.data, (size_t) truth_found.count, sizeof *truth_found.data, u64_comp_func);
 						}
 
-						for(isize l = 0; l < hash_found.len; l++)
+						for(isize l = 0; l < hash_found.count; l++)
 							TEST(hash_found.data[l] == truth_found.data[l]);
 					}
 				}
@@ -220,9 +220,9 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 				u64 key = random_u64();
 					
 				//Only if the genrated key is unique 
-				//(again extrenely statistically unlikely that it will fail truth_key_array.len/10^19 chance)
+				//(again extrenely statistically unlikely that it will fail truth_key_array.count/10^19 chance)
 				bool key_found = false;
-				for(isize j = 0; j < truth_key_array.len; j++)
+				for(isize j = 0; j < truth_key_array.count; j++)
 					if(truth_key_array.data[j] == key)
 					{
 						key_found = true;

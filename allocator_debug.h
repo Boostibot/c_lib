@@ -448,10 +448,10 @@ EXTERNAL Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debu
     isize count = print_max;
     const Hash* hash = &allocator.alive_allocations_hash;
     if(count <= 0)
-        count = hash->len;
+        count = hash->count;
         
-    if(count >= hash->len)
-        count = hash->len;
+    if(count >= hash->count)
+        count = hash->count;
         
     Debug_Allocation_Array out = {allocator.parent};
     for(isize k = 0; k < hash->entries_count; k++)
@@ -474,7 +474,7 @@ EXTERNAL Debug_Allocation_Array debug_allocator_get_alive_allocations(const Debu
         }
     }
     
-    qsort(out.data, (size_t) out.len, sizeof *out.data, _debug_allocation_alloc_time_compare);
+    qsort(out.data, (size_t) out.count, sizeof *out.data, _debug_allocation_alloc_time_compare);
 
     array_resize(&out, count);
     return out;
@@ -486,10 +486,10 @@ EXTERNAL void debug_allocator_print_alive_allocations(const char* name, Log_Type
     
     Debug_Allocation_Array alive = debug_allocator_get_alive_allocations(allocator, print_max);
     if(print_max > 0)
-        ASSERT(alive.len <= print_max);
+        ASSERT(alive.count <= print_max);
 
-    LOG(log_type, name, "printing ALIVE allocations (%lli) below:", (lli)alive.len);
-    for(isize i = 0; i < alive.len; i++)
+    LOG(log_type, name, "printing ALIVE allocations (%lli) below:", (lli)alive.count);
+    for(isize i = 0; i < alive.count; i++)
     {
         Debug_Allocation curr = alive.data[i];
         LOG(log_type, name, "%-3lli - size %-8lli ptr: 0x%08llx align: %-2lli",

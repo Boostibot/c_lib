@@ -758,7 +758,7 @@ static wchar_t* _wstring_path(WString_Buffer* append_to_or_null, Platform_String
 {
     WString_Buffer local = {0};
     WString_Buffer* append_to = append_to_or_null ? append_to_or_null : &local;
-    wchar_t* str = _utf8_to_utf16(append_to, path.data, path.len);
+    wchar_t* str = _utf8_to_utf16(append_to, path.data, path.count);
     for(int64_t i = 0; i < append_to->size; i++)
     {
         if(str[i] == '\\')
@@ -1433,8 +1433,8 @@ const char* platform_get_executable_path()
         for(int64_t i = 0; i < 16; i++)
         {
             buffer_resize(&wide, wide.size * 2);
-            int64_t len = GetModuleFileNameW(NULL, wide.data, (DWORD) wide.size);
-            if(len < wide.size)
+            int64_t count = GetModuleFileNameW(NULL, wide.data, (DWORD) wide.size);
+            if(count < wide.size)
                 break;
         }
 
@@ -1722,7 +1722,7 @@ Platform_Error platform_file_watch(Platform_File_Watch* file_watch_or_null, Plat
     context.buffer = (uint8_t*) malloc(context.buffer_size);
     buffer_reserve(&context.change_path, _LOCAL_BUFFER_SIZE);
     buffer_reserve(&context.change_old_path, _LOCAL_BUFFER_SIZE);
-    buffer_append(&context.watched_path, file_path.data, file_path.len);
+    buffer_append(&context.watched_path, file_path.data, file_path.count);
 
     WString_Buffer buffer = {0}; buffer_init_backed(&buffer, _LOCAL_BUFFER_SIZE);
     const wchar_t* path = _wstring_path(&buffer, file_path);
@@ -1888,7 +1888,7 @@ bool platform_file_watch_poll(Platform_File_Watch file_watch, Platform_File_Watc
 Platform_Error platform_dll_load(Platform_DLL* dll, Platform_String path)
 {
     WString_Buffer buffer = {0}; buffer_init_backed(&buffer, _LOCAL_BUFFER_SIZE);
-    const wchar_t* wpath = _utf8_to_utf16(&buffer, path.data, path.len);
+    const wchar_t* wpath = _utf8_to_utf16(&buffer, path.data, path.count);
     HMODULE hmodule = LoadLibraryW(wpath);
     buffer_deinit(&buffer);
     
@@ -1912,7 +1912,7 @@ void* platform_dll_get_function(Platform_DLL* dll, Platform_String name)
 {
     String_Buffer temp = {0};
     buffer_init_backed(&temp, 256);
-    buffer_append(&temp, name.data, name.len);
+    buffer_append(&temp, name.data, name.count);
     HMODULE hmodule = (HMODULE)dll->handle;
     void* result = (void*) GetProcAddress(hmodule, temp.data);
 
@@ -1942,8 +1942,8 @@ Platform_Window_Popup_Controls platform_window_make_popup(Platform_Window_Popup_
     int value = 0;
     WString_Buffer title_backed = {0}; buffer_init_backed(&title_backed, _LOCAL_BUFFER_SIZE);
     WString_Buffer message_backed = {0}; buffer_init_backed(&message_backed, _LOCAL_BUFFER_SIZE);
-    const wchar_t* title_wide =  _utf8_to_utf16(&title_backed, title.data, title.len);
-    const wchar_t* message_wide = _utf8_to_utf16(&message_backed, message.data, message.len);
+    const wchar_t* title_wide =  _utf8_to_utf16(&title_backed, title.data, title.count);
+    const wchar_t* message_wide = _utf8_to_utf16(&message_backed, message.data, message.count);
         value = MessageBoxW(0, message_wide, title_wide, style | icon);
     buffer_deinit(&title_backed);
     buffer_deinit(&message_wide);

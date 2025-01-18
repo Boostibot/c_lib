@@ -97,20 +97,20 @@ EXTERNAL isize unicode_codepoint_length_utf32(codepoint_t codepoint);
 
 //The following functions write the representation of the provided codepoint into the provided buffer.
 //Returns the number of items written. On sucess this is always at least 1.
-//If the resulting codepoint size is greater than len nothing is written and the function returns 0.
+//If the resulting codepoint size is greater than count nothing is written and the function returns 0.
 //The codepoint must be valid and should be checked before calling these functions!
-EXTERNAL isize unicode_codepoint_encode_utf8(codepoint_t codepoint, utf8_t* utf8, isize len);
-EXTERNAL isize unicode_codepoint_encode_utf16(codepoint_t codepoint, utf16_t* utf16, isize len);
-EXTERNAL isize unicode_codepoint_encode_utf32(codepoint_t codepoint, utf32_t* utf32, isize len);
+EXTERNAL isize unicode_codepoint_encode_utf8(codepoint_t codepoint, utf8_t* utf8, isize count);
+EXTERNAL isize unicode_codepoint_encode_utf16(codepoint_t codepoint, utf16_t* utf16, isize count);
+EXTERNAL isize unicode_codepoint_encode_utf32(codepoint_t codepoint, utf32_t* utf32, isize count);
 
 //The following functions read a representation of a single codepoint and store it into the codepoint pointer.
 //Returns the number of items read. On sucess this is always at least 1.
 //If the sequence is too short or invalid writes UNICODE_ERROR into codepoint but still returns the 
 // the number of characters read. This can be used to skip or correct invalid sequences.
-//Returns 0 only if len is 0.
-EXTERNAL isize unicode_codepoint_decode_utf8(codepoint_t* codepoint, const utf8_t* utf8, isize len);
-EXTERNAL isize unicode_codepoint_decode_utf16(codepoint_t* codepoint, const utf16_t* utf16, isize len);
-EXTERNAL isize unicode_codepoint_decode_utf32(codepoint_t* codepoint, const utf32_t* utf32, isize len);
+//Returns 0 only if count is 0.
+EXTERNAL isize unicode_codepoint_decode_utf8(codepoint_t* codepoint, const utf8_t* utf8, isize count);
+EXTERNAL isize unicode_codepoint_decode_utf16(codepoint_t* codepoint, const utf16_t* utf16, isize count);
+EXTERNAL isize unicode_codepoint_decode_utf32(codepoint_t* codepoint, const utf32_t* utf32, isize count);
 
 //Casts the single character to a codepoint. 
 //If fails returns UNICODE_ERROR. Useful for prototyping.
@@ -292,10 +292,10 @@ EXTERNAL codepoint_t unicode_codepoint_from_wide(wchar_t wc)
         return UNICODE_ERROR;
 }
 
-EXTERNAL isize unicode_codepoint_decode_utf16(codepoint_t* codepoint, const utf16_t* utf16, isize len)
+EXTERNAL isize unicode_codepoint_decode_utf16(codepoint_t* codepoint, const utf16_t* utf16, isize count)
 {
     *codepoint = UNICODE_ERROR;
-    if(len <= 0)
+    if(count <= 0)
         return 0;
         
     uint16_t high = (uint16_t) utf16[0];
@@ -312,7 +312,7 @@ EXTERNAL isize unicode_codepoint_decode_utf16(codepoint_t* codepoint, const utf1
         return 1;
 
     // String ended with an unmatched high surrogate, invalid
-    if (len == 1)
+    if (count == 1)
         return 1;
     
     uint16_t low = (uint16_t) utf16[1];
@@ -352,13 +352,13 @@ EXTERNAL isize unicode_codepoint_length_utf8(codepoint_t codepoint)
     return 4;
 }
 
-EXTERNAL isize unicode_codepoint_encode_utf8(codepoint_t codepoint, utf8_t* utf8, isize len)
+EXTERNAL isize unicode_codepoint_encode_utf8(codepoint_t codepoint, utf8_t* utf8, isize count)
 {
     isize size = unicode_codepoint_length_utf8(codepoint);
     
     uint8_t* utf8_ = (uint8_t*) utf8;
     // Not enough space left on the string
-    if (size > len)
+    if (size > count)
         return 0;
 
     ASSERT(size >= 1);
@@ -384,10 +384,10 @@ EXTERNAL isize unicode_codepoint_encode_utf8(codepoint_t codepoint, utf8_t* utf8
 }
 
 
-EXTERNAL isize unicode_codepoint_decode_utf8(codepoint_t* codepoint, const utf8_t* utf8, isize len)
+EXTERNAL isize unicode_codepoint_decode_utf8(codepoint_t* codepoint, const utf8_t* utf8, isize count)
 {
     *codepoint = UNICODE_ERROR;
-    if(len <= 0)
+    if(count <= 0)
         return 0;
 
     uint8_t leading = (uint8_t) utf8[0];
@@ -421,7 +421,7 @@ EXTERNAL isize unicode_codepoint_decode_utf8(codepoint_t* codepoint, const utf8_
     {
         // String ended before all continuation bytes were found
         // Invalid encoding
-        if (i >= len)
+        if (i >= count)
             return i;
 
         uint8_t continuation = (uint8_t) utf8[i];
@@ -468,12 +468,12 @@ EXTERNAL isize unicode_codepoint_length_utf16(codepoint_t codepoint)
     return 2;
 }
 
-EXTERNAL isize unicode_codepoint_encode_utf16(codepoint_t codepoint, utf16_t* utf16, isize len)
+EXTERNAL isize unicode_codepoint_encode_utf16(codepoint_t codepoint, utf16_t* utf16, isize count)
 {
     uint16_t* utf16_ = (uint16_t*) utf16;
 
     // Not enough space on the string
-    if (0 >= len)
+    if (0 >= count)
         return 0;
 
     if (codepoint <= UNICODE_BMP_END)
@@ -483,7 +483,7 @@ EXTERNAL isize unicode_codepoint_encode_utf16(codepoint_t codepoint, utf16_t* ut
     }
 
     // Not enough space on the string for two surrogates
-    if (1 >= len)
+    if (1 >= count)
         return 0;
 
     codepoint -= UNICODE_SURROGATE_CODEPOINT_OFFSET;
@@ -509,9 +509,9 @@ EXTERNAL isize unicode_codepoint_length_utf32(codepoint_t codepoint)
     return 1;
 }
 
-EXTERNAL isize unicode_codepoint_decode_utf32(codepoint_t* codepoint, const utf32_t* utf32, isize len)
+EXTERNAL isize unicode_codepoint_decode_utf32(codepoint_t* codepoint, const utf32_t* utf32, isize count)
 {
-    if(len <= 0)
+    if(count <= 0)
     {
         *codepoint = UNICODE_ERROR;
         return 0;
@@ -523,9 +523,9 @@ EXTERNAL isize unicode_codepoint_decode_utf32(codepoint_t* codepoint, const utf3
     }
 }
 
-EXTERNAL isize unicode_codepoint_encode_utf32(codepoint_t codepoint, utf32_t* utf32, isize len)
+EXTERNAL isize unicode_codepoint_encode_utf32(codepoint_t codepoint, utf32_t* utf32, isize count)
 {
-    if(len <= 0)
+    if(count <= 0)
         return 0;
 
     uint32_t* utf32_ = (uint32_t*) utf32;
@@ -607,23 +607,23 @@ _UNICODE_DEFINE_CONVERSION(32, 16)
 
 EXTERNAL codepoint_t unicode_codepoint_from_utf8(const char* str)
 {
-    isize len = 0;
+    isize count = 0;
     if(str != NULL)
-        while(len < 4 && str[len++] != 0);
+        while(count < 4 && str[count++] != 0);
 
     codepoint_t out = 0;
-    unicode_codepoint_decode_utf8(&out, (const utf8_t*) str, len);
+    unicode_codepoint_decode_utf8(&out, (const utf8_t*) str, count);
     return out;
 }
 
 EXTERNAL codepoint_t unicode_codepoint_from_utf16(const wchar_t* str)
 {
-    isize len = 0;
+    isize count = 0;
     if(str != NULL)
-        while(len < 2 && str[len++] != 0);
+        while(count < 2 && str[count++] != 0);
 
     codepoint_t out = 0;
-    unicode_codepoint_decode_utf16(&out, (const utf16_t*) str, len);
+    unicode_codepoint_decode_utf16(&out, (const utf16_t*) str, count);
     return out;
 }
 

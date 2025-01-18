@@ -18,7 +18,7 @@ typedef struct String_Map {
             Hash_String* keys;
             u8* values;
 
-            i32 len;
+            i32 count;
             i32 capacity;
         };
     };

@@ -102,14 +102,14 @@ typedef struct JSON_Token {
 
 bool string_has_char_at(String str, char c, isize at)
 {
-    if(at >= str.len)
+    if(at >= str.count)
         return false;
     return str.data[at] == c;
 }
 
 char string_at_or(String str, isize at, char if_out_of_range)
 {
-    if(at >= str.len)
+    if(at >= str.count)
         return if_out_of_range;
     return str.data[at];
 }
@@ -217,7 +217,7 @@ u64 _json_parse_uint(String input, isize from, isize* to, u8 base)
     isize at = from;
     if(base == 10)
     {
-        for(; at < input.len; at ++)
+        for(; at < input.count; at ++)
         {
             char c = input.data[at];
             u8 val = (u8) (c - '0');
@@ -237,7 +237,7 @@ u64 _json_parse_uint(String input, isize from, isize* to, u8 base)
     {
         u64 base_64 = base;
         u8* base_map = json_inv_base_map();
-        for(; at < input.len; at ++)
+        for(; at < input.count; at ++)
         {
             char c = input.data[at];
             u8 val = base_map[c];
@@ -303,7 +303,7 @@ JSON_Token json_tokenize_id(JSON_Context* context, String input, isize from)
     if(char_is_json_id_start(first_c))
     {
         at += 1;
-        for(; at < input.len; at ++)
+        for(; at < input.count; at ++)
         {
             char c = input.data[at];
             if(char_is_json_id(c) == false) 
@@ -325,7 +325,7 @@ JSON_Token json_tokenize_id(JSON_Context* context, String input, isize from)
 JSON_Token json_tokenize_number(JSON_Context* context, String input, isize from)
 {
     JSON_Token out = {0};
-    ASSERT(from < input.len);
+    ASSERT(from < input.count);
 
     isize at = from;
     char sign_c = input.data[at];
@@ -378,7 +378,7 @@ JSON_Token json_tokenize_number(JSON_Context* context, String input, isize from)
         u64 has_dot = 0;
         u64 extra_exp = 0;
         u64 after_dot = 0;
-        for(; at < input.len; at ++)
+        for(; at < input.count; at ++)
         {
             char c = input.data[at];
             u8 val = (u8) (c - '0');
@@ -424,7 +424,7 @@ JSON_Token json_tokenize_number(JSON_Context* context, String input, isize from)
 
         f64 base_f64 = 2;
         f64 value = 0;
-        for(; at < input.len; at ++)
+        for(; at < input.count; at ++)
         {
             char c = input.data[at];
             u8 val = inv_base_map[(u8) c];
@@ -466,8 +466,8 @@ JSON_Token json_tokenize_number(JSON_Context* context, String input, isize from)
             out.type = JSON_TOKEN_NUMBER;
             out.num_value = (sign == 0 ? 1 : sign)*INFINITY;
         }
-        else if(possibly_inf.len > 0)
-            json_report_parse_error(at, "Stranded number sign followed by '%.*s'", (int) possibly_inf.len, possibly_inf.data);
+        else if(possibly_inf.count > 0)
+            json_report_parse_error(at, "Stranded number sign followed by '%.*s'", (int) possibly_inf.count, possibly_inf.data);
         else
             json_report_parse_error(at, "Stranded number sign followed by '%c'", input.data[at]);
     }
@@ -508,7 +508,7 @@ JSON_Token json_tokenize_number(JSON_Context* context, String input, isize from)
                 
                 isize exp_digits = 0;
                 u8* base_map = json_inv_base_map();
-                for(; at < input.len; at ++, exp_digits++)
+                for(; at < input.count; at ++, exp_digits++)
                 {
                     char c = input.data[at];
                     u8 val = base_map[c];
@@ -566,13 +566,13 @@ JSON_Token json_tokenize_string(JSON_Context* context, Arena_Frame* arena, Strin
     char quote_type = input.data[from];
 
     isize token_from = from;
-    isize token_to = input.len;
+    isize token_to = input.count;
 
     String_Builder builder = {arena->alloc};
 
     bool terminated = false;
     bool was_escaped = false;
-    for(isize i = token_from + 1; i < input.len; i++)
+    for(isize i = token_from + 1; i < input.count; i++)
     {
         char c = input.data[i];
         if(was_escaped)
@@ -594,10 +594,10 @@ JSON_Token json_tokenize_string(JSON_Context* context, Arena_Frame* arena, Strin
                 case 'f':  pushed = '\f'; break;
                 case '0':  pushed = '\0'; break;
                 case 'u': {
-                    if(i + 4 >= input.len)
+                    if(i + 4 >= input.count)
                     {
                         TODO("error"); 
-                        i = input.len;
+                        i = input.count;
                     }
                     else
                     {
@@ -683,7 +683,7 @@ JSON_Token json_get_token(JSON_Context* context, String input, isize at)
 
     out.from = at;
     out.to = at + 1;
-    if(at >= input.len)
+    if(at >= input.count)
     {
         out.type = JSON_TOKEN_EOF;
         out.to = at;
@@ -722,7 +722,7 @@ JSON_Token json_get_token(JSON_Context* context, String input, isize at)
         case '\r': 
         case '\n': {
             f64 newline_count = 0;
-            for(; out.to < input.len; out.to ++)
+            for(; out.to < input.count; out.to ++)
             {
                 char c = input.data[out.to];
                 if(c == ' ' || c == '\t' || c == '\v' || c == '\f' || c == '\r')
@@ -754,7 +754,7 @@ JSON_Token json_get_token(JSON_Context* context, String input, isize at)
             {
                 out.to = string_find_first_char(input, '\n', at + 2);
                 if(out.to == -1)
-                    out.to = input.len;
+                    out.to = input.count;
 
                 out.type = JSON_TOKEN_COMMENT;
             }
@@ -763,11 +763,11 @@ JSON_Token json_get_token(JSON_Context* context, String input, isize at)
                 isize depth = 1;
                 isize curr = at + 2;
                 for(;;) {
-                    isize next_start = string_find_first_or(input, STRING("/*"), curr, input.len);
-                    isize next_end = string_find_first_or(input, STRING("*/"), curr, input.len);
+                    isize next_start = string_find_first_or(input, STRING("/*"), curr, input.count);
+                    isize next_end = string_find_first_or(input, STRING("*/"), curr, input.count);
 
-                    next_start += STRING("/*").len;
-                    next_end += STRING("*/").len;
+                    next_start += STRING("/*").count;
+                    next_end += STRING("*/").count;
 
                     if(next_start < next_end)
                         depth += 1;
@@ -775,8 +775,8 @@ JSON_Token json_get_token(JSON_Context* context, String input, isize at)
                         depth -= 1;
 
                     curr = next_start < next_end ? next_start : next_end;
-                    curr = curr < input.len ? curr : input.len;
-                    if(depth == 0 || curr == input.len)
+                    curr = curr < input.count ? curr : input.count;
+                    if(depth == 0 || curr == input.count)
                         break;
                 }
 
@@ -884,7 +884,7 @@ JSON_Parse_Result json_parse_value(JSON_Context* context, String input, isize fr
     JSON_Token first_token = json_get_content_token(context, input, at);
     if(first_token.type == JSON_TOKEN_STRING)
     {
-        out.value.string = json_string_make(context, first_token.string_value.data, first_token.string_value.len);
+        out.value.string = json_string_make(context, first_token.string_value.data, first_token.string_value.count);
     }
     else if(first_token.type == JSON_TOKEN_NUMBER)
     {

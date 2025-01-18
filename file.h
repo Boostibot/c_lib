@@ -19,14 +19,14 @@ EXTERNAL Platform_Error file_read_entire_append(String file_path, String_Builder
     Platform_File_Info info = {0};
     Platform_File file = {0};
     Platform_Error error = platform_file_info(file_path, &info);
-    isize size_before = append_into->len;
+    isize size_before = append_into->count;
     
     if(error == 0)
         error = platform_file_open(&file, file_path, PLATFORM_FILE_MODE_READ);
     if(error == 0)
     {
         isize read_bytes = 0;
-        builder_resize(append_into, append_into->len + info.size);
+        builder_resize(append_into, append_into->count + info.size);
         error = platform_file_read(&file, append_into->data + size_before, info.size, &read_bytes);
     }
     if(error != 0)
@@ -54,7 +54,7 @@ EXTERNAL Platform_Error file_append_entire(String file_path, String data)
     if(error == 0)
     {
         platform_file_seek(&file, 0, PLATFORM_FILE_SEEK_FROM_END);
-        error = platform_file_write(&file, data.data, data.len);
+        error = platform_file_write(&file, data.data, data.count);
     }
 
     platform_file_close(&file);
@@ -69,7 +69,7 @@ EXTERNAL Platform_Error file_write_entire(String file_path, String data)
     Platform_Error error = platform_file_open(&file, file_path, PLATFORM_FILE_MODE_WRITE | PLATFORM_FILE_MODE_CREATE);
     
     if(error == 0)
-        error = platform_file_write(&file, data.data, data.len);
+        error = platform_file_write(&file, data.data, data.count);
 
     platform_file_close(&file);
     PROFILE_STOP();

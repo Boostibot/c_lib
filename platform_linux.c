@@ -513,7 +513,7 @@ void _platform_perf_counters_deinit()
 
 const char* _ephemeral_null_terminate(Platform_String string)
 {
-    if(string.data == NULL || string.len <= 0)
+    if(string.data == NULL || string.count <= 0)
         return "";
 
     //We use a trick to not pointlessly copy and null terminate strings that are null terminated.
@@ -535,7 +535,7 @@ const char* _ephemeral_null_terminate(Platform_String string)
 
     if(DO_CONDTIONAL_NULL_TERMINATION)
     {
-        const char* potential_null_termination = string.data + string.len;
+        const char* potential_null_termination = string.data + string.count;
         bool is_null_termianted = false;
 
         //if the potential_null_termination is on the same page as the rest of the string...
@@ -560,9 +560,9 @@ const char* _ephemeral_null_terminate(Platform_String string)
 
     bool had_error = false;
     //If we need a bigger buffer OR the previous allocation was too big and the new one isnt
-    if(*curr_size <= string.len || (*curr_size > MAX_COPIED_SIZE && string.len <= MAX_COPIED_SIZE))
+    if(*curr_size <= string.count || (*curr_size > MAX_COPIED_SIZE && string.count <= MAX_COPIED_SIZE))
     {
-        int64_t alloc_size = string.len + 1;
+        int64_t alloc_size = string.count + 1;
         if(alloc_size < MIN_COPIED_SIZE)
             alloc_size = MIN_COPIED_SIZE;
 
@@ -583,8 +583,8 @@ const char* _ephemeral_null_terminate(Platform_String string)
 
     if(had_error == false)
     {
-        memmove(*curr_data, string.data, (size_t) string.len);
-        (*curr_data)[string.len] = '\0';
+        memmove(*curr_data, string.data, (size_t) string.count);
+        (*curr_data)[string.count] = '\0';
         out_string = *curr_data;
     }
 

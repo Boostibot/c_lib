@@ -5,10 +5,10 @@
 
 static char* arena_push_string(Arena_Frame* arena, const char* string)
 {
-    size_t len = string ? strlen(string) : 0;   
-    char* pat1 = (char*) arena_frame_push(arena, (isize) len + 1, 1);
-    memcpy(pat1, string, len);
-    pat1[len] = 0;
+    size_t count = string ? strlen(string) : 0;   
+    char* pat1 = (char*) arena_frame_push(arena, (isize) count + 1, 1);
+    memcpy(pat1, string, count);
+    pat1[count] = 0;
 
     return pat1;
 }

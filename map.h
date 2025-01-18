@@ -20,7 +20,7 @@ typedef struct Map {
     u8* keys;
     u8* values;
 
-    i32 len;
+    i32 count;
     i32 capacity;
     
     //Upper estimate for the number of hash collisions in the hash map.
@@ -154,7 +154,7 @@ MAPAPI Map_Found map_assign_or_insert(Map* map, const void* key, u64 hash, const
 MAPAPI void map_test_invariants(const Map* map, bool slow_checks, Map_Interface info)
 {
     TEST((map->keys == NULL) == (map->values == NULL));
-    TEST(0 <= map->len && map->len <= map->capacity);
+    TEST(0 <= map->count && map->count <= map->capacity);
 
     TEST(0 <= info.value_size);
     TEST(is_power_of_two_or_zero(info.value_align));
@@ -162,7 +162,7 @@ MAPAPI void map_test_invariants(const Map* map, bool slow_checks, Map_Interface 
     TEST(is_power_of_two_or_zero(info.key_align));
 
     TEST(0 <= map->max_collision_count);
-    TEST(map->hash.len == map->len);
+    TEST(map->hash.count == map->count);
 
     if(map->keys != NULL && info.key_size != 0)
         TEST(map->allocator != NULL);
@@ -191,7 +191,7 @@ MAPAPI void map_test_invariants(const Map* map, bool slow_checks, Map_Interface 
             }
         }
         
-        isize control_sum = map->len * (map->len - 1) / 2;
+        isize control_sum = map->count * (map->count - 1) / 2;
         TEST(all_indexes_sum == control_sum);
     }
 }
@@ -232,17 +232,17 @@ MAPAPI_INTERNAL void _map_reserve_values(Map* map, isize to_size, Map_Interface 
 
 MAPAPI_INTERNAL void _map_push_values(Map* map, const void* key, const void* value, Map_Interface info)
 {
-    _map_reserve_values(map, map->len + 1, info);
+    _map_reserve_values(map, map->count + 1, info);
     if(info.key_store_or_null)
-        info.key_store_or_null(MAP_KEY(map->len), key, info.context);
+        info.key_store_or_null(MAP_KEY(map->count), key, info.context);
     else
-        memmove(MAP_KEY(map->len), key, info.key_size);
+        memmove(MAP_KEY(map->count), key, info.key_size);
         
     if(info.value_store_or_null)
-        info.value_store_or_null(MAP_VALUE(map->len), value, info.context);
+        info.value_store_or_null(MAP_VALUE(map->count), value, info.context);
     else
-        memmove(MAP_VALUE(map->len), value, info.value_size);
-    map->len += 1;
+        memmove(MAP_VALUE(map->count), value, info.value_size);
+    map->count += 1;
 }
 
 MAPAPI_INTERNAL bool _map_key_eq(const void* stored, const void* supplied, Map_Interface info)
@@ -256,11 +256,11 @@ MAPAPI_INTERNAL bool _map_key_eq(const void* stored, const void* supplied, Map_I
 MAPAPI_INTERNAL void _map_clear_key_values(Map* map, Map_Interface info)
 {
     if(info.key_deinit_or_null)
-        for(isize i = 0; i < map->len; i++)
+        for(isize i = 0; i < map->count; i++)
             info.key_deinit_or_null(MAP_KEY(i), info.context);
         
     if(info.value_deinit_or_null)
-        for(isize i = 0; i < map->len; i++)
+        for(isize i = 0; i < map->count; i++)
             info.value_deinit_or_null(MAP_VALUE(i), info.context);
 }
 
@@ -293,7 +293,7 @@ MAPAPI void map_clear(Map* map, Map_Interface info)
     _map_check_invariants(map, info);
     _map_clear_key_values(map, info);
     map->max_collision_count = 0;
-    map->len = 0;
+    map->count = 0;
     hash_clear(&map->hash);
     _map_check_invariants(map, info);
 }
@@ -331,11 +331,11 @@ MAPAPI Map_Found map_find_next(const Map* map, const void* key, Map_Found prev_f
 MAPAPI Map_Found map_insert(Map* map, const void* key, u64 hash, const void* value, Map_Interface info)
 {
     _map_check_invariants(map, info);
-    Hash_Found found = hash_find_or_insert(&map->hash, hash, map->len);
+    Hash_Found found = hash_find_or_insert(&map->hash, hash, map->count);
     if(found.inserted == false)
     {
         map->max_collision_count += 1;
-        found = hash_insert_next(&map->hash, found, map->len);
+        found = hash_insert_next(&map->hash, found, map->count);
     }
 
     _map_push_values(map, key, value, info);
@@ -346,7 +346,7 @@ MAPAPI Map_Found map_insert(Map* map, const void* key, u64 hash, const void* val
 MAPAPI Map_Found map_find_or_insert(Map* map, const void* key, u64 hash, const void* value, Map_Interface info)
 {
     _map_check_invariants(map, info);
-    Hash_Found found = hash_find_or_insert(&map->hash, hash, map->len);
+    Hash_Found found = hash_find_or_insert(&map->hash, hash, map->count);
     
     bool colided = false;
     while(found.inserted == false)
@@ -357,7 +357,7 @@ MAPAPI Map_Found map_find_or_insert(Map* map, const void* key, u64 hash, const v
         else
         {
             colided = true;
-            found = hash_find_or_insert_next(&map->hash, found, map->len);
+            found = hash_find_or_insert_next(&map->hash, found, map->count);
         }
     }
     
@@ -370,7 +370,7 @@ MAPAPI Map_Found map_find_or_insert(Map* map, const void* key, u64 hash, const v
 MAPAPI Map_Found map_assign_or_insert(Map* map, const void* key, u64 hash, const void* value, Map_Interface info)
 {
     _map_check_invariants(map, info);
-    Hash_Found found = hash_find_or_insert(&map->hash, hash, map->len);
+    Hash_Found found = hash_find_or_insert(&map->hash, hash, map->count);
 
     bool colided = false;
     while(found.inserted == false)
@@ -391,7 +391,7 @@ MAPAPI Map_Found map_assign_or_insert(Map* map, const void* key, u64 hash, const
         else
         {
             colided = true;
-            found = hash_find_or_insert_next(&map->hash, found, map->len); 
+            found = hash_find_or_insert_next(&map->hash, found, map->count); 
         }
     }
     
@@ -405,7 +405,7 @@ MAPAPI bool map_remove_found(Map* map, Map_Found found, Map_Interface info)
 {
     if(found.hash_index >= 0)
     {
-        ASSERT(map->len > 0);
+        ASSERT(map->count > 0);
         _map_check_invariants(map, info);
         
         void* rem_key = MAP_KEY(found.index);
@@ -418,7 +418,7 @@ MAPAPI bool map_remove_found(Map* map, Map_Found found, Map_Interface info)
 
         //If removing item not on top of the items stack do the classing swap to top and pop.
         //We however have to make sure the hash remains properly updated. 
-        i32 last_i = map->len - 1;
+        i32 last_i = map->count - 1;
         if(found.index != last_i)
         {
             //Find the hash of the item at the top of the hash and
@@ -444,7 +444,7 @@ MAPAPI bool map_remove_found(Map* map, Map_Found found, Map_Interface info)
         }
         hash_remove_found(&map->hash, found.hash_index);
 
-        map->len -= 1;
+        map->count -= 1;
         _map_check_invariants(map, info);
     }
 

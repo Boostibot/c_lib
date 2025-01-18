@@ -93,7 +93,7 @@ INTERNAL void test_base64_encode(Base64_Encode_State encode_state, Base64_Encodi
     String expected_ = string_make(expected);
     String_Builder encoded_buffer = builder_make(NULL, 512);
 
-    base64_encode_into(&encoded_buffer, input_.data, input_.len, encoding);
+    base64_encode_into(&encoded_buffer, input_.data, input_.count, encoding);
     String ecnoded_result = encoded_buffer.string;
 
     TEST(string_is_equal(ecnoded_result, expected_) == (encode_state == BASE64_ENCODE_EQ));
@@ -108,7 +108,7 @@ INTERNAL void test_base64_decode(Base64_Decode_State decode_state, Base64_Decodi
     String expected_ = string_make(expected);
     String_Builder decoded_buffer = builder_make(NULL, 512);
 
-    bool decode_ok = base64_decode_into(&decoded_buffer, input_.data, input_.len, decoding);
+    bool decode_ok = base64_decode_into(&decoded_buffer, input_.data, input_.count, decoding);
     String decoded_result = decoded_buffer.string;
 
     TEST(decode_ok == (decode_state != BASE64_DECODE_ERR));
@@ -153,18 +153,18 @@ INTERNAL void test_base64_stress(f64 max_seconds, Base64_Encoding encoding, Base
         for(isize j = 0; j < num_blocks; j++)
         {
             //Fill the random data block
-            isize random_data_prev_size = random_data.len;
+            isize random_data_prev_size = random_data.count;
             isize block_size = random_range(0, MAX_SIZE + 1);
             builder_resize(&random_data, random_data_prev_size + block_size);
 
             random_bytes(random_data.data + random_data_prev_size, block_size);
 
             //Encode the block
-            isize encoded_prev_size = encoded.len;
+            isize encoded_prev_size = encoded.count;
             base64_encode_append_into(&encoded, random_data.data + random_data_prev_size, block_size, encoding);
 
             //Decode the encoded and test
-            base64_decode_into(&decoded_block, encoded.data + encoded_prev_size, encoded.len - encoded_prev_size, decoding);
+            base64_decode_into(&decoded_block, encoded.data + encoded_prev_size, encoded.count - encoded_prev_size, decoding);
             String decoded_block_str = decoded_block.string;
             String original_block_str = {random_data.data + random_data_prev_size, block_size};
             
@@ -175,7 +175,7 @@ INTERNAL void test_base64_stress(f64 max_seconds, Base64_Encoding encoding, Base
         //if do_blocks == false => num_blocks = 1 => this would do the same thing as the per block check 
         if(encoding.do_pad) 
         {
-            base64_decode_into(&decoded, encoded.data, encoded.len, decoding);
+            base64_decode_into(&decoded, encoded.data, encoded.count, decoding);
             TEST(builder_is_equal(decoded, random_data), "The whole encoded block must match!");
         }
     }

@@ -60,7 +60,7 @@ EXTERNAL String string_trim_whitespace(String s);
 
 EXTERNAL bool match_char_custom(String str, isize* index, char c, Match_Kind match)
 {
-    if(*index < str.len && (str.data[*index] == c) == (match == MATCH_NORMAL))
+    if(*index < str.count && (str.data[*index] == c) == (match == MATCH_NORMAL))
     {
         *index += 1;
         return true;
@@ -76,11 +76,11 @@ EXTERNAL bool match_char(String str, isize* index, char c)
 EXTERNAL bool match_any_of_custom(String str, isize* index, String any_of, Match_Kind match)
 {
     isize i = *index;
-    for(; i < str.len; i++)
+    for(; i < str.count; i++)
     {
         char current = str.data[i];
         bool found = false;
-        for(isize j = 0; j < any_of.len; j++)
+        for(isize j = 0; j < any_of.count; j++)
             if(any_of.data[j] == current)
             {
                 found = true;
@@ -105,7 +105,7 @@ EXTERNAL bool match_sequence(String str, isize* index, String sequence)
 {
     if(string_has_substring_at(str, *index, sequence))
     {
-        *index += sequence.len;
+        *index += sequence.count;
         return true;
     }
     return false;   
@@ -114,7 +114,7 @@ EXTERNAL bool match_sequence(String str, isize* index, String sequence)
 EXTERNAL bool match_whitespace_custom(String str, isize* index, Match_Kind match)
 {
     isize i = *index;
-    for(; i < str.len; i++)
+    for(; i < str.count; i++)
     {
         if(char_is_space(str.data[i]) != (match == MATCH_NORMAL))
             break;
@@ -153,7 +153,7 @@ EXTERNAL bool match_whitespace_separated(String str, isize* index, isize* from, 
 EXTERNAL bool match_name_chars(String str, isize* index)
 {
     isize i = *index;
-    for(; i < str.len; i++)
+    for(; i < str.count; i++)
     {
         if(char_is_id(str.data[i]) == false)
             break;
@@ -167,12 +167,12 @@ EXTERNAL bool match_name_chars(String str, isize* index)
 //starts with _, [a-z], [A-Z] or _ then is followed by any number of [0-9], _, [a-z], [A-Z]
 EXTERNAL bool match_name(String str, isize* index)
 {
-    if(*index < str.len)
+    if(*index < str.count)
     {
         if(str.data[*index] == '_' || char_is_alphabetic(str.data[*index]))
         {
             *index += 1;
-            for(; *index < str.len; *index += 1)
+            for(; *index < str.count; *index += 1)
             {
                 if(char_is_id(str.data[*index]) == false)
                     break;
@@ -190,7 +190,7 @@ EXTERNAL bool match_decimal_u64(String str, isize* index, u64* out)
 {
     u64 parsed = 0;
     isize i = *index;
-    for(; i < str.len; i++)
+    for(; i < str.count; i++)
     {
         u64 digit_value = (u64) str.data[i] - (u64) '0';
         if(digit_value > 9)
@@ -328,13 +328,13 @@ EXTERNAL bool line_iterator_get_separated_by(Line_Iterator* iterator, String str
     if(iterator->line_number != 0)
         line_from = iterator->line_to + 1;
 
-    if(line_from >= string.len)
+    if(line_from >= string.count)
         return false;
 
     isize line_to = string_find_first_char(string, c, line_from);
         
     if(line_to == -1)
-        line_to = string.len;
+        line_to = string.count;
         
     iterator->line_number += 1;
     iterator->line_from = line_from;
@@ -352,7 +352,7 @@ EXTERNAL bool line_iterator_get_line(Line_Iterator* iterator, String string)
 EXTERNAL String string_trim_prefix_whitespace(String s)
 {
     isize from = 0;
-    for(; from < s.len; from++)
+    for(; from < s.count; from++)
         if(char_is_space(s.data[from]) == false)
             break;
 
@@ -360,7 +360,7 @@ EXTERNAL String string_trim_prefix_whitespace(String s)
 }
 EXTERNAL String string_trim_postfix_whitespace(String s)
 {
-    isize to = s.len;
+    isize to = s.count;
     for(; to-- > 0; )
         if(char_is_space(s.data[to]) == false)
             break;

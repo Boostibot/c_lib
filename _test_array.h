@@ -94,7 +94,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 				}
 				
 				case POP: {
-					if(arr->len > 0)
+					if(arr->count > 0)
 					{
 						i64 value = *array_last(*arr);
 						TEST(is_power_of_two_or_zero(value));
@@ -104,12 +104,12 @@ INTERNAL void test_array_stress(f64 max_seconds)
 				}
 				
 				case RESERVE: {
-					isize size_before = arr->len;
+					isize size_before = arr->count;
 					isize capacity_before = arr->capacity;
 					isize capacity = random_range(0, MAX_CAPACITY);
 					array_reserve(arr, capacity);
 
-					TEST(size_before == arr->len);
+					TEST(size_before == arr->count);
 					TEST(capacity_before <= arr->capacity);
 					break;
 				}
@@ -117,7 +117,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 				case RESIZE: {
 					isize size = random_range(0, MAX_CAPACITY);
 					array_resize(arr, size);
-					TEST(arr->len == size);
+					TEST(arr->count == size);
 					TEST(arr->capacity >= size);
 					break;
 				}
@@ -139,8 +139,8 @@ INTERNAL void test_array_stress(f64 max_seconds)
 				
 				case COPY: {
 					array_copy(other_array, *arr);
-					TEST(other_array->len == arr->len);
-					TEST(other_array->capacity >= other_array->len);
+					TEST(other_array->count == arr->count);
+					TEST(other_array->capacity >= other_array->count);
 
 					swap_any(&other_array, &arr, sizeof(arr));
 
@@ -148,12 +148,12 @@ INTERNAL void test_array_stress(f64 max_seconds)
 				}
 			}
 			
-			if(max_size < arr->len)
-				max_size = arr->len;
+			if(max_size < arr->count)
+				max_size = arr->count;
 			if(max_capacity < arr->capacity)
 				max_capacity = arr->capacity;
 
-			for(isize k = 0; k < arr->len; k++)
+			for(isize k = 0; k < arr->count; k++)
 				TEST(arr->data != NULL && is_power_of_two_or_zero(arr->data[k]));
 				
 			TEST(generic_array_is_invariant(array_make_generic(arr)));

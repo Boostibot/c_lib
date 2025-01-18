@@ -169,9 +169,9 @@ JMAPI float vec2_dist(Vec2 a, Vec2 b) { return vec2_len(vec2_sub(a, b)); }
 JMAPI float vec3_dist(Vec3 a, Vec3 b) { return vec3_len(vec3_sub(a, b)); }
 JMAPI float vec4_dist(Vec4 a, Vec4 b) { return vec4_len(vec4_sub(a, b)); }
 
-JMAPI Vec2 vec2_norm(Vec2 a) { float len = vec2_len(a); return len > 0 ? vec2_scale(a, 1/len) : vec2_of(0); }
-JMAPI Vec3 vec3_norm(Vec3 a) { float len = vec3_len(a); return len > 0 ? vec3_scale(a, 1/len) : vec3_of(0); }
-JMAPI Vec4 vec4_norm(Vec4 a) { float len = vec4_len(a); return len > 0 ? vec4_scale(a, 1/len) : vec4_of(0); }
+JMAPI Vec2 vec2_norm(Vec2 a) { float count = vec2_len(a); return count > 0 ? vec2_scale(a, 1/count) : vec2_of(0); }
+JMAPI Vec3 vec3_norm(Vec3 a) { float count = vec3_len(a); return count > 0 ? vec3_scale(a, 1/count) : vec3_of(0); }
+JMAPI Vec4 vec4_norm(Vec4 a) { float count = vec4_len(a); return count > 0 ? vec4_scale(a, 1/count) : vec4_of(0); }
 
 JMAPI bool vec2_is_equal(Vec2 a, Vec2 b) { return memcmp(&a, &b, sizeof a) == 0; }
 JMAPI bool vec3_is_equal(Vec3 a, Vec3 b) { return memcmp(&a, &b, sizeof a) == 0; }

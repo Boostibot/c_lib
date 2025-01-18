@@ -38,8 +38,8 @@ EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error
             va_copy(args_copy, args);
 
             int size = vsnprintf(local, sizeof local, format, args_copy);
-            isize base_size = append_to->len; 
-            builder_resize_for_overwrite(append_to, append_to->len + size);
+            isize base_size = append_to->count; 
+            builder_resize_for_overwrite(append_to, append_to->count + size);
 
             if(size > sizeof local) {
                 PROFILE_INSTANT("format twice")

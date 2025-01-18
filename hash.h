@@ -121,11 +121,11 @@ typedef struct Hash_Entry {
 typedef struct Hash {
     Allocator* allocator;                
     Hash_Entry* entries;                          
-    int32_t len;                    //The number of key-value pairs in the hash            
+    int32_t count;                    //The number of key-value pairs in the hash            
     int32_t entries_count;          //The size of the underlaying Hash_Entry array
     int32_t gravestone_count;       //The number of deleted and not-yet-overwritten key-value pairs in the hash
 
-    //The ratio of len to entries_count that needs to be achieved for a rehash to occur. 
+    //The ratio of count to entries_count that needs to be achieved for a rehash to occur. 
     //Defaults to 33%. Valid values [0, 100). Can be set at any moment
     int8_t  load_factor; 
     //The ratio of gravestone_count to entries_count that needs to be achieved for a rehash to occur. 
@@ -283,7 +283,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         Hash_Found out = {-1, probes, hash};
         if(table.entries_count > 0)
         {
-            ASSERT(table.len + table.gravestone_count < table.entries_count && "must not be completely full!");
+            ASSERT(table.count + table.gravestone_count < table.entries_count && "must not be completely full!");
             uint64_t mod = (uint64_t) table.entries_count - 1;
             uint64_t i = start_from & mod;
             for(;;)
@@ -313,7 +313,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         PROFILE_START();
         
         Hash_Found out = {-1, probes, hash};
-        ASSERT(table->len + table->gravestone_count < table->entries_count && "there must be space for insertion");
+        ASSERT(table->count + table->gravestone_count < table->entries_count && "there must be space for insertion");
         ASSERT(table->entries_count > 0);
 
         uint64_t mod = (uint64_t) table->entries_count - 1;
@@ -363,7 +363,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         //Push the entry
         table->entries[insert_index].value = value;
         table->entries[insert_index].hash = hash;
-        table->len += 1;
+        table->count += 1;
         table->info_total_extra_probes += out.probes;
         
         ASSERT(hash_is_invariant(*table, HASH_DEBUG));
@@ -431,7 +431,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
 
         _hash_init_if_not_init(to_table, to_table->allocator, to_table->load_factor, to_table->load_factor_gravestone);
 
-        isize required = to_size > from_table.len ? to_size : from_table.len;
+        isize required = to_size > from_table.count ? to_size : from_table.count;
         isize rehash_to = required;
         if(size_is_capacity == false)
         {
@@ -473,7 +473,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
 
         to_table->info_total_extra_probes = 0;
         to_table->gravestone_count = 0;
-        to_table->len = 0;
+        to_table->count = 0;
         PROFILE_STOP();
     }
 
@@ -485,8 +485,8 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
             #define TESTI(x) if(!(x)) {ASSERT((x)); goto end;}
 
             TESTI((table.entries == NULL) == (table.entries_count == 0));
-            TESTI((table.len >= 0 && table.entries_count >= 0 && table.gravestone_count >= 0)); 
-            TESTI((table.len + table.gravestone_count < table.entries_count) || table.entries_count == 0);
+            TESTI((table.count >= 0 && table.entries_count >= 0 && table.gravestone_count >= 0)); 
+            TESTI((table.count + table.gravestone_count < table.entries_count) || table.entries_count == 0);
             TESTI(((uint64_t) table.entries_count & ((uint64_t) table.entries_count-1)) == 0); // table.entries_count needs to be power of two or zero
             TESTI(0 <= table.load_factor && table.load_factor <= 100);
             TESTI(0 <= table.load_factor_gravestone && table.load_factor_gravestone <= 100);
@@ -494,7 +494,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
             if(table.entries != NULL)
             {
                 TESTI(table.allocator != NULL);
-                TESTI(_hash_needs_rehash(table.entries_count, table.len, table.load_factor) == false);
+                TESTI(_hash_needs_rehash(table.entries_count, table.count, table.load_factor) == false);
             }
 
             if(slow_check)
@@ -514,7 +514,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
                         gravestone_count += 1;
                 }
 
-                TESTI(used_count == table.len);
+                TESTI(used_count == table.count);
                 TESTI(gravestone_count == table.gravestone_count);
             }
 
@@ -540,7 +540,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
 
     EXTERNAL void hash_copy(Hash* to_table, Hash from_table)
     {
-        _hash_rehash_copy(to_table, from_table, from_table.len, false);
+        _hash_rehash_copy(to_table, from_table, from_table.count, false);
     }
     
     EXTERNAL void hash_rehash_in_place(Hash* table)
@@ -579,7 +579,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
     {
         _hash_init_if_not_init(table, table->allocator, table->load_factor, table->load_factor_gravestone);
 
-        isize required = to_size > table->len ? to_size : table->len;
+        isize required = to_size > table->count ? to_size : table->count;
         isize rehash_to = 16;
         while(_hash_needs_rehash(rehash_to, required, table->load_factor))
             rehash_to *= 2;
@@ -620,7 +620,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
     {
         ASSERT(hash_is_valid_value(value_if_inserted));
         ASSERT(0 <= prev_found.index && prev_found.index < table->entries_count);
-        hash_reserve(table, table->len + 1);
+        hash_reserve(table, table->count + 1);
         return _hash_find_or_insert(table, prev_found.hash, (uint64_t) prev_found.index + (uint64_t) prev_found.probes + 1, value_if_inserted, prev_found.probes + 1, true);
     }
 
@@ -628,21 +628,21 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
     {
         ASSERT(hash_is_valid_value(value_if_inserted));
         ASSERT(0 <= prev_found.index && prev_found.index < table->entries_count);
-        hash_reserve(table, table->len + 1);
+        hash_reserve(table, table->count + 1);
         return _hash_find_or_insert(table, prev_found.hash, (uint64_t) prev_found.index + (uint64_t) prev_found.probes + 1, value_if_inserted, prev_found.probes + 1, false);
     }
 
     EXTERNAL Hash_Found hash_find_or_insert(Hash* table, uint64_t hash, uint64_t value_if_inserted)
     {
         ASSERT(hash_is_valid_value(value_if_inserted));
-        hash_reserve(table, table->len + 1);
+        hash_reserve(table, table->count + 1);
         return _hash_find_or_insert(table, hash, hash, value_if_inserted, 0, true);
     }
     
     EXTERNAL Hash_Found hash_insert(Hash* table, uint64_t hash, uint64_t value)
     {
         ASSERT(hash_is_valid_value(value));
-        hash_reserve(table, table->len + 1);
+        hash_reserve(table, table->count + 1);
         return _hash_find_or_insert(table, hash, hash, value, 0, false);
     }
 
@@ -652,11 +652,11 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         Hash_Entry removed = {0};
         if(found >= 0)
         {
-            ASSERT(table->len > 0);
+            ASSERT(table->count > 0);
             ASSERT(found < table->entries_count);
             removed = table->entries[found];
             table->entries[found].value = HASH_GRAVESTONE;
-            table->len -= 1;
+            table->count -= 1;
             table->gravestone_count += 1;
             ASSERT(hash_is_invariant(*table, HASH_DEBUG));
         }
