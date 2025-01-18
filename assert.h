@@ -82,8 +82,8 @@
         #define DEBUG_BREAK() __debugbreak()
     #elif defined(__clang__)
         #define DEBUG_BREAK() __builtin_debugtrap()
-    #elif defined(__GNUC__)
-        #define DEBUG_BREAK() __builtin_trap()
+    // #elif defined(__GNUC__)
+        // #define DEBUG_BREAK() __builtin_trap()
     #else
         #include <signal.h>
         #define DEBUG_BREAK() raise(SIGTRAP)

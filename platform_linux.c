@@ -1,10 +1,3 @@
-#define _GNU_SOURCE
-#define _GNU_SOURCE_
-#define __USE_GNU
-#define __USE_LARGEFILE64
-#define _LARGEFILE64_SOURCE
-#define _FILE_OFFSET_BITS 64 
-
 #include "platform.h"
 
 #include <stdio.h>

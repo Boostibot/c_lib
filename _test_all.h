@@ -8,8 +8,9 @@
 
 #define JOT_COUPLED
 #define JOT_ALL_TEST
-#include "assert.h"
+#include "platform.h"
 #include "defines.h"
+#include "assert.h"
 #include "profile.h"
 #include "list.h"
 #include "path.h"
@@ -28,47 +29,52 @@
 #include "_test_stable_array.h"
 #include "_test_image.h"
 #include "_test_chase_lev_queue.h"
-// #include "_test_string_map.h"
+#include "_test_string_map.h"
 
-INTERNAL void test_all(f64 total_time)
+typedef enum Test_Func_Type {
+    TEST_FUNC_TYPE_SIMPLE,
+    TEST_FUNC_TYPE_TIMED,
+} Test_Func_Type;
+
+typedef void (*Test_Func)();
+typedef void (*Test_Func_Timed)(double max_time);
+
+typedef struct Test_Run_Context {
+    void* func;
+    const char* name;
+    Test_Func_Type type;
+    int _;
+    double max_time;
+} Test_Run_Context;
+
+EXTERNAL bool run_test(Test_Run_Context context);
+EXTERNAL int run_tests(int* total, double time, ...);
+
+#define UNIT_TEST(func) BINIT(Test_Run_Context){(void*) (func), #func, TEST_FUNC_TYPE_SIMPLE}
+#define TIMED_TEST(func, ...) BINIT(Test_Run_Context){(void*) (func), #func, TEST_FUNC_TYPE_SIMPLE, 0, ##__VA_ARGS__}
+
+INTERNAL void test_all(double total_time)
 {
-    PROFILE_START();
-    PANIC("hello from panic!");
-
-    LOG_INFO("TEST", "RUNNING ALL TESTS");
-    int total_count = 0;
-    int passed_count = 0;
-
-    #define INCR total_count += 1, passed_count += (int)
-    
-    // INCR RUN_TEST(test_string_map);
-    INCR RUN_TEST(platform_test_all);
-    
-    INCR RUN_TEST(test_list);
-    INCR RUN_TEST(test_image);
-    INCR RUN_TEST(test_stable_array);
-    INCR RUN_TEST(test_log);
-    //INCR RUN_TEST(test_random);
-    INCR RUN_TEST(test_path);
-
-    INCR RUN_TEST_TIMED(test_chase_lev_queue, total_time/8);
-    INCR RUN_TEST_TIMED(test_sort, total_time/8);
-    INCR RUN_TEST_TIMED(test_hash, total_time/8);
-    INCR RUN_TEST_TIMED(test_arena, total_time/8);
-    INCR RUN_TEST_TIMED(test_array, total_time/8);
-    INCR RUN_TEST_TIMED(test_math, total_time/8);
-    INCR RUN_TEST_TIMED(test_string, total_time/8);
-    INCR RUN_TEST_TIMED(test_allocator_tlsf, total_time/8);
-    INCR RUN_TEST_TIMED(slz4_test, total_time/8);
-    
-    #undef INCR
-
-    if(passed_count == total_count)
-        LOG_OKAY("TEST", "TESTING FINISHED! passed %i of %i test uwu", total_count, passed_count);
-    else
-        LOG_WARN("TEST", "TESTING FINISHED! passed %i of %i tests", total_count, passed_count);
-
-    PROFILE_STOP();
+    run_tests(NULL, total_time, 
+        UNIT_TEST(platform_test_all),
+        UNIT_TEST(test_list),
+        UNIT_TEST(test_image),
+        UNIT_TEST(test_stable_array),
+        UNIT_TEST(test_log),
+        // UNIT_TEST(test_random),
+        UNIT_TEST(test_path),
+        TIMED_TEST(test_sort),
+        TIMED_TEST(test_string_map),
+        TIMED_TEST(test_hash),
+        TIMED_TEST(test_arena),
+        TIMED_TEST(test_array),
+        TIMED_TEST(test_math),
+        TIMED_TEST(test_string),
+        TIMED_TEST(test_allocator_tlsf),
+        TIMED_TEST(slz4_test),
+        TIMED_TEST(test_chase_lev_queue),
+        UNIT_TEST(NULL)
+    );
 }
 
 #if defined(TEST_RUNNER)
@@ -96,5 +102,86 @@ INTERNAL void test_all(f64 total_time)
         #error Unsupported OS! Add implementation
     #endif
 #endif
+
+EXTERNAL void _run_test_try(void* context)
+{
+    Test_Run_Context* c = (Test_Run_Context*) context;
+    switch(c->type)
+    {
+        case TEST_FUNC_TYPE_SIMPLE: 
+            ((Test_Func) c->func)(); 
+        break;
+        case TEST_FUNC_TYPE_TIMED: 
+            ((Test_Func_Timed) c->func)(c->max_time); 
+        break;
+        default: UNREACHABLE();
+    }
+}
+
+EXTERNAL void _run_test_recover(void* context, Platform_Sandbox_Error error)
+{
+    Test_Run_Context* c = (Test_Run_Context*) context;
+    if(error.exception != PLATFORM_EXCEPTION_ABORT)
+    {
+        PROFILE_INSTANT("failed test");
+        LOG_ERROR("TEST", "Exception occurred in test '%s': %s", c->name, platform_exception_to_string(error.exception));
+    }
+}
+
+EXTERNAL bool run_test(Test_Run_Context context)
+{
+    PROFILE_START();
+    switch(context.type)
+    {
+        case TEST_FUNC_TYPE_SIMPLE: LOG_INFO("TEST", "%s ...", context.name); break;
+        case TEST_FUNC_TYPE_TIMED:  LOG_INFO("TEST", "%s (time = %lfs) ...", context.name, context.max_time); break;
+        default: UNREACHABLE();
+    }
+
+    bool success = platform_exception_sandbox(_run_test_try, &context, _run_test_recover, &context) == 0;
+    if(success)
+        LOG_OKAY("TEST", "%s OK", context.name);
+    else
+        LOG_ERROR("TEST", "%s FAILED", context.name);
+
+    PROFILE_STOP();
+    return success;
+}
+
+EXTERNAL int run_tests(int* total, double time, ...)
+{
+    Test_Run_Context contexts[256] = {0};
+    int count = 0;
+
+    va_list ap;
+    va_start(ap, time);
+    for(; count < 256; count++)
+    {
+        contexts[count] = va_arg(ap, Test_Run_Context);
+        if(contexts[count].func == NULL)
+            break;
+    }
+    va_end(ap);
+
+    LOG_INFO("TEST", "RUNNING %i TESTS (time = %lfs)", count, time);
+    double time_for_one = time/count;
+    int successfull = 0;
+    for(int i = 0; i < count; i++)
+    {
+        if(contexts[count].max_time == 0) 
+            contexts[count].max_time = time_for_one;
+        successfull += run_test(contexts[i]);
+    }
+
+    if(total)
+        *total = count;
+
+    if(successfull == count)
+        LOG_OKAY("TEST", "TESTING FINISHED! passed %i of %i test uwu", count, successfull);
+    else
+        LOG_WARN("TEST", "TESTING FINISHED! passed %i of %i tests", count, successfull);
+
+    return successfull;
+}
 
 #endif

@@ -1,7 +1,8 @@
 #pragma once
 
 #include "array.h"
-#include "_test.h"
+#include "random.h"
+#include "time.h"
 #include "allocator_debug.h"
 
 INTERNAL void test_array_stress(f64 max_seconds)

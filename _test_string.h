@@ -1,7 +1,5 @@
 ﻿#pragma once
 #include "string.h"
-#include "_test.h"
-#include "vformat.h"
 
 static void test_memtile()
 {
@@ -85,7 +83,7 @@ static void test_string_find_single(const char* in_string_c, const char* search_
 
     for(isize from_i = 0; from_i <= in_string.len; from_i++)
     {
-        char* std_found = strstr(in_string_c + from_i, search_for_c);
+        const char* std_found = strstr(in_string_c + from_i, search_for_c);
         isize std_found_i = std_found ? std_found - in_string_c : -1;
         isize our_found_i = string_find_first(in_string, search_for, from_i);
         TEST(std_found_i == our_found_i);

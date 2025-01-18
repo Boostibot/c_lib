@@ -1,7 +1,6 @@
 #pragma once
 
 #include "image.h"
-#include "_test.h"
 #include "allocator_debug.h"
 
 INTERNAL void test_image_builder_copy()

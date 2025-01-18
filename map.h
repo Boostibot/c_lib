@@ -147,9 +147,9 @@ MAPAPI void map_test_invariants(const Map* map, bool slow_checks, Map_Interface 
     TEST(0 <= map->len && map->len <= map->capacity);
 
     TEST(0 <= info.value_size);
-    TEST(0 <= is_power_of_two_or_zero(info.value_align));
+    TEST(is_power_of_two_or_zero(info.value_align));
     TEST(0 <= info.key_size);
-    TEST(0 <= is_power_of_two_or_zero(info.key_align));
+    TEST(is_power_of_two_or_zero(info.key_align));
 
     TEST(0 <= map->max_collision_count);
     TEST(map->hash.len == map->len);

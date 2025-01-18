@@ -1,8 +1,6 @@
 #pragma once
 
-#include "_test.h"
 #include "log.h"
-// #include "log_file.h"
 #include "allocator_debug.h"
 
 INTERNAL void test_log()

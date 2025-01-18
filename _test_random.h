@@ -1,6 +1,6 @@
 #pragma once
-#include "_test.h"
 #include "random.h"
+#include "assert.h"
 
 #define RANDOM_TEST_ITERS		(1000*1000*200)
 #define RANDOM_TEST_EPSILON		(2e-4)
@@ -8,7 +8,7 @@
 #define RANDOM_TEST_RANGE_FROM  (-513)
 #define RANDOM_TEST_RANGE_TO	(487)
 
-INTERNAL void test_swap_any()
+static void test_swap_any()
 {
 	{
 		int64_t before[10]	 = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
@@ -40,7 +40,7 @@ INTERNAL void test_swap_any()
 	}
 }
 
-INTERNAL void process_histogram(const int64_t* histogram, int64_t hist_size, double* norm_avg_diff, double* norm_max_diff)
+static void process_histogram(const int64_t* histogram, int64_t hist_size, double* norm_avg_diff, double* norm_max_diff)
 {
 	int64_t min_val = RANDOM_TEST_ITERS;
 	for(int64_t i = 0; i < hist_size; i++)
@@ -64,7 +64,7 @@ INTERNAL void process_histogram(const int64_t* histogram, int64_t hist_size, dou
 	*norm_max_diff = (double) max_diff / (double) RANDOM_TEST_ITERS;
 }
 
-INTERNAL void test_random_range()
+static void test_random_range()
 {
 	int64_t histogram[RANDOM_HIST_SIZE] = {0};
 	int64_t BAR_SIZE = (RANDOM_TEST_RANGE_TO - RANDOM_TEST_RANGE_FROM)/RANDOM_HIST_SIZE;
@@ -90,7 +90,7 @@ INTERNAL void test_random_range()
 }
 
 
-INTERNAL void test_random_f64()
+static void test_random_f64()
 {
 	int64_t histogram[RANDOM_HIST_SIZE] = {0};
 	double BAR_SIZE = 1.0 / RANDOM_HIST_SIZE;
@@ -114,7 +114,7 @@ INTERNAL void test_random_f64()
 }
 
 
-INTERNAL void test_random_f32()
+static void test_random_f32()
 {
 	int64_t histogram[RANDOM_HIST_SIZE] = {0};
 	float BAR_SIZE = 1.0f / RANDOM_HIST_SIZE;
@@ -137,7 +137,7 @@ INTERNAL void test_random_f32()
 	TEST(norm_max_diff < RANDOM_TEST_EPSILON);
 }
 
-INTERNAL void test_random_bool()
+static void test_random_bool()
 {
 	int64_t histogram[2] = {0};
 
@@ -156,8 +156,7 @@ INTERNAL void test_random_bool()
 	TEST(norm_max_diff < RANDOM_TEST_EPSILON);
 }
 
-
-INTERNAL void test_random()
+static void test_random()
 {
 	test_random_f32();
 	test_swap_any();

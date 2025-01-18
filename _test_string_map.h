@@ -1,8 +1,9 @@
 #pragma once
-#include "_test.h"
 #include "string_map.h"
 #include "arena_stack.h"
 #include "allocator_debug.h"
+#include "random.h"
+#include "time.h"
 
 INTERNAL String_Builder generate_random_text(Allocator* alloc, isize word_count, String separator, bool capitilize, String postfix);
 
@@ -124,8 +125,8 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 		String_Map map = {0};
 		string_map_init(&map, debug.alloc, strings.alloc, sizeof(Hash_String), DEF_ALIGN, string_map_hash_string_store, string_map_hash_string_deinit, NULL);
 		//uint64_t random_seed = random_clock_seed();
-		uint64_t random_seed = 0;
-		*random_state() = random_state_from_seed(random_seed);
+		// uint64_t random_seed = 0;
+		// *random_state() = random_state_make(random_seed);
 
 		i32 max_size = 0;
 		i32 max_capacity = 0;
@@ -133,7 +134,7 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 		for(isize z = 0; z < MAX_ITERS; z++)
 		{
 			if(z == 8)
-				LOG_HERE;
+				LOG_HERE();
 
 			Action action = (Action) random_discrete(dist, ARRAY_LEN(dist));
 				

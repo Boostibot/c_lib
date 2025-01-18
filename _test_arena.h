@@ -1,7 +1,7 @@
 #pragma once
 #include "arena_stack.h"
-#include "arena_stack.h"
-#include "_test.h"
+#include "random.h"
+#include "time.h"
 
 static char* arena_push_string(Arena_Frame* arena, const char* string)
 {

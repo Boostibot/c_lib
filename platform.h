@@ -904,6 +904,7 @@ static void platform_once_end(volatile uint32_t* once)
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <assert.h>
 static bool _platform_test_report(Platform_Error error, bool is_error, const char* expression, const char* file, const char* funcion, int line, const char* format, ...);
 
 #ifndef _MSC_VER

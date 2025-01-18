@@ -4,7 +4,8 @@
 #include "array.h"
 #include "allocator_debug.h"
 #include "arena_stack.h"
-#include "_test.h"
+#include "random.h"
+#include "time.h"
 #include <string.h>
 
 int u64_comp_func(const void* a_, const void* b_)
