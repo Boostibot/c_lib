@@ -1,5 +1,5 @@
-#ifndef JOT_STABLE_ARRAY
-#define JOT_STABLE_ARRAY
+#ifndef MODULE_STABLE_ARRAY
+#define MODULE_STABLE_ARRAY
 
 // This is a data structure that aims to be as closely performant as array while being "stable"
 // meaning that pointers to items remain valid even with additions and removals.
@@ -106,8 +106,8 @@ EXTERNAL void stable_array_test_invariants(const Stable_Array* stable, bool slow
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_STABLE_ARRAY_IMPL)) && !defined(JOT_STABLE_ARRAY_HAS_IMPL)
-#define JOT_STABLE_ARRAY_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_STABLE_ARRAY)) && !defined(MODULE_HAS_IMPL_STABLE_ARRAY)
+#define MODULE_HAS_IMPL_STABLE_ARRAY
 
 #define _STABLE_ARRAY_DO_CHECKS
 #define _STABLE_ARRAY_DO_SLOW_CHECKS

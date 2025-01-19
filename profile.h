@@ -1,13 +1,13 @@
-#define JOT_PROFILE
-#define JOT_PROFILE_HAS_IMPL
+#define MODULE_PROFILE
+#define MODULE_HAS_IMPL_PROFILE
 
 #define PROFILE_START(...) 
 #define PROFILE_STOP(...) 
 #define PROFILE_INSTANT(...)
 #define PROFILE_SCOPE(...) for(int __i = 0; __i == 0; __i = 1)
 
-#ifndef JOT_PROFILE
-#define JOT_PROFILE
+#ifndef MODULE_PROFILE
+#define MODULE_PROFILE
 
 #pragma warning(disable:4028)
 #pragma warning(disable:4100)
@@ -101,8 +101,8 @@ isize profile_to_chrome_json_files(const char* output_filename, const char* inpu
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_PROFILE_IMPL)) && !defined(JOT_PROFILE_HAS_IMPL)
-#define JOT_PROFILE_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_PROFILE)) && !defined(MODULE_HAS_IMPL_PROFILE)
+#define MODULE_HAS_IMPL_PROFILE
 
 typedef struct Profile_Zone {
 	struct Profile_Zone* next;

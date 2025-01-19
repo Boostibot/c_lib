@@ -1,5 +1,5 @@
-#ifndef JOT_ARENA_STACK
-#define JOT_ARENA_STACK
+#ifndef MODULE_SCRATCH_ARENA
+#define MODULE_SCRATCH_ARENA
 
 // This is a "safe" implementation of the arena concept. It maintains the stack like order of allocations 
 // on its own without the possibility of accidental overwriting of allocations from nested 
@@ -16,19 +16,19 @@
 #include "allocator.h"
 #include "profile.h"
 
-#ifndef ARENA_STACK_DEBUG
+#ifndef SCRATCH_ARENA_DEBUG
     #ifdef DO_ASSERTS_SLOW
-        #define ARENA_STACK_DEBUG 1
+        #define SCRATCH_ARENA_DEBUG 1
     #else
-        #define ARENA_STACK_DEBUG 0
+        #define SCRATCH_ARENA_DEBUG 0
     #endif
 #endif
 
-#ifndef ARENA_STACK_CUSTOM
-    #define ARENA_STACK_CHANNELS         2
-    #define ARENA_STACK_DEF_STACK_SIZE   256
-    #define ARENA_STACK_DEF_RESERVE_SIZE (16*GB)
-    #define ARENA_STACK_DEF_COMMIT_SIZE  ( 4*MB) 
+#ifndef SCRATCH_ARENA_CUSTOM
+    #define SCRATCH_ARENA_CHANNELS         2
+    #define SCRATCH_ARENA_DEF_STACK_SIZE   256
+    #define SCRATCH_ARENA_DEF_RESERVE_SIZE (16*GB)
+    #define SCRATCH_ARENA_DEF_COMMIT_SIZE  ( 4*MB) 
 #endif
 
 typedef struct Scratch_Stack {
@@ -42,7 +42,7 @@ typedef struct Scratch_Stack {
 } Scratch_Stack;
 
 typedef struct Scratch_Arena {
-    Scratch_Stack stacks[ARENA_STACK_CHANNELS];
+    Scratch_Stack stacks[SCRATCH_ARENA_CHANNELS];
     u32 frame_count;
     u32 frame_capacity;
 
@@ -235,8 +235,8 @@ EXTERNAL Scratch        global_scratch_acquire();
 // (although one can set the define below to any value).
 
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_ARENA_STACK_IMPL)) && !defined(JOT_ARENA_STACK_HAS_IMPL)
-#define JOT_ARENA_STACK_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_SCRATCH_ARENA)) && !defined(MODULE_HAS_IMPL_SCRATCH_ARENA)
+#define MODULE_HAS_IMPL_SCRATCH_ARENA
 
     INTERNAL void _scratch_arena_check_invariants(Scratch_Arena* arena);
     INTERNAL void _scratch_arena_fill_garbage(Scratch_Arena* arena, isize content_size);
@@ -260,44 +260,44 @@ EXTERNAL Scratch        global_scratch_acquire();
         REQUIRE(level_count_or_zero >= 0);
         REQUIRE(alloc_granularity >= 1);
     
-        isize commit_granularity = commit_granularity_or_zero > 0 ? commit_granularity_or_zero : ARENA_STACK_DEF_COMMIT_SIZE;
-        isize reserve_size = reserve_size_or_zero > 0 ? reserve_size_or_zero : ARENA_STACK_DEF_RESERVE_SIZE;
-        isize level_count = level_count_or_zero > 0 ? level_count_or_zero : ARENA_STACK_DEF_STACK_SIZE;
+        isize commit_granularity = commit_granularity_or_zero > 0 ? commit_granularity_or_zero : SCRATCH_ARENA_DEF_COMMIT_SIZE;
+        isize reserve_size = reserve_size_or_zero > 0 ? reserve_size_or_zero : SCRATCH_ARENA_DEF_RESERVE_SIZE;
+        isize level_count = level_count_or_zero > 0 ? level_count_or_zero : SCRATCH_ARENA_DEF_STACK_SIZE;
         
         #define _ROUND_UP(val, to) (((val) + (to) - 1)/(to)*(to))
 
         commit_granularity = _ROUND_UP(commit_granularity, alloc_granularity);
-        reserve_size = _ROUND_UP(reserve_size, alloc_granularity*ARENA_STACK_CHANNELS);
+        reserve_size = _ROUND_UP(reserve_size, alloc_granularity*SCRATCH_ARENA_CHANNELS);
         level_count = MIN(level_count, reserve_size/isizeof(u8*));
-        level_count = _ROUND_UP(level_count, ARENA_STACK_CHANNELS);
+        level_count = _ROUND_UP(level_count, SCRATCH_ARENA_CHANNELS);
 
         //reserve eveyrthing
         u8* reserved_from = 0;
         Platform_Error error = platform_virtual_reallocate((void**) &reserved_from, NULL, reserve_size, PLATFORM_VIRTUAL_ALLOC_RESERVE, PLATFORM_MEMORY_PROT_NO_ACCESS);
             
         //commit levels
-        u8* datas[ARENA_STACK_CHANNELS] = {NULL};
-        isize frames_commit_size = _ROUND_UP(level_count*isizeof(u8*)/ARENA_STACK_CHANNELS, commit_granularity);
-        for(isize i = 0; i < ARENA_STACK_CHANNELS; i++)
+        u8* datas[SCRATCH_ARENA_CHANNELS] = {NULL};
+        isize frames_commit_size = _ROUND_UP(level_count*isizeof(u8*)/SCRATCH_ARENA_CHANNELS, commit_granularity);
+        for(isize i = 0; i < SCRATCH_ARENA_CHANNELS; i++)
         {
             if(error != 0)
                 break;
 
-            datas[i] = reserved_from + reserve_size/ARENA_STACK_CHANNELS*i;
+            datas[i] = reserved_from + reserve_size/SCRATCH_ARENA_CHANNELS*i;
             error = platform_virtual_reallocate(NULL, datas[i], frames_commit_size, PLATFORM_VIRTUAL_ALLOC_COMMIT, PLATFORM_MEMORY_PROT_READ_WRITE);
         }
     
         //fill struct
         if(error == 0)
         {
-            for(isize i = 0; i < ARENA_STACK_CHANNELS; i++)
+            for(isize i = 0; i < SCRATCH_ARENA_CHANNELS; i++)
             {
                 Scratch_Stack* stack = &arena->stacks[i];
                 stack->reserved_from = datas[i];
-                stack->reserved_to = datas[i] + reserve_size/ARENA_STACK_CHANNELS;
+                stack->reserved_to = datas[i] + reserve_size/SCRATCH_ARENA_CHANNELS;
                 stack->commit_to = datas[i] + frames_commit_size;
                 stack->curr_frame = stack->frames;
-                *stack->curr_frame = (u8*) (stack->frames + level_count/ARENA_STACK_CHANNELS);
+                *stack->curr_frame = (u8*) (stack->frames + level_count/SCRATCH_ARENA_CHANNELS);
             }
         
             arena->commit_granularity = commit_granularity;
@@ -417,8 +417,8 @@ EXTERNAL Scratch        global_scratch_acquire();
         REQUIRE(arena->frame_count < arena->frame_capacity, "Too many arena frames or uninit");
         _scratch_arena_check_invariants(arena);
 
-        u32 level_i = arena->frame_count / ARENA_STACK_CHANNELS;
-        u32 stack_i = arena->frame_count % ARENA_STACK_CHANNELS;
+        u32 level_i = arena->frame_count / SCRATCH_ARENA_CHANNELS;
+        u32 stack_i = arena->frame_count % SCRATCH_ARENA_CHANNELS;
         Scratch_Stack* stack = &arena->stacks[stack_i];
     
         //Here we could do a full for loop setting all frames affected by the 'rise' 
@@ -466,7 +466,7 @@ EXTERNAL Scratch        global_scratch_acquire();
     
         //Set the frame to zero so that if someone tries to allocate from this frame
         // it will trigger an assert
-        if(ARENA_STACK_DEBUG)
+        if(SCRATCH_ARENA_DEBUG)
             memset(scratch, 0, sizeof* scratch);
 
         PROFILE_STOP();
@@ -511,9 +511,9 @@ EXTERNAL Scratch        global_scratch_acquire();
         return scratch_acquire(global_scratch_arena());
     }
 
-    #define ARENA_STACK_DEBUG_DATA_SIZE     32
-    #define ARENA_STACK_DEBUG_DATA_PATTERN  0x55
-    #define ARENA_STACK_DEBUG_STACK_PATTERN (u8*) 0x6666666666666666
+    #define SCRATCH_ARENA_DEBUG_DATA_SIZE     32
+    #define SCRATCH_ARENA_DEBUG_DATA_PATTERN  0x55
+    #define SCRATCH_ARENA_DEBUG_STACK_PATTERN (u8*) 0x6666666666666666
     EXTERNAL void scratch_arena_test_invariants(Scratch_Arena* arena)
     {
         if(arena->reserved_from == NULL)
@@ -523,11 +523,11 @@ EXTERNAL Scratch        global_scratch_acquire();
         TEST(arena->reserved_size >= 1);
         TEST(arena->frame_capacity >= 1);
 
-        for(isize k = 0; k < ARENA_STACK_CHANNELS; k++)
+        for(isize k = 0; k < SCRATCH_ARENA_CHANNELS; k++)
         {
             Scratch_Stack* stack = &arena->stacks[k];
 
-            u8** frames_end = stack->frames + arena->frame_capacity/ARENA_STACK_CHANNELS;
+            u8** frames_end = stack->frames + arena->frame_capacity/SCRATCH_ARENA_CHANNELS;
 
             u8* used_from = (u8*) frames_end;
             u8* used_to = stack->curr_frame ? *stack->curr_frame : NULL;
@@ -538,42 +538,42 @@ EXTERNAL Scratch        global_scratch_acquire();
             for(u8** level = (u8**) stack->frames; level < stack->curr_frame; level++)
                 TEST(used_from <= *level && *level <= used_to);
             
-            if(ARENA_STACK_DEBUG)
+            if(SCRATCH_ARENA_DEBUG)
             {
                 for(u8** frame_ptr = stack->curr_frame + 1; frame_ptr < frames_end; frame_ptr++)
-                    TEST(*frame_ptr == ARENA_STACK_DEBUG_STACK_PATTERN);
+                    TEST(*frame_ptr == SCRATCH_ARENA_DEBUG_STACK_PATTERN);
             
                 isize till_end = stack->commit_to - used_to;
-                isize check_size = CLAMP(ARENA_STACK_DEBUG_DATA_SIZE, 0, till_end);
+                isize check_size = CLAMP(SCRATCH_ARENA_DEBUG_DATA_SIZE, 0, till_end);
                 for(isize i = 0; i < check_size; i++)
-                    TEST(used_to[i] == ARENA_STACK_DEBUG_DATA_PATTERN);
+                    TEST(used_to[i] == SCRATCH_ARENA_DEBUG_DATA_PATTERN);
             }
         }
     }
 
     INTERNAL void _scratch_arena_check_invariants(Scratch_Arena* arena)
     {
-        if(ARENA_STACK_DEBUG)
+        if(SCRATCH_ARENA_DEBUG)
             scratch_arena_test_invariants(arena);
     }
 
     INTERNAL void _scratch_arena_fill_garbage(Scratch_Arena* arena, isize content_size)
     {
-        if(ARENA_STACK_DEBUG)
-            for(isize k = 0; k < ARENA_STACK_CHANNELS; k++)
+        if(SCRATCH_ARENA_DEBUG)
+            for(isize k = 0; k < SCRATCH_ARENA_CHANNELS; k++)
             {
                 Scratch_Stack* stack = &arena->stacks[k];
 
                 //Fill arena
-                u8** frames_end = stack->frames + arena->frame_capacity/ARENA_STACK_CHANNELS;
+                u8** frames_end = stack->frames + arena->frame_capacity/SCRATCH_ARENA_CHANNELS;
                 for(u8** frame_ptr = stack->curr_frame + 1; frame_ptr < frames_end; frame_ptr++)
-                    *frame_ptr = ARENA_STACK_DEBUG_STACK_PATTERN;
+                    *frame_ptr = SCRATCH_ARENA_DEBUG_STACK_PATTERN;
 
                 //Fill content
                 u8* used_to = *stack->curr_frame;
                 isize till_end = stack->commit_to - used_to;
                 isize check_size = CLAMP(content_size, 0, till_end);
-                memset(used_to, ARENA_STACK_DEBUG_DATA_PATTERN, (size_t) check_size);
+                memset(used_to, SCRATCH_ARENA_DEBUG_DATA_PATTERN, (size_t) check_size);
             }
     }
 #endif

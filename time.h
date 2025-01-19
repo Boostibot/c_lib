@@ -1,5 +1,5 @@
-#ifndef JOT_TIME
-#define JOT_TIME
+#ifndef MODULE_TIME
+#define MODULE_TIME
 
 #include "platform.h"
 #include "defines.h"
@@ -28,8 +28,8 @@ EXTERNAL f32 clock_s32();
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_TIME_IMPL)) && !defined(JOT_TIME_HAS_IMPL)
-#define JOT_TIME_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_TIME)) && !defined(MODULE_HAS_IMPL_TIME)
+#define MODULE_HAS_IMPL_TIME
 
 EXTERNAL f64 platform_perf_counter_frequency_f64()
 {
@@ -93,4 +93,4 @@ EXTERNAL f32 clock_s32()
     f32 counter = (f32) (platform_perf_counter() - platform_perf_counter_startup());
     return counter / freq;
 }
-#endif // !JOT_TIME
+#endif // !MODULE_TIME

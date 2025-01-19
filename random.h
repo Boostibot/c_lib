@@ -1,5 +1,5 @@
-#ifndef JOT_RANDOM
-#define JOT_RANDOM
+#ifndef MODULE_RANDOM
+#define MODULE_RANDOM
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -100,8 +100,8 @@ static inline uint64_t random_xiroshiro256(uint64_t s[4])
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_RANDOM_IMPL)) && !defined(JOT_RANDOM_HAS_IMPL)
-	#define JOT_RANDOM_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_RANDOM)) && !defined(MODULE_HAS_IMPL_RANDOM)
+	#define MODULE_HAS_IMPL_RANDOM
 
 	#if defined(__GNUC__) || defined(__clang__)
 		#define _RAND_THREAD_LOCAL __thread

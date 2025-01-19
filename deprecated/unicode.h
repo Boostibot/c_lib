@@ -1,5 +1,5 @@
-#ifndef JOT_UNICODE
-#define JOT_UNICODE
+#ifndef MODULE_UNICODE
+#define MODULE_UNICODE
 
 // Utility to simply and performantly convert between different unicode standards. 
 // It contains both high level per string api and low level per codepoint api. 
@@ -37,7 +37,7 @@ typedef wchar_t  utf16_t;
 typedef uint32_t utf32_t;
 typedef uint32_t codepoint_t;
 
-#ifndef JOT_DEFINES
+#ifndef MODULE_DEFINES
 typedef int64_t  isize;            //size can be signed or unsigned
 #endif
 #endif
@@ -196,8 +196,8 @@ static void unicode_example_checks()
 
 
 // ========================= IMPLEMENTATION ===========================
-#if (defined(JOT_ALL_IMPL) || defined(JOT_UNICODE_IMPL)) && !defined(JOT_UNICODE_HAS_IMPL)
-#define JOT_UNICODE_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_UNICODE)) && !defined(MODULE_HAS_IMPL_UNICODE)
+#define MODULE_HAS_IMPL_UNICODE
 
 // The last codepoint of the Basic Multilingual Plane, which is the part of Unicode that
 // UTF-16 can encode without surrogates

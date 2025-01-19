@@ -1,5 +1,5 @@
-#ifndef JOT_HASH_STRING
-#define JOT_HASH_STRING
+#ifndef MODULE_HASH_STRING
+#define MODULE_HASH_STRING
 #include "string.h"
 
 typedef struct Hash_String {
@@ -42,8 +42,8 @@ ATTRIBUTE_INLINE_ALWAYS static uint64_t hash64_fnv_inline(const char* data, isiz
 }
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_HASH_STRING_IMPL)) && !defined(JOT_HASH_STRING_HAS_IMPL)
-#define JOT_HASH_STRING_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_HASH_STRING)) && !defined(MODULE_HAS_IMPL_HASH_STRING)
+#define MODULE_HAS_IMPL_HASH_STRING
 
 EXTERNAL Hash_String hash_string_make(String string)
 {

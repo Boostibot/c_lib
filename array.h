@@ -1,5 +1,5 @@
-#ifndef JOT_ARRAY
-#define JOT_ARRAY
+#ifndef MODULE_ARRAY
+#define MODULE_ARRAY
 
 // This freestanding file introduces a simple but powerful typed dynamic array concept.
 // It works by defining struct for each type and then using type untyped macros to work
@@ -20,10 +20,10 @@
 // 4) the array type must be fully explicit. There should never be the case where we return an array from a function and we dont know
 //    what kind of array it is/if it even is a dynamic array. This is another issue with the stb style.
 //
-// This file is also fully freestanding. To compile the function definitions #define JOT_ALL_IMPL and include it again in .c file. 
+// This file is also fully freestanding. To compile the function definitions #define MODULE_IMPL_ALL and include it again in .c file. 
 
-#if !defined(JOT_INLINE_ALLOCATOR) && !defined(JOT_ALLOCATOR) && !defined(JOT_COUPLED)
-    #define JOT_INLINE_ALLOCATOR
+#if !defined(MODULE_INLINE_ALLOCATOR) && !defined(MODULE_ALLOCATOR) && !defined(MODULE_ALL_COUPLED)
+    #define MODULE_INLINE_ALLOCATOR
     #include <stdint.h>
     #include <stdlib.h>
     #include <assert.h>
@@ -191,15 +191,15 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_ARRAY_IMPL)) && !defined(JOT_ARRAY_HAS_IMPL)
-#define JOT_ARRAY_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ARRAY)) && !defined(MODULE_HAS_IMPL_ARRAY)
+#define MODULE_HAS_IMPL_ARRAY
 #include <string.h>
 
 EXTERNAL bool generic_array_is_invariant(Generic_Array gen)
 {
     bool is_capacity_correct = 0 <= gen.array->capacity;
     bool is_size_correct = (0 <= gen.array->count && gen.array->count <= gen.array->capacity);
-    #ifndef JOT_INLINE_ALLOCATOR
+    #ifndef MODULE_INLINE_ALLOCATOR
     if(gen.array->capacity > 0)
         is_capacity_correct = is_capacity_correct && gen.array->allocator != NULL;
     #endif

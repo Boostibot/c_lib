@@ -1,5 +1,5 @@
-﻿#ifndef JOT_PLATFORM
-#define JOT_PLATFORM
+﻿#ifndef MODULE_PLATFORM
+#define MODULE_PLATFORM
 
 //Because I cant be bothered making sure 
 #define _GNU_SOURCE
@@ -896,8 +896,8 @@ static void platform_once_end(volatile uint32_t* once)
 //                               UNIT TESTS 
 // ====================================================================================
 
-#if (defined(JOT_ALL_TEST) || defined(JOT_PLATFORM_TEST)) && !defined(JOT_PLATFORM_HAS_TEST)
-#define JOT_PLATFORM_HAS_TEST
+#if (defined(MODULE_ALL_TEST) || defined(MODULE_PLATFORM_TEST)) && !defined(MODULE_PLATFORM_HAS_TEST)
+#define MODULE_PLATFORM_HAS_TEST
 
 #include <stdint.h>
 #include <string.h>

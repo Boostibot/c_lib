@@ -1,5 +1,5 @@
-#ifndef JOT_STRING
-#define JOT_STRING
+#ifndef MODULE_STRING
+#define MODULE_STRING
 
 #include "allocator.h"
 #include "array.h"
@@ -106,8 +106,8 @@ EXTERNAL bool char_is_alphabetic(char c);
 EXTERNAL bool char_is_id(char c);
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_STRING_IMPL)) && !defined(JOT_STRING_HAS_IMPL)
-#define JOT_STRING_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_STRING)) && !defined(MODULE_HAS_IMPL_STRING)
+#define MODULE_HAS_IMPL_STRING
     #include <string.h>
     
 

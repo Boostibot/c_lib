@@ -1,5 +1,5 @@
-#ifndef JOT_HASH
-#define JOT_HASH
+#ifndef MODULE_HASH
+#define MODULE_HASH
 
 // A simple and flexible linear-probing-hash style hash index. This file is self contained!
 // 
@@ -73,8 +73,8 @@
 // on 'dirty' hashes (where a lot of values are gravestones) however we can solve this by rehashing 
 // after heavy removals/inserts or just lower the load factor.
 
-#if !defined(JOT_INLINE_ALLOCATOR) && !defined(JOT_ALLOCATOR) && !defined(JOT_COUPLED)
-    #define JOT_INLINE_ALLOCATOR
+#if !defined(MODULE_INLINE_ALLOCATOR) && !defined(MODULE_ALLOCATOR) && !defined(MODULE_ALL_COUPLED)
+    #define MODULE_INLINE_ALLOCATOR
     #include <stdint.h>
     #include <stdlib.h>
     #include <assert.h>
@@ -258,8 +258,8 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_HASH_IMPL)) && !defined(JOT_HASH_HAS_IMPL)
-#define JOT_HASH_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_HASH)) && !defined(MODULE_HAS_IMPL_HASH)
+#define MODULE_HAS_IMPL_HASH
     
     #ifndef HASH_DEBUG
         #ifdef DO_ASSERTS_SLOW
@@ -548,7 +548,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
     {
         if(table->entries_count > 0)
         {
-            #ifdef JOT_ARENA_STACK
+            #ifdef MODULE_SCRATCH_ARENA
             SCRATCH_SCOPE(arena)
             {
                 Hash copy = *table;
@@ -590,7 +590,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         if(rehash_to < table->entries_count || (rehash_to == table->entries_count && table->gravestone_count * 100 >= table->entries_count*table->load_factor_gravestone) )
         {
             PROFILE_START(in_place);
-            #ifdef JOT_ARENA_STACK
+            #ifdef MODULE_SCRATCH_ARENA
             if(table->do_in_place_rehash)
                 hash_rehash_in_place(table);
             else

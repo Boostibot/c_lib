@@ -1,5 +1,5 @@
-#ifndef JOT_CHASE_LEV_QUEUE
-#define JOT_CHASE_LEV_QUEUE
+#ifndef MODULE_CHASE_LEV_QUEUE
+#define MODULE_CHASE_LEV_QUEUE
 
 #if defined(_MSC_VER)
     #define CL_QUEUE_INLINE_ALWAYS   __forceinline
@@ -15,7 +15,7 @@
 #ifndef CL_QUEUE_API
     #define CL_QUEUE_API_INLINE         CL_QUEUE_INLINE_ALWAYS static
     #define CL_QUEUE_API                static
-    #define JOT_CHASE_LEV_QUEUE_IMPL
+    #define MODULE_IMPL_CHASE_LEV_QUEUE
 #endif
 
 #include <string.h>
@@ -65,10 +65,10 @@ CL_QUEUE_API_INLINE isize cl_queue_count(const CL_Queue *q);
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_CHASE_LEV_QUEUE_IMPL)) && !defined(JOT_CHASE_LEV_QUEUE_HAS_IMPL)
-#define JOT_CHASE_LEV_QUEUE_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_CHASE_LEV_QUEUE)) && !defined(MODULE_HAS_IMPL_CHASE_LEV_QUEUE)
+#define MODULE_HAS_IMPL_CHASE_LEV_QUEUE
 
-#ifdef JOT_COUPLED
+#ifdef MODULE_ALL_COUPLED
     #include "assert.h"
 #endif
 

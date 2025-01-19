@@ -1,5 +1,5 @@
-#ifndef JOT_ARENA
-#define JOT_ARENA
+#ifndef MODULE_ARENA
+#define MODULE_ARENA
 
 #include "allocator.h"
 #include "profile.h"
@@ -41,8 +41,8 @@ EXTERNAL Allocator_Stats arena_allocator_get_stats(Allocator* self);
 #define ARENA_PUSH(arena_ptr, count, Type) ((Type*) arena_push((arena_ptr), (count) * sizeof(Type), __alignof(Type)))
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_ARENA_IMPL)) && !defined(JOT_ARENA_HAS_IMPL)
-#define JOT_ARENA_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ARENA)) && !defined(MODULE_HAS_IMPL_ARENA)
+#define MODULE_HAS_IMPL_ARENA
 
 EXTERNAL Platform_Error arena_init(Arena* arena, const char* name, isize reserve_size_or_zero, isize commit_granularity_or_zero)
 {

@@ -1,12 +1,12 @@
-#ifndef JOT_HASH_FN
-#define JOT_HASH_FN
+#ifndef MODULE_HASH_FN
+#define MODULE_HASH_FN
 
 #include <stdint.h>
 #include <string.h>
 
 #ifndef HASH_FN_API
     #define HASH_FN_API static inline
-    #define JOT_HASH_FN_IMPL
+    #define MODULE_IMPL_HASH_FN
 #endif
 
 //Hashes a 64 bit value to 64 bit hash.
@@ -44,8 +44,8 @@ HASH_FN_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed);
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_HASH_FN_IMPL)) && !defined(JOT_HASH_FN_HAS_IMPL)
-#define JOT_HASH_FN_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_HASH_FN)) && !defined(MODULE_HAS_IMPL_HASH_FN)
+#define MODULE_HAS_IMPL_HASH_FN
 
 #ifndef REQUIRE
     #include <assert.h>

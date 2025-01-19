@@ -46,7 +46,7 @@
 
 #include "log.h"
 
-#ifdef JOT_LOG
+#ifdef MODULE_LOG
 #define printf(format, ...) LOG_INFO("TEST", (format), ##__VA_ARGS__)
 #endif
 

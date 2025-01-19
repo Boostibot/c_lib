@@ -1,5 +1,5 @@
-﻿#ifndef JOT_VFORMAT
-#define JOT_VFORMAT
+﻿#ifndef MODULE_VFORMAT
+#define MODULE_VFORMAT
 
 #include "string.h"
 #include "profile.h"
@@ -22,10 +22,10 @@ EXTERNAL String_Builder format_no_check(Allocator* alloc, const char* format, ..
 EXTERNAL String translate_error(Allocator* alloc, Platform_Error error);
 EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error error);
 
-#endif // !JOT_VFORMAT
+#endif // !MODULE_VFORMAT
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_VFORMAT_IMPL)) && !defined(JOT_VFORMAT_HAS_IMPL)
-#define JOT_VFORMAT_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_VFORMAT)) && !defined(MODULE_HAS_IMPL_VFORMAT)
+#define MODULE_HAS_IMPL_VFORMAT
     #include <stdio.h>
 
     EXTERNAL void vformat_append_into(String_Builder* append_to, const char* format, va_list args)

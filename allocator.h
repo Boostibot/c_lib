@@ -1,5 +1,5 @@
-#ifndef JOT_ALLOCATOR
-#define JOT_ALLOCATOR
+#ifndef MODULE_ALLOCATOR
+#define MODULE_ALLOCATOR
 
 // This module introduces a framework for dealing with memory and allocation used by every other system.
 // It makes very little assumptions about the use case making it very portable to other projects.
@@ -146,8 +146,8 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_IMPL)) && !defined(JOT_ALLOCATOR_HAS_IMPL)
-#define JOT_ALLOCATOR_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ALLOCATOR)) && !defined(MODULE_HAS_IMPL_ALLOCATOR)
+#define MODULE_HAS_IMPL_ALLOCATOR
 
     EXTERNAL void* scratch_allocator_func(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
 

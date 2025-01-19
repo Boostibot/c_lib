@@ -42,25 +42,25 @@ static void test_arena_unit()
                 //not a fall (due to multiplex)
                 char* pat1_2 = arena_push_string(&level1, PATTERN1);
                 TEST(memcmp(pat1_2, PATTERN1, sizeof PATTERN1 - 1) == 0);
-                TEST(ARENA_STACK_CHANNELS != 2 || arena_stack.fall_count == 0);
+                TEST(SCRATCH_ARENA_CHANNELS != 2 || arena_stack.fall_count == 0);
 
                 Scratch level3 = scratch_acquire(&arena_stack);
                 {
                     char* pat3 = arena_push_string(&level3, PATTERN3); (void) pat3;
-                    TEST(ARENA_STACK_CHANNELS != 2 || arena_stack.fall_count == 0);
+                    TEST(SCRATCH_ARENA_CHANNELS != 2 || arena_stack.fall_count == 0);
                     
                     //fall!
                     char* pat1_3 = arena_push_string(&level1, PATTERN1);
-                    TEST(ARENA_STACK_CHANNELS != 2 || arena_stack.fall_count == 1);
+                    TEST(SCRATCH_ARENA_CHANNELS != 2 || arena_stack.fall_count == 1);
                 
                     Scratch level4 = scratch_acquire(&arena_stack);
                     {
-                        TEST(ARENA_STACK_CHANNELS != 2 || arena_stack.rise_count == 0);
+                        TEST(SCRATCH_ARENA_CHANNELS != 2 || arena_stack.rise_count == 0);
                         Scratch level5 = scratch_acquire(&arena_stack);
                         {
                             //Rise!
                             arena_push_string(&level5, PATTERN3);
-                            TEST(ARENA_STACK_CHANNELS != 2 || arena_stack.rise_count == 1);
+                            TEST(SCRATCH_ARENA_CHANNELS != 2 || arena_stack.rise_count == 1);
                             TEST(memcmp(pat1,   PATTERN1, sizeof PATTERN1 - 1) == 0);
                             TEST(memcmp(pat1_2, PATTERN1, sizeof PATTERN1 - 1) == 0);
                             TEST(memcmp(pat1_3, PATTERN1, sizeof PATTERN1 - 1) == 0);

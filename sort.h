@@ -1,5 +1,5 @@
-#ifndef JOT_SORT
-#define JOT_SORT
+#ifndef MODULE_SORT
+#define MODULE_SORT
 
 // This file provides a replacement for the `qsort` stdlib.h function in a form of custom sorting functions. 
 // By abusing __forceinline and compiler optimalizations we achieve similar effect to c++ templates. 
@@ -24,7 +24,7 @@
         #define SORT_API static inline
     #endif
 
-    #define JOT_SORT_IMPL
+    #define MODULE_IMPL_SORT
 #endif
 
 typedef bool (*Is_Less_Func)(const void* a, const void* b, void* context); 
@@ -66,8 +66,8 @@ SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_it
 #endif
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_SORT_IMPL)) && !defined(JOT_SORT_HAS_IMPL)
-#define JOT_SORT_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_SORT)) && !defined(MODULE_HAS_IMPL_SORT)
+#define MODULE_HAS_IMPL_SORT
 
     #ifndef ASSERT
         #include <assert.h>
@@ -479,7 +479,7 @@ SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_it
 #endif
 
 //================== TESTS =======================
-#if defined(JOT_TEST_SORT) || defined(JOT_ALL_TEST) 
+#if defined(MODULE_TEST_SORT) || defined(MODULE_ALL_TEST) 
     static bool _sort_test_i32_less(const void* a, const void* b, void* context)
     {
         (void) context;

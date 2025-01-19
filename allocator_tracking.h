@@ -1,5 +1,5 @@
-#ifndef JOT_ALLOCATOR_MALLOC
-#define JOT_ALLOCATOR_MALLOC
+#ifndef MODULE_ALLOCATOR_MALLOC
+#define MODULE_ALLOCATOR_MALLOC
 
 // A tracking allocator building block and its use in Tracking_Allocator.
 // 
@@ -65,8 +65,8 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_MALLOC_IMPL)) && !defined(JOT_ALLOCATOR_MALLOC_HAS_IMPL)
-#define JOT_ALLOCATOR_MALLOC_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ALLOCATOR_MALLOC)) && !defined(MODULE_HAS_IMPL_ALLOCATOR_MALLOC)
+#define MODULE_HAS_IMPL_ALLOCATOR_MALLOC
 
     //the way this file is written this can simple be changed to malloc just by defining MALLOC_ALLOCATOR_NAKED
     #ifdef MALLOC_ALLOCATOR_NAKED

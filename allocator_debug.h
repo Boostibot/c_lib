@@ -1,5 +1,5 @@
-#ifndef JOT_DEBUG_ALLOCATOR
-#define JOT_DEBUG_ALLOCATOR
+#ifndef MODULE_DEBUG_ALLOCATOR
+#define MODULE_DEBUG_ALLOCATOR
 
 //It is extremely easy to mess up memory management in some way in C. Even when using hierarchical memory management
 // (local allocator tree) memory leeks are still locally possible which is often not idea. Thus we are need in
@@ -170,8 +170,8 @@ typedef struct Debug_Allocator_Options
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_DEBUG_ALLOCATOR_IMPL)) && !defined(JOT_DEBUG_ALLOCATOR_HAS_IMPL)
-#define JOT_DEBUG_ALLOCATOR_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_DEBUG_ALLOCATOR)) && !defined(MODULE_HAS_IMPL_DEBUG_ALLOCATOR)
+#define MODULE_HAS_IMPL_DEBUG_ALLOCATOR
 
 #define DEBUG_ALLOCATOR_MAGIC_NUM8  (u8)  0x55
 

@@ -1,5 +1,5 @@
-#ifndef JOT_IMAGE
-#define JOT_IMAGE
+#ifndef MODULE_IMAGE
+#define MODULE_IMAGE
 
 #include "allocator.h"
 #include <limits.h>
@@ -125,8 +125,8 @@ EXTERNAL void subimage_copy(Subimage to_image, Subimage image, isize offset_x, i
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_IMAGE_IMPL)) && !defined(JOT_IMAGE_HAS_IMPL)
-#define JOT_IMAGE_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_IMAGE)) && !defined(MODULE_HAS_IMPL_IMAGE)
+#define MODULE_HAS_IMPL_IMAGE
 
 EXTERNAL const char* pixel_type_name(Pixel_Type pixel_type)
 {

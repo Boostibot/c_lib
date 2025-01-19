@@ -1,5 +1,5 @@
-#ifndef JOT_MAP_STRING
-#define JOT_MAP_STRING
+#ifndef MODULE_MAP_STRING
+#define MODULE_MAP_STRING
 
 #include "map.h"
 #include "hash_string.h"
@@ -51,8 +51,8 @@ EXTERNAL i32  string_map_remove(String_Map* map, Hash_String key);
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_MAP_STRING_IMPL)) && !defined(JOT_MAP_STRING_HAS_IMPL)
-#define JOT_MAP_STRING_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_MAP_STRING)) && !defined(MODULE_HAS_IMPL_MAP_STRING)
+#define MODULE_HAS_IMPL_MAP_STRING
 
 MAPAPI u64 _string_map_key_hash(Hash_String* stored_key, String_Map* map)
 {

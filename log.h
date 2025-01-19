@@ -1,5 +1,5 @@
-﻿#ifndef JOT_LOG
-#define JOT_LOG
+﻿#ifndef MODULE_LOG
+#define MODULE_LOG
 
 #ifndef EXTERNAL
     #define EXTERNAL
@@ -107,9 +107,9 @@ EXTERNAL void file_logger_deinit(File_Logger* logger);
 EXTERNAL void silent_logger_log(Logger* self, Log_Event event, const char* format, va_list args);
 #endif
 
-#define JOT_ALL_IMPL
-#if (defined(JOT_ALL_IMPL) || defined(JOT_LOG_IMPL)) && !defined(JOT_LOG_HAS_IMPL)
-#define JOT_LOG_HAS_IMPL
+#define MODULE_IMPL_ALL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_LOG)) && !defined(MODULE_HAS_IMPL_LOG)
+#define MODULE_HAS_IMPL_LOG
 
 static File_Logger _console_logger = {file_logger_log};
 static Logger _silent_logger = {silent_logger_log};
@@ -436,7 +436,7 @@ INTERNAL char* _log_builder_append_fmt(_Log_Builder* builder_or_null, const char
     return out;  
 }
 
-#if defined(JOT_PLATFORM) || defined(JOT_COUPLED)
+#if defined(MODULE_PLATFORM) || defined(MODULE_ALL_COUPLED)
     #include "platform.h"
     INTERNAL const char* _log_thread_name()
     {

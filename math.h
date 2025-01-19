@@ -1,5 +1,5 @@
-#ifndef JOT_MATH
-#define JOT_MATH
+#ifndef MODULE_MATH
+#define MODULE_MATH
 
 //A file defining basic linear algebra functions working with vectors, matrices and quaternions (TODO)
 // This file is self contained.
@@ -11,7 +11,7 @@
 #include <assert.h>
 #include <stdbool.h>
 
-#if !defined(ASSERT) && !defined(JOT_ASSERT)
+#if !defined(ASSERT) && !defined(MODULE_ASSERT)
     #define ASSERT(x) assert(x)
 #endif // !ASSERT
 

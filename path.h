@@ -1,5 +1,5 @@
-#ifndef JOT_PATH
-#define JOT_PATH
+#ifndef MODULE_PATH
+#define MODULE_PATH
 
 #include "string.h"
 #include "scratch.h"
@@ -199,8 +199,8 @@ EXTERNAL Path_Builder path_get_current_working_directoryXXX(Allocator* alloc, Pl
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_PATH_IMPL)) && !defined(JOT_PATH_HAS_IMPL)
-#define JOT_PATH_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_PATH)) && !defined(MODULE_HAS_IMPL_PATH)
+#define MODULE_HAS_IMPL_PATH
 
 #ifndef PROFILE_START
     #define PROFILE_START(...)
@@ -1093,8 +1093,8 @@ EXTERNAL Path_Builder path_get_current_working_directoryXXX(Allocator* alloc, Pl
 
 #endif
 
-#if (defined(JOT_ALL_TEST) || defined(JOT_PATH_TEST)) && !defined(JOT_PATH_HAS_TEST)
-#define JOT_PATH_HAS_TEST
+#if (defined(MODULE_ALL_TEST) || defined(MODULE_PATH_TEST)) && !defined(MODULE_PATH_HAS_TEST)
+#define MODULE_PATH_HAS_TEST
 
 #define TEST_STRING_EQ(str1, str2) TEST(string_is_equal((str1), (str2)), "'%.*s' == '%.*s'", (int) str1.count, str1.data, (int) str2.count, str2.data)
 

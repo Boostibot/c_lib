@@ -1,5 +1,5 @@
-#ifndef JOT_PARSE
-#define JOT_PARSE
+#ifndef MODULE_PARSE
+#define MODULE_PARSE
 
 #include "defines.h"
 #include "string.h"
@@ -52,8 +52,8 @@ EXTERNAL String string_trim_whitespace(String s);
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_PARSE_IMPL)) && !defined(JOT_PARSE_HAS_IMPL)
-#define JOT_PARSE_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_PARSE)) && !defined(MODULE_HAS_IMPL_PARSE)
+#define MODULE_HAS_IMPL_PARSE
 
 
 

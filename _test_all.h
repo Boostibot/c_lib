@@ -1,13 +1,12 @@
-#ifndef JOT_TEST_ALL_H
-#define JOT_TEST_ALL_H
+#ifndef MODULE_TEST_ALL
+#define MODULE_TEST_ALL
 
 #if defined(TEST_RUNNER)
-#define JOT_ALL_IMPL
-#define JOT_PANIC_IMPL
+#define MODULE_IMPL_ALL
 #endif
 
-#define JOT_COUPLED
-#define JOT_ALL_TEST
+#define MODULE_ALL_COUPLED
+#define MODULE_ALL_TEST
 #include "platform.h"
 #include "defines.h"
 #include "assert.h"
@@ -47,13 +46,13 @@ typedef struct Test_Run_Context {
     double max_time;
 } Test_Run_Context;
 
-EXTERNAL bool run_test(Test_Run_Context context);
-EXTERNAL int run_tests(int* total, double time, ...);
+static bool run_test(Test_Run_Context context);
+static int run_tests(int* total, double time, ...);
 
 #define UNIT_TEST(func) BINIT(Test_Run_Context){(void*) (func), #func, TEST_FUNC_TYPE_SIMPLE}
 #define TIMED_TEST(func, ...) BINIT(Test_Run_Context){(void*) (func), #func, TEST_FUNC_TYPE_TIMED, 0, ##__VA_ARGS__}
 
-INTERNAL void test_all(double total_time)
+static void test_all(double total_time)
 {
     run_tests(NULL, total_time, 
         UNIT_TEST(platform_test_all),
@@ -103,7 +102,7 @@ INTERNAL void test_all(double total_time)
     #endif
 #endif
 
-EXTERNAL void _run_test_try(void* context)
+static void _run_test_try(void* context)
 {
     Test_Run_Context* c = (Test_Run_Context*) context;
     switch(c->type)
@@ -118,7 +117,7 @@ EXTERNAL void _run_test_try(void* context)
     }
 }
 
-EXTERNAL void _run_test_recover(void* context, Platform_Sandbox_Error error)
+static void _run_test_recover(void* context, Platform_Sandbox_Error error)
 {
     Test_Run_Context* c = (Test_Run_Context*) context;
     if(error.exception != PLATFORM_EXCEPTION_ABORT)
@@ -128,7 +127,7 @@ EXTERNAL void _run_test_recover(void* context, Platform_Sandbox_Error error)
     }
 }
 
-EXTERNAL bool run_test(Test_Run_Context context)
+static bool run_test(Test_Run_Context context)
 {
     PROFILE_START();
     switch(context.type)
@@ -148,7 +147,7 @@ EXTERNAL bool run_test(Test_Run_Context context)
     return success;
 }
 
-EXTERNAL int run_tests(int* total, double time, ...)
+static int run_tests(int* total, double time, ...)
 {
     Test_Run_Context contexts[256] = {0};
     int count = 0;

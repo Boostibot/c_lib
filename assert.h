@@ -1,5 +1,5 @@
-#ifndef JOT_ASSERT
-#define JOT_ASSERT
+#ifndef MODULE_ASSERT
+#define MODULE_ASSERT
 
     #include <stdarg.h>
     #include <stdio.h>
@@ -158,8 +158,8 @@
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_ASSERT_IMPL)) && !defined(JOT_ASSERT_HAS_IMPL)
-#define JOT_ASSERT_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ASSERT)) && !defined(MODULE_HAS_IMPL_ASSERT)
+#define MODULE_HAS_IMPL_ASSERT
 
 static _Thread_local Panic_Handler _thread_panic_handler = {panic_default_handler_func, panic_default_handler_break_into_debugger};
 static _Thread_local int _thread_panic_depth = 0;

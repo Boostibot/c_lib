@@ -1,5 +1,5 @@
-#ifndef JOT_BASE64
-#define JOT_BASE64
+#ifndef MODULE_BASE64
+#define MODULE_BASE64
 
 // A simple base64 encode/decode facility. It does not require any allocations or other system resources.
 // 
@@ -98,8 +98,8 @@ EXTERNAL const uint8_t* base64_decoding_table_universal();
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_BASE64_IMPL)) && !defined(JOT_BASE64_HAS_IMPL)
-#define JOT_BASE64_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_BASE64_IMPL)) && !defined(MODULE_BASE64_HAS_IMPL)
+#define MODULE_BASE64_HAS_IMPL
 
 EXTERNAL int64_t base64_encode_max_output_length(int64_t input_length)
 {

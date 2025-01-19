@@ -3,6 +3,7 @@
 #include "math.h"
 #include <time.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #ifndef TEST
 #include <assert.h>
@@ -105,52 +106,6 @@ static void test_vec3_identities(Vec3 a, Vec3 b)
 
         #undef SQR
     }
-}
-
-#if 0
-//TODO:
-#include "linmath/linmath.h"
-
-static void test_mat4_render_utils(Vec3 cam, Vec3 cam_front, Vec3 cam_up, float aspect, Vec3 axis, float rotation, Vec3 point1, Vec3 point2, Vec3 point3)
-{
-    //@NOTE: these tests work by comparison. We calculate in paralel the transforms using out library and the linmath library
-    //       we trust linmath library. In fututure it would be ideal to have these tests freestanding
-
-    #define TO_LINMATH(vec) {vec.x, vec.y, vec.z}
-    _Vec3 _cam = TO_LINMATH(cam);
-    _Vec3 _cam_front = TO_LINMATH(cam_front);
-    _Vec3 _cam_up = TO_LINMATH(cam_up);
-    //_Vec3 _axis = TO_LINMATH(axis);
-    //_Vec3 _point1 = TO_LINMATH(point1);
-    //_Vec3 _point2 = TO_LINMATH(point2);
-    //_Vec3 _point3 = TO_LINMATH(point3);
-    #undef TO_LINMATH
-
-    (void) aspect;
-    (void) axis;
-    (void) rotation;
-    (void) point1;
-    (void) point2;
-    (void) point3;
-
-    mat4x4 _view = {0};
-    Mat4 view = mat4_look_at(cam, cam_front, cam_up);
-    _mat4x4_look_at(_view, _cam, _cam_front, _cam_up);
-
-    {
-        float* elems = AS_FLOATS(view);
-        float* _elems = AS_FLOATS(_view);
-        for(int i = 0; i < 4*4; i++)
-        {
-            TEST_NEAR_FLOAT(elems[i], _elems[i], "The produced view matrices must be equal!");
-        }
-    }
-}
-#endif
-
-static void test_mat4_transforms()
-{
-
 }
 
 static float _test_math_random_f()

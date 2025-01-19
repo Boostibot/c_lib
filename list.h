@@ -1,5 +1,5 @@
-#ifndef JOT_LIST
-#define JOT_LIST
+#ifndef MODULE_LIST
+#define MODULE_LIST
 
 //An implementation of type generic intrusive linked list structures 
 // stolen from Ryan Fleury's codebase. This file is self contained.
@@ -183,8 +183,8 @@
 
 #endif
 
-#if (defined(JOT_ALL_TEST) || defined(JOT_LIST_TEST)) && !defined(JOT_LIST_HAS_TEST)
-#define JOT_LIST_HAS_TEST
+#if (defined(MODULE_ALL_TEST) || defined(MODULE_LIST_TEST)) && !defined(MODULE_LIST_HAS_TEST)
+#define MODULE_LIST_HAS_TEST
 
 #ifndef TEST
     #define TEST(x) assert(x)

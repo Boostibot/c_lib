@@ -1,5 +1,5 @@
-#ifndef JOT_FILE
-#define JOT_FILE
+#ifndef MODULE_FILE
+#define MODULE_FILE
 
 #include "string.h"
 #include "platform.h"
@@ -10,8 +10,8 @@ EXTERNAL Platform_Error file_append_entire(String file_path, String data);
 EXTERNAL Platform_Error file_write_entire(String file_path, String data);
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_FILE_IMPL)) && !defined(JOT_FILE_HAS_IMPL)
-#define JOT_FILE_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_FILE)) && !defined(MODULE_HAS_IMPL_FILE)
+#define MODULE_HAS_IMPL_FILE
 
 EXTERNAL Platform_Error file_read_entire_append(String file_path, String_Builder* append_into, Platform_File_Info* info_or_null)
 {

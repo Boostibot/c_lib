@@ -1,5 +1,5 @@
-#ifndef JOT_ALLOCATOR_TLSF
-#define JOT_ALLOCATOR_TLSF
+#ifndef MODULE_ALLOCATOR_TLSF
+#define MODULE_ALLOCATOR_TLSF
 
 // An implementation of TLSF style allocator.
 // See https://ieeexplore.ieee.org/document/528746/ [T. Ogasawara, "An algorithm with constant execution time for dynamic storage allocation,"] for a paper introducing this type of allocator.
@@ -170,7 +170,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-#if !defined(JOT_ALLOCATOR) && !defined(JOT_COUPLED)
+#if !defined(MODULE_ALLOCATOR) && !defined(MODULE_ALL_COUPLED)
     #include <assert.h>
     #include <stdlib.h>
     
@@ -310,8 +310,8 @@ EXTERNAL void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node
 #endif
 
 //=========================  IMPLEMENTATION BELOW ==================================================
-#if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_TLSF_IMPL)) && !defined(JOT_ALLOCATOR_TLSF_HAS_IMPL)
-#define JOT_ALLOCATOR_TLSF_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ALLOCATOR_TLSF)) && !defined(MODULE_HAS_IMPL_ALLOCATOR_TLSF)
+#define MODULE_HAS_IMPL_ALLOCATOR_TLSF
 
 #if defined(_MSC_VER)
     #include <intrin.h>
@@ -689,7 +689,7 @@ EXTERNAL void tlsf_grow_nodes(Tlsf_Allocator* allocator, void* new_node_memory, 
     _tlsf_check_invariants(allocator);
 }
 
-#ifdef JOT_ALLOCATOR
+#ifdef MODULE_ALLOCATOR
     INTERNAL void* _tlsf_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
     {
         Tlsf_Allocator* allocator = (Tlsf_Allocator*) (void*) self;
@@ -751,7 +751,7 @@ EXTERNAL bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize m
     allocator->node_capacity = (uint32_t) node_capacity;
     allocator->node_count = 0;
     
-    #ifdef JOT_ALLOCATOR
+    #ifdef MODULE_ALLOCATOR
         allocator->allocator.func = _tlsf_allocator_func;
         allocator->allocator.get_stats = _tlsf_allocator_get_stats;
     #endif
@@ -1098,8 +1098,8 @@ INTERNAL void _tlsf_check_invariants(Tlsf_Allocator* allocator)
 
 #endif
 
-#if (defined(JOT_ALL_TEST) || defined(JOT_ALLOCATOR_TLSF_TEST)) && !defined(JOT_ALLOCATOR_TLSF_HAS_TEST)
-#define JOT_ALLOCATOR_TLSF_HAS_TEST
+#if (defined(MODULE_ALL_TEST) || defined(MODULE_ALLOCATOR_TLSF_TEST)) && !defined(MODULE_ALLOCATOR_TLSF_HAS_TEST)
+#define MODULE_ALLOCATOR_TLSF_HAS_TEST
 
 #ifndef ARRAY_LEN
     #define ARRAY_LEN(arr) (isize)(sizeof(arr)/sizeof((arr)[0]))
@@ -1301,7 +1301,7 @@ void test_allocator_tlsf(double seconds)
 
 //Include the benchmark only when being included alongside the rest of the codebase
 // since I cant be bothered to make it work without any additional includes
-#ifdef JOT_ALLOCATOR
+#ifdef MODULE_ALLOCATOR
     #include "perf.h"
     #include "random.h"
     #include "log.h"

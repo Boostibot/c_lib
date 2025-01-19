@@ -1,5 +1,5 @@
-#ifndef JOT_DEFINES
-#define JOT_DEFINES
+#ifndef MODULE_DEFINES
+#define MODULE_DEFINES
 
 #include <stdint.h>
 #include <stddef.h>

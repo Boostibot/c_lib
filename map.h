@@ -1,5 +1,5 @@
-#ifndef JOT_MAP
-#define JOT_MAP
+#ifndef MODULE_MAP
+#define MODULE_MAP
 
 #include "hash.h"
 #include "defines.h"
@@ -8,7 +8,7 @@
 
 #ifndef MAPAPI
     #define MAPAPI static ATTRIBUTE_INLINE_ALWAYS 
-    #define JOT_MAP_IMPL
+    #define MODULE_IMPL_MAP
 #endif
 
 typedef struct Map {
@@ -133,8 +133,8 @@ MAPAPI Map_Found map_assign_or_insert(Map* map, const void* key, u64 hash, const
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_MAP_IMPL)) && !defined(JOT_MAP_HAS_IMPL)
-#define JOT_MAP_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_MAP)) && !defined(MODULE_HAS_IMPL_MAP)
+#define MODULE_HAS_IMPL_MAP
 
 #ifndef MAP_DEBUG
     #if defined(DO_ASSERTS_SLOW)

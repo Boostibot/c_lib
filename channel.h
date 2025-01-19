@@ -1,5 +1,5 @@
-#ifndef JOT_CHANNEL
-#define JOT_CHANNEL
+#ifndef MODULE_CHANNEL
+#define MODULE_CHANNEL
 
 //==========================================================================
 // Channel (high throuput concurrent queue)
@@ -55,7 +55,7 @@
     #define CHANAPI        _CHAN_INLINE_ALWAYS static
     #define CHAN_INTRINSIC _CHAN_INLINE_ALWAYS static //TODO remove
     #define CHAN_OS_API    static
-    #define JOT_CHANNEL_IMPL
+    #define MODULE_IMPL_CHANNEL
     #define CHAN_CACHE_LINE 64
 #endif
 
@@ -210,10 +210,10 @@ CHAN_OS_API bool chan_start_thread(void (*func)(void* context), void* context);
 
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_CHANNEL_IMPL)) && !defined(JOT_CHANNEL_HAS_IMPL)
-#define JOT_CHANNEL_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_CHANNEL)) && !defined(MODULE_HAS_IMPL_CHANNEL)
+#define MODULE_HAS_IMPL_CHANNEL
 
-#ifdef JOT_COUPLED
+#ifdef MODULE_ALL_COUPLED
     #include "assert.h"
 #endif
 #ifndef ASSERT

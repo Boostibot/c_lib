@@ -1,5 +1,5 @@
-#ifndef JOT_PERF
-#define JOT_PERF
+#ifndef MODULE_PERF
+#define MODULE_PERF
 
 #include <stdbool.h>
 #include <math.h>
@@ -124,8 +124,8 @@ static void perf_benchmark_example()
 }
 #endif
 
-#if (defined(JOT_ALL_IMPL) || defined(JOT_PERF_IMPL)) && !defined(JOT_PERF_HAS_IMPL)
-#define JOT_PERF_HAS_IMPL
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_PERF)) && !defined(MODULE_HAS_IMPL_PERF)
+#define MODULE_HAS_IMPL_PERF
 
 	EXTERNAL Perf_Counter perf_counter_init(int64_t mean_estimate)
 	{
