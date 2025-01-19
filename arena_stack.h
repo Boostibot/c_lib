@@ -2,7 +2,7 @@
 #define JOT_ARENA_STACK
 
 // This is a 'safe' implementation of the arena concept. It maintains the stack like order of allocations 
-// on its own without the possibility of accidental invalidation of allocations from 'lower' levels. 
+// on its own without the possibility of accidental invalidation of allocations from 'lower' frames. 
 // (Read more for proper explanations).
 // 
 // Arena_Frame is a allocator used to conglomerate individual allocations to a continuous buffer, which allows for
@@ -60,19 +60,19 @@
 // style) will save us if we are not careful. I will be presuming two memory regions A and B in the examples 
 // below but the examples trivially extend to N arenas.
 // 
-// To illustrate the point we will need to start talking about *levels*.
+// To illustrate the point we will need to start talking about *frames*.
 // Level is a positive number starting at 1 that gets incremented every time we acquire Arena_Frame from Arena_Stack
 // and decremented whenever we release the acquired Arena_Frame. This corresponds to a depth in a stack.
 //
-// The diagrams show next_level_ptr on the Y axis along with the memory region A, B where the next_level_ptr resides in. The X axis
+// The diagrams show ptr on the Y axis along with the memory region A, B where the ptr resides in. The X axis
 // shows the order of allocations. ### is symbol marking the alive region of an allocation. It is preceeded by a 
-// number corresponding to the next_level_ptr it was allocated from.
+// number corresponding to the ptr it was allocated from.
 //
 // First we illustrate the problem above with two memory regions A and B in diagram form.
 // 
-// next_level_ptr
+// ptr
 //   ^
-// A |         3### [1]### //here we allocate at next_level_ptr one from A
+// A |         3### [1]### //here we allocate at ptr one from A
 // B |     2###
 // A | 1###
 //   +--------------------------> time
@@ -86,7 +86,7 @@
 // 
 // One potential fix is to enforce the stack like nesting by flattening out the arena_frame_acquire()/arena_frame_release() 
 // on problematic allocations 'from below' ([1]). We dont actually have to do anything besides ignoring calls 
-// to arena_frame_release of levels 2 and 3 (somehow). In diagram form:
+// to arena_frame_release of frames 2 and 3 (somehow). In diagram form:
 // 
 //   ^
 // A |         3### 
@@ -102,7 +102,7 @@
 // A | 1###2###3###1###  //We completely ignore the 2, 3 Allocations and are treating them as a part of 1
 //   +--------------------------> time
 //
-// Now of course we are having a next_level_ptr 2 and next_level_ptr 3 worth of wasted memory inside the next_level_ptr 1 allocation. 
+// Now of course we are having a ptr 2 and ptr 3 worth of wasted memory inside the ptr 1 allocation. 
 // This is suboptimal but clearly better then having a hard to track down error.
 //
 // ===================================== IMPLEMENTATION =================================================
@@ -136,22 +136,20 @@
 typedef struct Arena_Stack_Channel {
     union {
         u8* data;
-        u8** levels;
+        u8** frames;
     };
     u8*  commit_to;
-    u8** active_level; 
+    u8** curr_frame; 
 } Arena_Stack_Channel;
 
 typedef struct Arena_Stack {
     Arena_Stack_Channel channels[ARENA_STACK_CHANNELS];
-    u32 max_alive_level;
-    u32 channel_level_count;
-    u32 total_level_count;
-    u32 _;
+    u32 frame_count;
+    u32 frame_capacity;
 
+    u8* reserved_from;
+    isize reserved_size;
     isize commit_granularity;
-    isize channel_reserved_size;
-    isize total_reserved_size;
 
     //purely informative
     const char* name;
@@ -166,7 +164,7 @@ typedef struct Arena_Frame {
     Allocator alloc[1];
     Arena_Stack* stack;
     Arena_Stack_Channel* channel;
-    u8** next_level_ptr;
+    u8** ptr;
     u32 level;
     u32 _;
 } Arena_Frame;
@@ -204,9 +202,8 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
     EXTERNAL void arena_stack_deinit(Arena_Stack* stack)
     {
         _arena_stack_check_invariants(stack);
-        for(isize i = 0; i < ARENA_STACK_CHANNELS; i++)
-            if(stack->channels[i].data)
-                platform_virtual_reallocate(NULL, stack->channels[i].data, stack->channel_reserved_size, PLATFORM_VIRTUAL_ALLOC_RELEASE, PLATFORM_MEMORY_PROT_NO_ACCESS);
+        if(stack->reserved_from)
+            platform_virtual_reallocate(NULL, stack->reserved_from, stack->reserved_size, PLATFORM_VIRTUAL_ALLOC_RELEASE, PLATFORM_MEMORY_PROT_NO_ACCESS);
         memset(stack, 0, sizeof *stack);
     }
 
@@ -215,91 +212,92 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
         arena_stack_deinit(stack);
         isize alloc_granularity = platform_allocation_granularity();
     
+        //validate and normalize args
         REQUIRE(reserve_size_or_zero >= 0);
         REQUIRE(commit_granularity_or_zero >= 0);
-        REQUIRE(alloc_granularity >= 0);
+        REQUIRE(level_count_or_zero >= 0);
+        REQUIRE(alloc_granularity >= 1);
     
         isize commit_granularity = commit_granularity_or_zero > 0 ? commit_granularity_or_zero : ARENA_STACK_DEF_COMMIT_SIZE;
-        commit_granularity = DIV_CEIL(commit_granularity, alloc_granularity)*alloc_granularity;
-
         isize reserve_size = reserve_size_or_zero > 0 ? reserve_size_or_zero : ARENA_STACK_DEF_RESERVE_SIZE;
-        isize channel_reserve_size = DIV_CEIL(reserve_size, alloc_granularity*ARENA_STACK_CHANNELS)*alloc_granularity;
-        reserve_size = channel_reserve_size*ARENA_STACK_CHANNELS;
-
         isize level_count = level_count_or_zero > 0 ? level_count_or_zero : ARENA_STACK_DEF_STACK_SIZE;
-        isize channel_level_count = MIN(level_count/ARENA_STACK_CHANNELS, reserve_size/isizeof(u8*));
-        level_count = channel_level_count*ARENA_STACK_CHANNELS;
+        
+        #define _ROUND_UP(val, to) (((val) + (to) - 1)/(to)*(to))
 
-        isize levels_commit_size = DIV_CEIL(level_count, commit_granularity)*commit_granularity;
+        commit_granularity = _ROUND_UP(commit_granularity, alloc_granularity);
+        reserve_size = _ROUND_UP(reserve_size, alloc_granularity*ARENA_STACK_CHANNELS);
+        level_count = MIN(level_count, reserve_size/isizeof(u8*));
+        level_count = _ROUND_UP(level_count, ARENA_STACK_CHANNELS);
 
+        //reserve eveyrthing
+        u8* reserved_from = 0;
+        Platform_Error error = platform_virtual_reallocate((void**) &reserved_from, NULL, reserve_size, PLATFORM_VIRTUAL_ALLOC_RESERVE, PLATFORM_MEMORY_PROT_NO_ACCESS);
+            
+        //commit levels
         u8* datas[ARENA_STACK_CHANNELS] = {NULL};
-        Platform_Error error = 0;
+        isize frames_commit_size = _ROUND_UP(level_count*isizeof(u8*)/ARENA_STACK_CHANNELS, commit_granularity);
         for(isize i = 0; i < ARENA_STACK_CHANNELS; i++)
         {
-            error = platform_virtual_reallocate((void**) &datas[i], NULL, reserve_size, PLATFORM_VIRTUAL_ALLOC_RESERVE, PLATFORM_MEMORY_PROT_NO_ACCESS);
             if(error != 0)
                 break;
 
-            error = platform_virtual_reallocate(NULL, datas[i], levels_commit_size, PLATFORM_VIRTUAL_ALLOC_COMMIT, PLATFORM_MEMORY_PROT_READ_WRITE);
-            if(error != 0)
-                break;
+            datas[i] = reserved_from + reserve_size/ARENA_STACK_CHANNELS*i;
+            error = platform_virtual_reallocate(NULL, datas[i], frames_commit_size, PLATFORM_VIRTUAL_ALLOC_COMMIT, PLATFORM_MEMORY_PROT_READ_WRITE);
         }
     
+        //fill struct
         if(error == 0)
         {
             for(isize i = 0; i < ARENA_STACK_CHANNELS; i++)
             {
                 Arena_Stack_Channel* channel = &stack->channels[i];
                 channel->data = datas[i];
-                channel->commit_to = channel->data + levels_commit_size;
-                channel->active_level = channel->levels;
-                *channel->active_level = (u8*) (channel->levels + level_count);
+                channel->commit_to = channel->data + frames_commit_size;
+                channel->curr_frame = channel->frames;
+                *channel->curr_frame = (u8*) (channel->frames + level_count/ARENA_STACK_CHANNELS);
             }
         
             stack->commit_granularity = commit_granularity;
-            stack->channel_level_count = (u32) channel_level_count;
-            stack->total_level_count = (u32) level_count;
-            stack->channel_reserved_size = channel_reserve_size;
-            stack->total_reserved_size = reserve_size;
+            stack->frame_capacity = (u32) level_count;
+            stack->reserved_size = reserve_size;
             stack->name = name;
-            stack->max_alive_level = 0;
+            stack->frame_count = 0;
         
-            _arena_stack_fill_garbage(stack, levels_commit_size);
+            _arena_stack_fill_garbage(stack, frames_commit_size);
         }
         else
         {  
-            for(isize i = 0; i < ARENA_STACK_CHANNELS; i++)
-                if(datas[i])
-                    platform_virtual_reallocate(NULL, datas[i], reserve_size, PLATFORM_VIRTUAL_ALLOC_RELEASE, PLATFORM_MEMORY_PROT_NO_ACCESS);
+            if(reserved_from)
+                platform_virtual_reallocate(NULL, reserved_from, reserve_size, PLATFORM_VIRTUAL_ALLOC_RELEASE, PLATFORM_MEMORY_PROT_NO_ACCESS);
         }
     
         _arena_stack_check_invariants(stack);
         return error;
     }
 
-    EXTERNAL ATTRIBUTE_INLINE_NEVER void* _arena_frame_handle_unusual_push(Arena_Stack* stack, Arena_Stack_Channel* channel, u8** max_alive_level, isize size, isize align, Allocator_Error* error)
+    EXTERNAL ATTRIBUTE_INLINE_NEVER void* _arena_frame_handle_unusual_push(Arena_Stack* stack, Arena_Stack_Channel* channel, u8** frame_ptr, isize size, isize align, Allocator_Error* error)
     {
         PROFILE_START();
         _arena_stack_check_invariants(stack);
         
-        u8* used_to = *channel->active_level;
+        u8* used_to = *channel->curr_frame;
     
         //fall
-        if(max_alive_level < channel->active_level)
+        if(frame_ptr < channel->curr_frame)
         {
-            *max_alive_level = used_to;
+            *frame_ptr = used_to;
             stack->fall_count += 1;
         }
 
         //rise
-        if(max_alive_level > channel->active_level)
+        if(frame_ptr > channel->curr_frame)
         {
-            for(u8** next_level_ptr = channel->active_level + 1; next_level_ptr <= max_alive_level; next_level_ptr++)
-                *next_level_ptr = used_to;
+            for(u8** ptr = channel->curr_frame + 1; ptr <= frame_ptr; ptr++)
+                *ptr = used_to;
             stack->rise_count += 1;
         }
 
-        u8* out = (u8*) align_forward(*max_alive_level, align);
+        u8* out = (u8*) align_forward(*frame_ptr, align);
         u8* new_used_to = out + size;
         isize commit = 0;
         if((u8*) new_used_to > channel->commit_to)
@@ -307,12 +305,13 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
             commit = DIV_CEIL(size, stack->commit_granularity)*stack->commit_granularity;
             ASSERT((size_t) channel->commit_to % platform_allocation_granularity() == 0);
 
-            if(commit > stack->channel_reserved_size)
+            isize reseved_size = stack->reserved_size/ARENA_STACK_CHANNELS;
+            if(channel->commit_to + commit > channel->data + reseved_size)
             {
                 out = NULL;
                 allocator_error(error, ALLOCATOR_ERROR_OUT_OF_MEM, NULL, size, NULL, 0, align, 
                     "More memory is needed then reserved! Reserved: %.2lf MB, commit: %.2lf MB", 
-                    (double) (stack->channel_reserved_size)/MB, (double) (channel->commit_to - channel->data)/MB);
+                    (double) (reseved_size)/MB, (double) (channel->commit_to - channel->data)/MB);
                 goto end;
             }
             
@@ -331,8 +330,8 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
             channel->commit_to += commit;
         }
 
-        channel->active_level = max_alive_level;
-        *max_alive_level = new_used_to;
+        channel->curr_frame = frame_ptr;
+        *frame_ptr = new_used_to;
 
         _arena_stack_fill_garbage(stack, commit);
         _arena_stack_check_invariants(stack);
@@ -345,17 +344,17 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
     EXTERNAL ATTRIBUTE_INLINE_ALWAYS void* arena_frame_push_nonzero_error(Arena_Frame* frame, isize size, isize align, Allocator_Error* error)
     {
         PROFILE_START();
-        REQUIRE(frame->stack && frame->channel && 0 <= frame->level && frame->level <= frame->stack->max_alive_level, 
+        REQUIRE(frame->stack && frame->channel && 0 <= frame->level && frame->level <= frame->stack->frame_count, 
             "Using an invalid frame! Its not initialized or it was used after it or a parent frame was released!");
         Arena_Stack_Channel* channel = frame->channel;
         _arena_stack_check_invariants(frame->stack);
 
-        u8* out = (u8*) align_forward(*frame->next_level_ptr, align);
-        if(channel->active_level != frame->next_level_ptr || out + size > channel->commit_to)
-            out = (u8*) _arena_frame_handle_unusual_push(frame->stack, frame->channel, frame->next_level_ptr, size, align, error);
+        u8* out = (u8*) align_forward(*frame->ptr, align);
+        if(channel->curr_frame != frame->ptr || out + size > channel->commit_to)
+            out = (u8*) _arena_frame_handle_unusual_push(frame->stack, frame->channel, frame->ptr, size, align, error);
         else
         {
-            *frame->next_level_ptr = out + size;
+            *frame->ptr = out + size;
             _arena_stack_check_invariants(frame->stack);
         }
 
@@ -378,24 +377,24 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
     EXTERNAL ATTRIBUTE_INLINE_ALWAYS Arena_Frame arena_frame_acquire(Arena_Stack* stack)
     {
         PROFILE_START();
-        REQUIRE(stack->max_alive_level < stack->total_level_count, "Too many arena levels!");
+        REQUIRE(stack->frame_count < stack->frame_capacity, "Too many arena frames or uninit");
         _arena_stack_check_invariants(stack);
 
-        u32 level_i   = stack->max_alive_level / ARENA_STACK_CHANNELS;
-        u32 channel_i = stack->max_alive_level % ARENA_STACK_CHANNELS;
+        u32 level_i   = stack->frame_count / ARENA_STACK_CHANNELS;
+        u32 channel_i = stack->frame_count % ARENA_STACK_CHANNELS;
         Arena_Stack_Channel* channel = &stack->channels[channel_i];
     
-        //Here we could do a full for loop setting all levels affected by the 'rise' 
+        //Here we could do a full for loop setting all frames affected by the 'rise' 
         // similar to the one in "_arena_frame_handle_unusual_push"
         // However, the situation that requires the full for loop is very unlikely. 
-        // Thus we only do one next_level_ptr (which is the usual case) and let the rest be 
+        // Thus we only do one ptr (which is the usual case) and let the rest be 
         // handled in "_arena_frame_handle_unusual_push".
-        *(channel->active_level + 1) = *channel->active_level;
-        channel->active_level += 1;
+        *(channel->curr_frame + 1) = *channel->curr_frame;
+        channel->curr_frame += 1;
 
         Arena_Frame out = {0};
-        out.next_level_ptr = channel->levels + level_i + 1;
-        out.level = stack->max_alive_level;
+        out.ptr = channel->frames + level_i + 1;
+        out.level = stack->frame_count;
         out.stack = stack;
         out.channel = channel;
 
@@ -404,7 +403,7 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
         out.alloc[0].func = arena_frame_allocator_func;
         out.alloc[0].get_stats = arena_frame_allocator_get_stats;
 
-        stack->max_alive_level += 1;
+        stack->frame_count += 1;
 
         _arena_stack_check_invariants(stack);
         PROFILE_STOP();
@@ -414,18 +413,18 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
     EXTERNAL ATTRIBUTE_INLINE_ALWAYS void arena_frame_release(Arena_Frame* frame)
     {
         PROFILE_START();
-        REQUIRE(frame->stack && 0 <= frame->level && frame->level <= frame->stack->max_alive_level, 
+        REQUIRE(frame->stack && 0 <= frame->level && frame->level <= frame->stack->frame_count, 
             "Using an invalid frame! Its not initialized or it was used after it or a parent frame was released!");
 
         Arena_Stack* stack = frame->stack;
         Arena_Stack_Channel* channel = frame->channel;
         _arena_stack_check_invariants(stack);
     
-        u8* old_used_to = *channel->active_level;
-        channel->active_level = MIN(channel->active_level, frame->next_level_ptr - 1); 
-        stack->max_alive_level = frame->level;
+        u8* old_used_to = *channel->curr_frame;
+        channel->curr_frame = MIN(channel->curr_frame, frame->ptr - 1); 
+        stack->frame_count = frame->level;
 
-        _arena_stack_fill_garbage(stack, old_used_to - *channel->active_level);
+        _arena_stack_fill_garbage(stack, old_used_to - *channel->curr_frame);
         _arena_stack_check_invariants(stack);
     
         //Set the frame to zero so that if someone tries to allocate from this frame
@@ -453,14 +452,14 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
     
         Arena_Stack* stack = frame->stack;
         Arena_Stack_Channel* channel = frame->channel;
-        u8* start = *(frame->next_level_ptr - 1);
+        u8* start = *(frame->ptr - 1);
         stats.type_name = "Arena_Frame";
         stats.name = stack->name;
         stats.is_top_level = true;
         stats.is_capable_of_free_all = true;
-        stats.fixed_memory_pool_size = stack->channel_reserved_size - (start - channel->data);
-        stats.bytes_allocated = *frame->next_level_ptr - start;
-        stats.max_bytes_allocated = *frame->next_level_ptr - start;
+        stats.fixed_memory_pool_size = stack->reserved_size/ARENA_STACK_CHANNELS - (start - channel->data);
+        stats.bytes_allocated = *frame->ptr - start;
+        stats.max_bytes_allocated = *frame->ptr - start;
         return stats;
     }
 
@@ -472,7 +471,6 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
 
     EXTERNAL ATTRIBUTE_INLINE_ALWAYS Arena_Frame scratch_arena_frame_acquire()
     {
-        REQUIRE(scratch_arena_stack()->total_reserved_size > 0, "Must be already init!");
         return arena_frame_acquire(scratch_arena_stack());
     }
 
@@ -481,33 +479,33 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
     #define ARENA_STACK_DEBUG_STACK_PATTERN (u8*) 0x6666666666666666
     EXTERNAL void arena_stack_test_invariants(Arena_Stack* stack)
     {
-        TEST(stack->commit_granularity >= 0);
-        TEST(stack->channel_reserved_size >= 0);
-        TEST(stack->channel_level_count >= 0);
+        if(stack->reserved_from == NULL)
+            return;
 
-        TEST(stack->total_reserved_size == stack->channel_reserved_size*ARENA_STACK_CHANNELS);
-        TEST(stack->total_level_count == stack->channel_level_count*ARENA_STACK_CHANNELS);
+        TEST(stack->commit_granularity >= 1);
+        TEST(stack->reserved_size >= 1);
+        TEST(stack->frame_capacity >= 1);
 
         for(isize k = 0; k < ARENA_STACK_CHANNELS; k++)
         {
             Arena_Stack_Channel* channel = &stack->channels[k];
 
-            u8** levels_end = channel->levels + stack->channel_level_count;
+            u8** frames_end = channel->frames + stack->frame_capacity/ARENA_STACK_CHANNELS;
 
-            u8* used_from = (u8*) levels_end;
-            u8* used_to = channel->active_level ? *channel->active_level : NULL;
-            u8* reserved_to = channel->data + stack->channel_reserved_size;
+            u8* used_from = (u8*) frames_end;
+            u8* used_to = channel->curr_frame ? *channel->curr_frame : NULL;
+            u8* reserved_to = channel->data + stack->reserved_size/ARENA_STACK_CHANNELS;
 
-            TEST(channel->levels <= channel->active_level && channel->active_level <= levels_end);
+            TEST(channel->frames <= channel->curr_frame && channel->curr_frame <= frames_end);
             TEST(used_from <= used_to && used_to <= channel->commit_to && channel->commit_to <= reserved_to);
 
-            for(u8** level = (u8**) channel->levels; level < channel->active_level; level++)
+            for(u8** level = (u8**) channel->frames; level < channel->curr_frame; level++)
                 TEST(used_from <= *level && *level <= used_to);
             
             if(ARENA_STACK_DEBUG)
             {
-                for(u8** next_level_ptr = channel->active_level + 1; next_level_ptr < levels_end; next_level_ptr++)
-                    TEST(*next_level_ptr == ARENA_STACK_DEBUG_STACK_PATTERN);
+                for(u8** ptr = channel->curr_frame + 1; ptr < frames_end; ptr++)
+                    TEST(*ptr == ARENA_STACK_DEBUG_STACK_PATTERN);
             
                 isize till_end = channel->commit_to - used_to;
                 isize check_size = CLAMP(ARENA_STACK_DEBUG_DATA_SIZE, 0, till_end);
@@ -531,12 +529,12 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
                 Arena_Stack_Channel* channel = &stack->channels[k];
 
                 //Fill stack
-                u8** levels_end = channel->levels + stack->channel_level_count;
-                for(u8** next_level_ptr = channel->active_level + 1; next_level_ptr < levels_end; next_level_ptr++)
-                    *next_level_ptr = ARENA_STACK_DEBUG_STACK_PATTERN;
+                u8** frames_end = channel->frames + stack->frame_capacity/ARENA_STACK_CHANNELS;
+                for(u8** ptr = channel->curr_frame + 1; ptr < frames_end; ptr++)
+                    *ptr = ARENA_STACK_DEBUG_STACK_PATTERN;
 
                 //Fill content
-                u8* used_to = *channel->active_level;
+                u8* used_to = *channel->curr_frame;
                 isize till_end = channel->commit_to - used_to;
                 isize check_size = CLAMP(content_size, 0, till_end);
                 memset(used_to, ARENA_STACK_DEBUG_DATA_PATTERN, (size_t) check_size);

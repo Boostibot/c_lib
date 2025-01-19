@@ -169,7 +169,7 @@ EXTERNAL void* stable_array_at(const Stable_Array* stable, isize index)
     size_t block_i = (size_t) index / STABLE_ARRAY_BLOCK_SIZE;
     size_t item_i = (size_t) index %  STABLE_ARRAY_BLOCK_SIZE;
     Stable_Array_Block* block = &stable->blocks[block_i];
-    TEST(block->mask & (1ull << item_i));
+    REQUIRE(block->mask & (1ull << item_i));
     return block->ptr + stable->item_size*item_i;
 }
 
@@ -223,7 +223,7 @@ EXTERNAL void stable_array_remove(Stable_Array* stable, isize index)
     size_t block_i = (size_t) index / STABLE_ARRAY_BLOCK_SIZE;
     size_t item_i = (size_t) index %  STABLE_ARRAY_BLOCK_SIZE;
     Stable_Array_Block* block = &stable->blocks[block_i];
-    TEST(block->mask & (1ull << item_i));
+    REQUIRE(block->mask & (1ull << item_i));
 
     //If was full before removal add to free list
     if(~block->mask == 0)

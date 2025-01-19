@@ -83,7 +83,7 @@
     #define EXTERNAL
     #define INTERNAL  static
     #define ASSERT(x) assert(x)
-    #define REQUIRES(x) assert(x)
+    #define REQUIRE(x) assert(x)
 
     typedef int64_t isize; //can also be usnigned if desired
     typedef struct Allocator Allocator;
@@ -386,7 +386,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
 
     INTERNAL void _hash_init_if_not_init(Hash* table, Allocator* allocator, isize load_factor_percent, isize load_factor_gravestone_percent)
     {
-        REQUIRES(allocator != NULL);
+        REQUIRE(allocator != NULL);
         table->allocator = allocator;
         if(load_factor_percent <= 0 || load_factor_percent >= 100)
             table->load_factor = 75;
@@ -534,7 +534,7 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
     
     EXTERNAL Hash_Found hash_find_next(Hash table, Hash_Found prev_found)
     {
-        REQUIRES(0 <= prev_found.index && prev_found.index < table.entries_count);
+        REQUIRE(0 <= prev_found.index && prev_found.index < table.entries_count);
         return _hash_find(table, prev_found.hash, (uint64_t) prev_found.index + (uint64_t) prev_found.probes + 1, prev_found.probes + 1);
     }
     
@@ -619,28 +619,28 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
     
     EXTERNAL Hash_Found hash_find_or_insert_next(Hash* table, Hash_Found prev_found, uint64_t value_if_inserted)
     {
-        REQUIRES(hash_is_valid_value(value_if_inserted)) && 0 <= prev_found.index && prev_found.index < table->entries_count);
+        REQUIRE(hash_is_valid_value(value_if_inserted) && 0 <= prev_found.index && prev_found.index < table->entries_count);
         hash_reserve(table, table->count + 1);
         return _hash_find_or_insert(table, prev_found.hash, (uint64_t) prev_found.index + (uint64_t) prev_found.probes + 1, value_if_inserted, prev_found.probes + 1, true);
     }
 
     EXTERNAL Hash_Found hash_insert_next(Hash* table, Hash_Found prev_found, uint64_t value_if_inserted)
     {
-        REQUIRES(hash_is_valid_value(value_if_inserted)) && 0 <= prev_found.index && prev_found.index < table->entries_count);
+        REQUIRE(hash_is_valid_value(value_if_inserted) && 0 <= prev_found.index && prev_found.index < table->entries_count);
         hash_reserve(table, table->count + 1);
         return _hash_find_or_insert(table, prev_found.hash, (uint64_t) prev_found.index + (uint64_t) prev_found.probes + 1, value_if_inserted, prev_found.probes + 1, false);
     }
 
     EXTERNAL Hash_Found hash_find_or_insert(Hash* table, uint64_t hash, uint64_t value_if_inserted)
     {
-        REQUIRES(hash_is_valid_value(value_if_inserted));
+        REQUIRE(hash_is_valid_value(value_if_inserted));
         hash_reserve(table, table->count + 1);
         return _hash_find_or_insert(table, hash, hash, value_if_inserted, 0, true);
     }
     
     EXTERNAL Hash_Found hash_insert(Hash* table, uint64_t hash, uint64_t value)
     {
-        REQUIRES(hash_is_valid_value(value));
+        REQUIRE(hash_is_valid_value(value));
         hash_reserve(table, table->count + 1);
         return _hash_find_or_insert(table, hash, hash, value, 0, false);
     }

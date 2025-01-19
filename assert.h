@@ -23,9 +23,9 @@
 
     #if !defined(ASSERT_CUSTOM_SETTINGS)
         #define DO_BOUNDS_CHECKS        // checks bounds prior to lookup 
-        #define DO_REQUIRES
+        #define DO_REQUIRES             // enables requires - checking pre conditions or imporatnt asserts 
         #if !defined(NDEBUG)
-            #define DO_ASSERTS          // enables debug assertions - usually post conditions, sanity checks for my own implementation
+            #define DO_ASSERTS          // enables assertions - usually post conditions, sanity checks for my own implementation
             #define DO_ASSERTS_SLOW     // enables slow assertions - expensive assertions or once that change the time complexity of an algorithm
         #endif
     #endif
