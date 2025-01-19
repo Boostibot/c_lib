@@ -2,7 +2,7 @@
 #define JOT_PATH
 
 #include "string.h"
-#include "arena_stack.h"
+#include "scratch.h"
 #include "log.h"
 
 // This is a not exhaustive filepath handling facility. 
@@ -858,11 +858,11 @@ EXTERNAL Path_Builder path_builder_dup(Allocator* alloc, Path_Builder to_copy)
 
 EXTERNAL void path_normalize_in_place(Path_Builder* into, int flags)
 {
-    Arena_Frame arena = scratch_arena_frame_acquire();
-    String_Builder copy = builder_from_string(arena.alloc, into->string);
-    Path path = path_parse(copy.string);
-    path_builder_assign(into, path, flags);
-    arena_frame_release(&arena);
+    SCRATCH_SCOPE(arena) {
+        String_Builder copy = builder_from_string(arena.alloc, into->string);
+        Path path = path_parse(copy.string);
+        path_builder_assign(into, path, flags);
+    }
 }
 
 EXTERNAL Path_Builder path_normalize(Allocator* alloc, Path path, int flags)
@@ -910,7 +910,7 @@ EXTERNAL void path_make_relative_into(Path_Builder* into, Path relative_to, Path
     }
     else
     {
-        SCRATCH_ARENA(arena) 
+        SCRATCH_SCOPE(arena) 
         {
             //Make paths normalized if they are not invarinat already. 
             // It is very likely that at least relative_to will be invarinat since 
@@ -1134,16 +1134,16 @@ void test_path_normalize(int flags, const char* cpath, const char* cexpected)
     const char* prefixes[] = {"", "\\\\?\\", "\\\\.\\"};
     for(isize i = 0; i < ARRAY_LEN(prefixes); i++)
     {
-        Arena_Frame arena = scratch_arena_frame_acquire();
-        String_Builder prefixed_path = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cpath));
-        String_Builder prefixed_expected = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cexpected));
+        SCRATCH_SCOPE(arena) {
+            String_Builder prefixed_path = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cpath));
+            String_Builder prefixed_expected = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cexpected));
 
-        Path path = path_parse(prefixed_path.string);
-        Path expected = path_parse(prefixed_expected.string);
+            Path path = path_parse(prefixed_path.string);
+            Path expected = path_parse(prefixed_expected.string);
 
-        Path_Builder canonical = path_normalize(arena.alloc, path, flags);
-        TEST_STRING_EQ(canonical.string, expected.string);
-        arena_frame_release(&arena);
+            Path_Builder canonical = path_normalize(arena.alloc, path, flags);
+            TEST_STRING_EQ(canonical.string, expected.string);
+        }
     }
     PROFILE_STOP();
 }
@@ -1156,12 +1156,12 @@ void test_canonicalize_with_roots_and_prefixes(int flags, const char* cabs_path,
     
     for(isize i = 0; i < ARRAY_LEN(roots); i++)
     {
-        Arena_Frame arena = scratch_arena_frame_acquire();
-        String_Builder prefixed_path = string_concat(arena.alloc, string_of(roots[i]), string_of(cabs_path));
-        String_Builder prefixed_expected = string_concat(arena.alloc, string_of(norm_roots[i]), string_of(cexpected));
+        SCRATCH_SCOPE(arena) {
+            String_Builder prefixed_path = string_concat(arena.alloc, string_of(roots[i]), string_of(cabs_path));
+            String_Builder prefixed_expected = string_concat(arena.alloc, string_of(norm_roots[i]), string_of(cexpected));
 
-        test_path_normalize(flags, prefixed_path.data, prefixed_expected.data);
-        arena_frame_release(&arena);
+            test_path_normalize(flags, prefixed_path.data, prefixed_expected.data);
+        }
     }
     PROFILE_STOP();
 }
@@ -1176,26 +1176,23 @@ void test_path_make_relative_absolute_with_prefixes(int flags, const char* crela
     const char* prefixes[] = {"", "\\\\?\\", "\\\\.\\"};
     for(isize i = 0; i < ARRAY_LEN(prefixes); i++)
     {
-        Arena_Frame arena = scratch_arena_frame_acquire();
+        SCRATCH_SCOPE(arena) {
+            String_Builder prefixed_relative = string_concat(arena.alloc, string_of(prefixes[i]), string_of(crelative));
+            String_Builder prefixed_path = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cpath));
+            String_Builder prefixed_expected = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cexpected));
 
-        String_Builder prefixed_relative = string_concat(arena.alloc, string_of(prefixes[i]), string_of(crelative));
-        String_Builder prefixed_path = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cpath));
-        String_Builder prefixed_expected = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cexpected));
+            Path relative = path_parse(prefixed_relative.string);
+            Path path = path_parse(prefixed_path.string);
+            Path expected = path_parse(prefixed_expected.string);
 
-        Path relative = path_parse(prefixed_relative.string);
-        Path path = path_parse(prefixed_path.string);
-        Path expected = path_parse(prefixed_expected.string);
+            Path_Builder transformed = {0};
+            if(flags == TEST_PATH_MAKE_RELATIVE)
+                transformed = path_make_relative(arena.alloc, relative, path);
+            else
+                transformed = path_make_absolute(arena.alloc, relative, path);
 
-        Path_Builder transformed = {0};
-        if(flags == TEST_PATH_MAKE_RELATIVE)
-            transformed = path_make_relative(arena.alloc, relative, path);
-        else
-            transformed = path_make_absolute(arena.alloc, relative, path);
-
-        TEST_STRING_EQ(transformed.string, expected.string);
-        int k = 0; (void) k;
-
-        arena_frame_release(&arena);
+            TEST_STRING_EQ(transformed.string, expected.string);
+        }
     }
 }
 

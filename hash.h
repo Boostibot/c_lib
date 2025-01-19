@@ -100,7 +100,7 @@
         }
     }
 #else
-    #include "arena_stack.h"
+    #include "scratch.h"
     #include "allocator.h"
 #endif
 
@@ -549,10 +549,10 @@ EXTERNAL bool hash_is_valid_value(uint64_t val);
         if(table->entries_count > 0)
         {
             #ifdef JOT_ARENA_STACK
-            SCRATCH_ARENA(arena)
+            SCRATCH_SCOPE(arena)
             {
                 Hash copy = *table;
-                copy.entries = (Hash_Entry*) arena_frame_push_nonzero(&arena, table->entries_count * isizeof(Hash_Entry), __alignof(Hash_Entry));
+                copy.entries = scratch_push_nonzero(&arena, table->entries_count, Hash_Entry);
                 memcpy(copy.entries, table->entries, (size_t) table->entries_count * sizeof(Hash_Entry));
 
                 _hash_rehash_copy(table, copy, table->entries_count, true);

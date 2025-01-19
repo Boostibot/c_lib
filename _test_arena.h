@@ -1,12 +1,12 @@
 #pragma once
-#include "arena_stack.h"
+#include "scratch.h"
 #include "random.h"
 #include "time.h"
 
-static char* arena_push_string(Arena_Frame* arena, const char* string)
+static char* arena_push_string(Scratch* arena, const char* string)
 {
     size_t len = string ? strlen(string) : 0;   
-    char* pat1 = (char*) arena_frame_push(arena, (isize) len + 1, 1);
+    char* pat1 = scratch_push(arena, (isize) len + 1, char);
     memcpy(pat1, string, len);
     pat1[len] = 0;
 
@@ -19,22 +19,22 @@ static void test_arena_unit()
     const char PATTERN2[] = ">GoodbyeWorld(Pattern2)";
     const char PATTERN3[] = ">****(Pattern3)";
     
-    Arena_Stack arena_stack = {0};
-    arena_stack_init(&arena_stack, "test_arena", 0, 0, 0);
+    Scratch_Arena arena_stack = {0};
+    scratch_arena_init(&arena_stack, "test_arena", 0, 0, 0);
 
     {
-        Arena_Frame level1 = arena_frame_acquire(&arena_stack);
+        Scratch level1 = scratch_acquire(&arena_stack);
         arena_push_string(&level1, PATTERN1);
-        arena_frame_release(&level1);
+        scratch_release(&level1);
     }
 
     {
-        Arena_Frame level1 = arena_frame_acquire(&arena_stack);
+        Scratch level1 = scratch_acquire(&arena_stack);
         {
             char* pat1 = arena_push_string(&level1, PATTERN1);
             TEST(memcmp(pat1, PATTERN1, sizeof PATTERN1 - 1) == 0);
 
-            Arena_Frame level2 = arena_frame_acquire(&arena_stack);
+            Scratch level2 = scratch_acquire(&arena_stack);
             {
                 char* pat2 = arena_push_string(&level2, PATTERN2);
                 TEST(memcmp(pat1, PATTERN1, sizeof PATTERN1 - 1) == 0);
@@ -44,7 +44,7 @@ static void test_arena_unit()
                 TEST(memcmp(pat1_2, PATTERN1, sizeof PATTERN1 - 1) == 0);
                 TEST(ARENA_STACK_CHANNELS != 2 || arena_stack.fall_count == 0);
 
-                Arena_Frame level3 = arena_frame_acquire(&arena_stack);
+                Scratch level3 = scratch_acquire(&arena_stack);
                 {
                     char* pat3 = arena_push_string(&level3, PATTERN3); (void) pat3;
                     TEST(ARENA_STACK_CHANNELS != 2 || arena_stack.fall_count == 0);
@@ -53,10 +53,10 @@ static void test_arena_unit()
                     char* pat1_3 = arena_push_string(&level1, PATTERN1);
                     TEST(ARENA_STACK_CHANNELS != 2 || arena_stack.fall_count == 1);
                 
-                    Arena_Frame level4 = arena_frame_acquire(&arena_stack);
+                    Scratch level4 = scratch_acquire(&arena_stack);
                     {
                         TEST(ARENA_STACK_CHANNELS != 2 || arena_stack.rise_count == 0);
-                        Arena_Frame level5 = arena_frame_acquire(&arena_stack);
+                        Scratch level5 = scratch_acquire(&arena_stack);
                         {
                             //Rise!
                             arena_push_string(&level5, PATTERN3);
@@ -67,13 +67,13 @@ static void test_arena_unit()
                         }
                         //missing release!
                     }
-                    arena_frame_release(&level4);
+                    scratch_release(&level4);
 
                     char* pat3_2 = arena_push_string(&level3, PATTERN3);
                     TEST(memcmp(pat3, PATTERN3, sizeof PATTERN3 - 1) == 0);
                     TEST(memcmp(pat3_2, PATTERN3, sizeof PATTERN3 - 1) == 0);
                 }
-                arena_frame_release(&level3);
+                scratch_release(&level3);
 
                 TEST(memcmp(pat2, PATTERN2, sizeof PATTERN2 - 1) == 0);
                 TEST(memcmp(pat2, PATTERN2, sizeof PATTERN2 - 1) == 0);
@@ -83,14 +83,14 @@ static void test_arena_unit()
             TEST(memcmp(pat1, PATTERN1, sizeof PATTERN1 - 1) == 0);
             //! No free
         }
-        arena_frame_release(&level1);
+        scratch_release(&level1);
     }
 
     //Same thing with the macro
-    SCRATCH_ARENA(level1)
+    SCRATCH_SCOPE(level1)
         arena_push_string(&level1, PATTERN1);
 
-    arena_stack_deinit(&arena_stack);
+    scratch_arena_deinit(&arena_stack);
 }
 
 static void test_arena_stress(f64 time)
@@ -119,10 +119,10 @@ static void test_arena_stress(f64 time)
     };
 	random_discrete_make(dist, ARRAY_LEN(dist));
 
-    Arena_Stack arena_stack = {0};
-    arena_stack_init(&arena_stack, "test_arena", 0, 0, MAX_LEVELS);
+    Scratch_Arena arena_stack = {0};
+    scratch_arena_init(&arena_stack, "test_arena", 0, 0, MAX_LEVELS);
     
-    Arena_Frame frames[MAX_LEVELS] = {0};
+    Scratch frames[MAX_LEVELS] = {0};
     isize levels = 0;
     
 	// uint64_t random_seed = 0x6b3979953b41cf7d;
@@ -144,14 +144,14 @@ static void test_arena_stress(f64 time)
         {
             case ACQUIRE: {
                 if(levels < MAX_LEVELS)
-                    frames[levels++] = arena_frame_acquire(&arena_stack);
+                    frames[levels++] = scratch_acquire(&arena_stack);
             } break;
             
             case RELEASE: {
                 if(levels > 0)
                 {
                     isize level = random_range(0, levels);
-                    arena_frame_release(&frames[level]);
+                    scratch_release(&frames[level]);
                     levels = level;
                 }
             } break;
@@ -164,22 +164,22 @@ static void test_arena_stress(f64 time)
                     isize align = 1LL << random_range(0, MAX_ALIGN_LOG2);
 
                     //@TODO: verify the contents of the allocation
-                    arena_frame_push(&frames[level], size, align);
+                    scratch_push_generic(&frames[level], size, align, NULL);
                 }
             } break;
         }
 
-        arena_stack_test_invariants(&arena_stack);
+        scratch_arena_test_invariants(&arena_stack);
     }
 
-    arena_stack_deinit(&arena_stack);
+    scratch_arena_deinit(&arena_stack);
 }
 
 ATTRIBUTE_INLINE_NEVER 
 void test_arena_assembly()
 {
-    SCRATCH_ARENA(arena)
-        arena_frame_push_nonzero(&arena, 200, 8);
+    SCRATCH_SCOPE(arena)
+        scratch_push_nonzero(&arena, 200, void*);
 }
 
 static void test_arena(f64 time)

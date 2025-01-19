@@ -1,6 +1,6 @@
 #pragma once
 #include "string_map.h"
-#include "arena_stack.h"
+#include "scratch.h"
 #include "allocator_debug.h"
 #include "random.h"
 #include "time.h"
@@ -10,7 +10,7 @@ INTERNAL String_Builder generate_random_text(Allocator* alloc, isize word_count,
 
 INTERNAL void test_string_map_unit()
 {
-	SCRATCH_ARENA(arena)
+	SCRATCH_SCOPE(arena)
 	{
 		Debug_Allocator debug = {0};
 		debug_allocator_init(&debug, arena.alloc, DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK);
@@ -58,7 +58,7 @@ INTERNAL void test_string_map_unit()
 INTERNAL Hash_String string_map_generate_random_hstring(Allocator* alloc)
 {
 	Hash_String hstr = {0};
-	SCRATCH_ARENA(arena) {
+	SCRATCH_SCOPE(arena) {
 		String_Builder random = generate_random_text(arena.alloc, random_range(4, 8), STRING(" "), true, STRING("."));
 		hstr = hash_string_make(string_allocate(alloc, random.string));
 		//Artificially Increase the chance of hash collisions
@@ -235,7 +235,7 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 							
 				}
 
-				case REMOVE: SCRATCH_ARENA(arena) {
+				case REMOVE: SCRATCH_SCOPE(arena) {
 					if(truth_val_array.count > 0)
 					{
 						isize index = random_range(0, truth_key_array.count);
@@ -278,7 +278,7 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 			for(isize k = 0; k < truth_key_array.count; k++)
 			{
 				Hash_String key = truth_key_array.data[k];
-				SCRATCH_ARENA(arena)
+				SCRATCH_SCOPE(arena)
 				{
 					Hash_String_Array truth_found = {arena.alloc};
 					Hash_String_Array hash_found = {arena.alloc};
@@ -306,7 +306,7 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 			//Test integrity of some non existant keys
 			for(isize k = 0; k < NON_EXISTANT_KEYS_CHECKS; k++)
 			{
-				SCRATCH_ARENA(arena)
+				SCRATCH_SCOPE(arena)
 				{
 					Hash_String key = string_map_generate_random_hstring(arena.alloc);
 				

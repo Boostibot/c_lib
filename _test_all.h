@@ -82,8 +82,8 @@ INTERNAL void test_all(double total_time)
     {
         platform_init();
         
-        Arena_Stack* global_stack = scratch_arena_stack();
-        arena_stack_init(global_stack, "scratch_arena_stack", 64*GB, 8*MB, 0);
+        Scratch_Arena* global_stack = global_scratch_arena();
+        scratch_arena_init(global_stack, "global_scratch_arena", 64*GB, 8*MB, 0);
 
         File_Logger logger = {0};
         file_logger_init(&logger, "logs", FILE_LOGGER_USE);

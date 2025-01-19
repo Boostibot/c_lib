@@ -1,7 +1,7 @@
 #pragma once
 
 #include "string.h"
-#include "arena_stack.h"
+#include "scratch.h"
 
 typedef enum JSON_Type {
     JSON_NULL = 0,
@@ -131,9 +131,9 @@ typedef struct JSON_Error {
 
 typedef struct JSON_Context {
     isize max_depth;
-    Arena_Frame* arena_out;
-    Arena_Frame* arena_temp;
-    Arena_Frame* arena_error;
+    Scratch* arena_out;
+    Scratch* arena_temp;
+    Scratch* arena_error;
 } JSON_Context;
 
 typedef struct JSON_Parse_Result {
@@ -560,7 +560,7 @@ JSON_Token json_tokenize_number(JSON_Context* context, String input, isize from)
     return out;
 }
 
-JSON_Token json_tokenize_string(JSON_Context* context, Arena_Frame* arena, String input, isize from)
+JSON_Token json_tokenize_string(JSON_Context* context, Scratch* arena, String input, isize from)
 {
     ASSERT(string_has_char_at(input, '"', from) || string_has_char_at(input, '\'', from));
     char quote_type = input.data[from];

@@ -3,7 +3,7 @@
 
 #include "array.h"
 #include "allocator_debug.h"
-#include "arena_stack.h"
+#include "scratch.h"
 #include "random.h"
 #include "time.h"
 #include <string.h>
@@ -186,7 +186,7 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 				for(isize k = 0; k < truth_key_array.count; k++)
 				{
 					u64 key = truth_key_array.data[k];
-					SCRATCH_ARENA(arena)
+					SCRATCH_SCOPE(arena)
 					{
 						u64_Array truth_found = {0};
 						u64_Array hash_found = {0};

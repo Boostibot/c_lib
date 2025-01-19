@@ -124,7 +124,7 @@ EXTERNAL Allocator* allocator_get_default(); //returns the default allocator use
 EXTERNAL Allocator* allocator_or_default(Allocator* allocator_or_null); //Returns the passed in allocator_or_null. If allocator_or_null is NULL returns the current set default allocator
 EXTERNAL Allocator* allocator_get_malloc(); //returns the global malloc allocator. This is the default allocator.
 
-EXTERNAL bool allocator_is_arena_frame(Allocator* allocator);
+EXTERNAL bool allocator_is_scratch(Allocator* allocator);
 
 //All of these return the previously used Allocator_Set. This enables simple set/restore pair. 
 EXTERNAL Allocator_Set allocator_set_default(Allocator* new_default);
@@ -149,7 +149,7 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
 #if (defined(JOT_ALL_IMPL) || defined(JOT_ALLOCATOR_IMPL)) && !defined(JOT_ALLOCATOR_HAS_IMPL)
 #define JOT_ALLOCATOR_HAS_IMPL
 
-    EXTERNAL void* arena_frame_allocator_func(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
+    EXTERNAL void* scratch_allocator_func(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
 
     EXTERNAL ATTRIBUTE_ALLOCATOR(2, 5) 
     void* allocator_try_reallocate(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
@@ -159,8 +159,8 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
         REQUIRE(alloc != NULL && new_size >= 0 && old_size >= 0 && is_power_of_two(align) && "provided arguments must be valid!");
         
         //If is arena use the arena function directly (inlined)
-        if(allocator_is_arena_frame(alloc))
-            out = arena_frame_allocator_func(alloc, new_size, old_ptr, old_size, align, error);
+        if(allocator_is_scratch(alloc))
+            out = scratch_allocator_func(alloc, new_size, old_ptr, old_size, align, error);
         else 
             out = alloc->func(alloc, new_size, old_ptr, old_size, align, error);
             
@@ -183,7 +183,7 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
     EXTERNAL void allocator_deallocate(Allocator* alloc, void* old_ptr, isize old_size, isize align)
     {
         PROFILE_START();
-        if(old_size > 0 && allocator_is_arena_frame(alloc) == false)
+        if(old_size > 0 && allocator_is_scratch(alloc) == false)
             alloc->func(alloc, 0, old_ptr, old_size, align, NULL);
         PROFILE_STOP();
     }
@@ -218,9 +218,9 @@ EXTERNAL void* stack_allocate(isize bytes, isize align_to) {(void) align_to; (vo
             *error_or_null = error;
     }
     
-    EXTERNAL bool allocator_is_arena_frame(Allocator* allocator)
+    EXTERNAL bool allocator_is_scratch(Allocator* allocator)
     {
-        return allocator->func == arena_frame_allocator_func;
+        return allocator->func == scratch_allocator_func;
     }
     
     EXTERNAL bool is_power_of_two_or_zero(isize num) 

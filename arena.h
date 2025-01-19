@@ -35,8 +35,8 @@ EXTERNAL void arena_commit_ptr(Arena* arena, const void* position, Allocator_Err
 EXTERNAL void arena_reset(Arena* arena, isize to);
 EXTERNAL void arena_commit(Arena* arena, isize to);
 
-EXTERNAL void* arena_single_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* stats);
-EXTERNAL Allocator_Stats arena_single_allocator_get_stats(Allocator* self);
+EXTERNAL void* arena_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* stats);
+EXTERNAL Allocator_Stats arena_allocator_get_stats(Allocator* self);
 
 #define ARENA_PUSH(arena_ptr, count, Type) ((Type*) arena_push((arena_ptr), (count) * sizeof(Type), __alignof(Type)))
 #endif
@@ -63,8 +63,8 @@ EXTERNAL Platform_Error arena_init(Arena* arena, const char* name, isize reserve
     Platform_Error error = platform_virtual_reallocate((void**) &data, NULL, reserve_size, PLATFORM_VIRTUAL_ALLOC_RESERVE, PLATFORM_MEMORY_PROT_NO_ACCESS);
     if(error == 0)
     {
-        arena->alloc[0].func = arena_single_allocator_func;
-        arena->alloc[0].get_stats = arena_single_allocator_get_stats;
+        arena->alloc[0].func = arena_allocator_func;
+        arena->alloc[0].get_stats = arena_allocator_get_stats;
 
         arena->data = data;
         arena->used_to = data;
@@ -154,7 +154,7 @@ EXTERNAL void arena_commit(Arena* arena, isize to)
     arena_commit_ptr(arena, arena->data + to, NULL);
 }
 
-EXTERNAL void* arena_single_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
+EXTERNAL void* arena_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
 {
     Arena* arena = (Arena*) (void*) self;
 
@@ -166,7 +166,7 @@ EXTERNAL void* arena_single_allocator_func(Allocator* self, isize new_size, void
     return arena_push_nonzero(arena, new_size, align, error);
 }
 
-EXTERNAL Allocator_Stats arena_single_allocator_get_stats(Allocator* self)
+EXTERNAL Allocator_Stats arena_allocator_get_stats(Allocator* self)
 {
     Arena* arena = (Arena*) (void*) self;
     Allocator_Stats stats = {0};
