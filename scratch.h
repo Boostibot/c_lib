@@ -42,7 +42,7 @@ typedef struct Scratch_Stack {
 } Scratch_Stack;
 
 typedef struct Scratch_Arena {
-    Scratch_Stack channels[ARENA_STACK_CHANNELS];
+    Scratch_Stack stacks[ARENA_STACK_CHANNELS];
     u32 frame_count;
     u32 frame_capacity;
 
@@ -292,7 +292,7 @@ EXTERNAL Scratch        global_scratch_acquire();
         {
             for(isize i = 0; i < ARENA_STACK_CHANNELS; i++)
             {
-                Scratch_Stack* stack = &arena->channels[i];
+                Scratch_Stack* stack = &arena->stacks[i];
                 stack->reserved_from = datas[i];
                 stack->reserved_to = datas[i] + reserve_size/ARENA_STACK_CHANNELS;
                 stack->commit_to = datas[i] + frames_commit_size;
@@ -418,8 +418,8 @@ EXTERNAL Scratch        global_scratch_acquire();
         _scratch_arena_check_invariants(arena);
 
         u32 level_i   = arena->frame_count / ARENA_STACK_CHANNELS;
-        u32 channel_i = arena->frame_count % ARENA_STACK_CHANNELS;
-        Scratch_Stack* stack = &arena->channels[channel_i];
+        u32 stack_i = arena->frame_count % ARENA_STACK_CHANNELS;
+        Scratch_Stack* stack = &arena->stacks[stack_i];
     
         //Here we could do a full for loop setting all frames affected by the 'rise' 
         // similar to the one in "_scratch_handle_unusual_push"
@@ -525,7 +525,7 @@ EXTERNAL Scratch        global_scratch_acquire();
 
         for(isize k = 0; k < ARENA_STACK_CHANNELS; k++)
         {
-            Scratch_Stack* stack = &arena->channels[k];
+            Scratch_Stack* stack = &arena->stacks[k];
 
             u8** frames_end = stack->frames + arena->frame_capacity/ARENA_STACK_CHANNELS;
 
@@ -562,7 +562,7 @@ EXTERNAL Scratch        global_scratch_acquire();
         if(ARENA_STACK_DEBUG)
             for(isize k = 0; k < ARENA_STACK_CHANNELS; k++)
             {
-                Scratch_Stack* stack = &arena->channels[k];
+                Scratch_Stack* stack = &arena->stacks[k];
 
                 //Fill arena
                 u8** frames_end = stack->frames + arena->frame_capacity/ARENA_STACK_CHANNELS;
