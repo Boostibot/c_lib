@@ -3,19 +3,19 @@ This is a perpetually ongoing development C codebase I use for personal projects
 # Most important files
 - `array.h` **(freestanding)**: Generic, type-safe array in pure C. This mostly works like `std::vector`.
 - `hash.h` **(freestanding)**: Small and very performant hash table building block. This is not a fully fledged hash table, but just a 64 -> 62 bit hash mapping. All other tables can be implemented using this. Read the comment for more rationale.
+- `scratch.h` **(freestanding)**: "Safe" arena implementation. Works like regular arena but contains code that cheaply check & prevents bad usage. 
 - `allocator_tlsf.h`: **(freestanding)** A TLSF style allocator on top of a given memory block. All operations are hard O(1). All book-keeping is done in seperate memory, allowing interface for allocation on the GPU. Is about 25% faster then malloc.
-- `slz4.h`: **(freestanding)** Simple but quite fast LZ4 compressor/decompressor. On the enwik8 dataset achieves compression speed of 130MB/s, 2.10 compression ratio and decompression speed of 2.7GB/s. Tested for safety and full standard compliance.
 - `allocator_debug.h`: Wrapper around generic allocator that verifies correct handling and detects leaks. Can capture callstack to print exactly where the leak occurred.
 - `allocator.h`: Interface for generic allocators with special fast path for arenas.
-- `deprecated/unicode.h` **(freestanding)**: Conversion between UTF8, UTF16, UTF32 with proper error checking. Extensively tested.
 - `platform.h` **(freestanding)**: A fully fledged platform layer supporting windows and linux. Contains code for threading, intrinsics, virtual memory, filesystem (reading, writing, listing observing changes), debug facilities (callstack capturing, printing, sandboxing) and many more.  
-- `random.h` **(freestanding)**: Convenient fast, non-cryptographic random number generation. Has both global state and local state interface.
 - `path.h`: Robust path parsing, normalization and mutation algorithms. Correctly parses linux and all kinds of strange windows paths.
-- `arena.h` **(freestanding)**: "Safe" arena implementation. Works like regular arena but contains code that cheaply check & prevents bad usage. 
 - `perf.h` **(freestanding)**: Small set of functions for timing/benchmarking code and evaluating results. Reports average times, standard deviation, min max times and more. 
+- `slz4.h`: **(freestanding)** Simple but quite fast LZ4 compressor/decompressor. On the enwik8 dataset achieves compression speed of 130MB/s, 2.10 compression ratio and decompression speed of 2.7GB/s. Tested for safety and full standard compliance.
 - `profile.h`: Extremely low overhead averaging profiler. Uses a combination of thread local storage and lazy initialization to only require a single branch worth of overhead. Captures total runtime, runs, min/max runtime and standard deviation.
 - `stable_array.h`: O(1) Fast, memory efficient free-list like structure keeping stable pointers. Accessible through handles. Is suitable for storing large amounts of data or implementing SQL-like tables. 
+- `deprecated/unicode.h` **(freestanding)**: Conversion between UTF8, UTF16, UTF32 with proper error checking. Extensively tested.
 - `math.h` **(freestanding)**: Float vector math operations.
+- `random.h` **(freestanding)**: Convenient fast, non-cryptographic random number generation. Has both global state and local state interface.
   
 # Code structure
 The codebase is structured in the "stb" style, that is both `.h` and `.c` 'files' are within the same physical file. This makes just about everything simpler. To include a declaration simply include the given file. Files can be included any number of times. To pull in the implementation define before including `#define JOT_[FILE]_IMPL` or `#define JOT_ALL_IMPL` to include implementation of all files. Unlike the stb libraries this can also be done multiple times within single compilation unit (we simply add separate include guards for the declarations and implementation). This means for simple single compilation projects its sufficient to `#define JOT_ALL_IMPL` at the very top of the main file and proceed without worrying about anything else! The benefits are:
