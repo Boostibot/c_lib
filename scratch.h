@@ -417,7 +417,7 @@ EXTERNAL Scratch        global_scratch_acquire();
         REQUIRE(arena->frame_count < arena->frame_capacity, "Too many arena frames or uninit");
         _scratch_arena_check_invariants(arena);
 
-        u32 level_i   = arena->frame_count / ARENA_STACK_CHANNELS;
+        u32 level_i = arena->frame_count / ARENA_STACK_CHANNELS;
         u32 stack_i = arena->frame_count % ARENA_STACK_CHANNELS;
         Scratch_Stack* stack = &arena->stacks[stack_i];
     
@@ -577,15 +577,3 @@ EXTERNAL Scratch        global_scratch_acquire();
             }
     }
 #endif
-
-#include "string.h"
-void main()
-{
-    SCRATCH_SCOPE(arena1) {
-        int* alloc1 = scratch_push(&arena1, 256, int); 
-
-        SCRATCH_SCOPE(arena2) {
-            void* alloc2 = scratch_push(&arena2, 256, int); 
-        }
-    }
-}
