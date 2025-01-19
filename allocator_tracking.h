@@ -14,8 +14,8 @@
 #define ALLOCATION_LIST_MAGIC "TrackAl"
 
 typedef struct Allocation_List_Block {
-    Allocation_List_Block* next_block; 
-    Allocation_List_Block* prev_block;
+    struct Allocation_List_Block* next_block; 
+    struct Allocation_List_Block* prev_block;
 
     u64 align       : 16;
     u64 size        : 47;
@@ -31,7 +31,7 @@ typedef struct Allocation_List {
 } Allocation_List;
 
 typedef struct Tracking_Allocator {
-    Allocator allocator;
+    Allocator alloc[1];
     Allocator* parent; //parent allocator. If parent is null uses malloc/free
     Allocation_List list;
 
@@ -243,8 +243,8 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
             return;
 
         tracking_allocator_deinit(self);
-        self->allocator.func = tracking_allocator_func;
-        self->allocator.get_stats = tracking_allocator_get_stats;
+        self->alloc[0].func = tracking_allocator_func;
+        self->alloc[0].get_stats = tracking_allocator_get_stats;
         self->name = name;
     }
 
@@ -252,7 +252,7 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
     {
         (void) flags;
         tracking_allocator_init(self, name);
-        self->allocator_backup = allocator_set_default(&self->allocator);
+        self->allocator_backup = allocator_set_default(&self->alloc[0]);
     }
     
     EXTERNAL void tracking_allocator_deinit(Tracking_Allocator* self)

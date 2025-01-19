@@ -4,6 +4,7 @@
 #include "allocator_debug.h"
 #include "random.h"
 #include "time.h"
+#include "allocator_tracking.h"
 
 INTERNAL String_Builder generate_random_text(Allocator* alloc, isize word_count, String separator, bool capitilize, String postfix);
 
@@ -297,7 +298,8 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 					}
 
 					for(isize l = 0; l < hash_found.count; l++)
-						TEST(hash_string_is_equal(hash_found.data[l], truth_found.data[l]));
+						if(hash_string_is_equal(hash_found.data[l], truth_found.data[l]) == false)
+							TEST(hash_string_is_equal(hash_found.data[l], truth_found.data[l]));
 				}
 			}
 

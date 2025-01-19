@@ -135,11 +135,12 @@
 
 typedef struct Arena_Stack_Channel {
     union {
-        u8* data;
+        u8* reserved_from;
         u8** frames;
     };
-    u8*  commit_to;
     u8** curr_frame; 
+    u8*  commit_to; 
+    u8*  reserved_to;
 } Arena_Stack_Channel;
 
 typedef struct Arena_Stack {
@@ -187,9 +188,15 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
 
 #define ARENA_FRAME_PUSH(arena_ptr, count, Type) ((Type*) arena_frame_push((arena_ptr), (count) * sizeof(Type), __alignof(Type)))
 
-#define SCRATCH_ARENA(frame_name) \
-    for(int PP_UNIQ(_defer_) = 0; PP_UNIQ(_defer_) == 0; PP_UNIQ(_defer_) = 1) \
-        for(Arena_Frame frame_name = scratch_arena_frame_acquire(); PP_UNIQ(_defer_) == 0; arena_frame_release(&frame_name), PP_UNIQ(_defer_) = 1) \
+#if 1
+    #define SCRATCH_ARENA(frame_name) \
+        for(Arena_Frame frame_name = scratch_arena_frame_acquire(); frame_name._ == 0; arena_frame_release(&frame_name), frame_name._ = 1) 
+#else
+    #include "allocator_tracking.h"
+    #define SCRATCH_ARENA(frame_name) \
+        for(int PP_UNIQ(_defer_) = 0; PP_UNIQ(_defer_) == 0; PP_UNIQ(_defer_) = 1) \
+            for(Tracking_Allocator frame_name = {0}; tracking_allocator_init(&frame_name, "temp"), PP_UNIQ(_defer_) == 0; tracking_allocator_deinit(&frame_name), PP_UNIQ(_defer_) = 1) 
+#endif
 
 #endif
 
@@ -251,8 +258,9 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
             for(isize i = 0; i < ARENA_STACK_CHANNELS; i++)
             {
                 Arena_Stack_Channel* channel = &stack->channels[i];
-                channel->data = datas[i];
-                channel->commit_to = channel->data + frames_commit_size;
+                channel->reserved_from = datas[i];
+                channel->reserved_to = datas[i] + reserve_size/ARENA_STACK_CHANNELS;
+                channel->commit_to = datas[i] + frames_commit_size;
                 channel->curr_frame = channel->frames;
                 *channel->curr_frame = (u8*) (channel->frames + level_count/ARENA_STACK_CHANNELS);
             }
@@ -305,13 +313,12 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
             commit = DIV_CEIL(size, stack->commit_granularity)*stack->commit_granularity;
             ASSERT((size_t) channel->commit_to % platform_allocation_granularity() == 0);
 
-            isize reseved_size = stack->reserved_size/ARENA_STACK_CHANNELS;
-            if(channel->commit_to + commit > channel->data + reseved_size)
+            if(channel->commit_to + commit > channel->reserved_to)
             {
                 out = NULL;
                 allocator_error(error, ALLOCATOR_ERROR_OUT_OF_MEM, NULL, size, NULL, 0, align, 
                     "More memory is needed then reserved! Reserved: %.2lf MB, commit: %.2lf MB", 
-                    (double) (reseved_size)/MB, (double) (channel->commit_to - channel->data)/MB);
+                    (double) (channel->reserved_to - channel->reserved_from)/MB, (double) (channel->commit_to - channel->reserved_from)/MB);
                 goto end;
             }
             
@@ -457,7 +464,7 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
         stats.name = stack->name;
         stats.is_top_level = true;
         stats.is_capable_of_free_all = true;
-        stats.fixed_memory_pool_size = stack->reserved_size/ARENA_STACK_CHANNELS - (start - channel->data);
+        stats.fixed_memory_pool_size = channel->reserved_to - start;
         stats.bytes_allocated = *frame->ptr - start;
         stats.max_bytes_allocated = *frame->ptr - start;
         return stats;
@@ -494,10 +501,9 @@ EXTERNAL Arena_Frame scratch_arena_frame_acquire();
 
             u8* used_from = (u8*) frames_end;
             u8* used_to = channel->curr_frame ? *channel->curr_frame : NULL;
-            u8* reserved_to = channel->data + stack->reserved_size/ARENA_STACK_CHANNELS;
 
             TEST(channel->frames <= channel->curr_frame && channel->curr_frame <= frames_end);
-            TEST(used_from <= used_to && used_to <= channel->commit_to && channel->commit_to <= reserved_to);
+            TEST(used_from <= used_to && used_to <= channel->commit_to && channel->commit_to <= channel->reserved_to);
 
             for(u8** level = (u8**) channel->frames; level < channel->curr_frame; level++)
                 TEST(used_from <= *level && *level <= used_to);
