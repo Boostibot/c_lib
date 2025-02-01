@@ -502,6 +502,15 @@ int64_t platform_perf_counter_frequency()
     return perf_counter_freq;
 }
 
+typedef struct HINSTANCE__ *HINSTANCE;
+typedef HINSTANCE HMODULE;
+typedef int BOOL;
+typedef long long (__stdcall *FARPROC)();
+
+__declspec(dllimport) HMODULE __stdcall LoadLibraryA(LPCSTR lpLibFileName);
+__declspec(dllimport) BOOL __stdcall FreeLibrary(HMODULE hLibModule);
+__declspec(dllimport) FARPROC __stdcall GetProcAddress(HMODULE hModule, const char* lpProcName);
+
 //Directly copied from: https://gist.github.com/pmttavara/6f06fc5c7679c07375483b06bb77430c
 #if 1
     // SPDX-FileCopyrightText: 2022 Phillip Trudeau-Tavara <pmttavara@protonmail.com>

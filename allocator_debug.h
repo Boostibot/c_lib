@@ -46,6 +46,8 @@
 // the dead zones and header is checked for validity (invalidity would indicate overwrites). Only then
 // any allocation/deallocation takes place.
 
+//TODO: make self sufficient - use robin hood hashing find, insert, remove
+
 #include "allocator.h"
 #include "array.h"
 #include "hash.h"

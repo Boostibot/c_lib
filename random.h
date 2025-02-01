@@ -219,7 +219,7 @@ static inline uint64_t random_xiroshiro256(uint64_t s[4])
 	//This function generates random nondeterministic seed using a sequence of hacks.
 	//The reasoning is as follows:
 	// 1. we want to use precise time to get nondeterminism
-	// 2. we want to include the calling threads id to gurantee no two threads will get the same seed.
+	// 2. we want to include the calling threads id to guarantee no two threads will get the same seed.
 	// 3. we want the function to always return distinct numbers even when called in rapid succession
 	//    from the same thread. Notably when the precise time is not so precise we could risk its
 	//    value not changing between the calls.
@@ -233,7 +233,7 @@ static inline uint64_t random_xiroshiro256(uint64_t s[4])
 	// iterate only half the possible numbers. This is in itself not too problematic since the clock 
 	// realistically never makes one full revolutions around the u64 range.
 	// 
-	// Next we satisfy 2. by getting an adress of thread local variable and hashing it. 
+	// Next we satisfy 2. by getting an address of thread local variable and hashing it. 
 	// This gives some thread unique hash with bits spread all over. We simply xor this with our value 
 	// from the previous points.
 	// 

@@ -1,6 +1,8 @@
 #define MODULE_PROFILE
 #define MODULE_HAS_IMPL_PROFILE
 
+//SIMPLIFY DRAMATICALLY
+
 #define PROFILE_START(...) 
 #define PROFILE_STOP(...) 
 #define PROFILE_INSTANT(...)

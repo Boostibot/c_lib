@@ -1,5 +1,7 @@
 #pragma once
 
+//SIMPLIFY THIS
+
 #include "string.h"
 #include "scratch.h"
 

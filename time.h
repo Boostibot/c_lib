@@ -1,96 +1,177 @@
 #ifndef MODULE_TIME
 #define MODULE_TIME
 
-#include "platform.h"
-#include "defines.h"
+#include <stdint.h>
+#ifndef EXTERNAL
+	#define EXTERNAL 
+#endif
 
-#define SECOND_MILISECONDS  ((int64_t) 1000)
-#define SECOND_MIRCOSECONDS ((int64_t) 1000000)
-#define SECOND_NANOSECONDS  ((int64_t) 1000000000)
-#define SECOND_PICOSECONDS  ((int64_t) 1000000000000)
-#define MILISECOND_NANOSECONDS (SECOND_NANOSECONDS / SECOND_MILISECONDS)
+#ifndef TIMEAPI
+    #define TIMEAPI static inline
+    #define TIMEAPI_INLINE_IMPL
+#endif
 
-#define MINUTE_SECONDS ((int64_t) 60)
-#define HOUR_SECONDS ((int64_t) 60 * MINUTE_SECONDS)
-#define DAY_SECONDS ((int64_t) 24 * MINUTE_SECONDS)
-#define WEEK_SECONDS ((int64_t) 7 * DAY_SECONDS)
-#define YEAR_SECONDS (int64_t) 31556952
+#define SECOND_MILISECONDS      1000ll
+#define SECOND_MIRCOSECONDS     1000000ll
+#define SECOND_NANOSECONDS      1000000000ll
+#define SECOND_PICOSECONDS      1000000000000ll
+#define MILISECOND_NANOSECONDS  1000000000ll
 
-EXTERNAL f64 platform_perf_counter_frequency_f64();
-EXTERNAL f32 platform_perf_counter_frequency_f32();
+#define MINUTE_SECONDS          60ll
+#define HOUR_SECONDS            3600ll
+#define DAY_SECONDS             86400ll
+#define WEEK_SECONDS            604800ll
+#define YEAR_SECONDS            31556952ll
 
-EXTERNAL f64 epoch_time_to_clock_time(i64 epoch_time);
-EXTERNAL i64 clock_time_to_epoch_time(f64 time);
+TIMEAPI int64_t perf_counter();     //returns precise as possible yet long term stable time since unspecified point in time (last boot) 
+TIMEAPI int64_t perf_frequency();   //returns the frequency of perf_counter
+TIMEAPI int64_t clock_ns();         //returns time in nanoseconds since since unspecified point in time (last boot) 
+TIMEAPI int64_t epoch_time();       //returns time since the epoch in microseconds
+TIMEAPI double  clock_seconds();    //returns time in seconds since last call to clock_seconds_set(x) plus x. 
+TIMEAPI float   clock_secondsf();   //returns time in seconds since last call to clock_seconds_set(x) plus x as float
+TIMEAPI double  clock_seconds_set(double to_time); //sets the base for clock_seconds and return the previous time 
 
-EXTERNAL int64_t clock_ns();
-EXTERNAL f64 clock_s();
-EXTERNAL f32 clock_s32();
+//@NOTE: 
+//For clock_seconds we might be scared that the int64_t to double conversion will cost us precision for sufficiently large 
+// performance counter values. In practice this extremely hard to achieve. On windows performance counter has
+// frequency of 10Mhz = period of 1e-7 seconds. Double is able to represent numbers up to 2^53 without loosing 
+// any precision, that is around 9e15. Thus it is able to represent numbers up to ~1e9 with precision of 1e-7 seconds.
+// This means that we will start to lose precision after 1e9 seconds = 31 years. If you dont run your program for 31 
+// years you should be fine.   
 
+#endif // !MODULE_TIME
+
+//INLINE IMPLEMENTATION
+#if (defined(MODULE_IMPL_ALL) || defined(TIMEAPI_INLINE_IMPL)) && !defined(MODULE_HAS_INLINE_IMPL_FILE)
+#define MODULE_HAS_INLINE_IMPL_FILE
+
+    extern int     g_clock_seconds_init;
+    extern int64_t g_clock_seconds_offset;
+    extern double  g_clock_seconds_period;
+    extern int64_t g_clock_seconds_freq;
+
+    #if defined(_WIN32) || defined(_WIN64)
+
+        #ifdef __cplusplus
+        extern "C" {
+        #endif
+        typedef int BOOL;
+        typedef union _LARGE_INTEGER LARGE_INTEGER;
+        typedef struct _FILETIME FILETIME;
+        __declspec(dllimport) BOOL __stdcall QueryPerformanceCounter(LARGE_INTEGER* out);
+        __declspec(dllimport) BOOL __stdcall QueryPerformanceFrequency(LARGE_INTEGER* out);
+        __declspec(dllimport) void __stdcall GetSystemTimeAsFileTime(FILETIME* lpSystemTimeAsFileTime);
+        #ifdef __cplusplus
+        }
+        #endif
+
+        TIMEAPI int64_t perf_counter()
+        {
+            int64_t out = 0;
+            QueryPerformanceCounter((LARGE_INTEGER*) (void*) &out);
+            return out;
+        }
+
+        TIMEAPI int64_t perf_frequency()
+        {
+            if(g_clock_seconds_freq == 0)
+                QueryPerformanceFrequency((LARGE_INTEGER*) (void*) &g_clock_seconds_freq);
+            return g_clock_seconds_freq;
+        }
+
+        TIMEAPI int64_t epoch_time()
+        {
+            uint64_t filetime = 0;
+            GetSystemTimeAsFileTime((FILETIME*) (void*) &filetime);
+            uint64_t epoch_time = filetime / 10 - 11644473600000000LL;
+            return epoch_time;
+        }
+        
+        #if defined(_MSC_VER) && !defined(__clang__)
+            #include <intrin.h>
+            __declspec(noinline) static int64_t _clock_ns_unusual()
+            {
+                uint64_t counter = (uint64_t) perf_counter();
+                uint64_t freq = (uint64_t) perf_frequency(); 
+                uint64_t hi, lo = _umul128(counter, 1000000000ull, &hi);
+                uint64_t rem, quo = _udiv128(hi, lo, freq, &rem);
+                return (int64_t) quo;
+            }
+        #else
+            __atribute__((noinline)) static int64_t _clock_ns_unusual()
+            {
+                uint64_t counter = (uint64_t) perf_counter();
+                uint64_t freq = (uint64_t) perf_frequency(); 
+                return (int64_t) ((__uint128_t) counter*1000000000ull/freq);
+            }
+        #endif
+
+        TIMEAPI int64_t clock_ns()
+        {
+            //QPC is rn hardcoded to return 10Mhz so we exploit that
+            if(g_clock_seconds_freq != 10000000) 
+                return _clock_ns_unusual();
+
+            return perf_counter()*100;
+        }
+
+    #elif defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
+        #include <time.h>
+        TIMEAPI int64_t perf_counter()
+        {
+            struct timespec ts = {0};
+            (void) clock_gettime(CLOCK_MONOTONIC_RAW , &ts);
+            return (int64_t) ts.tv_nsec + ts.tv_sec * 1000000000LL;
+        }
+
+        TIMEAPI int64_t perf_frequency()
+        {
+            return (int64_t) 1000000000LL;
+        }
+
+        TIMEAPI int64_t epoch_time()
+        {
+            return perf_counter()/1000;
+        }
+
+        TIMEAPI int64_t clock_ns()
+        {
+            return perf_counter();
+        }
+    #endif
+
+    static double clock_seconds()
+    {
+        if(g_clock_seconds_init == 0)
+            clock_seconds_set(0);
+        double now = (double) (perf_counter() - g_clock_seconds_offset)*g_clock_seconds_period;
+        return now;
+    }
+
+    static float clock_secondsf()
+    {
+        return (float) clock_seconds();
+    }
 #endif
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_TIME)) && !defined(MODULE_HAS_IMPL_TIME)
 #define MODULE_HAS_IMPL_TIME
+        
+    int     g_clock_seconds_init = 0;
+    int64_t g_clock_seconds_offset = 0;
+    double  g_clock_seconds_period = 0;
+    int64_t g_clock_seconds_freq = 0;
+    EXTERNAL double clock_seconds_set(double to_time)
+    {
+        int64_t counter = perf_counter();
+        double prev_now = (double) (counter - g_clock_seconds_offset)*g_clock_seconds_period;
+        int64_t freq = perf_frequency();
+        g_clock_seconds_offset = counter + (int64_t) (to_time*freq + 0.5);
+        g_clock_seconds_period = 1.0 / freq;
+        g_clock_seconds_freq = freq;
+        g_clock_seconds_init = 1;
+        return prev_now;
+    }
 
-EXTERNAL f64 platform_perf_counter_frequency_f64()
-{
-    static f64 freq = 0;
-    if(freq == 0)
-        freq = (f64) platform_perf_counter_frequency(); 
-    return freq;
-}
+#endif
 
-EXTERNAL f32 platform_perf_counter_frequency_f32()
-{
-    static f32 freq = 0;
-    if(freq == 0)
-        freq = (f32) platform_perf_counter_frequency(); 
-    return freq;
-}
-
-EXTERNAL f64 epoch_time_to_clock_time(i64 epoch_time)
-{
-    i64 startup = platform_epoch_time_startup();
-    i64 delta = epoch_time - startup;
-    return (f64) delta / (f64) SECOND_MIRCOSECONDS;
-}
-
-EXTERNAL i64 clock_time_to_epoch_time(f64 time)
-{
-    i64 startup = platform_epoch_time_startup();
-    i64 delta = (i64) (time * SECOND_MIRCOSECONDS);
-    return startup + delta;
-}
-
-//Returns the time from the startup time in nanoseconds
-EXTERNAL int64_t clock_ns()
-{
-    int64_t freq = platform_perf_counter_frequency();
-    int64_t counter = platform_perf_counter() - platform_perf_counter_startup();
-
-    int64_t sec_to_nanosec = 1000000000;
-    //We assume _perf_counter_base is set to some reasonable thing so this will not overflow
-    // (with this we are only able to represent 1e12 seconds (A LOT) without overflowing)
-    return counter * sec_to_nanosec / freq;
-}
-
-//Returns the time from the startup time in seconds
-//@NOTE:
-//We might be rightfully scared that after some amount of time the clock_s() will get sufficiently large and
-// we will start loosing pression. This is however not a problem. If we assume the perf_counter_frequency is equal to 
-// 10Mhz = 1e7 (which is very common) then we would like the clock_s to have enough precision to represent
-// 1 / 10Mhz = 1e-7. This precision is held up until 1e9 seconds have passed which is roughly 31 years. 
-// => Please dont run your program for more than 31 years or you will loose precision
-EXTERNAL f64 clock_s()
-{
-    f64 freq = platform_perf_counter_frequency_f64();
-    f64 counter = (f64) (platform_perf_counter() - platform_perf_counter_startup());
-    return counter / freq;
-}
-
-EXTERNAL f32 clock_s32()
-{
-    f32 freq = platform_perf_counter_frequency_f32();
-    f32 counter = (f32) (platform_perf_counter() - platform_perf_counter_startup());
-    return counter / freq;
-}
-#endif // !MODULE_TIME

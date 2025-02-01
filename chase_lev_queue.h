@@ -1,6 +1,8 @@
 #ifndef MODULE_CHASE_LEV_QUEUE
 #define MODULE_CHASE_LEV_QUEUE
 
+//GET RID OF THIS IN FAVOR OF RIGTORP QUEUEU
+
 #if defined(_MSC_VER)
     #define CL_QUEUE_INLINE_ALWAYS   __forceinline
     #define CL_QUEUE_INLINE_NEVER    __declspec(noinline)
