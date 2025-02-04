@@ -187,8 +187,6 @@ typedef struct Platform_Mutex {
     void* handle;
 } Platform_Mutex;
 
-//@TODO: thread processor affinity!
-
 //@NOTE: We made pretty much all of the threaded functions (except init-like) into non failing
 //       even though they CAN internally return error (we just assert). That is because:
 // 1) One can generally do very little when a mutex fails.
@@ -300,12 +298,6 @@ int64_t platform_perf_counter();
 int64_t platform_perf_counter_frequency();  
 //returns platform_perf_counter() take at time of platform_init()
 int64_t platform_perf_counter_startup();    
-
-//Functions which deal with __rdtsc or equivalent on ARM
-PLATFORM_INTRINSIC int64_t platform_rdtsc();
-PLATFORM_INTRINSIC int64_t platform_rdtsc_fence();
-int64_t platform_rdtsc_frequency();
-int64_t platform_rdtsc_startup();
 
 //=========================================
 // Filesystem
@@ -775,18 +767,6 @@ const char* platform_exception_to_string(Platform_Exception error);
     PLATFORM_INTRINSIC int32_t platform_pop_count64(uint64_t num)
     {
         return (int32_t) __popcnt64((unsigned long long)num);
-    }
-
-    PLATFORM_INTRINSIC int64_t platform_rdtsc()
-    {
-        _ReadWriteBarrier(); 
-	    return (int64_t) __rdtsc();
-    }
-
-    PLATFORM_INTRINSIC int64_t platform_rdtsc_fence()
-    {
-        _ReadWriteBarrier(); 
-        _mm_lfence();
     }
 
     #pragma warning(pop)

@@ -73,6 +73,13 @@
         "format": "cpp",
         "xiosbase": "cpp",
         "xutility": "cpp",
-        "xstring": "cpp"
+        "xstring": "cpp",
+        "charconv": "cpp",
+        "xmemory": "cpp",
+        "stdatomic.h": "c",
+        "assert.h": "c",
+        "xlocbuf": "c",
+        "xtr1common": "cpp",
+        "xlocmon": "cpp"
     }
 }
