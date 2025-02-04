@@ -20,6 +20,7 @@ typedef enum Ser_Type {
     SER_OBJECT_END,
     SER_RECOVERY_LIST_END,    //{u8 type, u8 size}[size bytes of tag]\0
     SER_RECOVERY_OBJECT_END,    //{u8 type, u8 size}[size bytes of tag]\0
+    SER_ERROR, //"lexing" error. Is near the ENDers section so that we can check for ender or error efficiently 
 
     SER_STRING_0,  //{u8 type}
     SER_STRING_8,  //{u8 type, u8 size}[size bytes]\0
@@ -54,7 +55,6 @@ typedef enum Ser_Type {
     SER_I32V3,
     SER_I32V4,
 
-    SER_ERROR,
 
     //aliases
     SER_LIST = SER_LIST_BEGIN,
@@ -63,6 +63,7 @@ typedef enum Ser_Type {
     SER_RECOVERY_OBJECT = SER_RECOVERY_OBJECT_BEGIN,
     SER_STRING = SER_STRING_64,
     SER_BINARY = SER_BINARY_64,
+    SER_DYN_COUNT = 4,
 } Ser_Type;
 
 typedef struct Ser_Writer {
@@ -125,44 +126,43 @@ bool ser_type_is_unsigned_integer(Ser_Type type);
 bool ser_type_is_float(Ser_Type type);
 
 Ser_Writer ser_file_writer(FILE* file);
-void ser_write(Ser_Reader* context, const void* ptr, isize size);
+void ser_write(Ser_Writer* context, const void* ptr, isize size);
 
-void ser_section_begin(Ser_Reader* context, const void* ptr, isize size);
-void ser_section_end(Ser_Reader* context, const void* ptr, isize size);
+void ser_section_begin(Ser_Writer* context, const void* ptr, isize size);
+void ser_section_end(Ser_Writer* context, const void* ptr, isize size);
 
-void ser_list_begin(Ser_Reader* context);
-void ser_list_end(Ser_Reader* context);
+void ser_list_begin(Ser_Writer* context);
+void ser_list_end(Ser_Writer* context);
 
-void ser_object_begin(Ser_Reader* context);
-void ser_object_end(Ser_Reader* context);
+void ser_object_begin(Ser_Writer* context);
+void ser_object_end(Ser_Writer* context);
 
-void ser_primitive(Ser_Reader* context, Ser_Type type, const void* ptr, isize size);
-void ser_binary(Ser_Reader* context, const void* ptr, isize size);
-void ser_string(Ser_Reader* context, const void* ptr, isize size);
-void ser_array(Ser_Reader* context, Ser_Type type, const void* ptr, isize count);
-void ser_null(Ser_Reader* context);
-void ser_bool(Ser_Reader* context, bool val);
+void ser_primitive(Ser_Writer* context, Ser_Type type, const void* ptr, isize size);
+void ser_binary(Ser_Writer* context, const void* ptr, isize size);
+void ser_string(Ser_Writer* context, const void* ptr, isize size);
+void ser_null(Ser_Writer* context);
+void ser_bool(Ser_Writer* context, bool val);
 
-void ser_i8(Ser_Reader* context, i8 val);
-void ser_i16(Ser_Reader* context, i16 val);
-void ser_i32(Ser_Reader* context, i32 val);
-void ser_i64(Ser_Reader* context, i64 val);
+void ser_i8(Ser_Writer* context, i8 val);
+void ser_i16(Ser_Writer* context, i16 val);
+void ser_i32(Ser_Writer* context, i32 val);
+void ser_i64(Ser_Writer* context, i64 val);
 
-void ser_u8(Ser_Reader* context, u8 val);
-void ser_u16(Ser_Reader* context, u16 val);
-void ser_u32(Ser_Reader* context, u32 val);
-void ser_u64(Ser_Reader* context, u64 val);
+void ser_u8(Ser_Writer* context, u8 val);
+void ser_u16(Ser_Writer* context, u16 val);
+void ser_u32(Ser_Writer* context, u32 val);
+void ser_u64(Ser_Writer* context, u64 val);
 
-void ser_f32(Ser_Reader* context, f32 val);
-void ser_f64(Ser_Reader* context, f64 val);
+void ser_f32(Ser_Writer* context, f32 val);
+void ser_f64(Ser_Writer* context, f64 val);
 
-void ser_i32v2(Ser_Reader* context, i32 val1, i32 val2);
-void ser_i32v3(Ser_Reader* context, i32 val1, i32 val2, i32 val3);
-void ser_i32v4(Ser_Reader* context, i32 val1, i32 val2, i32 val3, i32 val4);
+void ser_i32v2(Ser_Writer* context, const i32 vals[2]);
+void ser_i32v3(Ser_Writer* context, const i32 vals[3]);
+void ser_i32v4(Ser_Writer* context, const i32 vals[4]);
 
-void ser_f32v2(Ser_Reader* context, f32 val1, f32 val2);
-void ser_f32v3(Ser_Reader* context, f32 val1, f32 val2, f32 val3);
-void ser_f32v4(Ser_Reader* context, f32 val1, f32 val2, f32 val3, f32 val4);
+void ser_f32v2(Ser_Writer* context, const f32 vals[2]);
+void ser_f32v3(Ser_Writer* context, const f32 vals[3]);
+void ser_f32v4(Ser_Writer* context, const f32 vals[4]);
 
 
 //reading 
@@ -206,7 +206,7 @@ bool ser_type_is_unsigned_integer(Ser_Type type)    { return SER_U8 <= (int) typ
 bool ser_type_is_float(Ser_Type type)               { return SER_F8 <= (int) type && (int) type <= SER_F64; }
 
 inline static
-void ser_primitive(Ser_Reader* context, Ser_Type type, const void* ptr, isize size)
+void ser_primitive(Ser_Writer* context, Ser_Type type, const void* ptr, isize size)
 {
     struct Temp {
         uint8_t type;
@@ -218,7 +218,7 @@ void ser_primitive(Ser_Reader* context, Ser_Type type, const void* ptr, isize si
     ser_write(context, &temp, 1 + sizeof size);
 }
 
-inline static void _ser_binary_or_string(Ser_Reader* context, const void* ptr, isize size, bool is_string)
+inline static void _ser_binary_or_string(Ser_Writer* context, const void* ptr, isize size, bool is_string)
 {
     if(size <= 0)
         ser_primitive(context, is_string ? SER_STRING_0 : SER_BINARY_0, NULL, 0);
@@ -238,55 +238,74 @@ inline static void _ser_binary_or_string(Ser_Reader* context, const void* ptr, i
     }
 }
 
-void ser_null(Ser_Reader* context)           {ser_primitive(context, SER_I8, NULL, 0); }
-void ser_bool(Ser_Reader* context, bool val) {ser_primitive(context, SER_I8,  &val, sizeof val); }
-
-void ser_i8(Ser_Reader* context, i8 val)     {ser_primitive(context, SER_I8,  &val, sizeof val); }
-void ser_i16(Ser_Reader* context, i16 val)   {ser_primitive(context, SER_I16, &val, sizeof val); }
-void ser_i32(Ser_Reader* context, i32 val)   {ser_primitive(context, SER_I32, &val, sizeof val); }
-void ser_i64(Ser_Reader* context, i64 val)   {ser_primitive(context, SER_I64, &val, sizeof val); }
-
-void ser_u8(Ser_Reader* context, u8 val)     {ser_primitive(context, SER_U8,  &val, sizeof val); }
-void ser_u16(Ser_Reader* context, u16 val)   {ser_primitive(context, SER_U16, &val, sizeof val); }
-void ser_u32(Ser_Reader* context, u32 val)   {ser_primitive(context, SER_U32, &val, sizeof val); }
-void ser_u64(Ser_Reader* context, u64 val)   {ser_primitive(context, SER_U64, &val, sizeof val); }
-
-void ser_f32(Ser_Reader* context, f32 val)   {ser_primitive(context, SER_F32, &val, sizeof val); }
-void ser_f64(Ser_Reader* context, f64 val)   {ser_primitive(context, SER_F64, &val, sizeof val); }
-
-void ser_i32v2(Ser_Reader* context, i32 val1, i32 val2)                         {i32 vals[] = {val1, val2};              ser_primitive(context, SER_I32V2, &vals, sizeof vals); }
-void ser_i32v3(Ser_Reader* context, i32 val1, i32 val2, i32 val3)               {i32 vals[] = {val1, val2, val3};        ser_primitive(context, SER_I32V3, &vals, sizeof vals); }
-void ser_i32v4(Ser_Reader* context, i32 val1, i32 val2, i32 val3, i32 val4)     {i32 vals[] = {val1, val2, val3, val4};  ser_primitive(context, SER_I32V4, &vals, sizeof vals); }
-
-void ser_f32v2(Ser_Reader* context, f32 val1, f32 val2)                         {f32 vals[] = {val1, val2};              ser_primitive(context, SER_F32V2, &vals, sizeof vals); }
-void ser_f32v3(Ser_Reader* context, f32 val1, f32 val2, f32 val3)               {f32 vals[] = {val1, val2, val3};        ser_primitive(context, SER_F32V3, &vals, sizeof vals); }
-void ser_f32v4(Ser_Reader* context, f32 val1, f32 val2, f32 val3, f32 val4)     {i32 vals[] = {val1, val2, val3, val4};  ser_primitive(context, SER_F32V4, &vals, sizeof vals); }
-
-void ser_list_begin(Ser_Reader* context)     { ser_primitive(context, SER_LIST_BEGIN, NULL, 0); }
-void ser_list_end(Ser_Reader* context)       { ser_primitive(context, SER_LIST_END, NULL, 0); }
-
-void ser_object_begin(Ser_Reader* context)   { ser_primitive(context, SER_OBJECT_BEGIN, NULL, 0); }
-void ser_object_end(Ser_Reader* context)     { ser_primitive(context, SER_OBJECT_END, NULL, 0); }
-
-void ser_binary(Ser_Reader* context, const void* ptr, isize size) { _ser_binary_or_string(context, ptr, size, true); }
-void ser_string(Ser_Reader* context, const void* ptr, isize size) { _ser_binary_or_string(context, ptr, size, true); }
-void ser_cstring(Ser_Reader* context, const char* ptr)            { _ser_binary_or_string(context, ptr, ptr ? strlen(ptr) : 0, true); }
-
-void ser_section_begin(Ser_Reader* context, const void* ptr, isize size)
+void _ser_recovery(Ser_Writer* context, Ser_Type type, const void* ptr, isize size)
 {
     uint8_t null = 0;
-    uint8_t usize = size >= 0 ? (uint8_t) size : 0;
-    ser_primitive(context, SER_SECTION_BEGIN, &usize, size);
+    if(size < 0)
+        size = ptr ? strlen((const char*) ptr) : 0;
+
+    uint8_t usize = (uint8_t) size;
+    ser_primitive(context, type, &usize, size);
     ser_write(context, ptr, size);
     ser_write(context, &null, sizeof null);
 }
-void ser_section_end(Ser_Reader* context, const void* ptr, isize size)
+
+void ser_null(Ser_Writer* context)           { ser_primitive(context, SER_I8, NULL, 0); }
+void ser_bool(Ser_Writer* context, bool val) { ser_primitive(context, SER_I8,  &val, sizeof val); }
+
+void ser_i8(Ser_Writer* context, i8 val)     { ser_primitive(context, SER_I8,  &val, sizeof val); }
+void ser_i16(Ser_Writer* context, i16 val)   { ser_primitive(context, SER_I16, &val, sizeof val); }
+void ser_i32(Ser_Writer* context, i32 val)   { ser_primitive(context, SER_I32, &val, sizeof val); }
+void ser_i64(Ser_Writer* context, i64 val)   { ser_primitive(context, SER_I64, &val, sizeof val); }
+
+void ser_u8(Ser_Writer* context, u8 val)     { ser_primitive(context, SER_U8,  &val, sizeof val); }
+void ser_u16(Ser_Writer* context, u16 val)   { ser_primitive(context, SER_U16, &val, sizeof val); }
+void ser_u32(Ser_Writer* context, u32 val)   { ser_primitive(context, SER_U32, &val, sizeof val); }
+void ser_u64(Ser_Writer* context, u64 val)   { ser_primitive(context, SER_U64, &val, sizeof val); }
+
+void ser_f32(Ser_Writer* context, f32 val)   { ser_primitive(context, SER_F32, &val, sizeof val); }
+void ser_f64(Ser_Writer* context, f64 val)   { ser_primitive(context, SER_F64, &val, sizeof val); }
+
+void ser_list_begin(Ser_Writer* context)     { ser_primitive(context, SER_LIST_BEGIN, NULL, 0); }
+void ser_list_end(Ser_Writer* context)       { ser_primitive(context, SER_LIST_END, NULL, 0); }
+void ser_object_begin(Ser_Writer* context)   { ser_primitive(context, SER_OBJECT_BEGIN, NULL, 0); }
+void ser_object_end(Ser_Writer* context)     { ser_primitive(context, SER_OBJECT_END, NULL, 0); }
+
+void ser_recovery_list_begin(Ser_Writer* context, const void* ptr, isize size)      { _ser_recovery(context, SER_RECOVERY_LIST_BEGIN, ptr, size); }
+void ser_recovery_list_end(Ser_Writer* context, const void* ptr, isize size)        { _ser_recovery(context, SER_RECOVERY_LIST_END, ptr, size); }
+void ser_recovery_object_begin(Ser_Writer* context, const void* ptr, isize size)    { _ser_recovery(context, SER_RECOVERY_OBJECT_BEGIN, ptr, size); }
+void ser_recovery_object_end(Ser_Writer* context, const void* ptr, isize size)      { _ser_recovery(context, SER_RECOVERY_OBJECT_END, ptr, size); }
+
+void ser_i32v2(Ser_Writer* context, const i32 vals[2]) { ser_primitive(context, SER_I32V2, &vals, sizeof vals); }
+void ser_i32v3(Ser_Writer* context, const i32 vals[3]) { ser_primitive(context, SER_I32V3, &vals, sizeof vals); }
+void ser_i32v4(Ser_Writer* context, const i32 vals[4]) { ser_primitive(context, SER_I32V4, &vals, sizeof vals); }
+
+void ser_f32v2(Ser_Writer* context, const f32 vals[2]) { ser_primitive(context, SER_F32V2, &vals, sizeof vals); }
+void ser_f32v3(Ser_Writer* context, const f32 vals[3]) { ser_primitive(context, SER_F32V3, &vals, sizeof vals); }
+void ser_f32v4(Ser_Writer* context, const f32 vals[4]) { ser_primitive(context, SER_F32V4, &vals, sizeof vals); }
+
+void ser_binary(Ser_Writer* context, const void* ptr, isize size) { _ser_binary_or_string(context, ptr, size, true); }
+void ser_string(Ser_Writer* context, const void* ptr, isize size) { _ser_binary_or_string(context, ptr, size, true); }
+void ser_cstring(Ser_Writer* context, const char* ptr)            { _ser_binary_or_string(context, ptr, ptr ? strlen(ptr) : 0, true); }
+
+//@TODO: inspect assembly. Perhaps can be more efficient if we use pointers instead of offsets?
+bool deser_read(Ser_Reader* context, void* ptr, isize size)
 {
-    uint8_t null = 0;
-    uint8_t usize = size >= 0 ? (uint8_t) size : 0;
-    ser_primitive(context, SER_SECTION_END, &usize, size);
-    ser_write(context, ptr, size);
-    ser_write(context, &null, sizeof null);
+    if(context->offset + size > context->capacity)
+        return false;
+
+    memcpy(ptr, context->data + context->offset, size);
+    context->offset += size;
+    return true;
+}
+
+bool deser_skip(Ser_Reader* context, isize size)
+{
+    if(context->offset + size > context->capacity)
+        return false;
+
+    context->offset += size;
+    return true;
 }
 
 Ser_Value deser_value(Ser_Reader* context)
@@ -298,11 +317,11 @@ Ser_Value deser_value(Ser_Reader* context)
     out.depth = context->depth;
 
     uint8_t uncast_type = 0; 
+    uint8_t ok = true;
     if(deser_read(context, &uncast_type, sizeof uncast_type))
     {
         Ser_Type type = (Ser_Type) uncast_type;
         out.exact_type = type;
-        uint8_t ok = true;
         switch (type)
         {
             case SER_NULL: { out.type = SER_NULL; } break;
@@ -331,12 +350,35 @@ Ser_Value deser_value(Ser_Reader* context)
             case SER_I32V3: { ok = deser_read(context, &out.i32v4, 12); out.type = type; } break;
             case SER_I32V4: { ok = deser_read(context, &out.i32v4, 16); out.type = type; } break;
 
-            case SER_LIST_BEGIN:    { out.type = type; context->depth += 1; } break;
-            case SER_LIST_END:      { out.type = type; context->depth -= 1; } break;
-
-            case SER_OBJECT_BEGIN:  { out.type = type; context->depth += 1; } break;
+            case SER_LIST_END:
             case SER_OBJECT_END:    { out.type = type; context->depth -= 1; } break;
 
+            case SER_LIST_BEGIN:    
+            case SER_OBJECT_BEGIN:  { out.type = type; context->depth += 1; } break;
+
+            case SER_RECOVERY_LIST_END:
+            case SER_RECOVERY_OBJECT_END:    
+            case SER_RECOVERY_LIST_BEGIN:    
+            case SER_RECOVERY_OBJECT_BEGIN:  { 
+                uint8_t size = 0;
+                uint8_t null = 0;
+                ok &= deser_read(context, &size, sizeof size);
+                out.string.data = (char*) (void*) (context->data + context->offset);
+                out.string.count = size;
+                ok &= deser_skip(context, out.string.count);
+                ok &= deser_read(context, &null, sizeof null);
+                ok &= null == 0;
+                out.type = type; 
+                if(ok) {
+                    if((uint32_t) type - SER_LIST_END < SER_DYN_COUNT)
+                        context->depth -= 1; 
+                    else
+                        context->depth += 1; 
+                }
+            } break;
+
+            //TODO: string and binary can probably be merged in their cases?
+            //TODO: keep just binary 64?
             case SER_STRING_0:  { 
                 out.type = SER_STRING; 
                 out.string.data = "";
@@ -348,7 +390,7 @@ Ser_Value deser_value(Ser_Reader* context)
                 uint8_t size = 0;
                 out.type = SER_STRING;
                 if(type == SER_STRING_64) 
-                    ok &= deser_read(context, &out.string.data, sizeof out.string.data);
+                    ok &= deser_read(context, &out.string.count, sizeof out.string.count);
                 else {
                     ok &= deser_read(context, &size, sizeof size);
                     out.string.count = size;
@@ -356,7 +398,7 @@ Ser_Value deser_value(Ser_Reader* context)
                 
                 out.string.data = (char*) (void*) (context->data + context->offset);
                 
-                ok &= deser_read(context, NULL, out.string.count); //TODO!
+                ok &= deser_skip(context, out.string.count);
                 ok &= deser_read(context, &null, sizeof null);
                 ok &= null == 0;
             } break;
@@ -370,7 +412,7 @@ Ser_Value deser_value(Ser_Reader* context)
             case SER_BINARY_64:  { 
                 out.type = SER_BINARY;
                 if(type == SER_BINARY_64) 
-                    ok &= deser_read(context, &out.binary.data, sizeof out.binary.data);
+                    ok &= deser_read(context, &out.binary.count, sizeof out.binary.count);
                 else {
                     uint8_t size = 0;
                     ok &= deser_read(context, &size, sizeof size);
@@ -378,7 +420,7 @@ Ser_Value deser_value(Ser_Reader* context)
                 }
                 
                 out.binary.data = (char*) (void*) (context->data + context->offset);
-                ok &= deser_read(context, NULL, out.binary.count); //TODO!
+                ok &= deser_skip(context, out.binary.count);
             } break;
             
             default: {
@@ -387,8 +429,11 @@ Ser_Value deser_value(Ser_Reader* context)
             } break;
         }
 
-        if(ok == false)
-            out.type = SER_ERROR;
+    }
+
+    if(ok == false) {
+        out.type = SER_ERROR;
+        context->offset = out.offset;
     }
 
     return out;
@@ -404,44 +449,58 @@ void deser_skip_to_depth(Ser_Reader* context, isize depth)
 
 bool _deser_recover(Ser_Value object);
 
+bool ser_type_is_ender(Ser_Type type)
+{
+    return (uint32_t) type - SER_LIST_END < SER_DYN_COUNT;
+}
+
+bool ser_type_is_ender_or_error(Ser_Type type)
+{
+    return (uint32_t) type - SER_LIST_END < SER_DYN_COUNT || type == SER_ERROR;
+}
+
 bool deser_iterate_list(Ser_Value list, Ser_Value* out_val)
 {
     ASSERT(list.type == SER_LIST || list.type == SER_RECOVERY_LIST);
     deser_skip_to_depth(list.context, list.depth);
     *out_val = deser_value(list.context);
-    if(out_val->type == SER_ERROR)
+    if(ser_type_is_ender_or_error(out_val->type))
     {
-        _deser_recover(list);
+        if(list.type != out_val->type - SER_DYN_COUNT)
+            _deser_recover(list);
         return false;
     }
 
-    return out_val->type != SER_LIST_END;
+    return true;
 }
+
 
 bool deser_iterate_object(Ser_Value object, Ser_Value* out_key, Ser_Value* out_val)
 {
     ASSERT(object.type == SER_OBJECT || object.type == SER_RECOVERY_OBJECT);
+
     deser_skip_to_depth(object.context, object.depth);
     *out_key = deser_value(object.context);
-    if(out_key->type == SER_OBJECT_END || out_key->type == SER_RECOVERY_OBJECT_END)
+    if(ser_type_is_ender_or_error(out_key->type)) 
     {
-        if((object.type == SER_OBJECT && out_key->type != SER_OBJECT_END)
-            || (object.type == SER_RECOVERY_OBJECT && out_key->type != SER_RECOVERY_OBJECT_END))
-        {
-            //print error!
-            //TODO: should we try to recover here?
-        }
+        //if the ending type does not correspond to the object type
+        if(object.type != out_key->type - SER_DYN_COUNT)
+            goto recover;
         return false;
     }
 
-    deser_skip_to_depth(object.context, object.depth);
+    //NOTE: can be removed if we disallow dynamic as keys
+    // then this case will just full under error.
+    deser_skip_to_depth(object.context, object.depth); 
     *out_val = deser_value(object.context);
-    if(out_key->type == SER_ERROR && out_key->type == SER_ERROR)
-    {
-        _deser_recover(object);
-        return false;
-    }
+    if(ser_type_is_ender_or_error(out_key->type))
+        goto recover;
+
     return true;
+
+    recover:
+    _deser_recover(object);
+    return false;
 }
 
 static isize _ser_find_first_or(String in_str, String search_for, isize from, isize if_not_found)
@@ -490,10 +549,10 @@ static bool _deser_recover(Ser_Value object)
         recovery_text[0] = SER_LIST_END;
     else if(object.type == SER_OBJECT)
         recovery_text[0] = SER_OBJECT_END;
-    else if(object.type == SER_SECTION)
+    else if(object.type == SER_RECOVERY_LIST || object.type == SER_RECOVERY_OBJECT)
     {
         isize i = 0;
-        recovery_text[i++] = SER_SECTION_END;
+        recovery_text[i++] = object.type == SER_RECOVERY_LIST ? SER_RECOVERY_LIST_END : SER_RECOVERY_OBJECT_END;
         recovery_text[i++] = (uint8_t) object.string.count;
         memcpy(recovery_text + 2, object.string.data, object.string.count); i += object.string.count + 2;
         recovery_text[i++] = '\0';
@@ -518,37 +577,8 @@ bool ser_string_eq(Ser_Value value, String str)
 {
     return value.type == SER_STRING && string_is_equal(value.string, str);
 }
-
-
-bool deser_f32(f32* out, Ser_Value object)
-{
-    if(object.type == SER_F32)
-        *out = object.f32;
-    else if(object.type == SER_F64)
-        *out = (f32) object.f64;
-    else if(object.type == SER_I64)
-        *out = (f32) object.i64;
-    else if(object.type == SER_U64) //TODO: What to do about u64? It adds a lot of complexity everywhere and maybe its not worth it.
-        *out = (f32) object.u64;
-    else
-        return false;
-    return true; 
-}
-
-bool deser_f64(f64* out, Ser_Value object)
-{
-    if(object.type == SER_F32)
-        *out = object.f32;
-    else if(object.type == SER_F64)
-        *out = object.f64;
-    else if(object.type == SER_I64)
-        *out = object.i64;
-    else if(object.type == SER_U64) 
-        *out = object.u64;
-    else
-        return false;
-    return true; 
-}
+bool deser_f32(f32* val, Ser_Value object) { if(object.type == SER_F64) { *val = (f32) object.f64; return true; } return false; }
+bool deser_f64(f64* val, Ser_Value object) { if(object.type == SER_F64) { *val = (f64) object.f64; return true; } return false; }
 
 bool deser_null(Ser_Value object)                { return object.type == SER_NULL; }
 bool deser_bool(bool* val, Ser_Value object)     { if(object.type == SER_BOOL) { *val = object.vbool; return true; } return false; }
@@ -689,27 +719,55 @@ bool deser_map_info(Map_Info* out_map_info, Ser_Value object)
             }
         }
     }
+
+    *out_map_info = out;
     return true;
 }
 
-typedef struct Map_Infos_Section {
-    Map_Info* map_infos;
-    isize count;
-    isize capacity;
-} Map_Infos_Section;
 
-void map_infos_reserve(Map_Infos_Section* section, isize count);
-void map_infos_push(Map_Infos_Section* section, Map_Info map_info);
-
-bool deser_map_infos_section(Map_Infos_Section* out_map_info, Ser_Value object)
+void ser_map_repeat(Ser_Writer* context, Map_Repeat repeat)
 {
-    bool state = true;
-    isize count = 0;
-    for(Ser_Value key = {0}, val = {0}; deser_iterate_object(object, &key, &val); )
+    switch(repeat)
     {
-        /**/ if(ser_cstring_eq(key, "count"))           deser_i64(&count, val);
-        else if(ser_cstring_eq(key, "scale"))           deser_f32v3(out.scale.floats, val);
-        else if(ser_cstring_eq(key, "resolution"))      deser_f32v3(out.resolution.floats, val);
-        Map_Info info = {0};
+        case MAP_REPEAT_REPEAT:             ser_cstring(context, "repeat"); break;
+        case MAP_REPEAT_MIRRORED_REPEAT:    ser_cstring(context, "mirrored"); break;
+        case MAP_REPEAT_CLAMP_TO_EDGE:      ser_cstring(context, "clamp_to_edge"); break;
+        case MAP_REPEAT_CLAMP_TO_BORDER:    ser_cstring(context, "clamp_to_border"); break;
+        default:                            ser_cstring(context, "invalid"); break;
     }
 }
+
+bool ser_map_scale_filter(Ser_Writer* context, Map_Scale_Filter filter)
+{
+    switch(filter)
+    {
+        case MAP_SCALE_FILTER_BILINEAR:     ser_cstring(context, "bilinear"); break;
+        case MAP_SCALE_FILTER_TRILINEAR:    ser_cstring(context, "trilinear"); break;
+        case MAP_SCALE_FILTER_NEAREST:      ser_cstring(context, "nearest"); break; 
+        default:                            ser_cstring(context, "invalid"); break; 
+    }
+}
+
+bool ser_map_info(Ser_Writer* context, Map_Info info)
+{
+    ser_recovery_object_begin(context, "Map_Info:Magic", -1);
+    ser_cstring(context, "offset");          ser_f32v3(context, info.offset.floats);
+    ser_cstring(context, "scale");           ser_f32v3(context, info.scale.floats);
+    ser_cstring(context, "resolution");      ser_f32v3(context, info.resolution.floats);
+    ser_cstring(context, "filter_minify");   ser_map_scale_filter(context, info.filter_minify);
+    ser_cstring(context, "filter_magnify");  ser_map_scale_filter(context, info.filter_magnify);
+    ser_cstring(context, "repeat_u");        ser_map_repeat(context, info.repeat_u);
+    ser_cstring(context, "repeat_v");        ser_map_repeat(context, info.repeat_v);
+    ser_cstring(context, "repeat_w");        ser_map_repeat(context, info.repeat_w);
+    ser_cstring(context, "gamma");           ser_f32(context, info.gamma);
+    ser_cstring(context, "brightness");      ser_f32(context, info.brightness);
+    ser_cstring(context, "contrast");        ser_f32(context, info.contrast);
+    ser_cstring(context, "channels_count");  ser_i32(context, info.channels_count);
+    ser_cstring(context, "channels_idices1");
+    ser_list_begin(context);
+    for(int i = 0; i < MAX_CHANNELS; i++)
+        ser_i32(context, info.channels_idices1[i]);
+    ser_list_end(context);
+    ser_recovery_object_end(context, "Map_Info:Magic", -1);
+}
+
