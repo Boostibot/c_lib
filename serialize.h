@@ -2,59 +2,86 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
-#include <assert.h>
 #include <stdlib.h>
-// #include "string.h"
 
-typedef int64_t    isize;
+//TLDR This is a "simple" serialization system roughly equivalent to json in binary.
+//based on https://rxi.github.io/a_simple_serialization_system.html.
+//
+// The requirements for me are the following:
+// 1. Self describing: 
+//    It should be instantly translatable into some other format. 
+//    The format shouldnt even be separated into info and payload sections.
+// 2. Backwards and forwards compatible: 
+//    It needs to seamlessly handle additions of new fields or changes to wider integer types etc.  
+// 3. Require no escaping and provide escape hatches.
+//    This property allows us to embed arbitrary other file formats inside, using it as a sort
+//    of glue format, between big chunks of actual data.
+//
+// From 1. and 2. we get something like json. From 3 we get a binary format since 
+// textual formats require escaping.
+// 
+// The general structure of everything is a type byte followed by some payload.
+// We support all C basic types for both writing and reading as well as sized strings.
+// Strings are null terminated (enforced by the parser - if not then error) which allows 
+// for zero copy reading.
+// 
+// Individual primitive types are grouped into json-like lists and objects. Lists are 
+// denoted by start and end type bytes. Everything between is inside the list. Objects
+// are just like lists except the items are interpreted in pairs of two: the first is
+// key, the second is value. If object contains odd number of primitives the last is skipped.
+//
+// Lastly I have extended the above code to seamlessly handle data corruption or generally any other
+// fault in the format. Binary formats have the unhandy property where even a slight change can cause the 
+// entire format to become corrupted and unvisualiseable. This is generally solved by application specific 
+// magic numbers and checksums. I have taken a similar route which accounts very nicely for the generality and
+// structure of the format. 
+// 
+// I provide recovery variants for list/object begin/end which behave just like their regular counterparts 
+// except are followed by a user specified magic sequence. The writer is expected to use these a few times
+// in the format around large blocks of data (since the magic sequences pose some overhead). The reader on the
+// other hand doesnt have to know about these at all. When a parsing error is found within a recovery list/object
+// the code attempts to automatically recover by finding the matching end magic sequence for the given list/object.  
 
-typedef uint8_t     u8;
-typedef uint16_t    u16;
-typedef uint32_t    u32;
-typedef uint64_t    u64;
-
-typedef int8_t      i8;
-typedef int16_t     i16;
-typedef int32_t     i32;
-typedef int64_t     i64;
-
-typedef bool        b8;
-typedef uint16_t    b16;
-typedef uint32_t    b32;
-typedef uint64_t    b64;
-
-typedef float       f32;
-typedef double      f64;
-
-#define ASSERT(x, ...) assert(x)
-
-#if 0
+#ifdef MODULE_ALL_COUPLED
+    #include "string.h"
+    #include "allocator.h"
+    #include "assert.h"
     typedef String Ser_String;
 #else
+    typedef struct Allocator Allocator;
+    typedef int64_t isize;
     typedef struct Ser_String {
         const char* data;
         isize count;
     } Ser_String;
+#endif
 
-    #ifdef __cplusplus
-        #define STRING(x) Ser_String{x, sizeof(x"") - 1}
-    #else
-        #define STRING(x) (Ser_String){x, sizeof(x"") - 1}
-    #endif
+#ifndef ASSERT
+    #include <assert.h>
+    #define ASSERT(x, ...) assert(x)
+#endif
+
+#ifndef EXTERNAL
+    #define EXTERNAL 
+#endif
+
+#ifdef __cplusplus
+    #define SER_CSTRING(x) Ser_String{x, sizeof(x"") - 1}
+#else
+    #define SER_CSTRING(x) (Ser_String){x, sizeof(x"") - 1}
 #endif
 
 #if defined(_MSC_VER)
-    #define ATTRIBUTE_INLINE_ALWAYS                                 __forceinline
-    #define ATTRIBUTE_INLINE_NEVER                                  __declspec(noinline)
+    #define ATTRIBUTE_INLINE_ALWAYS __forceinline
+    #define ATTRIBUTE_INLINE_NEVER  __declspec(noinline)
 #elif defined(__GNUC__) || defined(__clang__)
-    #define ATTRIBUTE_INLINE_ALWAYS                                 __attribute__((always_inline)) inline
-    #define ATTRIBUTE_INLINE_NEVER                                  __attribute__((noinline))
+    #define ATTRIBUTE_INLINE_ALWAYS __attribute__((always_inline)) inline
+    #define ATTRIBUTE_INLINE_NEVER  __attribute__((noinline))
 #else
-    #define ATTRIBUTE_INLINE_ALWAYS                             inline /* Ensures function will get inlined. Applied before function declartion. */
-    #define ATTRIBUTE_INLINE_NEVER                              /* Ensures function will not get inlined. Applied before function declartion. */
+    #define ATTRIBUTE_INLINE_ALWAYS inline 
+    #define ATTRIBUTE_INLINE_NEVER                              
 #endif
 
-//based on https://rxi.github.io/a_simple_serialization_system.html
 typedef enum Ser_Type {
     SER_NULL = 0,
     
@@ -76,34 +103,14 @@ typedef enum Ser_Type {
 
     SER_STRING_0,  //{u8 type}
     SER_STRING_8,  //{u8 type, u8 size}[size bytes]\0
-    SER_STRING_64, //{u8 type, u64 size}[size bytes]\0
-    SER_BINARY,    //{u8 type, u64 size}[size bytes]
+    SER_STRING_64, //{u8 type, uint64_t size}[size bytes]\0
+    SER_BINARY,    //{u8 type, uint64_t size}[size bytes]
 
     SER_BOOL,
 
-    SER_U8,
-    SER_U16,
-    SER_U32,
-    SER_U64,
-    
-    SER_I8,
-    SER_I16,
-    SER_I32,
-    SER_I64,
-    
-    SER_F8,
-    SER_F16,
-    SER_F32,
-    SER_F64,
-
-    SER_F32V2,
-    SER_F32V3,
-    SER_F32V4,
-    
-    SER_I32V2,
-    SER_I32V3,
-    SER_I32V4,
-
+    SER_U8, SER_U16, SER_U32, SER_U64,
+    SER_I8, SER_I16, SER_I32, SER_I64,
+    SER_F8, SER_F16, SER_F32, SER_F64,
 
     //aliases
     SER_LIST = SER_LIST_BEGIN,
@@ -111,7 +118,7 @@ typedef enum Ser_Type {
     SER_RECOVERY_LIST = SER_RECOVERY_LIST_BEGIN,
     SER_RECOVERY_OBJECT = SER_RECOVERY_OBJECT_BEGIN,
     SER_STRING = SER_STRING_64,
-    SER_DYN_COUNT = 4,
+    SER_COMPOUND_TYPES_COUNT = 4,
 } Ser_Type;
 
 typedef struct Ser_Writer {
@@ -129,119 +136,129 @@ typedef struct Ser_Reader {
 
     isize error_count;
     isize recovery_count;
-    void (*error_log)(void* w, isize depth, isize offset, const char* fmt, ...);
-    void* error_log_w;
 } Ser_Reader;
 
 typedef struct Ser_Value {
-    Ser_Reader* w;
+    Ser_Reader* r;
 
     isize depth;
     isize offset;
     Ser_Type exact_type;
     Ser_Type type;
-
     union {
         Ser_String mbinary;
         Ser_String mstring;
-        
-        bool mbool;
-
-        f32 mf64v4[4];
-        i32 mi64v4[4];
-        f32 mf32v4[4];
-        i32 mi32v4[4];
-
-        u64 generic;
-        i64 mi64;
-        u64 mu64;
-        f64 mf64;
-        f32 mf32;
+        int64_t    mi64;
+        uint64_t   mu64;
+        double     mf64;
+        float      mf32;
+        bool       mbool;
     };
 } Ser_Value;
 
-Ser_Writer ser_file_writer(FILE* file);
+EXTERNAL Ser_Writer ser_file_writer(FILE* file);
 
-void ser_primitive(Ser_Writer* w, Ser_Type type, const void* ptr, isize size);
-void ser_binary(Ser_Writer* w, const void* ptr, isize size);
-void ser_string(Ser_Writer* w, const void* ptr, isize size);
+#define ser_cstring_eq(value, cstr) ser_string_eq(value, SER_CSTRING(cstr))
+static inline bool ser_string_eq(Ser_Value value, Ser_String str)
+{
+    return value.type == SER_STRING 
+        && value.mstring.count == str.count 
+        && memcmp(value.mstring.data, str.data, str.count) == 0;
+}
 
-void ser_custom_recovery(Ser_Writer* w, Ser_Type type, const void* ptr, isize size, const void* ptr2, isize size2);
-void ser_custom_recovery_with_hash(Ser_Writer* w, Ser_Type type, const char* str);
+EXTERNAL void ser_custom_recovery(Ser_Writer* w, Ser_Type type, const void* ptr, isize size, const void* ptr2, isize size2);
+EXTERNAL void ser_custom_recovery_with_hash(Ser_Writer* w, Ser_Type type, const char* str);
 
-static inline void ser_null(Ser_Writer* w)           { ser_primitive(w, SER_I8, NULL, 0); }
-static inline void ser_bool(Ser_Writer* w, bool val) { ser_primitive(w, SER_I8,  &val, sizeof val); }
+EXTERNAL void ser_binary(Ser_Writer* w, const void* ptr, isize size);
+EXTERNAL void ser_string(Ser_Writer* w, const void* ptr, isize size);
+static inline void ser_cstring(Ser_Writer* w, const char* ptr) { ser_string(w, ptr, ptr ? strlen(ptr) : 0); }
 
-static inline void ser_i8(Ser_Writer* w, i8 val)     { ser_primitive(w, SER_I8,  &val, sizeof val); }
-static inline void ser_i16(Ser_Writer* w, i16 val)   { ser_primitive(w, SER_I16, &val, sizeof val); }
-static inline void ser_i32(Ser_Writer* w, i32 val)   { ser_primitive(w, SER_I32, &val, sizeof val); }
-static inline void ser_i64(Ser_Writer* w, i64 val)   { ser_primitive(w, SER_I64, &val, sizeof val); }
+static inline void ser_primitive(Ser_Writer* w, Ser_Type type, const void* ptr, isize size);
+static inline void ser_null(Ser_Writer* w)              { ser_primitive(w, SER_I8, NULL, 0); }
+static inline void ser_bool(Ser_Writer* w, bool val)    { ser_primitive(w, SER_I8,  &val, sizeof val); }
 
-static inline void ser_u8(Ser_Writer* w, u8 val)     { ser_primitive(w, SER_U8,  &val, sizeof val); }
-static inline void ser_u16(Ser_Writer* w, u16 val)   { ser_primitive(w, SER_U16, &val, sizeof val); }
-static inline void ser_u32(Ser_Writer* w, u32 val)   { ser_primitive(w, SER_U32, &val, sizeof val); }
-static inline void ser_u64(Ser_Writer* w, u64 val)   { ser_primitive(w, SER_U64, &val, sizeof val); }
+static inline void ser_i8(Ser_Writer* w, int8_t val)    { ser_primitive(w, SER_I8,  &val, sizeof val); }
+static inline void ser_i16(Ser_Writer* w, int16_t val)  { ser_primitive(w, SER_I16, &val, sizeof val); }
+static inline void ser_i32(Ser_Writer* w, int32_t val)  { ser_primitive(w, SER_I32, &val, sizeof val); }
+static inline void ser_i64(Ser_Writer* w, int64_t val)  { ser_primitive(w, SER_I64, &val, sizeof val); }
 
-static inline void ser_f32(Ser_Writer* w, f32 val)   { ser_primitive(w, SER_F32, &val, sizeof val); }
-static inline void ser_f64(Ser_Writer* w, f64 val)   { ser_primitive(w, SER_F64, &val, sizeof val); }
+static inline void ser_u8(Ser_Writer* w, uint8_t val)   { ser_primitive(w, SER_U8,  &val, sizeof val); }
+static inline void ser_u16(Ser_Writer* w, uint16_t val) { ser_primitive(w, SER_U16, &val, sizeof val); }
+static inline void ser_u32(Ser_Writer* w, uint32_t val) { ser_primitive(w, SER_U32, &val, sizeof val); }
+static inline void ser_u64(Ser_Writer* w, uint64_t val) { ser_primitive(w, SER_U64, &val, sizeof val); }
 
-static inline void ser_list_begin(Ser_Writer* w)     { ser_primitive(w, SER_LIST_BEGIN, NULL, 0); }
-static inline void ser_list_end(Ser_Writer* w)       { ser_primitive(w, SER_LIST_END, NULL, 0); }
-static inline void ser_object_begin(Ser_Writer* w)   { ser_primitive(w, SER_OBJECT_BEGIN, NULL, 0); }
-static inline void ser_object_end(Ser_Writer* w)     { ser_primitive(w, SER_OBJECT_END, NULL, 0); }
+static inline void ser_f32(Ser_Writer* w, float val)    { ser_primitive(w, SER_F32, &val, sizeof val); }
+static inline void ser_f64(Ser_Writer* w, double val)   { ser_primitive(w, SER_F64, &val, sizeof val); }
+
+static inline void ser_list_begin(Ser_Writer* w)        { ser_primitive(w, SER_LIST_BEGIN, NULL, 0); }
+static inline void ser_list_end(Ser_Writer* w)          { ser_primitive(w, SER_LIST_END, NULL, 0); }
+static inline void ser_object_begin(Ser_Writer* w)      { ser_primitive(w, SER_OBJECT_BEGIN, NULL, 0); }
+static inline void ser_object_end(Ser_Writer* w)        { ser_primitive(w, SER_OBJECT_END, NULL, 0); }
 
 static inline void ser_recovery_list_begin(Ser_Writer* w, const char* str)      { ser_custom_recovery_with_hash(w, SER_RECOVERY_LIST_BEGIN, str); }
 static inline void ser_recovery_list_end(Ser_Writer* w, const char* str)        { ser_custom_recovery_with_hash(w, SER_RECOVERY_LIST_END, str); }
 static inline void ser_recovery_object_begin(Ser_Writer* w, const char* str)    { ser_custom_recovery_with_hash(w, SER_RECOVERY_OBJECT_BEGIN, str); }
 static inline void ser_recovery_object_end(Ser_Writer* w, const char* str)      { ser_custom_recovery_with_hash(w, SER_RECOVERY_OBJECT_END, str); }
 
-static inline void ser_i32v2(Ser_Writer* w, const i32 vals[2]) { ser_primitive(w, SER_I32V2, &vals, sizeof(i32)*2); }
-static inline void ser_i32v3(Ser_Writer* w, const i32 vals[3]) { ser_primitive(w, SER_I32V3, &vals, sizeof(i32)*3); }
-static inline void ser_i32v4(Ser_Writer* w, const i32 vals[4]) { ser_primitive(w, SER_I32V4, &vals, sizeof(i32)*4); }
+static inline void ser_writer_write(Ser_Writer* w, const void* ptr, isize size);
+static inline void ser_writer_reserve(Ser_Writer* w, isize size);
+EXTERNAL void ser_writer_deinit(Ser_Writer* w);
+EXTERNAL void ser_writer_init(Ser_Writer* w, Allocator* alloc_or_null_if_malloc);
 
-static inline void ser_f32v2(Ser_Writer* w, const f32 vals[2]) { ser_primitive(w, SER_F32V2, &vals, sizeof(f32)*2); }
-static inline void ser_f32v3(Ser_Writer* w, const f32 vals[3]) { ser_primitive(w, SER_F32V3, &vals, sizeof(f32)*3); }
-static inline void ser_f32v4(Ser_Writer* w, const f32 vals[4]) { ser_primitive(w, SER_F32V4, &vals, sizeof(f32)*4); }
-
-static inline void ser_cstring(Ser_Writer* w, const char* ptr) { ser_string(w, ptr, ptr ? strlen(ptr) : 0); }
+ATTRIBUTE_INLINE_NEVER EXTERNAL void ser_writer_grow(Ser_Writer* w, isize size);
 
 //reading 
-bool deser_value(Ser_Reader* w, Ser_Value* out);
+EXTERNAL bool deser_value(Ser_Reader* r, Ser_Value* out);
+EXTERNAL bool deser_iterate_list(Ser_Value list, Ser_Value* out_val);
+EXTERNAL bool deser_iterate_object(Ser_Value object, Ser_Value* out_key, Ser_Value* out_val);
+EXTERNAL void deser_skip_to_depth(Ser_Reader* r, isize depth);
 
-#define ser_cstring_eq(value, cstr) ser_string_eq(value, STRING(cstr))
-bool ser_string_eq(Ser_Value value, Ser_String str);
-
-ATTRIBUTE_INLINE_NEVER bool deser_generic_num(Ser_Type type, u64 generic_num, Ser_Type target_type, void* out);
+ATTRIBUTE_INLINE_NEVER 
+EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type target_type, void* out);
 
 static inline bool deser_null(Ser_Value object)                    { return object.type == SER_NULL; }
 static inline bool deser_bool(Ser_Value object, bool* val)         { if(object.type == SER_BOOL)   { *val = object.mbool; return true; } return false; }
 static inline bool deser_binary(Ser_Value object, Ser_String* val) { if(object.type == SER_STRING) { *val = object.mstring; return true; } return false; }
 static inline bool deser_string(Ser_Value object, Ser_String* val) { if(object.type == SER_BINARY) { *val = object.mbinary; return true; } return false; }
 
-static inline bool deser_i64(Ser_Value val, i64* out) { if(val.exact_type == SER_I64) {*out = (i64) val.mi64; return true;} return deser_generic_num(val.type, val.generic, SER_I64, out); }
-static inline bool deser_i32(Ser_Value val, i32* out) { if(val.exact_type == SER_I32) {*out = (i32) val.mi64; return true;} return deser_generic_num(val.type, val.generic, SER_I32, out); }
-static inline bool deser_i16(Ser_Value val, i16* out) { if(val.exact_type == SER_I16) {*out = (i16) val.mi64; return true;} return deser_generic_num(val.type, val.generic, SER_I16, out); }
-static inline bool deser_i8(Ser_Value val, i8* out)   { if(val.exact_type == SER_I8)  {*out = (i8)  val.mi64; return true;} return deser_generic_num(val.type, val.generic, SER_I8, out); }
+static inline bool deser_i64(Ser_Value val, int64_t* out)   { if(val.exact_type == SER_I64) {*out = (int64_t) val.mi64; return true;} return deser_generic_num(val.type, val.mu64, SER_I64, out); }
+static inline bool deser_i32(Ser_Value val, int32_t* out)   { if(val.exact_type == SER_I32) {*out = (int32_t) val.mi64; return true;} return deser_generic_num(val.type, val.mu64, SER_I32, out); }
+static inline bool deser_i16(Ser_Value val, int16_t* out)   { if(val.exact_type == SER_I16) {*out = (int16_t) val.mi64; return true;} return deser_generic_num(val.type, val.mu64, SER_I16, out); }
+static inline bool deser_i8(Ser_Value val, int8_t* out)     { if(val.exact_type == SER_I8)  {*out = (int8_t)  val.mi64; return true;} return deser_generic_num(val.type, val.mu64, SER_I8, out); }
 
-static inline bool deser_u64(Ser_Value val, u64* out) { if(val.exact_type == SER_U64) {*out = (u64) val.mu64; return true;} return deser_generic_num(val.type, val.generic, SER_U64, out); }
-static inline bool deser_u32(Ser_Value val, u32* out) { if(val.exact_type == SER_U32) {*out = (u32) val.mu64; return true;} return deser_generic_num(val.type, val.generic, SER_U32, out); }
-static inline bool deser_u16(Ser_Value val, u16* out) { if(val.exact_type == SER_U16) {*out = (u16) val.mu64; return true;} return deser_generic_num(val.type, val.generic, SER_U16, out); }
-static inline bool deser_u8(Ser_Value val, u8* out)   { if(val.exact_type == SER_U8)  {*out = (u8)  val.mu64; return true;} return deser_generic_num(val.type, val.generic, SER_U8, out); }
+static inline bool deser_u64(Ser_Value val, uint64_t* out)  { if(val.exact_type == SER_U64) {*out = (uint64_t) val.mu64; return true;} return deser_generic_num(val.type, val.mu64, SER_U64, out); }
+static inline bool deser_u32(Ser_Value val, uint32_t* out)  { if(val.exact_type == SER_U32) {*out = (uint32_t) val.mu64; return true;} return deser_generic_num(val.type, val.mu64, SER_U32, out); }
+static inline bool deser_u16(Ser_Value val, uint16_t* out)  { if(val.exact_type == SER_U16) {*out = (uint16_t) val.mu64; return true;} return deser_generic_num(val.type, val.mu64, SER_U16, out); }
+static inline bool deser_u8(Ser_Value val, uint8_t* out)    { if(val.exact_type == SER_U8)  {*out = (uint8_t)  val.mu64; return true;} return deser_generic_num(val.type, val.mu64, SER_U8, out); }
 
-static inline bool deser_f64(Ser_Value val, f64* out) { if(val.exact_type == SER_F64) {*out = (f64) val.mf64; return true;} return deser_generic_num(val.type, val.generic, SER_F64, out); }
-static inline bool deser_f32(Ser_Value val, f32* out) { if(val.exact_type == SER_F32) {*out = (f32) val.mf32; return true;} return deser_generic_num(val.type, val.generic, SER_F32, out); }
+static inline bool deser_f64(Ser_Value val, double* out)    { if(val.exact_type == SER_F64) {*out = (double) val.mf64; return true;} return deser_generic_num(val.type, val.mu64, SER_F64, out); }
+static inline bool deser_f32(Ser_Value val, float* out)     { if(val.exact_type == SER_F32) {*out = (float) val.mf32; return true;} return deser_generic_num(val.type, val.mu64, SER_F32, out); }
 
-bool deser_i32v2(Ser_Value object, i32 vals[2]);
-bool deser_i32v3(Ser_Value object, i32 vals[3]);
-bool deser_i32v4(Ser_Value object, i32 vals[4]);
 
-bool deser_f32v2(Ser_Value object, f32 vals[2]);
-bool deser_f32v3(Ser_Value object, f32 vals[3]);
-bool deser_f32v4(Ser_Value object, f32 vals[4]);
+//some inline implementations
+static inline void ser_writer_reserve(Ser_Writer* w, isize size)
+{
+    if(w->offset + size > w->capacity)
+        ser_writer_grow(w, size);
+}
+static inline void ser_writer_write(Ser_Writer* w, const void* ptr, isize size)
+{
+    ser_writer_reserve(w, size);
+    memcpy(w->data + w->offset, ptr, size);
+    w->offset += size;
+}
+
+static inline void ser_primitive(Ser_Writer* w, Ser_Type type, const void* ptr, isize size)
+{
+    ser_writer_reserve(w, size+1);
+    w->data[w->offset] = (uint8_t) type;
+    memcpy(&w->data[w->offset + 1], ptr, size);
+    w->offset += size+1;
+}
 
 //IMPL ==============================
 ATTRIBUTE_INLINE_NEVER 
-static void _ser_writer_realloc(Ser_Writer* w, isize size)
+EXTERNAL void ser_writer_grow(Ser_Writer* w, isize size)
 {
     isize new_capacity = w->capacity*3/2 + 8;
     if(new_capacity < size)
@@ -251,62 +268,48 @@ static void _ser_writer_realloc(Ser_Writer* w, isize size)
     w->capacity = new_capacity;
 }
 
-void ser_write(Ser_Writer* w, const void* ptr, isize size)
-{
-    if(w->offset + size > w->capacity)
-        _ser_writer_realloc(w, size);
 
-    memcpy(w->data + w->offset, ptr, size);
-    w->offset += size;
-}
-
-void ser_primitive(Ser_Writer* w, Ser_Type type, const void* ptr, isize size)
+EXTERNAL void ser_string(Ser_Writer* w, const void* ptr, isize size)
 {
-    struct Temp {
-        uint8_t type;
-        uint8_t values[16];          
-    } temp;
-    
-    temp.type = (uint8_t) type;
-    memcpy(temp.values, ptr, size);
-    ser_write(w, &temp, 1 + sizeof size);
-}
+    if(w->offset + size+10 > w->capacity)
+        ser_writer_grow(w, size+10);
 
-void ser_string(Ser_Writer* w, const void* ptr, isize size)
-{
     if(size <= 0)
-        ser_primitive(w, SER_STRING_0, NULL, 0);
+        w->data[w->offset] = (uint8_t) SER_STRING_0;
     else
     {
-        if(size >= 256) 
-            ser_primitive(w, SER_STRING_64, &size, sizeof size);
-        else {
-            uint8_t _size = (uint8_t) size;
-            ser_primitive(w, SER_STRING_8, &_size, sizeof _size);
+        if(size >= 256) {
+            w->data[w->offset++] = (uint8_t) SER_STRING_64;
+            memcpy(w->data + w->offset, &size, sizeof size); w->offset += sizeof(size);
         }
-
-        ser_write(w, ptr, size);
-        uint8_t null = 0;
-        ser_write(w, &null, sizeof null);
+        else {
+            w->data[w->offset++] = (uint8_t) SER_STRING_8;
+            w->data[w->offset++] = (uint8_t) size;
+        }
+        
+        memcpy(w->data + w->offset, ptr, size); w->offset += size;
+        w->data[w->offset++] = 0;
     }
 }
 
-void ser_binary(Ser_Writer* w, const void* ptr, isize size)
+EXTERNAL void ser_binary(Ser_Writer* w, const void* ptr, isize size)
 {
-    ser_primitive(w, SER_STRING_64, &size, sizeof size);
-    ser_write(w, ptr, size);
+    ser_writer_reserve(w, size+9);
+    w->data[w->offset] = (uint8_t) SER_BINARY;       w->offset += 1;
+    memcpy(w->data + w->offset, &size, sizeof size); w->offset += sizeof(size);
+    memcpy(w->data + w->offset, ptr, size);          w->offset += size;
 }
 
-void ser_custom_recovery(Ser_Writer* w, Ser_Type type, const void* ptr, isize size, const void* ptr2, isize size2)
+EXTERNAL void ser_custom_recovery(Ser_Writer* w, Ser_Type type, const void* ptr, isize size, const void* ptr2, isize size2)
 {
     uint8_t null = 0;
     uint8_t usize = (uint8_t) size;
     ser_primitive(w, type, &usize, size);
-    ser_write(w, ptr, size);
-    ser_write(w, ptr2, size2);
+    ser_writer_write(w, ptr, size);
+    ser_writer_write(w, ptr2, size2);
 }
 
-void ser_custom_recovery_with_hash(Ser_Writer* w, Ser_Type type, const char* str)
+EXTERNAL void ser_custom_recovery_with_hash(Ser_Writer* w, Ser_Type type, const char* str)
 {
     uint32_t hash = 2166136261UL;
     const uint8_t* data = (const uint8_t*) str;
@@ -320,89 +323,80 @@ void ser_custom_recovery_with_hash(Ser_Writer* w, Ser_Type type, const char* str
 }
 
 ATTRIBUTE_INLINE_ALWAYS
-static bool deser_read(Ser_Reader* w, void* ptr, isize size)
+static bool deser_read(Ser_Reader* r, void* ptr, isize size)
 {
-    if(w->offset + size > w->capacity)
+    if(r->offset + size > r->capacity)
         return false;
 
-    memcpy(ptr, w->data + w->offset, size);
-    w->offset += size;
+    memcpy(ptr, r->data + r->offset, size);
+    r->offset += size;
     return true;
 }
 
 ATTRIBUTE_INLINE_ALWAYS
-static bool deser_skip(Ser_Reader* w, isize size)
+static bool deser_skip(Ser_Reader* r, isize size)
 {
-    if(w->offset + size > w->capacity)
+    if(r->offset + size > r->capacity)
         return false;
 
-    w->offset += size;
+    r->offset += size;
     return true;
 }
 
-bool deser_value(Ser_Reader* w, Ser_Value* out_val)
+EXTERNAL bool deser_value(Ser_Reader* r, Ser_Value* out_val)
 {
     Ser_Value out = {0};
     out.type = SER_ERROR;
     out.exact_type = SER_ERROR;
-    out.offset = w->offset;
-    out.depth = w->depth;
+    out.offset = r->offset;
+    out.depth = r->depth;
 
     uint8_t uncast_type = 0; 
     uint8_t ok = true;
-    if(deser_read(w, &uncast_type, sizeof uncast_type))
+    if(deser_read(r, &uncast_type, sizeof uncast_type))
     {
         Ser_Type type = (Ser_Type) uncast_type;
         out.exact_type = type;
+        out.type = type;
         switch (type)
         {
             case SER_NULL: { out.type = SER_NULL; } break;
-            case SER_BOOL: { ok = deser_read(w, &out.mbool, 1); out.type = type; } break;
+            case SER_BOOL: { ok = deser_read(r, &out.mbool, 1); } break;
 
-            case SER_U8:  { ok = deser_read(w, &out.mu64, 1); out.type = SER_I64; } break;
-            case SER_U16: { ok = deser_read(w, &out.mu64, 2); out.type = SER_I64; } break;
-            case SER_U32: { ok = deser_read(w, &out.mu64, 4); out.type = SER_I64; } break;
-            case SER_U64: { ok = deser_read(w, &out.mu64, 8); out.type = SER_U64; } break;
+            case SER_U8:  { ok = deser_read(r, &out.mu64, 1); out.type = SER_I64; } break;
+            case SER_U16: { ok = deser_read(r, &out.mu64, 2); out.type = SER_I64; } break;
+            case SER_U32: { ok = deser_read(r, &out.mu64, 4); out.type = SER_I64; } break;
+            case SER_U64: { ok = deser_read(r, &out.mu64, 8); out.type = SER_U64; } break;
             
-            case SER_I8:  { i8  val = 0; ok = deser_read(w, &val, 1); out.mi64 = val; out.type = SER_I64; } break;
-            case SER_I16: { i16 val = 0; ok = deser_read(w, &val, 2); out.mi64 = val; out.type = SER_I64; } break;
-            case SER_I32: { i32 val = 0; ok = deser_read(w, &val, 4); out.mi64 = val; out.type = SER_I64; } break;
-            case SER_I64: { i64 val = 0; ok = deser_read(w, &val, 8); out.mi64 = val; out.type = SER_I64; } break;
+            case SER_I8:  { int8_t  val = 0; ok = deser_read(r, &val, 1); out.mi64 = val; out.type = SER_I64; } break;
+            case SER_I16: { int16_t val = 0; ok = deser_read(r, &val, 2); out.mi64 = val; out.type = SER_I64; } break;
+            case SER_I32: { int32_t val = 0; ok = deser_read(r, &val, 4); out.mi64 = val; out.type = SER_I64; } break;
+            case SER_I64: { int64_t val = 0; ok = deser_read(r, &val, 8); out.mi64 = val; out.type = SER_I64; } break;
             
-            case SER_F8:  { u8  val = 0; ok = deser_read(w, &val, 1); out.mu64 = val; out.type = SER_F8; } break;
-            case SER_F16: { u16 val = 0; ok = deser_read(w, &val, 2); out.mu64 = val; out.type = SER_F16; } break;
-            case SER_F32: { f32 val = 0; ok = deser_read(w, &val, 4); out.mf32 = val; out.type = SER_F32; } break;
-            case SER_F64: { f64 val = 0; ok = deser_read(w, &val, 8); out.mf64 = val; out.type = SER_F64; } break;
-
-            case SER_F32V2: { ok = deser_read(w, &out.mf32v4, 2*sizeof out.mf32); out.type = type; } break;
-            case SER_F32V3: { ok = deser_read(w, &out.mf32v4, 3*sizeof out.mf32); out.type = type; } break;
-            case SER_F32V4: { ok = deser_read(w, &out.mf32v4, 4*sizeof out.mf32); out.type = type; } break;
-            
-            case SER_I32V2: { ok = deser_read(w, &out.mi32v4, 8); out.type = type; } break;
-            case SER_I32V3: { ok = deser_read(w, &out.mi32v4, 12); out.type = type; } break;
-            case SER_I32V4: { ok = deser_read(w, &out.mi32v4, 16); out.type = type; } break;
+            case SER_F8:  { uint8_t  val = 0; ok = deser_read(r, &val, 1); out.mu64 = val; } break;
+            case SER_F16: { uint16_t val = 0; ok = deser_read(r, &val, 2); out.mu64 = val; } break;
+            case SER_F32: { float    val = 0; ok = deser_read(r, &val, 4); out.mf32 = val; } break;
+            case SER_F64: { double   val = 0; ok = deser_read(r, &val, 8); out.mf64 = val; } break;
 
             case SER_LIST_END:
-            case SER_OBJECT_END:    { out.type = type; w->depth -= 1; } break;
-
+            case SER_OBJECT_END:    { r->depth -= 1; } break;
             case SER_LIST_BEGIN:    
-            case SER_OBJECT_BEGIN:  { out.type = type; w->depth += 1; } break;
+            case SER_OBJECT_BEGIN:  { r->depth += 1; } break;
 
             case SER_RECOVERY_LIST_END:
             case SER_RECOVERY_OBJECT_END:    
             case SER_RECOVERY_LIST_BEGIN:    
             case SER_RECOVERY_OBJECT_BEGIN:  { 
                 uint8_t size = 0;
-                ok &= deser_read(w, &size, sizeof size);
-                out.mstring.data = (char*) (void*) (w->data + w->offset);
+                ok &= deser_read(r, &size, sizeof size);
+                out.mstring.data = (char*) (void*) (r->data + r->offset);
                 out.mstring.count = size;
-                ok &= deser_skip(w, out.mstring.count);
-                out.type = type; 
+                ok &= deser_skip(r, out.mstring.count);
                 if(ok) {
-                    if((uint32_t) type - SER_LIST_END < SER_DYN_COUNT)
-                        w->depth -= 1; 
+                    if((uint32_t) type - SER_LIST_END < SER_COMPOUND_TYPES_COUNT)
+                        r->depth -= 1; 
                     else
-                        w->depth += 1; 
+                        r->depth += 1; 
                 }
             } break;
 
@@ -417,66 +411,61 @@ bool deser_value(Ser_Reader* w, Ser_Value* out_val)
                 uint8_t size = 0;
                 out.type = SER_STRING;
                 if(type == SER_STRING_64) 
-                    ok &= deser_read(w, &out.mstring.count, sizeof out.mstring.count);
+                    ok &= deser_read(r, &out.mstring.count, sizeof out.mstring.count);
                 else {
-                    ok &= deser_read(w, &size, sizeof size);
+                    ok &= deser_read(r, &size, sizeof size);
                     out.mstring.count = size;
                 }
                 
-                out.mstring.data = (char*) (void*) (w->data + w->offset);
+                out.mstring.data = (char*) (void*) (r->data + r->offset);
                 
-                ok &= deser_skip(w, out.mstring.count);
-                ok &= deser_read(w, &null, sizeof null);
+                ok &= deser_skip(r, out.mstring.count);
+                ok &= deser_read(r, &null, sizeof null);
                 ok &= null == 0;
             } break;
 
             case SER_BINARY:  { 
                 out.type = SER_BINARY;
-                ok &= deser_read(w, &out.mbinary.count, sizeof out.mbinary.count);
-                out.mbinary.data = (char*) (void*) (w->data + w->offset);
-                ok &= deser_skip(w, out.mbinary.count);
+                ok &= deser_read(r, &out.mbinary.count, sizeof out.mbinary.count);
+                out.mbinary.data = (char*) (void*) (r->data + r->offset);
+                ok &= deser_skip(r, out.mbinary.count);
             } break;
             
-            default: {
-                ok = false;
-                //do error
-            } break;
+            default: { ok = false; } break;
         }
-
     }
 
     if(ok == false) {
         out.type = SER_ERROR;
-        w->offset = out.offset;
+        r->offset = out.offset;
     }
 
     *out_val = out;
     return ok;
 }
 
-void deser_skip_to_depth(Ser_Reader* w, isize depth)
+EXTERNAL void deser_skip_to_depth(Ser_Reader* r, isize depth)
 {
     Ser_Value val = {0};
-    while(w->depth != depth && val.type != SER_ERROR)
-        deser_value(w, &val);
+    while(r->depth != depth && val.type != SER_ERROR)
+        deser_value(r, &val);
 }
 
-ATTRIBUTE_INLINE_NEVER
-static bool _deser_recover(const Ser_Value* object);
+ATTRIBUTE_INLINE_NEVER static bool _deser_recover(const Ser_Value* object);
 
 static bool _ser_type_is_ender_or_error(Ser_Type type)
 {
-    return (uint32_t) type - SER_LIST_END <= SER_DYN_COUNT;
+    return (uint32_t) type - SER_LIST_END <= SER_COMPOUND_TYPES_COUNT;
 }
 
-bool deser_iterate_list(Ser_Value list, Ser_Value* out_val)
+EXTERNAL bool deser_iterate_list(Ser_Value list, Ser_Value* out_val)
 {
     ASSERT(list.type == SER_LIST || list.type == SER_RECOVERY_LIST);
-    deser_skip_to_depth(list.w, list.depth);
-    deser_value(list.w, out_val);
+    deser_skip_to_depth(list.r, list.depth);
+    deser_value(list.r, out_val);
     if(_ser_type_is_ender_or_error(out_val->type))
     {
-        if(list.type != out_val->type - SER_DYN_COUNT)
+        if(list.type != out_val->type - SER_COMPOUND_TYPES_COUNT)
             _deser_recover(&list);
         return false;
     }
@@ -484,24 +473,24 @@ bool deser_iterate_list(Ser_Value list, Ser_Value* out_val)
     return true;
 }
 
-bool deser_iterate_object(Ser_Value object, Ser_Value* out_key, Ser_Value* out_val)
+EXTERNAL bool deser_iterate_object(Ser_Value object, Ser_Value* out_key, Ser_Value* out_val)
 {
     ASSERT(object.type == SER_OBJECT || object.type == SER_RECOVERY_OBJECT);
 
-    deser_skip_to_depth(object.w, object.depth);
-    deser_value(object.w, out_key);
+    deser_skip_to_depth(object.r, object.depth);
+    deser_value(object.r, out_key);
     if(_ser_type_is_ender_or_error(out_key->type)) 
     {
         //if the ending type does not correspond to the object type
-        if(object.type != out_key->type - SER_DYN_COUNT)
+        if(object.type != out_key->type - SER_COMPOUND_TYPES_COUNT)
             goto recover;
         return false;
     }
 
     //NOTE: can be removed if we disallow dynamic as keys
     // then this case will just full under error.
-    deser_skip_to_depth(object.w, object.depth); 
-    deser_value(object.w, out_val);
+    deser_skip_to_depth(object.r, object.depth); 
+    deser_value(object.r, out_val);
     if(_ser_type_is_ender_or_error(out_key->type))
         goto recover;
 
@@ -555,25 +544,20 @@ static isize _ser_find_first_or(Ser_String in_str, Ser_String search_for, isize 
 
 static bool _deser_recover(const Ser_Value*  object)
 {
-    Ser_Reader* reader = object->w;
+    if(object->type == SER_LIST || object->type == SER_OBJECT)
+        return false;
+
+    Ser_Reader* reader = object->r;
     
     isize recovery_len = 1;
     char recovery_text[270];
-    if(object->type == SER_LIST)
-        recovery_text[0] = SER_LIST_END;
-    else if(object->type == SER_OBJECT)
-        recovery_text[0] = SER_OBJECT_END;
-    else if(object->type == SER_RECOVERY_LIST || object->type == SER_RECOVERY_OBJECT)
     {
         isize i = 0;
         recovery_text[i++] = object->type == SER_RECOVERY_LIST ? SER_RECOVERY_LIST_END : SER_RECOVERY_OBJECT_END;
         recovery_text[i++] = (uint8_t) object->mstring.count;
-        memcpy(recovery_text + 2, object->mstring.data, object->mstring.count); i += object->mstring.count + 2;
-        recovery_text[i++] = '\0';
+        memcpy(recovery_text + i, object->mstring.data, object->mstring.count); i += object->mstring.count + 2;
         recovery_len = i;
     }
-    else
-        ASSERT(false);
 
     Ser_String total = {(char*) reader->data, reader->capacity};
     Ser_String recovery = {recovery_text, recovery_len};
@@ -586,75 +570,60 @@ static bool _deser_recover(const Ser_Value*  object)
     return recovered != -1;
 }
 
-bool ser_string_eq(Ser_Value value, Ser_String str)
-{
-    return value.type == SER_STRING && value.mstring.count == str.count && memcmp(value.mstring.data, str.data, str.count) == 0;
-}
-
-//3323
 ATTRIBUTE_INLINE_NEVER
-bool deser_generic_num(Ser_Type type, u64 generic_num, Ser_Type target_type, void* out)
+EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type target_type, void* out)
 {
     union {
-        u64 mu64;
-        i64 mi64;
-        f64 mf64;
-        f32 mf32;
+        uint64_t mu64;
+        int64_t mi64;
+        double mf64;
+        float mf32;
     } object = {generic_num};
     
     bool state = true;
     if(target_type == SER_F32) {
         switch(type) {
-            case SER_F64: *(f32*)out = object.mf64; break;
-            case SER_F32: *(f32*)out = object.mf32; break;
-            case SER_I64: *(f32*)out = object.mi64; break;
-            case SER_U64: *(f32*)out = object.mu64; break;
+            case SER_F64: *(float*)out = object.mf64; break;
+            case SER_F32: *(float*)out = object.mf32; break;
+            case SER_I64: *(float*)out = object.mi64; break;
+            case SER_U64: *(float*)out = object.mu64; break;
             default: state = false; break;
         }
     }
     else if(target_type == SER_F64) {
         switch(type) {
-            case SER_F64: *(f64*)out = object.mf64; break;
-            case SER_F32: *(f64*)out = object.mf32; break;
-            case SER_I64: *(f64*)out = object.mi64; break;
-            case SER_U64: *(f64*)out = object.mu64; break;
+            case SER_F64: *(double*)out = object.mf64; break;
+            case SER_F32: *(double*)out = object.mf32; break;
+            case SER_I64: *(double*)out = object.mi64; break;
+            case SER_U64: *(double*)out = object.mu64; break;
             default: state = false; break;
         }
     }
     else if(target_type == SER_U64 && type == SER_U64) {
-        *(u64*) out = object.mu64;
+        *(uint64_t*) out = object.mu64;
     }
     else
     {
-        i64 val = 0;
-        if(type == SER_I64) 
-            val = object.mi64;
-        else if(type == SER_U64) {
-            val = (i64) object.mu64;
-            state = object.mu64 <= INT64_MAX;
-        } 
-        else if(type == SER_F64) {
-            val = (i64) object.mf64;
-            state = val == object.mf64;
-        }    
-        else if(type == SER_F32) {
-            val = (i64) object.mf32;
-            state = val == object.mf32;
+        int64_t val = 0;
+        switch(type) {
+            case SER_U64: val = object.mi64;; break;
+            case SER_I64: val = (int64_t) object.mu64; state = object.mu64 <= INT64_MAX; break;
+            case SER_F64: val = (int64_t) object.mf64; state = val == object.mf64; break;
+            case SER_F32: val = (int64_t) object.mf32; state = val == object.mf32; break;
+            default: state = false; break;
         }
-        else
-            state = false;
 
         if(state) {
             switch(target_type) {
-                case SER_I64: state = INT64_MIN <= val && val <= INT64_MAX; if(state) *(i64*) out = val; break; 
-                case SER_I32: state = INT32_MIN <= val && val <= INT32_MAX; if(state) *(i32*) out = val; break; 
-                case SER_I16: state = INT16_MIN <= val && val <= INT16_MAX; if(state) *(i16*) out = val; break; 
-                case SER_I8:  state = INT8_MIN  <= val && val <= INT8_MAX;  if(state) *(i8*)  out = val; break; 
+                case SER_I64: state = INT64_MIN <= val && val <= INT64_MAX; if(state) *(int64_t*) out = val; break; 
+                case SER_I32: state = INT32_MIN <= val && val <= INT32_MAX; if(state) *(int32_t*) out = val; break; 
+                case SER_I16: state = INT16_MIN <= val && val <= INT16_MAX; if(state) *(int16_t*) out = val; break; 
+                case SER_I8:  state = INT8_MIN  <= val && val <= INT8_MAX;  if(state) *(int8_t*)  out = val; break; 
                 
-                case SER_U64: state = 0 <= val && val <= UINT64_MAX; if(state) *(u64*) out = val; break; 
-                case SER_U32: state = 0 <= val && val <= UINT32_MAX; if(state) *(u32*) out = val; break; 
-                case SER_U16: state = 0 <= val && val <= UINT16_MAX; if(state) *(u16*) out = val; break; 
-                case SER_U8:  state = 0 <= val && val <= UINT8_MAX;  if(state) *(u8*)  out = val; break; 
+                case SER_U64: state = 0 <= val && val <= UINT64_MAX; if(state) *(uint64_t*) out = val; break; 
+                case SER_U32: state = 0 <= val && val <= UINT32_MAX; if(state) *(uint32_t*) out = val; break; 
+                case SER_U16: state = 0 <= val && val <= UINT16_MAX; if(state) *(uint16_t*) out = val; break; 
+                case SER_U8:  state = 0 <= val && val <= UINT8_MAX;  if(state) *(uint8_t*)  out = val; break; 
 
                 default: state = false; break;
             }
@@ -664,16 +633,10 @@ bool deser_generic_num(Ser_Type type, u64 generic_num, Ser_Type target_type, voi
 }
 
 
+//START of test
 bool deser_f32v3(Ser_Value object, float out[3])
 {
-    if(object.type == SER_F32V3 || object.type == SER_F32V4)
-    {
-        out[0] = object.mf32v4[0];
-        out[1] = object.mf32v4[1];
-        out[2] = object.mf32v4[2]; 
-        return true;
-    }
-    else if(object.type == SER_LIST)
+    if(object.type == SER_LIST)
     {
         int count = 0;
         for(Ser_Value val = {0}; deser_iterate_list(object, &val); ) {
@@ -699,18 +662,16 @@ bool deser_f32v3(Ser_Value object, float out[3])
     return false;    
 }
 
-
-void _ser_f32v3(Ser_Writer* w, const f32 vals[3]) { 
+void ser_f32v3(Ser_Writer* w, const float vals[3]) { 
     uint8_t data[32];
     int i = 0, c = 0;
     data[i++] = SER_LIST_BEGIN;
-        data[i++] = SER_F32; memcpy(data + i, vals + c++, sizeof(f32)); i += sizeof(f32);
-        data[i++] = SER_F32; memcpy(data + i, vals + c++, sizeof(f32)); i += sizeof(f32);
-        data[i++] = SER_F32; memcpy(data + i, vals + c++, sizeof(f32)); i += sizeof(f32);
-        data[i++] = SER_F32; memcpy(data + i, vals + c++, sizeof(f32)); i += sizeof(f32);
+        data[i++] = SER_F32; memcpy(data + i, vals + c++, sizeof(float)); i += sizeof(float);
+        data[i++] = SER_F32; memcpy(data + i, vals + c++, sizeof(float)); i += sizeof(float);
+        data[i++] = SER_F32; memcpy(data + i, vals + c++, sizeof(float)); i += sizeof(float);
+        data[i++] = SER_F32; memcpy(data + i, vals + c++, sizeof(float)); i += sizeof(float);
     data[i++] = SER_LIST_END;
-
-    ser_write(w, data, i);
+    ser_writer_write(w, data, i);
 }
 
 typedef union Vec3 {
@@ -741,8 +702,8 @@ typedef struct Map_Info {
     Vec3 scale; //default to 1 1 1
     Vec3 resolution;
 
-    i32 channels_count; //the number of channels this texture should have. Is in range [0, MAX_CHANNELS] 
-    i32 channels_indices1[MAX_CHANNELS]; //One based indices into the image channels. 
+    int32_t channels_count; 
+    int32_t channels_indices1[MAX_CHANNELS]; 
 
     Map_Scale_Filter filter_minify;
     Map_Scale_Filter filter_magnify;
@@ -750,9 +711,9 @@ typedef struct Map_Info {
     Map_Repeat repeat_v;
     Map_Repeat repeat_w;
 
-    f32 gamma;          //default 2.2
-    f32 brightness;     //default 0
-    f32 contrast;       //default 0
+    float gamma;          //default 2.2
+    float brightness;     //default 0
+    float contrast;       //default 0
 } Map_Info;
 
 bool deser_map_repeat(Ser_Value val, Map_Repeat* repeat)
@@ -815,7 +776,7 @@ bool deser_map_info(Ser_Value object, Map_Info* out_map_info)
     return true;
 }
 
-
+ATTRIBUTE_INLINE_NEVER
 void ser_map_repeat(Ser_Writer* w, Map_Repeat repeat)
 {
     switch(repeat)
@@ -828,6 +789,7 @@ void ser_map_repeat(Ser_Writer* w, Map_Repeat repeat)
     }
 }
 
+ATTRIBUTE_INLINE_NEVER
 void ser_map_scale_filter(Ser_Writer* w, Map_Scale_Filter filter)
 {
     switch(filter)
