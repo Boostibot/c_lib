@@ -177,7 +177,12 @@ EXTERNAL bool char_is_id(char c);
             return from;
 
         if(search_for.count == 1)
-            return string_find_first_char(in_str, search_for.data[0], from);
+        {
+            const char* found = (const char*) memchr(in_str.data + from, search_for.data[0], (size_t) (in_str.count - from));
+            if(found == NULL)
+                return if_not_found;
+            return found - in_str.data;
+        }
 
         const char* found = in_str.data + from;
         char last_char = search_for.data[search_for.count - 1];
