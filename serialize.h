@@ -248,6 +248,7 @@ static void _ser_writer_realloc(Ser_Writer* w, isize size)
         new_capacity = size;
 
     w->data = (uint8_t*) realloc(w->data, new_capacity); 
+    w->capacity = new_capacity;
 }
 
 void ser_write(Ser_Writer* w, const void* ptr, isize size)
@@ -317,7 +318,6 @@ void ser_custom_recovery_with_hash(Ser_Writer* w, Ser_Type type, const char* str
     }
     ser_custom_recovery(w, type, str, len + 1, &hash, sizeof hash);
 }
-
 
 ATTRIBUTE_INLINE_ALWAYS
 static bool deser_read(Ser_Reader* w, void* ptr, isize size)
@@ -461,14 +461,10 @@ void deser_skip_to_depth(Ser_Reader* w, isize depth)
         deser_value(w, &val);
 }
 
+ATTRIBUTE_INLINE_NEVER
 static bool _deser_recover(const Ser_Value* object);
 
-bool ser_type_is_ender(Ser_Type type)
-{
-    return (uint32_t) type - SER_LIST_END < SER_DYN_COUNT;
-}
-
-bool ser_type_is_ender_or_error(Ser_Type type)
+static bool _ser_type_is_ender_or_error(Ser_Type type)
 {
     return (uint32_t) type - SER_LIST_END <= SER_DYN_COUNT;
 }
@@ -478,7 +474,7 @@ bool deser_iterate_list(Ser_Value list, Ser_Value* out_val)
     ASSERT(list.type == SER_LIST || list.type == SER_RECOVERY_LIST);
     deser_skip_to_depth(list.w, list.depth);
     deser_value(list.w, out_val);
-    if(ser_type_is_ender_or_error(out_val->type))
+    if(_ser_type_is_ender_or_error(out_val->type))
     {
         if(list.type != out_val->type - SER_DYN_COUNT)
             _deser_recover(&list);
@@ -494,7 +490,7 @@ bool deser_iterate_object(Ser_Value object, Ser_Value* out_key, Ser_Value* out_v
 
     deser_skip_to_depth(object.w, object.depth);
     deser_value(object.w, out_key);
-    if(ser_type_is_ender_or_error(out_key->type)) 
+    if(_ser_type_is_ender_or_error(out_key->type)) 
     {
         //if the ending type does not correspond to the object type
         if(object.type != out_key->type - SER_DYN_COUNT)
@@ -506,7 +502,7 @@ bool deser_iterate_object(Ser_Value object, Ser_Value* out_key, Ser_Value* out_v
     // then this case will just full under error.
     deser_skip_to_depth(object.w, object.depth); 
     deser_value(object.w, out_val);
-    if(ser_type_is_ender_or_error(out_key->type))
+    if(_ser_type_is_ender_or_error(out_key->type))
         goto recover;
 
     return true;
@@ -595,6 +591,7 @@ bool ser_string_eq(Ser_Value value, Ser_String str)
     return value.type == SER_STRING && value.mstring.count == str.count && memcmp(value.mstring.data, str.data, str.count) == 0;
 }
 
+//3323
 ATTRIBUTE_INLINE_NEVER
 bool deser_generic_num(Ser_Type type, u64 generic_num, Ser_Type target_type, void* out)
 {
