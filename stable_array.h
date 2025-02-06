@@ -272,7 +272,7 @@ EXTERNAL void stable_array_reserve(Stable_Array* stable, isize to_size)
         memset(alloced_blocks, 0, (size_t) alloced_blocks_bytes);
 
         //Add the blocks into our array (backwards so that the next added item has lowest index)
-        for(u32 i = added_blocks; i-- > 0;)
+        for(u32 i = (u32) added_blocks; i-- > 0;)
         {
             u32 block_i = i + stable->blocks_count;
             stable->blocks[block_i].ptr = alloced_blocks + i*stable->item_size*STABLE_ARRAY_BLOCK_SIZE;
@@ -282,7 +282,7 @@ EXTERNAL void stable_array_reserve(Stable_Array* stable, isize to_size)
         }
         
         stable->blocks[stable->blocks_count].was_alloced = true;
-        stable->blocks_count += added_blocks;
+        stable->blocks_count += (u32) added_blocks;
         _stable_array_check_invariants(stable);
     }
 

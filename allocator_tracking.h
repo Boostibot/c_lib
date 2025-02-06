@@ -154,12 +154,16 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
                 *offset = (u64) new_allocation - (u64) new_block_ptr;
             }
 
-            new_block_ptr->is_offset = is_offset; 
-            #pragma GCC diagnostic push
-            #pragma GCC diagnostic ignored "-Wconversion"
+            new_block_ptr->is_offset = is_offset;
+            #ifdef __GNUC__
+                #pragma GCC diagnostic push
+                #pragma GCC diagnostic ignored "-Wconversion"
+            #endif
             new_block_ptr->align = (u64) align; 
             new_block_ptr->size = (u64) new_size; 
-            #pragma GCC diagnostic pop
+            #ifdef __GNUC__
+                #pragma GCC diagnostic pop
+            #endif
             
             #ifdef DO_ASSERTS_SLOW
                 memcpy(new_block_ptr->magic, ALLOCATION_LIST_MAGIC, sizeof ALLOCATION_LIST_MAGIC);

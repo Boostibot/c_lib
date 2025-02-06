@@ -55,6 +55,7 @@ static int run_tests(int* total, double time, ...);
 static void test_all(double total_time)
 {
     run_tests(NULL, total_time, 
+        TIMED_TEST(test_hash),
         UNIT_TEST(platform_test_all),
         UNIT_TEST(test_list),
         UNIT_TEST(test_image),
@@ -65,7 +66,6 @@ static void test_all(double total_time)
         TIMED_TEST(test_arena),
         TIMED_TEST(test_sort),
         // TIMED_TEST(test_string_map), //currently broken?
-        TIMED_TEST(test_hash),
         TIMED_TEST(test_array),
         TIMED_TEST(test_math),
         TIMED_TEST(test_string),
@@ -75,6 +75,7 @@ static void test_all(double total_time)
         UNIT_TEST(NULL)
     );
 }
+
 
 #if defined(TEST_RUNNER)
     int main()

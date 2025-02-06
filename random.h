@@ -378,7 +378,7 @@ static inline uint64_t random_xiroshiro256(uint64_t s[4])
 		uint64_t remainder = (uint64_t) size % 8;
 		uint64_t* fulls = (uint64_t*) into;
 	
-		for(int64_t i = 0; i < full_randoms; i++)
+		for(uint64_t i = 0; i < full_randoms; i++)
 			fulls[i] = random_u64_from(state);
 
 		if(remainder)
