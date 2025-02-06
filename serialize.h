@@ -28,7 +28,22 @@
 // Individual primitive types are grouped into json-like lists and objects. Lists are 
 // denoted by start and end type bytes. Everything between is inside the list. Objects
 // are just like lists except the items are interpreted in pairs of two: the first is
-// key, the second is value. If object contains odd number of primitives the last is skipped.
+// key, the second is value. If object contains odd number of primitives the last is skipped. Any type
+// can be a key, although strings and integers are the most useful.
+//
+// The parsing code is written to be surprisingly general. In particular it doesnt really care about integer 
+// (or floating point) types as long as the stored data within is compatible. For example its perfectly valid
+// to ask to parse a value as uint32_t even though the number is stored as floating point - as long as that
+// floating point is non-negative integer. This is done so that new parsers trivially support old data 
+// of smaller/different types. Similarly old parsers can stay functioning for longer without changes.
+// The conversion rules used are:
+//   - float/double can be parsed from any integer type and float/double
+//   - integer types can be parsed from any integer/float/double if the value fits exactly into that type 
+//     (ie does not overflow/underflow, is not fractional when we can represent only whole)
+// This conversion process sounds slow - and it is - but we can make it just as fast as simple validation of type
+// followed by memcpy by separating out the hot path. Simply when the stored and asked for type are equal
+// we just memcpy. When it is not, we would normally fail and print an error message. In the
+// fail path we obviously dont care much about perf so doing any kind of funky float to integer conversion is fine.
 //
 // Lastly I have extended the above code to seamlessly handle data corruption or generally any other
 // fault in the format. Binary formats have the unhandy property where even a slight change can cause the 
@@ -41,6 +56,7 @@
 // in the format around large blocks of data (since the magic sequences pose some overhead). The reader on the
 // other hand doesnt have to know about these at all. When a parsing error is found within a recovery list/object
 // the code attempts to automatically recover by finding the matching end magic sequence for the given list/object.  
+
 
 #ifdef MODULE_ALL_COUPLED
     #include "string.h"
@@ -85,21 +101,16 @@
 typedef enum Ser_Type {
     SER_NULL = 0,
     
-    //we include "recovery" lists/object. These act just like the regular ones
-    // except also contain a tag - some magic number or string which allows
-    // us to recover in case of file corruption. Whats nice about this is that
-    // this mechanism can be made entirely transparent to the reader and very
-    // hustle free for the writer.
     SER_LIST_BEGIN,
     SER_OBJECT_BEGIN,
-    SER_RECOVERY_OBJECT_BEGIN,  //{u8 type, u8 size}[size bytes of tag]\0
+    SER_RECOVERY_OBJECT_BEGIN,  //{u8 type, u8 size}[size bytes of tag]
     SER_RECOVERY_LIST_BEGIN,  //{u8 type, u8 size}[size bytes of tag]
     
     SER_LIST_END,
     SER_OBJECT_END,
     SER_RECOVERY_LIST_END,    //{u8 type, u8 size}[size bytes of tag]\0
     SER_RECOVERY_OBJECT_END,    //{u8 type, u8 size}[size bytes of tag]\0
-    SER_ERROR, //"lexing" error. Is near the ENDers section so that we can check for ender or error efficiently 
+    SER_ERROR, //"lexing" error. Is near the ENDers section so that we can check for ender with a single compare
 
     SER_STRING_0,  //{u8 type}
     SER_STRING_8,  //{u8 type, u8 size}[size bytes]\0
@@ -133,14 +144,10 @@ typedef struct Ser_Reader {
     isize depth;
     isize offset;
     isize capacity;
-
-    isize error_count;
-    isize recovery_count;
 } Ser_Reader;
 
 typedef struct Ser_Value {
     Ser_Reader* r;
-
     isize depth;
     isize offset;
     Ser_Type exact_type;
@@ -230,7 +237,6 @@ static inline bool deser_u8(Ser_Value val, uint8_t* out)    { if(val.exact_type 
 
 static inline bool deser_f64(Ser_Value val, double* out)    { if(val.exact_type == SER_F64) {*out = (double) val.mf64; return true;} return deser_generic_num(val.type, val.mu64, SER_F64, out); }
 static inline bool deser_f32(Ser_Value val, float* out)     { if(val.exact_type == SER_F32) {*out = (float) val.mf32; return true;} return deser_generic_num(val.type, val.mu64, SER_F32, out); }
-
 
 //some inline implementations
 static inline void ser_writer_reserve(Ser_Writer* w, isize size)
