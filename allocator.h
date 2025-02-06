@@ -26,9 +26,32 @@
 #include "profile.h"
 #include "log.h"
 
+
 typedef struct Allocator        Allocator;
 typedef struct Allocator_Stats  Allocator_Stats;
 typedef struct Allocator_Error  Allocator_Error;
+
+//@TODO: Figure out a way to allow usage of allocator even without allocator.h
+// Maybe this? -> request must somehow be able to hold error string buffer. 
+// What to do about default alloc? What to do about reqeusts? Should there be requests?
+// How to make the allocator function cheap to call?
+//@TODO: remove the special handling of scratch allocators. They dont get run as often to make any sort of difference.
+//@TODO: rewrite the motivation comment to be less cringe
+#define ALLOC_FAILED_REQUEST                    ((void*) 1)
+#define ALLOC_REQUEST_PARENT                    (1ull << 32)
+#define ALLOC_REQUEST_NAME                      (2ull << 32)
+#define ALLOC_REQUEST_TYPE_NAME                 (3ull << 32)
+#define ALLOC_REQUEST_ALLOCATION_COUNT          (4ull << 32)
+#define ALLOC_REQUEST_DEALLOCATION_COUNT        (5ull << 32)
+#define ALLOC_REQUEST_REALLOCATION_COUNT        (6ull << 32)
+#define ALLOC_REQUEST_MAX_ALIVE_ALLOCATIONS     (7ull << 32)
+#define ALLOC_REQUEST_MAX_BYTES_ALLOCATED       (8ull << 32)
+#define ALLOC_REQUEST_CAN_RESIZE                (9ull << 32)
+#define ALLOC_REQUEST_CAN_FREE_ALL              (10ull << 32)
+#define ALLOC_REQUEST_CAN_GROW                  (11ull << 32)
+#define ALLOC_REQUEST_IS_TOP_LEVEL              (12ull << 32)
+#define ALLOC_REQUEST_FIXED_MEMORY_SIZE         (13ull << 32)
+typedef void* (*Allocator2)(void* alloc, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align_and_request, void* request);
 
 typedef void* (*Allocator_Func)(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error_or_null);
 typedef Allocator_Stats (*Allocator_Get_Stats)(Allocator* alloc);

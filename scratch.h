@@ -1,11 +1,11 @@
 #ifndef MODULE_SCRATCH_ARENA
 #define MODULE_SCRATCH_ARENA
 
-// This is a "safe" implementation of the arena concept. It maintains the stack like order of allocations 
+// This is a "safe" implementation of an arena. It maintains the stack like order of allocations 
 // on its own without the possibility of accidental overwriting of allocations from nested 
 // scratch_acquire/scratch_release pairs.
 // 
-// This implementation views two concepts: 
+// This implementation has two concepts: 
 // 1) Scratch_Arena - which holds the actual reserved memory and manages individual Scratch'es
 // 2) Scratch - which represents scratch_acquire/scratch_release pair and allocates memory
 // 
@@ -475,7 +475,7 @@ EXTERNAL Scratch        global_scratch_acquire();
     EXTERNAL void* scratch_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
     {
         Scratch* scratch = (Scratch*) (void*) self;
-        void* out = scratch_push_generic(scratch, new_size, align, error);
+        void* out = scratch_push_nonzero_generic(scratch, new_size, align, error);
         if(out)
             memcpy(out, old_ptr, (size_t) MIN(old_size, new_size));
     

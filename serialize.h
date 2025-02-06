@@ -56,7 +56,11 @@
 // in the format around large blocks of data (since the magic sequences pose some overhead). The reader on the
 // other hand doesnt have to know about these at all. When a parsing error is found within a recovery list/object
 // the code attempts to automatically recover by finding the matching end magic sequence for the given list/object.  
-
+//
+// A lot of the code is inside the header section because 
+//  A) its very short so splitting it would duplicate large portions of this file
+//  B) allows the compiler to inline those short functions regardless of compilation unit
+//  C) its quite honest and self documenting
 
 #ifdef MODULE_ALL_COUPLED
     #include "string.h"
@@ -65,6 +69,9 @@
     typedef String Ser_String;
 #else
     typedef struct Allocator Allocator;
+    typedef struct Allocator_Error Allocator_Error;
+    typedef void* (*Allocator_Func)(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error_or_null);
+
     typedef int64_t isize;
     typedef struct Ser_String {
         const char* data;
@@ -99,29 +106,32 @@
 #endif
 
 typedef enum Ser_Type {
-    SER_NULL = 0,
+    SER_NULL = 0,               //{u8 type}
     
-    SER_LIST_BEGIN,
-    SER_OBJECT_BEGIN,
+    SER_LIST_BEGIN,             //{u8 type}
+    SER_OBJECT_BEGIN,           //{u8 type}
     SER_RECOVERY_OBJECT_BEGIN,  //{u8 type, u8 size}[size bytes of tag]
-    SER_RECOVERY_LIST_BEGIN,  //{u8 type, u8 size}[size bytes of tag]
+    SER_RECOVERY_LIST_BEGIN,    //{u8 type, u8 size}[size bytes of tag]
     
-    SER_LIST_END,
-    SER_OBJECT_END,
-    SER_RECOVERY_LIST_END,    //{u8 type, u8 size}[size bytes of tag]\0
+    SER_LIST_END,               //{u8 type}
+    SER_OBJECT_END,             //{u8 type}
+    SER_RECOVERY_LIST_END,      //{u8 type, u8 size}[size bytes of tag]\0
     SER_RECOVERY_OBJECT_END,    //{u8 type, u8 size}[size bytes of tag]\0
     SER_ERROR, //"lexing" error. Is near the ENDers section so that we can check for ender with a single compare
 
+    //We have 3 string types since short strings are extremely common
+    // and using 8bytes for size *doubles* the space requirement for simple identifiers.
+    //Likewise empty strings are very common and including the size and null terminator increases the size 3x.   
     SER_STRING_0,  //{u8 type}
     SER_STRING_8,  //{u8 type, u8 size}[size bytes]\0
     SER_STRING_64, //{u8 type, uint64_t size}[size bytes]\0
     SER_BINARY,    //{u8 type, uint64_t size}[size bytes]
 
-    SER_BOOL,
+    SER_BOOL, //{u8 type, bool val}
 
-    SER_U8, SER_U16, SER_U32, SER_U64,
-    SER_I8, SER_I16, SER_I32, SER_I64,
-    SER_F8, SER_F16, SER_F32, SER_F64,
+    SER_U8, SER_U16, SER_U32, SER_U64, //{u8 type}[sizeof(T) bytes]
+    SER_I8, SER_I16, SER_I32, SER_I64, //{u8 type}[sizeof(T) bytes]
+    SER_F8, SER_F16, SER_F32, SER_F64, //{u8 type}[sizeof(T) bytes]
 
     //aliases
     SER_LIST = SER_LIST_BEGIN,
@@ -133,46 +143,21 @@ typedef enum Ser_Type {
 } Ser_Type;
 
 typedef struct Ser_Writer {
+    Allocator* alloc;
     uint8_t* data;
-    isize depth;
     isize offset;
     isize capacity;
+    isize depth;
+    bool has_user_buffer;
 } Ser_Writer;
 
-typedef struct Ser_Reader {
-    const uint8_t* data;
-    isize depth;
-    isize offset;
-    isize capacity;
-} Ser_Reader;
 
-typedef struct Ser_Value {
-    Ser_Reader* r;
-    isize depth;
-    isize offset;
-    Ser_Type exact_type;
-    Ser_Type type;
-    union {
-        Ser_String mbinary;
-        Ser_String mstring;
-        int64_t    mi64;
-        uint64_t   mu64;
-        double     mf64;
-        float      mf32;
-        bool       mbool;
-    };
-} Ser_Value;
-
-#define ser_cstring_eq(value, cstr) ser_string_eq(value, SER_CSTRING(cstr))
-static inline bool ser_string_eq(Ser_Value value, Ser_String str)
-{
-    return value.type == SER_STRING 
-        && value.mstring.count == str.count 
-        && memcmp(value.mstring.data, str.data, str.count) == 0;
-}
-
-EXTERNAL void ser_custom_recovery(Ser_Writer* w, Ser_Type type, const void* ptr, isize size, const void* ptr2, isize size2);
-EXTERNAL void ser_custom_recovery_with_hash(Ser_Writer* w, Ser_Type type, const char* str);
+EXTERNAL void ser_writer_init(Ser_Writer* w, void* buffer_or_null, isize size, Allocator* alloc_or_null_if_malloc);
+EXTERNAL void ser_writer_deinit(Ser_Writer* w);
+static inline void ser_writer_write(Ser_Writer* w, const void* ptr, isize size);
+static inline void ser_writer_reserve(Ser_Writer* w, isize size);
+ATTRIBUTE_INLINE_NEVER 
+EXTERNAL void ser_writer_grow(Ser_Writer* w, isize size);
 
 EXTERNAL void ser_binary(Ser_Writer* w, const void* ptr, isize size);
 EXTERNAL void ser_string(Ser_Writer* w, const void* ptr, isize size);
@@ -200,25 +185,68 @@ static inline void ser_list_end(Ser_Writer* w)          { ser_primitive(w, SER_L
 static inline void ser_object_begin(Ser_Writer* w)      { ser_primitive(w, SER_OBJECT_BEGIN, NULL, 0); }
 static inline void ser_object_end(Ser_Writer* w)        { ser_primitive(w, SER_OBJECT_END, NULL, 0); }
 
+EXTERNAL void ser_custom_recovery(Ser_Writer* w, Ser_Type type, const void* ptr, isize size, const void* ptr2, isize size2);
+EXTERNAL void ser_custom_recovery_with_hash(Ser_Writer* w, Ser_Type type, const char* str);
+
 static inline void ser_recovery_list_begin(Ser_Writer* w, const char* str)      { ser_custom_recovery_with_hash(w, SER_RECOVERY_LIST_BEGIN, str); }
 static inline void ser_recovery_list_end(Ser_Writer* w, const char* str)        { ser_custom_recovery_with_hash(w, SER_RECOVERY_LIST_END, str); }
 static inline void ser_recovery_object_begin(Ser_Writer* w, const char* str)    { ser_custom_recovery_with_hash(w, SER_RECOVERY_OBJECT_BEGIN, str); }
 static inline void ser_recovery_object_end(Ser_Writer* w, const char* str)      { ser_custom_recovery_with_hash(w, SER_RECOVERY_OBJECT_END, str); }
 
-static inline void ser_writer_write(Ser_Writer* w, const void* ptr, isize size);
-static inline void ser_writer_reserve(Ser_Writer* w, isize size);
-EXTERNAL void ser_writer_deinit(Ser_Writer* w);
-EXTERNAL void ser_writer_init(Ser_Writer* w, Allocator* alloc_or_null_if_malloc);
+static inline void ser_writer_reserve(Ser_Writer* w, isize size) {
+    if(w->offset + size > w->capacity)
+        ser_writer_grow(w, size);
+}
+static inline void ser_writer_write(Ser_Writer* w, const void* ptr, isize size) {
+    ser_writer_reserve(w, size);
+    memcpy(w->data + w->offset, ptr, size);
+    w->offset += size;
+}
 
-ATTRIBUTE_INLINE_NEVER EXTERNAL void ser_writer_grow(Ser_Writer* w, isize size);
+static inline void ser_primitive(Ser_Writer* w, Ser_Type type, const void* ptr, isize size) {
+    ser_writer_reserve(w, size+1);
+    w->data[w->offset] = (uint8_t) type;
+    memcpy(&w->data[w->offset + 1], ptr, size);
+    w->offset += size+1;
+}
 
 //reading 
-ATTRIBUTE_INLINE_NEVER EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type target_type, void* out);
+typedef struct Ser_Reader {
+    const uint8_t* data;
+    isize offset;
+    isize capacity;
+    isize depth;
+} Ser_Reader;
+
+typedef struct Ser_Value {
+    Ser_Reader* r;
+    Ser_Type exact_type;
+    Ser_Type type;
+    union {
+        Ser_String mbinary;
+        Ser_String mstring;
+        int64_t    mi64;
+        uint64_t   mu64;
+        double     mf64;
+        float      mf32;
+        bool       mbool;
+        struct {
+            const uint8_t* recovery;
+            uint32_t recovery_len;
+            uint32_t depth;
+        } mcompound;
+    };
+} Ser_Value;
+
+static inline Ser_Reader ser_reader_make(const void* data, isize size)  {Ser_Reader r = {(const uint8_t*) data, 0, size}; return r;}
+static inline Ser_Reader ser_reader_make_from_string(Ser_String string) {return ser_reader_make(string.data, string.count);}
 
 EXTERNAL bool deser_value(Ser_Reader* r, Ser_Value* out);
 EXTERNAL bool deser_iterate_list(const Ser_Value* list, Ser_Value* out_val);
 EXTERNAL bool deser_iterate_object(const Ser_Value* object, Ser_Value* out_key, Ser_Value* out_val);
 EXTERNAL void deser_skip_to_depth(Ser_Reader* r, isize depth);
+
+ATTRIBUTE_INLINE_NEVER EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type target_type, void* out);
 
 static inline bool deser_null(Ser_Value object)                    { return object.type == SER_NULL; }
 static inline bool deser_bool(Ser_Value object, bool* val)         { if(object.type == SER_BOOL)   { *val = object.mbool; return true; } return false; }
@@ -238,28 +266,36 @@ static inline bool deser_u8(Ser_Value val, uint8_t* out)    { if(val.exact_type 
 static inline bool deser_f64(Ser_Value val, double* out)    { if(val.exact_type == SER_F64) {*out = (double) val.mf64; return true;} return deser_generic_num(val.type, val.mu64, SER_F64, out); }
 static inline bool deser_f32(Ser_Value val, float* out)     { if(val.exact_type == SER_F32) {*out = (float) val.mf32; return true;} return deser_generic_num(val.type, val.mu64, SER_F32, out); }
 
-//some inline implementations
-static inline void ser_writer_reserve(Ser_Writer* w, isize size)
-{
-    if(w->offset + size > w->capacity)
-        ser_writer_grow(w, size);
-}
-static inline void ser_writer_write(Ser_Writer* w, const void* ptr, isize size)
-{
-    ser_writer_reserve(w, size);
-    memcpy(w->data + w->offset, ptr, size);
-    w->offset += size;
-}
-
-static inline void ser_primitive(Ser_Writer* w, Ser_Type type, const void* ptr, isize size)
-{
-    ser_writer_reserve(w, size+1);
-    w->data[w->offset] = (uint8_t) type;
-    memcpy(&w->data[w->offset + 1], ptr, size);
-    w->offset += size+1;
+#define ser_cstring_eq(value, cstr) ser_string_eq(value, SER_CSTRING(cstr))
+static inline bool ser_string_eq(Ser_Value value, Ser_String str) {
+    return value.type == SER_STRING 
+        && value.mstring.count == str.count 
+        && memcmp(value.mstring.data, str.data, str.count) == 0;
 }
 
 //IMPL ==============================
+EXTERNAL void ser_writer_init(Ser_Writer* w, void* buffer_or_null, isize size, Allocator* alloc_or_null_if_malloc)
+{
+    ser_writer_deinit(w);
+    w->alloc = alloc_or_null_if_malloc;
+    if(buffer_or_null) {
+        w->has_user_buffer = true;
+        w->data = (uint8_t*) buffer_or_null;
+        w->capacity = size;
+    }
+}
+
+EXTERNAL void ser_writer_deinit(Ser_Writer* w)
+{
+    if(w->has_user_buffer == false) {
+        if(w->alloc) 
+            ((Allocator_Func) (void*) w->alloc)(w->alloc, NULL, w->data, w->capacity, 1, NULL);
+        else
+            free(w->data);
+    }
+    memset(w, 0, sizeof *w);
+}
+
 ATTRIBUTE_INLINE_NEVER 
 EXTERNAL void ser_writer_grow(Ser_Writer* w, isize size)
 {
@@ -267,10 +303,22 @@ EXTERNAL void ser_writer_grow(Ser_Writer* w, isize size)
     if(new_capacity < size)
         new_capacity = size;
 
-    w->data = (uint8_t*) realloc(w->data, new_capacity); 
+    void* new_data = NULL;
+    void* old_buffer = w->has_user_buffer ? 0 : w->data;
+    isize old_capacity = w->has_user_buffer ? 0 : w->capacity;
+    if(w->alloc) 
+        new_data = ((Allocator_Func) (void*) w->alloc)(w->alloc, new_capacity, old_buffer, old_capacity, 1, NULL);
+    else
+        new_data = realloc(old_buffer, new_capacity);
+
+    if(w->has_user_buffer) {
+        memcpy(new_data, w->data, w->capacity);
+        w->has_user_buffer = false;
+    }
+
+    w->data = (uint8_t*) new_data;
     w->capacity = new_capacity;
 }
-
 
 EXTERNAL void ser_string(Ser_Writer* w, const void* ptr, isize size)
 {
@@ -351,8 +399,7 @@ EXTERNAL bool deser_value(Ser_Reader* r, Ser_Value* out_val)
     Ser_Value out = {0};
     out.type = SER_ERROR;
     out.exact_type = SER_ERROR;
-    out.offset = r->offset;
-    out.depth = r->depth;
+    isize offset_before = r->offset; 
 
     uint8_t uncast_type = 0; 
     uint8_t ok = true;
@@ -382,9 +429,9 @@ EXTERNAL bool deser_value(Ser_Reader* r, Ser_Value* out_val)
             case SER_F64: { double   val = 0; ok = deser_read(r, &val, 8); out.mf64 = val; } break;
 
             case SER_LIST_END:
-            case SER_OBJECT_END:    { r->depth -= 1; } break;
+            case SER_OBJECT_END:    { out.mcompound.depth = r->depth; r->depth -= 1; } break;
             case SER_LIST_BEGIN:    
-            case SER_OBJECT_BEGIN:  { r->depth += 1; } break;
+            case SER_OBJECT_BEGIN:  { out.mcompound.depth = r->depth; r->depth += 1; } break;
 
             case SER_RECOVERY_LIST_END:
             case SER_RECOVERY_OBJECT_END:    
@@ -392,8 +439,9 @@ EXTERNAL bool deser_value(Ser_Reader* r, Ser_Value* out_val)
             case SER_RECOVERY_OBJECT_BEGIN:  { 
                 uint8_t size = 0;
                 ok &= deser_read(r, &size, sizeof size);
-                out.mstring.data = (char*) (void*) (r->data + r->offset);
-                out.mstring.count = size;
+                out.mcompound.recovery = r->data + r->offset;
+                out.mcompound.recovery_len = size;
+                out.mcompound.depth = 0;
                 ok &= deser_skip(r, out.mstring.count);
                 if(ok) {
                     if((uint32_t) type - SER_LIST_END < SER_COMPOUND_TYPES_COUNT)
@@ -440,7 +488,7 @@ EXTERNAL bool deser_value(Ser_Reader* r, Ser_Value* out_val)
 
     if(ok == false) {
         out.type = SER_ERROR;
-        r->offset = out.offset;
+        r->offset = offset_before;
     }
 
     *out_val = out;
@@ -463,8 +511,10 @@ static bool _ser_type_is_ender_or_error(Ser_Type type)
 
 EXTERNAL bool deser_iterate_list(const Ser_Value* list, Ser_Value* out_val)
 {
-    ASSERT(list->type == SER_LIST || list->type == SER_RECOVERY_LIST);
-    deser_skip_to_depth(list->r, list->depth);
+    if(list->type != SER_LIST && list->type != SER_RECOVERY_LIST)
+        return false;
+
+    deser_skip_to_depth(list->r, list->mcompound.depth);
     deser_value(list->r, out_val);
     if(_ser_type_is_ender_or_error(out_val->type))
     {
@@ -478,9 +528,10 @@ EXTERNAL bool deser_iterate_list(const Ser_Value* list, Ser_Value* out_val)
 
 EXTERNAL bool deser_iterate_object(const Ser_Value* object, Ser_Value* out_key, Ser_Value* out_val)
 {
-    ASSERT(object->type == SER_OBJECT || object->type == SER_RECOVERY_OBJECT);
+    if(object->type != SER_OBJECT && object->type != SER_RECOVERY_OBJECT)
+        return false;
 
-    deser_skip_to_depth(object->r, object->depth);
+    deser_skip_to_depth(object->r, object->mcompound.depth);
     deser_value(object->r, out_key);
     if(_ser_type_is_ender_or_error(out_key->type)) 
     {
@@ -492,7 +543,7 @@ EXTERNAL bool deser_iterate_object(const Ser_Value* object, Ser_Value* out_key, 
 
     //NOTE: can be removed if we disallow dynamic as keys
     // then this case will just full under error.
-    deser_skip_to_depth(object->r, object->depth); 
+    deser_skip_to_depth(object->r, object->mcompound.depth); 
     deser_value(object->r, out_val);
     if(_ser_type_is_ender_or_error(out_key->type))
         goto recover;
@@ -747,9 +798,6 @@ bool deser_map_info(Ser_Value object, Map_Info* out_map_info)
     out.scale = scale;
     out.gamma = 2.2f;
 
-    if(object.type != SER_OBJECT) 
-        return false;
-
     for(Ser_Value key, val; deser_iterate_object(&object, &key, &val); )
     {
         /**/ if(ser_cstring_eq(key, "offset"))          deser_f32v3(&val, out.offset.floats);
@@ -766,12 +814,9 @@ bool deser_map_info(Ser_Value object, Map_Info* out_map_info)
         else if(ser_cstring_eq(key, "channels_count"))  deser_i32(val, &out.channels_count);
         else if(ser_cstring_eq(key, "channels_indices1"))
         {
-            if(val.type == SER_LIST_BEGIN)
-            {
-                int i = 0;
-                for(Ser_Value item; deser_iterate_list(&val, &item); )
-                    i += deser_i32(item, &out.channels_indices1[i]); //log here
-            }
+            int i = 0;
+            for(Ser_Value item; deser_iterate_list(&val, &item); )
+                i += deser_i32(item, &out.channels_indices1[i]); //log here
         }
     }
 
