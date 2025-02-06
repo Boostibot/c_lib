@@ -156,8 +156,6 @@ typedef struct Ser_Value {
     };
 } Ser_Value;
 
-EXTERNAL Ser_Writer ser_file_writer(FILE* file);
-
 #define ser_cstring_eq(value, cstr) ser_string_eq(value, SER_CSTRING(cstr))
 static inline bool ser_string_eq(Ser_Value value, Ser_String str)
 {
@@ -208,13 +206,12 @@ EXTERNAL void ser_writer_init(Ser_Writer* w, Allocator* alloc_or_null_if_malloc)
 ATTRIBUTE_INLINE_NEVER EXTERNAL void ser_writer_grow(Ser_Writer* w, isize size);
 
 //reading 
-EXTERNAL bool deser_value(Ser_Reader* r, Ser_Value* out);
-EXTERNAL bool deser_iterate_list(Ser_Value list, Ser_Value* out_val);
-EXTERNAL bool deser_iterate_object(Ser_Value object, Ser_Value* out_key, Ser_Value* out_val);
-EXTERNAL void deser_skip_to_depth(Ser_Reader* r, isize depth);
+ATTRIBUTE_INLINE_NEVER EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type target_type, void* out);
 
-ATTRIBUTE_INLINE_NEVER 
-EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type target_type, void* out);
+EXTERNAL bool deser_value(Ser_Reader* r, Ser_Value* out);
+EXTERNAL bool deser_iterate_list(const Ser_Value* list, Ser_Value* out_val);
+EXTERNAL bool deser_iterate_object(const Ser_Value* object, Ser_Value* out_key, Ser_Value* out_val);
+EXTERNAL void deser_skip_to_depth(Ser_Reader* r, isize depth);
 
 static inline bool deser_null(Ser_Value object)                    { return object.type == SER_NULL; }
 static inline bool deser_bool(Ser_Value object, bool* val)         { if(object.type == SER_BOOL)   { *val = object.mbool; return true; } return false; }
@@ -458,46 +455,46 @@ static bool _ser_type_is_ender_or_error(Ser_Type type)
     return (uint32_t) type - SER_LIST_END <= SER_COMPOUND_TYPES_COUNT;
 }
 
-EXTERNAL bool deser_iterate_list(Ser_Value list, Ser_Value* out_val)
+EXTERNAL bool deser_iterate_list(const Ser_Value* list, Ser_Value* out_val)
 {
-    ASSERT(list.type == SER_LIST || list.type == SER_RECOVERY_LIST);
-    deser_skip_to_depth(list.r, list.depth);
-    deser_value(list.r, out_val);
+    ASSERT(list->type == SER_LIST || list->type == SER_RECOVERY_LIST);
+    deser_skip_to_depth(list->r, list->depth);
+    deser_value(list->r, out_val);
     if(_ser_type_is_ender_or_error(out_val->type))
     {
-        if(list.type != out_val->type - SER_COMPOUND_TYPES_COUNT)
-            _deser_recover(&list);
+        if(list->type != out_val->type - SER_COMPOUND_TYPES_COUNT)
+            _deser_recover(list);
         return false;
     }
 
     return true;
 }
 
-EXTERNAL bool deser_iterate_object(Ser_Value object, Ser_Value* out_key, Ser_Value* out_val)
+EXTERNAL bool deser_iterate_object(const Ser_Value* object, Ser_Value* out_key, Ser_Value* out_val)
 {
-    ASSERT(object.type == SER_OBJECT || object.type == SER_RECOVERY_OBJECT);
+    ASSERT(object->type == SER_OBJECT || object->type == SER_RECOVERY_OBJECT);
 
-    deser_skip_to_depth(object.r, object.depth);
-    deser_value(object.r, out_key);
+    deser_skip_to_depth(object->r, object->depth);
+    deser_value(object->r, out_key);
     if(_ser_type_is_ender_or_error(out_key->type)) 
     {
         //if the ending type does not correspond to the object type
-        if(object.type != out_key->type - SER_COMPOUND_TYPES_COUNT)
+        if(object->type != out_key->type - SER_COMPOUND_TYPES_COUNT)
             goto recover;
         return false;
     }
 
     //NOTE: can be removed if we disallow dynamic as keys
     // then this case will just full under error.
-    deser_skip_to_depth(object.r, object.depth); 
-    deser_value(object.r, out_val);
+    deser_skip_to_depth(object->r, object->depth); 
+    deser_value(object->r, out_val);
     if(_ser_type_is_ender_or_error(out_key->type))
         goto recover;
 
     return true;
 
     recover:
-    _deser_recover(&object);
+    _deser_recover(object);
     return false;
 }
 
@@ -634,9 +631,9 @@ EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type ta
 
 
 //START of test
-bool deser_f32v3(Ser_Value object, float out[3])
+bool deser_f32v3(const Ser_Value* object, float out[3])
 {
-    if(object.type == SER_LIST)
+    if(object->type == SER_LIST)
     {
         int count = 0;
         for(Ser_Value val = {0}; deser_iterate_list(object, &val); ) {
@@ -647,7 +644,7 @@ bool deser_f32v3(Ser_Value object, float out[3])
 
         return count >= 3;
     }
-    else if(object.type == SER_OBJECT)
+    else if(object->type == SER_OBJECT)
     {
         int parts = 0;
         for(Ser_Value key = {0}, val = {0}; deser_iterate_object(object, &key, &val); ) 
@@ -716,23 +713,23 @@ typedef struct Map_Info {
     float contrast;       //default 0
 } Map_Info;
 
-bool deser_map_repeat(Ser_Value val, Map_Repeat* repeat)
+bool deser_map_repeat(const Ser_Value* val, Map_Repeat* repeat)
 {
     if(0) {}
-    else if(ser_cstring_eq(val, "repeat"))          *repeat = MAP_REPEAT_REPEAT;
-    else if(ser_cstring_eq(val, "mirrored"))        *repeat = MAP_REPEAT_MIRRORED_REPEAT;
-    else if(ser_cstring_eq(val, "clamp_to_edge"))   *repeat = MAP_REPEAT_CLAMP_TO_EDGE;
-    else if(ser_cstring_eq(val, "clamp_to_border")) *repeat = MAP_REPEAT_CLAMP_TO_BORDER;
+    else if(ser_cstring_eq(*val, "repeat"))          *repeat = MAP_REPEAT_REPEAT;
+    else if(ser_cstring_eq(*val, "mirrored"))        *repeat = MAP_REPEAT_MIRRORED_REPEAT;
+    else if(ser_cstring_eq(*val, "clamp_to_edge"))   *repeat = MAP_REPEAT_CLAMP_TO_EDGE;
+    else if(ser_cstring_eq(*val, "clamp_to_border")) *repeat = MAP_REPEAT_CLAMP_TO_BORDER;
     else return false; //log here
     return true;
 }
 
-bool deser_map_scale_filter(Ser_Value val, Map_Scale_Filter* filter)
+bool deser_map_scale_filter(const Ser_Value* val, Map_Scale_Filter* filter)
 {
     if(0) {}
-    else if(ser_cstring_eq(val, "bilinear")) *filter = MAP_SCALE_FILTER_BILINEAR;
-    else if(ser_cstring_eq(val, "trilinear"))*filter = MAP_SCALE_FILTER_TRILINEAR;
-    else if(ser_cstring_eq(val, "nearest"))  *filter = MAP_SCALE_FILTER_NEAREST;
+    else if(ser_cstring_eq(*val, "bilinear")) *filter = MAP_SCALE_FILTER_BILINEAR;
+    else if(ser_cstring_eq(*val, "trilinear"))*filter = MAP_SCALE_FILTER_TRILINEAR;
+    else if(ser_cstring_eq(*val, "nearest"))  *filter = MAP_SCALE_FILTER_NEAREST;
     else return false; //log here
     return true;
 }
@@ -747,16 +744,16 @@ bool deser_map_info(Ser_Value object, Map_Info* out_map_info)
     if(object.type != SER_OBJECT) 
         return false;
 
-    for(Ser_Value key = {0}, val = {0}; deser_iterate_object(object, &key, &val); )
+    for(Ser_Value key, val; deser_iterate_object(&object, &key, &val); )
     {
-        /**/ if(ser_cstring_eq(key, "offset"))          deser_f32v3(val, out.offset.floats);
-        else if(ser_cstring_eq(key, "scale"))           deser_f32v3(val, out.scale.floats);
-        else if(ser_cstring_eq(key, "resolution"))      deser_f32v3(val, out.resolution.floats);
-        else if(ser_cstring_eq(key, "filter_minify"))   deser_map_scale_filter(val, &out.filter_minify);
-        else if(ser_cstring_eq(key, "filter_magnify"))  deser_map_scale_filter(val, &out.filter_magnify);
-        else if(ser_cstring_eq(key, "repeat_u"))        deser_map_repeat(val, &out.repeat_u); //log here
-        else if(ser_cstring_eq(key, "repeat_v"))        deser_map_repeat(val, &out.repeat_v);
-        else if(ser_cstring_eq(key, "repeat_w"))        deser_map_repeat(val, &out.repeat_w);
+        /**/ if(ser_cstring_eq(key, "offset"))          deser_f32v3(&val, out.offset.floats);
+        else if(ser_cstring_eq(key, "scale"))           deser_f32v3(&val, out.scale.floats);
+        else if(ser_cstring_eq(key, "resolution"))      deser_f32v3(&val, out.resolution.floats);
+        else if(ser_cstring_eq(key, "filter_minify"))   deser_map_scale_filter(&val, &out.filter_minify);
+        else if(ser_cstring_eq(key, "filter_magnify"))  deser_map_scale_filter(&val, &out.filter_magnify);
+        else if(ser_cstring_eq(key, "repeat_u"))        deser_map_repeat(&val, &out.repeat_u); //log here
+        else if(ser_cstring_eq(key, "repeat_v"))        deser_map_repeat(&val, &out.repeat_v);
+        else if(ser_cstring_eq(key, "repeat_w"))        deser_map_repeat(&val, &out.repeat_w);
         else if(ser_cstring_eq(key, "gamma"))           deser_f32(val, &out.gamma);
         else if(ser_cstring_eq(key, "brightness"))      deser_f32(val, &out.brightness);
         else if(ser_cstring_eq(key, "contrast"))        deser_f32(val, &out.contrast);
@@ -766,7 +763,7 @@ bool deser_map_info(Ser_Value object, Map_Info* out_map_info)
             if(val.type == SER_LIST_BEGIN)
             {
                 int i = 0;
-                for(Ser_Value item = {0}; deser_iterate_list(val, &item); )
+                for(Ser_Value item; deser_iterate_list(&val, &item); )
                     i += deser_i32(item, &out.channels_indices1[i]); //log here
             }
         }
