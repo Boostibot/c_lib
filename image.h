@@ -438,8 +438,9 @@ EXTERNAL void image_reserve(Image* image, isize capacity)
     {
         REQUIRE(image->allocator != NULL);
 
-        isize old_byte_size = image_byte_size(*image);
+        //this weird realloc is on purpose to allow copying from self to self.
         u8* new_pixels = (u8*) allocator_allocate(image->allocator, capacity, DEF_ALIGN);
+        isize old_byte_size = image_byte_size(*image);
         
         memcpy(new_pixels, image->pixels, (size_t) old_byte_size);
         allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN);

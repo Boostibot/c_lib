@@ -27,12 +27,12 @@ TIMEAPI int64_t epoch_time();       //returns time since the epoch in microsecon
 TIMEAPI int64_t clock_ticks();      //returns precise as possible yet long term stable time since unspecified point in time (last boot) 
 TIMEAPI int64_t clock_ticks_freq(); //returns the frequency of clock_ticks
 TIMEAPI int64_t clock_ns();         //returns time in nanoseconds since since unspecified point in time (last boot) 
-EXTERNAL double clock_seconds();    //returns time in seconds since last call to clock_seconds_set(x) plus x. 
-EXTERNAL float  clock_secondsf();   //returns time in seconds since last call to clock_seconds_set(x) plus x as float
-EXTERNAL double clock_seconds_set(double to_time); //sets the base for clock_seconds and return the previous time 
+EXTERNAL double clock_sec();        //returns time in seconds since last call to clock_sec_set(x) plus x. 
+EXTERNAL float  clock_secf();       //returns time in seconds since last call to clock_sec_set(x) plus x as float
+EXTERNAL double clock_sec_set(double to_time); //sets the base for clock_sec and return the previous time 
 
 //@NOTE: 
-//For clock_seconds we might be scared that the int64_t to double conversion will cost us precision for sufficiently large 
+//For clock_sec we might be scared that the int64_t to double conversion will cost us precision for sufficiently large 
 // performance counter values. In practice this extremely hard to achieve. On windows performance counter has
 // frequency of 10Mhz = period of 1e-7 seconds. Double is able to represent numbers up to 2^53 without loosing 
 // any precision, that is around 9e15. Thus it is able to represent numbers up to ~1e9 with precision of 1e-7 seconds.
@@ -44,10 +44,10 @@ EXTERNAL double clock_seconds_set(double to_time); //sets the base for clock_sec
 //INLINE IMPLEMENTATION
 #if (defined(MODULE_IMPL_ALL) || defined(TIMEAPI_INLINE_IMPL)) && !defined(MODULE_HAS_INLINE_IMPL_FILE)
 #define MODULE_HAS_INLINE_IMPL_FILE
-    extern int     g_clock_seconds_init;
-    extern int64_t g_clock_seconds_offset;
-    extern double  g_clock_seconds_period;
-    extern int64_t g_clock_seconds_freq;
+    extern int     g_clock_sec_init;
+    extern int64_t g_clock_sec_offset;
+    extern double  g_clock_sec_period;
+    extern int64_t g_clock_sec_freq;
 
     #if defined(_WIN32) || defined(_WIN64)
 
@@ -72,9 +72,9 @@ EXTERNAL double clock_seconds_set(double to_time); //sets the base for clock_sec
 
         TIMEAPI int64_t clock_ticks_freq()
         {
-            if(g_clock_seconds_freq == 0)
-                QueryPerformanceFrequency((LARGE_INTEGER*) (void*) &g_clock_seconds_freq);
-            return g_clock_seconds_freq;
+            if(g_clock_sec_freq == 0)
+                QueryPerformanceFrequency((LARGE_INTEGER*) (void*) &g_clock_sec_freq);
+            return g_clock_sec_freq;
         }
 
         TIMEAPI int64_t epoch_time()
@@ -106,7 +106,7 @@ EXTERNAL double clock_seconds_set(double to_time); //sets the base for clock_sec
         TIMEAPI int64_t clock_ns()
         {
             //QPC is rn hardcoded to return 10Mhz so we exploit that
-            if(g_clock_seconds_freq != 10000000) 
+            if(g_clock_sec_freq != 10000000) 
                 return _clock_ns_unusual();
 
             return clock_ticks()*100;
@@ -134,32 +134,32 @@ EXTERNAL double clock_seconds_set(double to_time); //sets the base for clock_sec
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_TIME)) && !defined(MODULE_HAS_IMPL_TIME)
 #define MODULE_HAS_IMPL_TIME
-    int     g_clock_seconds_init = 0;
-    int64_t g_clock_seconds_offset = 0;
-    double  g_clock_seconds_period = 0;
-    int64_t g_clock_seconds_freq = 0;
-    EXTERNAL double clock_seconds_set(double to_time)
+    int     g_clock_sec_init = 0;
+    int64_t g_clock_sec_offset = 0;
+    double  g_clock_sec_period = 0;
+    int64_t g_clock_sec_freq = 0;
+    EXTERNAL double clock_sec_set(double to_time)
     {
         int64_t counter = clock_ticks();
-        double prev_now = (double) (counter - g_clock_seconds_offset)*g_clock_seconds_period;
+        double prev_now = (double) (counter - g_clock_sec_offset)*g_clock_sec_period;
         int64_t freq = clock_ticks_freq();
-        g_clock_seconds_offset = counter + (int64_t) (to_time*freq + 0.5);
-        g_clock_seconds_period = 1.0 / freq;
-        g_clock_seconds_freq = freq;
-        g_clock_seconds_init = 1;
+        g_clock_sec_offset = counter + (int64_t) (to_time*freq + 0.5);
+        g_clock_sec_period = 1.0 / freq;
+        g_clock_sec_freq = freq;
+        g_clock_sec_init = 1;
         return prev_now;
     }
     
-    EXTERNAL double clock_seconds()
+    EXTERNAL double clock_sec()
     {
-        if(g_clock_seconds_init == 0)
-            clock_seconds_set(0);
-        return (double) (clock_ticks() - g_clock_seconds_offset)*g_clock_seconds_period;
+        if(g_clock_sec_init == 0)
+            clock_sec_set(0);
+        return (double) (clock_ticks() - g_clock_sec_offset)*g_clock_sec_period;
     }
 
-    EXTERNAL float clock_secondsf()
+    EXTERNAL float clock_secf()
     {
-        return (float) clock_seconds();
+        return (float) clock_sec();
     }
 #endif
 
