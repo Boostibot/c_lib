@@ -22,7 +22,7 @@
 
     #define SLZ4_MALLOC(new_size)       malloc(new_size)
     #define SLZ4_FREE(ptr, old_size)    ((void) old_size, free(ptr))
-    #define SLZ4_ASSERT(x)              assert(x)
+    #define SLZ4_ASSERT(x)              (assert(x), (void) sizeof(x))
     #define SLZ4_TEST(x)                (!(x) ? printf("SLZ4_TEST(" #x ") failed\n"), abort() : (void)0) //assert that does not get removed from release builds
     #define SLZ4_INTERNAL               inline static
     #define SLZ4_EXPORT 

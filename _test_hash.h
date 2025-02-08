@@ -28,7 +28,7 @@ INTERNAL u64 random_hash_value()
 INTERNAL void test_hash_stress(f64 max_seconds)
 {
 	Debug_Allocator debug_alloc = {0};
-	debug_allocator_init_use(&debug_alloc, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_USE);
+	debug_allocator_init(&debug_alloc, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_USE);
 	{
 		typedef enum {
 			INIT,
@@ -77,10 +77,10 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 
 		i32 max_size = 0;
 		i32 max_capacity = 0;
-		f64 start = clock_s();
+		f64 start = clock_sec();
 		for(isize i = 0; i < MAX_ITERS; i++)
 		{
-			if(clock_s() - start >= max_seconds && i >= MIN_ITERS)
+			if(clock_sec() - start >= max_seconds && i >= MIN_ITERS)
 				break;
 
 			Action action = (Action) random_discrete(dist, ARRAY_LEN(dist));

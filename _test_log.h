@@ -8,7 +8,7 @@ INTERNAL void test_log()
     LOG_INFO("TEST", "Ignore all logs below since they are a test!");
 
     Debug_Allocator debug_allocator = {0};
-    debug_allocator_init_use(&debug_allocator, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_CAPTURE_CALLSTACK);
+    debug_allocator_init(&debug_allocator, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_CAPTURE_CALLSTACK | DEBUG_ALLOCATOR_USE);
 
     LOG_INFO("TEST_LOG1", "%d", 25);
     LOG_INFO("TEST_LOG2", "hello");

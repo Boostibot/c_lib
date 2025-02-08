@@ -392,7 +392,7 @@ EXTERNAL void path_parse_rest(String path, Path_Info* info)
             else
             {
                 //find the extension if any    
-                isize dot_i = string_find_last_char(filename_path, '.');
+                isize dot_i = string_find_last_char(filename_path, '.', 0);
                 if(dot_i == -1)
                     dot_i = filename_path.count;
                 else
@@ -851,7 +851,7 @@ EXTERNAL void path_builder_assign(Path_Builder* into, Path path, int flags)
 EXTERNAL Path_Builder path_builder_dup(Allocator* alloc, Path_Builder to_copy)
 {
     Path_Builder duped = {0};
-    duped.builder = builder_from_string(alloc, to_copy.string);
+    duped.builder = builder_of(alloc, to_copy.string);
     duped.info = to_copy.info;
     return duped;
 }
@@ -859,7 +859,7 @@ EXTERNAL Path_Builder path_builder_dup(Allocator* alloc, Path_Builder to_copy)
 EXTERNAL void path_normalize_in_place(Path_Builder* into, int flags)
 {
     SCRATCH_SCOPE(arena) {
-        String_Builder copy = builder_from_string(arena.alloc, into->string);
+        String_Builder copy = builder_of(arena.alloc, into->string);
         Path path = path_parse(copy.string);
         path_builder_assign(into, path, flags);
     }

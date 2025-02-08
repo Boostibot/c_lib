@@ -1,6 +1,10 @@
 #ifndef MODULE_STRING
 #define MODULE_STRING
 
+#include <stdint.h>
+#include <string.h>
+#include <stdbool.h>
+
 #include "allocator.h"
 #include "array.h"
 
@@ -29,40 +33,38 @@ typedef Array(String_Builder) String_Builder_Array;
 //Constructs a String out of a string literal
 #define STRING(cstring) BINIT(String){cstring "", sizeof(cstring "") - 1}
 
-
 EXTERNAL String string_of(const char* str); //Constructs a string from null terminated str
 EXTERNAL String string_make(const char* data, isize size); //Constructs a string
 EXTERNAL char   string_at_or(String str, isize at, char if_out_of_range); //returns str.data[at] or if_out_of_range if the index at is not within [0, str.count)
-EXTERNAL String string_head(String string, isize to); //keeps only characters to to ( [0, to) interval )
-EXTERNAL String string_tail(String string, isize from); //keeps only characters from from ( [from, string.count) interval )
+EXTERNAL String string_head(String string, isize to); //returns the interval [0, to) of string
+EXTERNAL String string_tail(String string, isize from); // returns the interval [from, string.count) of string 
 EXTERNAL String string_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
 EXTERNAL String string_safe_head(String string, isize to); //returns string_head using to. If to is outside the range [0, string.count] clamps it to the range. 
 EXTERNAL String string_safe_tail(String string, isize from); //returns string_tail using from. If from is outside the range [0, string.count] clamps it to the range. 
 EXTERNAL String string_safe_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
-EXTERNAL bool   string_is_equal(String a, String b); //Returns true if the contents and sizes of the strings match
+EXTERNAL bool   string_is_equal(String a, String b); //Returns true if the sizes and contents of the strings match
 EXTERNAL bool   string_is_prefixed_with(String string, String prefix); 
 EXTERNAL bool   string_is_postfixed_with(String string, String postfix);
-EXTERNAL bool   string_has_substring_at(String larger_string, isize from_index, String smaller_string); //Returns true if larger_string has smaller_string at index from_index
-EXTERNAL int    string_compare(String a, String b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
+EXTERNAL bool   string_has_substring_at(String string, String substring, isize at_index); //Returns true if string has substring at index from_index
+EXTERNAL int    string_compare(String a, String b); //Compares sizes and then lexicographically the contents. Shorter strings are placed before longer ones.
+EXTERNAL int    string_compare_lexicographic(String a, String b); //Compares sizes and then lexicographically the contents then the contents. Shorter strings are placed before longer ones.
 
-EXTERNAL isize  string_find_first(String string, String search_for, isize from); 
+EXTERNAL isize  string_find_first(String in_str, String search_for, isize from); //returns the first index of search_for in in_str within [from, string.count) or -1 if no index exists
+EXTERNAL isize  string_find_last(String in_str, String search_for, isize from);  //returns the last index of search_for in in_str within [from, string.count) or -1 if no index exists
+EXTERNAL isize  string_find_first_char(String in_str, char search_for, isize from); 
+EXTERNAL isize  string_find_last_char(String in_str, char search_for, isize from); 
+
 EXTERNAL isize  string_find_first_or(String in_str, String search_for, isize from, isize if_not_found);
-EXTERNAL isize  string_find_last_from(String in_str, String search_for, isize from);
-EXTERNAL isize  string_find_last(String string, String search_for); 
+EXTERNAL isize  string_find_last_or(String in_str, String search_for, isize from, isize if_not_found);
+EXTERNAL isize  string_find_first_char_or(String in_str, char search_for, isize from, isize if_not_found);
+EXTERNAL isize  string_find_last_char_or(String in_str, char search_for, isize from, isize if_not_found);
 
-EXTERNAL isize  string_find_first_char(String string, char search_for, isize from); 
-EXTERNAL isize  string_find_first_char_or(String string, char search_for, isize from, isize if_not_found);
-EXTERNAL isize  string_find_last_char_from(String in_str, char search_for, isize from);
-EXTERNAL isize  string_find_last_char(String string, char search_for); 
-
-EXTERNAL void   string_to_null_terminated(char* buffer, isize buffer_size, String string);
+EXTERNAL isize  string_null_terminate(char* buffer, isize buffer_size, String string);
 EXTERNAL String string_allocate(Allocator* alloc, String string);
 EXTERNAL void   string_deallocate(Allocator* alloc, String* string);
 
 EXTERNAL String_Builder builder_make(Allocator* alloc_or_null, isize capacity_or_zero);
-EXTERNAL String_Builder builder_from_cstring(Allocator* allocator, const char* cstring); //Allocates a String_Builder from cstring.
-EXTERNAL String_Builder builder_from_string(Allocator* allocator, String string);  //Allocates a String_Builder from String using an allocator.
-
+EXTERNAL String_Builder builder_of(Allocator* allocator, String string);  //Allocates a String_Builder from String using an allocator.
 EXTERNAL void builder_init(String_Builder* builder, Allocator* alloc);
 EXTERNAL void builder_init_with_capacity(String_Builder* builder, Allocator* alloc, isize capacity_or_zero);
 EXTERNAL void builder_deinit(String_Builder* builder);             
@@ -108,8 +110,6 @@ EXTERNAL bool char_is_id(char c);
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_STRING)) && !defined(MODULE_HAS_IMPL_STRING)
 #define MODULE_HAS_IMPL_STRING
-    #include <string.h>
-    
 
     EXTERNAL String string_of(const char* str)
     {
@@ -122,12 +122,12 @@ EXTERNAL bool char_is_id(char c);
         return string;
     }
     
-    EXTERNAL char string_at_or(String str, isize at, char or)
+    EXTERNAL char string_at_or(String str, isize at, char if_out_of_range)
     {
         if((uint64_t) at < (uint64_t) str.count)
             return str.data[at];
         else
-            return or;
+            return if_out_of_range;
     }
 
     EXTERNAL String string_head(String string, isize to)
@@ -168,9 +168,7 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL isize string_find_first_or(String in_str, String search_for, isize from, isize if_not_found)
     {
-        REQUIRE(from >= 0);
-
-        if(from + search_for.count > in_str.count)
+        if(from < 0 || from + search_for.count > in_str.count)
             return if_not_found;
         
         if(search_for.count == 0)
@@ -187,7 +185,6 @@ EXTERNAL bool char_is_id(char c);
         const char* found = in_str.data + from;
         char last_char = search_for.data[search_for.count - 1];
         char first_char = search_for.data[0];
-
         while (true)
         {
             isize remaining_length = in_str.count - (found - in_str.data) - search_for.count + 1;
@@ -207,225 +204,81 @@ EXTERNAL bool char_is_id(char c);
 
         return if_not_found;
     }
-      
+
+    EXTERNAL isize string_find_last_or(String in_str, String search_for, isize from, isize if_not_found)
+    {
+        if(from < 0 || from + search_for.count > in_str.count)
+            return if_not_found;
+
+        if(search_for.count == 0)
+            return from;
+
+        isize to = in_str.count - in_str.count; 
+        for(isize i = to; i >= from; i--)
+            if(memcmp(in_str.data + i, search_for.data, search_for.count) == 0)
+                return i;
+
+        return if_not_found;
+    }
+    
+    EXTERNAL isize string_find_first_char_or(String string, char search_for, isize from, isize if_not_found)
+    {
+        if(from < 0 || from >= string.count)
+            return if_not_found;
+        char* ptr = (char*) memchr(string.data + from, search_for, (size_t) (string.count - from));
+        return ptr ? (isize) (ptr - string.data) : if_not_found; 
+    }
+    
+    EXTERNAL isize string_find_last_char_or(String in_str, char search_for, isize from, isize if_not_found)
+    {
+        if(from < 0 || from >= in_str.count)
+            return if_not_found;
+            
+        for(isize i = in_str.count; i-- > from; )
+            if(in_str.data[i] == search_for)
+                return i;
+
+        return if_not_found;
+    }
     
     EXTERNAL isize string_find_first(String in_str, String search_for, isize from)
     {
         return string_find_first_or(in_str, search_for, from, -1);
     }
-
-    EXTERNAL isize string_find_last_from(String in_str, String search_for, isize from)
+    EXTERNAL isize string_find_last(String in_str, String search_for, isize from)
     {
-        ASSERT(false, "UNTESTED! @TODO: test!");
-        ASSERT(from >= 0);
-        if(from + search_for.count > in_str.count)
-            return -1;
-
-        if(search_for.count == 0)
-            return from;
-
-        ASSERT(from >= 0);
-        isize start = from;
-        if(in_str.count - start < search_for.count)
-            start = in_str.count - search_for.count;
-
-        for(isize i = start; i-- > 0; )
-        {
-            bool found = true;
-            for(isize j = 0; j < search_for.count; j++)
-            {
-                CHECK_BOUNDS(i + j, in_str.count);
-                if(in_str.data[i + j] != search_for.data[j])
-                {
-                    found = false;
-                    break;
-                }
-            }
-
-            if(found)
-                return i;
-        };
-
-        return -1;
+        return string_find_last_or(in_str, search_for, from, -1);
     }
-
-    EXTERNAL isize string_find_last(String in_str, String search_for)
+    EXTERNAL isize string_find_first_char(String in_str, char search_for, isize from)
     {
-        isize from = MAX(in_str.count - 1, 0);
-        return string_find_last_from(in_str, search_for, from);
+        return string_find_first_char_or(in_str, search_for, from, -1);
+    }
+    EXTERNAL isize string_find_last_char(String in_str, char search_for, isize from)
+    {
+        return string_find_last_char_or(in_str, search_for, from, -1);
     }
     
-    EXTERNAL isize string_find_first_char_or(String string, char search_for, isize from, isize if_not_found)
-    {
-        char* ptr = (char*) memchr(string.data + from, search_for, (size_t) (string.count - from));
-        return ptr ? (isize) (ptr - string.data) : if_not_found; 
-    }
-    
-    EXTERNAL isize string_find_first_char(String string, char search_for, isize from)
-    {
-        return string_find_first_char_or(string, search_for, from, -1);
-    }
-
-    EXTERNAL void memtile(void *field, isize field_size, const void* pattern, isize pattern_size)
-    {
-        PROFILE_START();
-	    REQUIRE(field_size >= 0 && (field || field_size == 0));
-	    REQUIRE(pattern_size >= 0 && (pattern || pattern_size == 0));
-
-        if (field_size <= pattern_size)
-            memcpy(field, pattern, (size_t) field_size);
-        else if(pattern_size == 0)
-            memset(field, 0, (size_t) field_size);
-        else
-        {
-            isize cursor = pattern_size;
-            isize copy_size = pattern_size;
-
-            // make one full copy
-            memcpy((char*) field, pattern, (size_t) pattern_size);
-        
-            // now copy from destination buffer, doubling size each iteration
-            for (; cursor + copy_size < field_size; copy_size *= 2) 
-            {
-                memcpy((char*) field + cursor, field, (size_t) copy_size);
-                cursor += copy_size;
-            }
-        
-            // copy any remainder
-            memcpy((char*) field + cursor, field, (size_t) (field_size - cursor));
-        }
-        PROFILE_STOP();
-    }
-    
-    EXTERNAL const void* memcheck(const void* ptr, uint8_t byte, isize size)
-    {
-	    REQUIRE(size >= 0 && (ptr != NULL || size == 0));
-
-        //pattern is 8 repeats of byte
-        uint64_t pattern = (uint64_t) 0x0101010101010101ULL * (uint64_t) byte;
-        uint8_t* curr = (uint8_t*) ptr;
-        uint8_t* end = curr + size;
-
-        while(end - curr >= 32)
-        {
-            uint64_t copied[4] = {0};
-            memcpy(copied, curr, 32);
-            if(copied[0] != pattern
-                || copied[1] != pattern
-                || copied[2] != pattern
-                || copied[3] != pattern) 
-                break;
-            curr += 32;
-        }
-
-        while(end - curr >= 8)
-        {
-            uint64_t copied = {0};
-            memcpy(&copied, curr, 8);
-            if(copied != pattern)
-                break; 
-            curr += 8;
-        }
-        
-        for(; end != curr; curr ++)
-        {
-            if(*curr != byte)
-                return curr;
-        }
-
-        return NULL;
-    }
-    
-    EXTERNAL void memswap_generic(void* a, void* b, isize size)
-    {
-        PROFILE_START();
-	    REQUIRE(size >= 0 && ((a && b) || size == 0));
-        enum {LOCAL = 8};
-        char temp[LOCAL] = {0};
-
-        char* ac = (char*) a;
-        char* bc = (char*) b;
-    
-        size_t repeats = (size_t) size / LOCAL;
-        size_t remainder = (size_t) size % LOCAL;
-        for(size_t k = 0; k < repeats; k ++)
-        {
-	        memcpy(temp,         ac + k*LOCAL, LOCAL);
-	        memcpy(ac + k*LOCAL, bc + k*LOCAL, LOCAL);
-	        memcpy(bc + k*LOCAL, temp,         LOCAL);
-        }
-
-        ac += repeats*LOCAL;
-        bc += repeats*LOCAL;
-        for(size_t i = 0; i < remainder; i++)
-        {
-            char t = ac[i];
-            ac[i] = bc[i];
-            bc[i] = t;         
-        }
-        PROFILE_STOP();
-    }
-
-    EXTERNAL void memswap(void* a, void* b, isize size)
-    {
-	    REQUIRE(size >= 0 && ((a && b) || size == 0));
-        PROFILE_START();
-        char temp[32] = {0};
-        switch(size) {
-            #define SWAP_X(N) \
-                case N: { \
-                    memcpy(temp, a, N); \
-                    memcpy(a, b, N); \
-                    memcpy(b, temp, N); \
-                } break;
-
-            SWAP_X(4)
-            SWAP_X(8)
-            SWAP_X(12)
-            SWAP_X(16)
-            SWAP_X(20)
-            SWAP_X(24)
-            SWAP_X(28)
-            SWAP_X(32)
-            #undef SWAP_X
-
-            default: memswap_generic(a, b, size); break;
-        }
-        PROFILE_STOP();
-    }
-
-    EXTERNAL isize string_find_last_char_from(String string, char search_for, isize from)
-    {
-        for(isize i = from + 1; i-- > 0; )
-            if(string.data[i] == search_for)
-                return i;
-
-        return -1;
-    }
-    
-    EXTERNAL isize string_find_last_char(String string, char search_for)
-    {
-        return string_find_last_char_from(string, search_for, string.count - 1);
-    }
-
     EXTERNAL int string_compare(String a, String b)
     {
         if(a.count > b.count)
             return -1;
         if(a.count < b.count)
             return 1;
+        return memcmp(a.data, b.data, (size_t) a.count);
+    }
 
-        int res = memcmp(a.data, b.data, (u64) a.count);
-        return res;
+    EXTERNAL int string_compare_lexicographic(String a, String b)
+    {
+        isize min_count = a.count < b.count ? a.count : b.count;
+        int cmp = memcmp(a.data, b.data, (size_t) min_count);
+        if(cmp != 0)
+            return cmp;
+        return (a.count > b.count) - (a.count < b.count);
     }
     
     EXTERNAL bool string_is_equal(String a, String b)
     {
-        if(a.count != b.count)
-            return false;
-
-        bool eq = memcmp(a.data, b.data, (u64) a.count) == 0;
-        return eq;
+        return a.count == b.count && memcmp(a.data, b.data, (size_t) a.count) == 0;
     }
 
     EXTERNAL bool string_is_prefixed_with(String string, String prefix)
@@ -446,13 +299,13 @@ EXTERNAL bool char_is_id(char c);
         return string_is_equal(trimmed, postfix);
     }
 
-    EXTERNAL bool string_has_substring_at(String larger_string, isize from_index, String smaller_string)
+    EXTERNAL bool string_has_substring_at(String string, String substring, isize at_index)
     {
-        if(larger_string.count - from_index < smaller_string.count)
+        if(at_index < 0 || string.count - at_index < substring.count)
             return false;
 
-        String portion = string_range(larger_string, from_index, from_index + smaller_string.count);
-        return string_is_equal(portion, smaller_string);
+        String portion = string_range(string, at_index, at_index + substring.count);
+        return string_is_equal(portion, substring);
     }
     
     EXTERNAL String_Builder string_concat(Allocator* allocator, String a, String b)
@@ -472,38 +325,37 @@ EXTERNAL bool char_is_id(char c);
         return out;
     }
     
-    EXTERNAL void string_to_null_terminated(char* buffer, isize buffer_size, String string)
+    EXTERNAL isize string_null_terminate(char* buffer, isize buffer_size, String string)
     {
+        isize min_size = 0;
         if(buffer_size > 0)
         {
-            isize min_size = MIN(buffer_size - 1, string.count);
+            min_size = buffer_size - 1; 
+            min_size = string.count < min_size ? string.count : min_size;
             memcpy(buffer, string.data, (size_t) min_size);
             buffer[min_size] = '\0';
         }
+        return min_size;
     }
 
     EXTERNAL String string_allocate(Allocator* alloc, String string)
     {
-        PROFILE_START();
-        char* data = allocator_allocate(alloc, string.count + 1, 1);
+        char* data = (char*) allocator_allocate(alloc, string.count + 1, 1);
         memcpy(data, string.data, (size_t) string.count);
         data[string.count] = '\0';
         String out = {data, string.count};
-        PROFILE_STOP();
         return out;
     }
 
     EXTERNAL void string_deallocate(Allocator* alloc, String* string)
     {
-        PROFILE_START();
         if(string->count != 0)
             allocator_deallocate(alloc, (void*) string->data, string->count + 1, 1);
         String nil = {0};
         *string = nil;
-        PROFILE_STOP();
     }
     
-    char _builder_null_termination[4] = {0};
+    static char _builder_null_termination[64] = {0};
     EXTERNAL bool builder_is_invariant(String_Builder builder)
     {
         bool null_termination_not_corrupted = _builder_null_termination[0] == '\0';
@@ -717,17 +569,12 @@ EXTERNAL bool char_is_id(char c);
         array_deinit(array);
     }
     
-    EXTERNAL String_Builder builder_from_string(Allocator* allocator, String string)
+    EXTERNAL String_Builder builder_of(Allocator* allocator, String string)
     {
-        String_Builder builder = builder_make(allocator, string.count);
+        String_Builder builder = builder_make(allocator, 0);
         if(string.count)
             builder_assign(&builder, string);
         return builder;
-    }
-
-    EXTERNAL String_Builder builder_from_cstring(Allocator* allocator, const char* cstring)
-    {
-        return builder_from_string(allocator, string_of(cstring));
     }
 
     EXTERNAL bool builder_is_equal(String_Builder a, String_Builder b)
@@ -795,4 +642,136 @@ EXTERNAL bool char_is_id(char c);
     {
         return char_is_digit(c) || char_is_alphabetic(c) || c == '_';
     }
+    
+    EXTERNAL void memtile(void *field, isize field_size, const void* pattern, isize pattern_size)
+    {
+        PROFILE_START();
+	    REQUIRE(field_size >= 0 && (field || field_size == 0));
+	    REQUIRE(pattern_size >= 0 && (pattern || pattern_size == 0));
+
+        if (field_size <= pattern_size)
+            memcpy(field, pattern, (size_t) field_size);
+        else if(pattern_size == 0)
+            memset(field, 0, (size_t) field_size);
+        else
+        {
+            isize cursor = pattern_size;
+            isize copy_size = pattern_size;
+
+            // make one full copy
+            memcpy((char*) field, pattern, (size_t) pattern_size);
+        
+            // now copy from destination buffer, doubling size each iteration
+            for (; cursor + copy_size < field_size; copy_size *= 2) 
+            {
+                memcpy((char*) field + cursor, field, (size_t) copy_size);
+                cursor += copy_size;
+            }
+        
+            // copy any remainder
+            memcpy((char*) field + cursor, field, (size_t) (field_size - cursor));
+        }
+        PROFILE_STOP();
+    }
+    
+    EXTERNAL const void* memcheck(const void* ptr, uint8_t byte, isize size)
+    {
+	    REQUIRE(size >= 0 && (ptr != NULL || size == 0));
+
+        //pattern is 8 repeats of byte
+        uint64_t pattern = (uint64_t) 0x0101010101010101ULL * (uint64_t) byte;
+        uint8_t* curr = (uint8_t*) ptr;
+        uint8_t* end = curr + size;
+
+        while(end - curr >= 32)
+        {
+            uint64_t copied[4] = {0};
+            memcpy(copied, curr, 32);
+            if(copied[0] != pattern
+                || copied[1] != pattern
+                || copied[2] != pattern
+                || copied[3] != pattern) 
+                break;
+            curr += 32;
+        }
+
+        while(end - curr >= 8)
+        {
+            uint64_t copied = {0};
+            memcpy(&copied, curr, 8);
+            if(copied != pattern)
+                break; 
+            curr += 8;
+        }
+        
+        for(; end != curr; curr ++)
+        {
+            if(*curr != byte)
+                return curr;
+        }
+
+        return NULL;
+    }
+    
+    EXTERNAL void memswap_generic(void* a, void* b, isize size)
+    {
+        PROFILE_START();
+	    REQUIRE(size >= 0 && ((a && b) || size == 0));
+        enum {LOCAL = 8};
+        char temp[LOCAL] = {0};
+
+        char* ac = (char*) a;
+        char* bc = (char*) b;
+    
+        size_t repeats = (size_t) size / LOCAL;
+        size_t remainder = (size_t) size % LOCAL;
+        for(size_t k = 0; k < repeats; k ++)
+        {
+	        memcpy(temp,         ac + k*LOCAL, LOCAL);
+	        memcpy(ac + k*LOCAL, bc + k*LOCAL, LOCAL);
+	        memcpy(bc + k*LOCAL, temp,         LOCAL);
+        }
+
+        ac += repeats*LOCAL;
+        bc += repeats*LOCAL;
+        for(size_t i = 0; i < remainder; i++)
+        {
+            char t = ac[i];
+            ac[i] = bc[i];
+            bc[i] = t;         
+        }
+        PROFILE_STOP();
+    }
+
+    EXTERNAL void memswap(void* a, void* b, isize size)
+    {
+	    REQUIRE(size >= 0 && ((a && b) || size == 0));
+        PROFILE_START();
+        char temp[32] = {0};
+        switch(size) {
+            #define SWAP_X(N) \
+                case N: { \
+                    memcpy(temp, a, N); \
+                    memcpy(a, b, N); \
+                    memcpy(b, temp, N); \
+                } break;
+
+            SWAP_X(1)
+            SWAP_X(2)
+            SWAP_X(4)
+            SWAP_X(8)
+            SWAP_X(12)
+            SWAP_X(16)
+            SWAP_X(20)
+            SWAP_X(24)
+            SWAP_X(28)
+            SWAP_X(32)
+            SWAP_X(64)
+            #undef SWAP_X
+
+            default: memswap_generic(a, b, size); break;
+        }
+        PROFILE_STOP();
+    }
+
 #endif

@@ -1,23 +1,23 @@
 ﻿#ifndef MODULE_VFORMAT
 #define MODULE_VFORMAT
 
+//@TODO: get rid of this file!
+
 #include "string.h"
 #include "profile.h"
 #include <stdarg.h>
 
 EXTERNAL void vformat_append_into(String_Builder* append_to, const char* format, va_list args);
-EXTERNAL void format_append_into_no_check(String_Builder* append_to, const char* format, ...);
-#define  format_append_into(append_to, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), format_append_into_no_check((append_to), (format), ##__VA_ARGS__))
-
+EXTERNAL void _format_append_into(String_Builder* append_to, const char* format, ...);
 EXTERNAL void vformat_into(String_Builder* into, const char* format, va_list args);
-EXTERNAL void format_into_no_check(String_Builder* into, const char* format, ...);
-#define  format_into(into, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), format_append_into_no_check((into), (format), ##__VA_ARGS__))
-
+EXTERNAL void _format_into(String_Builder* into, const char* format, ...);
 EXTERNAL String_Builder vformat(Allocator* alloc, const char* format, va_list args);
-EXTERNAL String_Builder format_no_check(Allocator* alloc, const char* format, ...);
+EXTERNAL String_Builder _format(Allocator* alloc, const char* format, ...);
 
-#define  format_builder(allocator, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), format_no_check((allocator), (format), ##__VA_ARGS__))
-#define  format(allocator, format, ...) format_builder((allocator), (format), ##__VA_ARGS__).string
+#define  format_into(into, format, ...)             ((void) sizeof printf((format), ##__VA_ARGS__), _format_append_into((into), (format), ##__VA_ARGS__))
+#define  format_append_into(append_to, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), _format_append_into((append_to), (format), ##__VA_ARGS__))
+#define  format_builder(allocator, format, ...)     ((void) sizeof printf((format), ##__VA_ARGS__), _format((allocator), (format), ##__VA_ARGS__))
+#define  format(allocator, format, ...)             format_builder((allocator), (format), ##__VA_ARGS__).string
 
 EXTERNAL String translate_error(Allocator* alloc, Platform_Error error);
 EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error error);
@@ -54,7 +54,7 @@ EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error
         return;
     }
     
-    EXTERNAL void format_append_into_no_check(String_Builder* append_to, const char* format, ...)
+    EXTERNAL void _format_append_into(String_Builder* append_to, const char* format, ...)
     {
         va_list args;
         va_start(args, format);
@@ -68,7 +68,7 @@ EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error
         vformat_append_into(into, format, args);
     }
 
-    EXTERNAL void format_into_no_check(String_Builder* into, const char* format, ...)
+    EXTERNAL void _format_into(String_Builder* into, const char* format, ...)
     {
         va_list args;
         va_start(args, format);
@@ -83,7 +83,7 @@ EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error
         return builder;
     }
     
-    EXTERNAL String_Builder format_no_check(Allocator* alloc, const char* format, ...)
+    EXTERNAL String_Builder _format(Allocator* alloc, const char* format, ...)
     {   
         va_list args;
         va_start(args, format);

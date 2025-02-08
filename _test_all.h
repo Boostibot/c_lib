@@ -28,7 +28,7 @@
 #include "_test_stable_array.h"
 #include "_test_image.h"
 #include "_test_chase_lev_queue.h"
-#include "_test_string_map.h"
+//#include "_test_string_map.h"
 
 typedef enum Test_Func_Type {
     TEST_FUNC_TYPE_SIMPLE,
@@ -58,13 +58,13 @@ static void test_all(double total_time)
         UNIT_TEST(platform_test_all),
         UNIT_TEST(test_list),
         UNIT_TEST(test_image),
+        UNIT_TEST(test_debug_allocator),
         UNIT_TEST(test_stable_array),
-        UNIT_TEST(test_log),
         // UNIT_TEST(test_random),
         UNIT_TEST(test_path),
+        UNIT_TEST(test_log),
         TIMED_TEST(test_arena),
         TIMED_TEST(test_sort),
-        // TIMED_TEST(test_string_map), //currently broken?
         TIMED_TEST(test_hash),
         TIMED_TEST(test_array),
         TIMED_TEST(test_math),
@@ -151,19 +151,21 @@ static int run_tests(int* total, double time, ...)
 {
     Test_Run_Context contexts[256] = {0};
     int count = 0;
+    int timed_count = 0;
 
     va_list ap;
     va_start(ap, time);
     for(; count < 256; count++)
     {
         contexts[count] = va_arg(ap, Test_Run_Context);
+        timed_count += contexts[count].type == TEST_FUNC_TYPE_TIMED;
         if(contexts[count].func == NULL)
             break;
     }
     va_end(ap);
 
     LOG_INFO("TEST", "RUNNING %i TESTS (time = %lfs)", count, time);
-    double time_for_one = time/count;
+    double time_for_one = time/timed_count;
     int successfull = 0;
     for(int i = 0; i < count; i++)
     {

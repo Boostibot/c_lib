@@ -371,7 +371,7 @@ EXTERNAL bool file_logger_init(File_Logger* logger, const char* path, uint32_t f
     logger->flags = flags;
     logger->logger.log = file_logger_log;
 
-    if(file != NULL && (flags & FILE_LOGGER_USE))
+    if(flags & FILE_LOGGER_USE)
         logger->prev_logger = log_set_logger(&logger->logger);
 
     return file != NULL;
@@ -518,6 +518,8 @@ INTERNAL char* _log_builder_append_fmt(_Log_Builder* builder_or_null, const char
 
 EXTERNAL void panic_default_handler_func(void* context, const char* type, const char* expression, const char* file, const char* function, int line, const char* format, va_list args)
 {
+    (void) type;
+    (void) context;
     LOG_FATAL("panic", "%s in %s %s:%i\n", expression, function, file, line);
     if(format && format[0] != '\0') 
         LOGV(LOG_FATAL, ">panic", format, args);

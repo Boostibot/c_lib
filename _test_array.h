@@ -8,7 +8,7 @@
 INTERNAL void test_array_stress(f64 max_seconds)
 {
 	Debug_Allocator debug_alloc = {0};
-	debug_allocator_init_use(&debug_alloc, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_USE);
+	debug_allocator_init(&debug_alloc, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_USE);
 	{
 		PROFILE_START();
 		enum Action 
@@ -52,11 +52,11 @@ INTERNAL void test_array_stress(f64 max_seconds)
 
 		isize max_size = 0;
 		isize max_capacity = 0;
-		f64 start = clock_s();
+		f64 start = clock_sec();
 		for(isize i = 0; i < MAX_ITERS; i++)
 		{
 			PROFILE_START(iter);
-			if(clock_s() - start >= max_seconds && i >= MIN_ITERS)
+			if(clock_sec() - start >= max_seconds && i >= MIN_ITERS)
 				break;
 
 			isize action = random_discrete(dist, ARRAY_LEN(dist));

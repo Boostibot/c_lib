@@ -393,7 +393,7 @@ void platform_thread_detach(Platform_Thread* thread)
     {
         bool state = CloseHandle(thread->handle);
         thread->handle = NULL;
-        assert(state); 
+        (void) state; assert(state); 
     }
 }
 
@@ -461,6 +461,73 @@ void platform_futex_wake_all(volatile void* futex)
 {
     WakeByAddressAll((void*) futex);
 }
+
+//=========================================
+// Timings
+//=========================================
+static int64_t g_startup_perf_counter = 0;
+static int64_t g_startup_epoch_time = 0;
+static int64_t g_perf_counter_freq = 0;
+void _platform_deinit_timings()
+{
+    g_startup_perf_counter = 0;
+    g_perf_counter_freq = 0;
+    g_startup_epoch_time = 0;
+}
+
+int64_t platform_perf_counter()
+{
+    LARGE_INTEGER ticks;
+    ticks.QuadPart = 0;
+    (void) QueryPerformanceCounter(&ticks);
+    return ticks.QuadPart;
+}
+
+int64_t platform_perf_counter_startup()
+{
+    if(g_startup_perf_counter == 0)
+        g_startup_perf_counter = platform_perf_counter();
+    return g_startup_perf_counter;
+}
+
+int64_t platform_perf_counter_frequency()
+{
+    if(g_perf_counter_freq == 0)
+    {
+        LARGE_INTEGER ticks;
+        ticks.QuadPart = 0;
+        (void) QueryPerformanceFrequency(&ticks);
+        g_perf_counter_freq = ticks.QuadPart;
+    }
+    return g_perf_counter_freq;
+}
+
+static int64_t _filetime_to_epoch_time(FILETIME t)  
+{    
+    ULARGE_INTEGER ull;    
+    ull.LowPart = t.dwLowDateTime;    
+    ull.HighPart = t.dwHighDateTime;
+    int64_t tu = ull.QuadPart / 10 - 11644473600000000LL;
+    return tu;
+}
+
+int64_t platform_epoch_time()
+{
+    FILETIME filetime;
+    GetSystemTimeAsFileTime(&filetime);
+    int64_t epoch_time = _filetime_to_epoch_time(filetime);
+    return epoch_time;
+}
+
+int64_t platform_epoch_time_startup()
+{
+    if(g_startup_epoch_time == 0)
+        g_startup_epoch_time = platform_epoch_time();
+
+    return g_startup_epoch_time;
+}
+
+
 
 //=========================================
 // Filesystem
@@ -567,7 +634,7 @@ static void _buffer_resize(Buffer_Base* buffer, int64_t item_size, int64_t new_s
 
 static void _buffer_append(Buffer_Base* buffer, int64_t item_size, const void* data, int64_t data_count, int64_t data_size)
 {
-    assert(item_size == data_size);
+    assert(item_size == data_size); (void) data_size;
     _buffer_reserve(buffer, item_size, buffer->size + data_count);
     memcpy((char*) buffer->data + buffer->size*item_size, data, data_count*item_size);
     buffer->size += data_count;

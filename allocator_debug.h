@@ -58,12 +58,12 @@ typedef struct Ptr_Set {
 EXTERNAL void ptr_set_init(Ptr_Set* set, Allocator* alloc);
 EXTERNAL void ptr_set_deinit(Ptr_Set* set);
 EXTERNAL bool ptr_set_reserve(Ptr_Set* set, isize count);
-EXTERNAL bool ptr_set_has(Ptr_Set* set, void* ptr);
-EXTERNAL uint64_t ptr_set_found(Ptr_Set* set, void* ptr);
+EXTERNAL bool ptr_set_has(const Ptr_Set* set, void* ptr);
+EXTERNAL uint64_t ptr_set_find(const Ptr_Set* table, void* ptr);
 EXTERNAL bool ptr_set_add(Ptr_Set* set, void* ptr);
 EXTERNAL bool ptr_set_remove(Ptr_Set* set, void* ptr);
-EXTERNAL bool ptr_set_remove_at(Ptr_Set* set, uint64_t found);
-EXTERNAL void ptr_set_test_invariants(Ptr_Set* set);
+EXTERNAL bool ptr_set_remove_at(Ptr_Set* table, void* ptr, uint64_t found);
+EXTERNAL void ptr_set_test_invariants(const Ptr_Set* set);
 
 typedef struct Debug_Allocator {
     Allocator alloc[1];
@@ -127,8 +127,8 @@ EXTERNAL void* debug_allocator_func(Allocator* self, isize new_size, void* old_p
 EXTERNAL Allocator_Stats debug_allocator_get_stats(Allocator* self_);
 
 EXTERNAL Debug_Allocation  debug_allocator_get_allocation(const Debug_Allocator* allocator, void* ptr); 
-EXTERNAL Debug_Allocation* debug_allocator_get_alive_allocations(Allocator* result_alloc, const Debug_Allocator* allocator, isize get_max); //If get_max == -1 returns all
-EXTERNAL void debug_allocator_print_alive_allocations(const char* name, Log_Type log_type, const Debug_Allocator allocator, isize print_max, bool print_with_callstack); 
+EXTERNAL Debug_Allocation* debug_allocator_get_alive_allocations(Allocator* result_alloc, const Debug_Allocator* self, isize get_max, isize* allocated); //If get_max == -1 returns all
+EXTERNAL void debug_allocator_print_alive_allocations(const char* name, Log_Type log_type, const Debug_Allocator* allocator, isize print_max, bool print_with_callstack);
 EXTERNAL void debug_allocator_test_all_blocks(const Debug_Allocator* self);
 EXTERNAL void debug_allocator_test_block(const Debug_Allocator* self, void* user_ptr);
 EXTERNAL void debug_allocator_test_invariants(const Debug_Allocator* self);
@@ -138,7 +138,7 @@ EXTERNAL void debug_allocator_test_invariants(const Debug_Allocator* self);
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_DEBUG_ALLOCATOR)) && !defined(MODULE_HAS_IMPL_DEBUG_ALLOCATOR)
 #define MODULE_HAS_IMPL_DEBUG_ALLOCATOR
 
-#define DEBUG_ALLOCATOR_MAGIC_NUM8  (u8)  0x55
+#define _DEBUG_ALLOCATOR_MAGIC_NUM8  (u8)  0x55
 
 EXTERNAL void debug_allocator_init_custom(Debug_Allocator* debug, Allocator* parent, Debug_Allocator_Options options)
 {
@@ -183,7 +183,7 @@ EXTERNAL void debug_allocator_init(Debug_Allocator* allocator, Allocator* parent
 
 typedef struct Debug_Allocation_Header {
     isize size;
-    u32 align;
+    i32 align;
     i32 offset; //offset to the start of the allocated block
     i64 index; //the index of 
     i64 epoch_time;
@@ -197,13 +197,15 @@ typedef struct Debug_Allocation_Info {
     u8*    block_start;
 } Debug_Allocation_Info;
 
-INTERNAL Debug_Allocation_Info _debug_allocator_get_block_info(const Debug_Allocator* self, void* user_ptr)
+INTERNAL Debug_Allocation_Info _debug_allocator_get_block_info(const Debug_Allocator* self, void* user_ptr, isize size_or_minus_one)
 {
     Debug_Allocation_Info info = {0};
     info.pre_dead_zone = (u8*) user_ptr - self->dead_zone_size;
     info.call_stack = (void**) info.pre_dead_zone - self->capture_stack_frames_count;
     info.header = (Debug_Allocation_Header*) info.call_stack - 1;
-    info.post_dead_zone = (u8*) user_ptr + info.header->size;
+
+    isize size = size_or_minus_one == -1 ? info.header->size : size_or_minus_one;
+    info.post_dead_zone = (u8*) user_ptr + size;
     info.block_start = (u8*) info.header - info.header->offset;
     return info;
 }
@@ -212,7 +214,7 @@ INTERNAL void _debug_allocator_panic(const Debug_Allocator* self, void* user_ptr
 {
     uint64_t found = ptr_set_find(&self->alive_allocations, user_ptr); 
     if(self->capture_stack_frames_count > 0 && found) {
-        Debug_Allocation_Info info = _debug_allocator_get_block_info(self, user_ptr);
+        Debug_Allocation_Info info = _debug_allocator_get_block_info(self, user_ptr, -1);
         LOG_FATAL("DEBUG", "Printing allocation call stack:");
         log_captured_callstack(LOG_FATAL, ">DEBUG", info.call_stack, self->capture_stack_frames_count);
     }
@@ -231,10 +233,10 @@ INTERNAL isize _debug_alloc_find_first_not(void* mem, int val, isize size)
 
 EXTERNAL void debug_allocator_test_block(const Debug_Allocator* self, void* user_ptr)
 {
-    Debug_Allocation_Info info = _debug_allocator_get_block_info(self, user_ptr);
+    Debug_Allocation_Info info = _debug_allocator_get_block_info(self, user_ptr, -1);
 
-    isize override_before = _debug_alloc_find_first_not(info.pre_dead_zone, DEBUG_ALLOCATOR_MAGIC_NUM8, self->dead_zone_size);
-    isize override_after = _debug_alloc_find_first_not(info.post_dead_zone, DEBUG_ALLOCATOR_MAGIC_NUM8, self->dead_zone_size);
+    isize override_before = _debug_alloc_find_first_not(info.pre_dead_zone, _DEBUG_ALLOCATOR_MAGIC_NUM8, self->dead_zone_size);
+    isize override_after = _debug_alloc_find_first_not(info.post_dead_zone, _DEBUG_ALLOCATOR_MAGIC_NUM8, self->dead_zone_size);
     if(override_before != -1) {
         LOG_FATAL("DEBUG", "debug allocator%s%s found write %lliB before the begining of allocation 0x%08llx", 
             self->name ? "name: " : "", self->name, (lli) (self->dead_zone_size - override_before), (llu) user_ptr);
@@ -251,7 +253,7 @@ EXTERNAL void debug_allocator_test_block(const Debug_Allocator* self, void* user
     bool corrupted_index = info.header->index < 0 || info.header->index > (1ll << 48);
     bool corrupted_offset = info.header->offset < 0 || info.header->offset >= info.header->align;
     bool corrupted_time = info.header->epoch_time < 0;
-    if(corrupted_align || corrupted_size || corrupted_index || corrupted_offset) {
+    if(corrupted_align || corrupted_size || corrupted_index || corrupted_offset || corrupted_time) {
         LOG_FATAL("DEBUG", "debug allocator%s%s found corrupted header at least %lliB before the begining of allocation 0x%08llx:", 
             self->name ? "name: " : "", self->name, (lli) self->dead_zone_size, (llu) user_ptr);
         LOG_FATAL(">DEBUG", "size: %lli", (lli) info.header->size);
@@ -267,13 +269,13 @@ EXTERNAL void debug_allocator_test_all_blocks(const Debug_Allocator* self)
 {
     //All alive allocations must be in hash
     isize size_sum = 0;
-    for(isize i = 0; i < self->alive_allocations.count; i ++)
+    for(isize i = 0; i < self->alive_allocations.capacity; i ++)
     {
         Ptr_Set_Entry curr = self->alive_allocations.entries[i];
         if(curr.ptr != NULL)
         {
             debug_allocator_test_block(self, curr.ptr);
-            Debug_Allocation_Info info = _debug_allocator_get_block_info(self, curr.ptr);
+            Debug_Allocation_Info info = _debug_allocator_get_block_info(self, curr.ptr, -1);
             size_sum += info.header->size;
         }
     }
@@ -284,13 +286,13 @@ EXTERNAL void debug_allocator_test_all_blocks(const Debug_Allocator* self)
 
 EXTERNAL void debug_allocator_test_invariants(const Debug_Allocator* self)
 {
-    debug_allocator_test_all_blocks(self);
     ptr_set_test_invariants(&self->alive_allocations);
+    debug_allocator_test_all_blocks(self);
     TEST(self->allocation_count >= self->deallocation_count && self->deallocation_count >= 0);
-    TEST(self->allocation_count >= self->reallocation_count && self->reallocation_count >= 0);
+    TEST(self->reallocation_count >= 0);
     TEST(0 <= self->bytes_allocated && self->bytes_allocated <= self->max_bytes_allocated);
     TEST(0 <= self->dead_zone_size && 0 <= self->capture_stack_frames_count);
-    TEST((self->allocation_count == 0) == (self->bytes_allocated == 0));
+    TEST((self->alive_allocations.count == 0) == (self->bytes_allocated == 0));
     TEST(self->dead_zone_size/DEF_ALIGN*DEF_ALIGN == self->dead_zone_size 
         && "dead zone size must be a valid multiple of alignment"
         && "this is so that the pointers within the header will be properly aligned!");
@@ -298,6 +300,7 @@ EXTERNAL void debug_allocator_test_invariants(const Debug_Allocator* self)
 
 INTERNAL void _debug_allocator_check_invariants(const Debug_Allocator* self)
 {
+    (void) self;
     #ifdef DO_ASSERTS_SLOW
         debug_allocator_test_invariants(self);
     #endif
@@ -305,7 +308,7 @@ INTERNAL void _debug_allocator_check_invariants(const Debug_Allocator* self)
 
 EXTERNAL void debug_allocator_deinit(Debug_Allocator* self)
 {
-    for(isize i = 0; i < self->alive_allocations.count; i++)
+    for(isize i = 0; i < self->alive_allocations.capacity; i++)
     {
         Ptr_Set_Entry entry = self->alive_allocations.entries[i];
         if(entry.ptr)
@@ -318,7 +321,7 @@ EXTERNAL void debug_allocator_deinit(Debug_Allocator* self)
             }
 
             debug_allocator_test_block(self, entry.ptr);
-            Debug_Allocation_Info info = _debug_allocator_get_block_info(self, entry.ptr);
+            Debug_Allocation_Info info = _debug_allocator_get_block_info(self, entry.ptr, -1);
             isize total_size = sizeof(Debug_Allocation_Header) + 2*self->dead_zone_size + self->capture_stack_frames_count*sizeof(void*) + info.header->size;
             allocator_deallocate(self->parent, info.block_start, total_size, DEF_ALIGN);
         }
@@ -346,7 +349,7 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
     isize preamble_size = sizeof(Debug_Allocation_Header) + self->dead_zone_size + self->capture_stack_frames_count*sizeof(void*);
     isize postamble_size = self->dead_zone_size;
 
-    isize new_total_size = new_size ? preamble_size + postamble_size + align + old_size : 0;
+    isize new_total_size = new_size ? preamble_size + postamble_size + align + new_size : 0;
     isize old_total_size = old_size ? preamble_size + postamble_size + align + old_size : 0;
 
     uint64_t old_found = 0;
@@ -365,7 +368,7 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
 
         debug_allocator_test_block(self, old_ptr);
 
-        Debug_Allocation_Info old_info = _debug_allocator_get_block_info(self, old_ptr);
+        old_info = _debug_allocator_get_block_info(self, old_ptr, -1);
         if(old_info.header->size != old_size) {
             LOG_FATAL("DEBUG", "debug allocator%s%s size does not match for allocation 0x%08llx: given:%lli actual:%lli", 
                 self->name ? "name: " : "", self->name, (llu) old_ptr, (lli) old_size, (lli) old_info.header->size);
@@ -393,23 +396,28 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
     //if hasnt failed
     if(new_block_ptr != NULL || new_size == 0)
     {
+        //if previous block existed remove it from controll structures
+        if(old_ptr != NULL)
+            ptr_set_remove_at(&self->alive_allocations, old_ptr, old_found);
+
         //if allocated/reallocated (new block exists)
         if(new_size != 0)
         {
             isize fixed_align = MAX(align, DEF_ALIGN);
             new_ptr = (u8*) align_forward(new_block_ptr + preamble_size, fixed_align);
-            new_info = _debug_allocator_get_block_info(self, new_ptr);
-
+            new_info = _debug_allocator_get_block_info(self, new_ptr, new_size);
+            
             new_info.header->align = (i32) align;
             new_info.header->size = new_size;
+            new_info.header->index = 0; //TODO
             new_info.header->offset = (i32) ((u8*) new_info.header - new_block_ptr);
             new_info.header->epoch_time = platform_epoch_time();
 
             if(self->capture_stack_frames_count > 0)
                 platform_capture_call_stack(new_info.call_stack, self->capture_stack_frames_count, 1);
 
-            memset(new_info.pre_dead_zone, DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) self->dead_zone_size);
-            memset(new_info.post_dead_zone, DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) self->dead_zone_size);
+            memset(new_info.pre_dead_zone, _DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) self->dead_zone_size);
+            memset(new_info.post_dead_zone, _DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) self->dead_zone_size);
             
             bool was_found = ptr_set_add(&self->alive_allocations, new_ptr);
             ASSERT(new_info.header->offset <= fixed_align && "must be less then align");
@@ -418,10 +426,6 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
                 debug_allocator_test_block(self, new_ptr);
             #endif
         }
-
-        //if previous block existed remove it from controll structures
-        if(old_ptr != NULL)
-            ptr_set_remove_at(&self->alive_allocations, old_found);
 
         self->bytes_allocated += new_size - old_size;
         self->max_bytes_allocated = MAX(self->max_bytes_allocated, self->bytes_allocated);
@@ -446,9 +450,10 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
         debug_check = true;
     #endif
 
+    _debug_allocator_check_invariants(self);
     if(self->do_continual_checks || debug_check)
         debug_allocator_test_all_blocks(self);
-
+        
     PROFILE_STOP();
     return new_ptr;
 }
@@ -458,7 +463,7 @@ EXTERNAL Debug_Allocation debug_allocator_get_allocation(const Debug_Allocator* 
     Debug_Allocation allocation = {0};
     if(ptr_set_has(&self->alive_allocations, ptr))
     {
-        Debug_Allocation_Info info = _debug_allocator_get_block_info(self, ptr);
+        Debug_Allocation_Info info = _debug_allocator_get_block_info(self, ptr, -1);
         allocation.align = info.header->align;
         allocation.size = info.header->size;
         allocation.ptr = ptr;
@@ -479,7 +484,6 @@ INTERNAL int _debug_allocation_alloc_time_compare(const void* a_, const void* b_
 EXTERNAL Debug_Allocation* debug_allocator_get_alive_allocations(Allocator* result_alloc, const Debug_Allocator* self, isize get_max, isize* allocated) //If get_max == -1 returns all
 {
     _debug_allocator_check_invariants(self);
-    const Ptr_Set* hash = &self->alive_allocations;
     isize count = get_max;
     if(count == -1)
         count = self->alive_allocations.count;
@@ -493,7 +497,7 @@ EXTERNAL Debug_Allocation* debug_allocator_get_alive_allocations(Allocator* resu
         Ptr_Set_Entry entry = self->alive_allocations.entries[k];
         if(entry.ptr != NULL)
         {
-            Debug_Allocation_Info info = _debug_allocator_get_block_info(self, entry.ptr);
+            Debug_Allocation_Info info = _debug_allocator_get_block_info(self, entry.ptr, -1);
             Debug_Allocation allocation = {0};
             allocation.align = info.header->align;
             allocation.size = info.header->size;
@@ -506,6 +510,8 @@ EXTERNAL Debug_Allocation* debug_allocator_get_alive_allocations(Allocator* resu
         }
     }
     
+    if(allocated)
+        *allocated = count;
     qsort(out, (size_t) count, sizeof *out, _debug_allocation_alloc_time_compare);
     return out;
 }
@@ -574,7 +580,7 @@ EXTERNAL void ptr_set_deinit(Ptr_Set* set)
     memset(set, 0, sizeof *set);
 }
 
-INTERNAL bool _ptr_set_add(Ptr_Set_Entry* entries, uint64_t capacity, uint64_t hash, void* ptr)
+INTERNAL isize _ptr_set_add(Ptr_Set_Entry* entries, uint64_t capacity, uint64_t hash, void* ptr)
 {
     uint64_t mask = capacity - 1;
     uint64_t i = hash & mask;
@@ -583,7 +589,7 @@ INTERNAL bool _ptr_set_add(Ptr_Set_Entry* entries, uint64_t capacity, uint64_t h
 
         Ptr_Set_Entry* entry = &entries[i];
         if(entry->ptr == ptr)
-            return false;
+            return -(isize)i;
 
         if(entry->ptr == NULL) {
             entry->hash = hash; 
@@ -607,7 +613,7 @@ INTERNAL bool _ptr_set_add(Ptr_Set_Entry* entries, uint64_t capacity, uint64_t h
         
         i = (i + 1) & mask;
     }
-    return true;
+    return i + 1;
 }
 
 EXTERNAL bool ptr_set_reserve(Ptr_Set* table, isize count)
@@ -629,13 +635,16 @@ EXTERNAL bool ptr_set_reserve(Ptr_Set* table, isize count)
     for(uint32_t i = 0; i < table->capacity; i++)
     {
         Ptr_Set_Entry* entry = &table->entries[i];
-        bool was_already_present = _ptr_set_add(new_entries, needed_cap, entry->hash, entry->ptr);
-        ASSERT(was_already_present == false);
+        if(entry->ptr != NULL) {
+            isize index = _ptr_set_add(new_entries, new_cap, entry->hash, entry->ptr);
+            ASSERT(index > 0);
+            ASSERT(index > 0);
+        }
     }
 
     allocator_deallocate(table->alloc, table->entries, table->capacity*sizeof(Ptr_Set_Entry), sizeof(void*));
     table->entries = new_entries;
-    table->capacity = new_cap;
+    table->capacity = (uint32_t) new_cap;
     
     #ifdef DO_ASSERTS_SLOW
         ptr_set_test_invariants(table);
@@ -672,9 +681,7 @@ EXTERNAL bool ptr_set_add(Ptr_Set* table, void* ptr)
     ptr_set_reserve(table, table->count + 1);
 
     uint64_t hash = ptr_set_hash(ptr);
-    uint64_t mask = table->capacity - 1;
-
-    bool added = _ptr_set_add(table->entries, mask, hash, ptr);
+    bool added = _ptr_set_add(table->entries, table->capacity, hash, ptr);
     table->count += added;
     
     ASSERT_SLOW(ptr_set_find(table, ptr));
@@ -683,30 +690,34 @@ EXTERNAL bool ptr_set_add(Ptr_Set* table, void* ptr)
 
 EXTERNAL bool ptr_set_remove_at(Ptr_Set* table, void* ptr, uint64_t found)
 {
-    uint64_t mask = table->capacity - 1;
-    if(found > 0)
+    ASSERT_SLOW(found == ptr_set_find(table, ptr));
+    if(found == 0)
         return false;
 
-    //remove entry
     ASSERT(found <= table->capacity);
-    table->entries[found - 1].hash = 0;
-    table->entries[found - 1].ptr = NULL;
 
     //keep shifting entries back until we find
     // one thats empty or thats precisely in its correct place
-    uint64_t prev = found - 1;
+    uint64_t mask = table->capacity - 1;
+    uint64_t curr = found - 1;
     for(uint64_t dist = 0;;) {
         ASSERT(dist++ < table->capacity);
 
-        uint64_t i = (prev + 1) & mask;
-        Ptr_Set_Entry* entry = &table->entries[i];
-        if(entry->ptr == NULL || (entry->hash & mask) == i)
+        uint64_t next = (curr + 1) & mask;
+        Ptr_Set_Entry* entry = &table->entries[next];
+        if(entry->ptr == NULL || (entry->hash & mask) == next)
             break;
 
-        table->entries[prev] = *entry; 
-        prev = i;
+        table->entries[curr] = *entry; 
+        curr = next;
     }
-    
+
+    //remove the entry we finished on
+    // (shifting back leaves the last entry written twice)
+    table->entries[curr].hash = 0;
+    table->entries[curr].ptr = NULL;
+    table->count -= 1;
+
     ASSERT_SLOW(ptr_set_find(table, ptr) == 0);
     return true;
 }
@@ -731,7 +742,7 @@ EXTERNAL void ptr_set_test_invariants(const Ptr_Set* table)
         TEST(table->alloc);
         TEST(table->entries);
         TEST(is_power_of_two(table->capacity));
-        TEST(table->count*4/3 < table->capacity);
+        TEST(table->count*4/3 <= table->capacity);
 
         uint32_t found_nonzero = 0;
         for(uint64_t i = 0; i < table->capacity; i++) {
@@ -746,8 +757,83 @@ EXTERNAL void ptr_set_test_invariants(const Ptr_Set* table)
             }
         }
         TEST(table->count == found_nonzero);
+        TEST(table->count == found_nonzero);
     }
 }
+#endif
 
+#if (defined(MODULE_ALL_TEST) || defined(MODULE_DEBUG_ALLOCATOR_TEST)) && !defined(MODULE_DEBUG_ALLOCATOR_HAS_TEST)
+#define MODULE_DEBUG_ALLOCATOR_HAS_TEST
+
+static void test_debug_allocator()
+{
+    
+    {
+        Ptr_Set ptrs = {0};
+        ptr_set_init(&ptrs, allocator_get_malloc());
+
+        enum {COUNT = 100};
+        void* blocks[COUNT];
+        for(int i = 0; i < COUNT; i++) {
+            bool added = ptr_set_add(&ptrs, (void*) (i+1));
+            TEST(added);
+        }
+
+        for(int j = 0; j < 10000; j++) 
+        {
+            for(int i = 0; i < 100; i++) {
+                void* ptr = (void*) (1+COUNT + i + j*100);
+                bool added = ptr_set_add(&ptrs, ptr);
+                TEST(added);
+            }
+            
+            for(int i = 0; i < 100; i++) {
+                void* ptr = (void*) (1+COUNT + i + j*100);
+                bool removed = ptr_set_remove(&ptrs, ptr);
+                TEST(removed);
+            }
+        }
+                
+        for(int i = 0; i < COUNT; i++) {
+            bool removed = ptr_set_remove(&ptrs, (void*) (i+1));
+            TEST(removed);
+        }
+
+        ptr_set_deinit(&ptrs);
+    }
+
+    {
+        Debug_Allocator alloc = {0};
+        debug_allocator_init(&alloc, allocator_get_default(), DEBUG_ALLOCATOR_CAPTURE_CALLSTACK | DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_USE);
+
+        {
+            void* mem = allocator_allocate(alloc.alloc, 1000, 8);
+            memset(mem, 0, sizeof 1000);
+            allocator_deallocate(alloc.alloc, mem, 1000, 8);
+        }
+        debug_allocator_test_invariants(&alloc);
+
+        {
+            enum {COUNT = 100};
+            void* blocks[COUNT];
+            for(int i = 0; i < COUNT; i++) {
+                void* mem = allocator_allocate(alloc.alloc, 1000, 32);
+                memset(mem, 0, sizeof 1000);
+                blocks[i] = mem;
+            }
+
+            TEST(alloc.alive_allocations.count == COUNT);
+            for(int i = 0; i < COUNT; i++) 
+                allocator_deallocate(alloc.alloc, blocks[i], 1000, 32);
+
+            TEST(alloc.allocation_count >= COUNT);
+            TEST(alloc.deallocation_count >= COUNT);
+        }
+        debug_allocator_test_invariants(&alloc);
+
+
+        debug_allocator_deinit(&alloc);
+    }
+}
 
 #endif

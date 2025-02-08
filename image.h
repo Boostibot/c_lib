@@ -431,6 +431,7 @@ EXTERNAL Image image_from_image(Image to_copy, Allocator* alloc)
     return image;
 }
 
+ATTRIBUTE_INLINE_NEVER
 EXTERNAL void image_reserve(Image* image, isize capacity)
 {
     REQUIRE(image != NULL);
