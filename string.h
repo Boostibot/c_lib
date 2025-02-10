@@ -88,17 +88,10 @@ EXTERNAL void builder_array_deinit(String_Builder_Array* array);
 EXTERNAL String_Builder string_concat(Allocator* allocator, String a, String b);
 EXTERNAL String_Builder string_concat3(Allocator* allocator, String a, String b, String c);
 
-//Tiles pattern_size bytes long pattern across field of field_size bytes. 
-//The first occurance of pattern is placed at the very start of field and subsequent repetitions follow. 
-//If the field_size % pattern_size != 0 the last repetition of pattern is trimmed.
-//If pattern_size == 0 field is filled with zeros instead.
-EXTERNAL void memtile(void *field, isize field_size, const void* pattern, isize pattern_size);
-//Returns the address of the first byte in array pointed to by ptr not equal to value. 
-//If all bytes are equal to byte returns NULL. Essentially acts as the opposite of memchr.
-EXTERNAL const void* memcheck(const void* ptr, uint8_t value, isize size);
-//Swaps the contents of the memory blocks a and b
-EXTERNAL void memswap(void* a, void* b, isize size);
-
+EXTERNAL int  string_compare_ptrs(const String* a, const String* b); //Same as string_compare except works on pointers. Useful for qsort
+EXTERNAL bool string_is_equal_ptrs(const String* a, const String* b); //Same as string_is_equal except works on pointers. Useful for hash
+EXTERNAL bool builder_is_equal_ptrs(const String_Builder* a, const String_Builder* b); //Same as string_compare except works on pointers. Useful for qsort
+EXTERNAL int  builder_compare_ptrs(const String_Builder* a, const String_Builder* b); //Same as string_is_equal except works on pointers. Useful for hash
 
 EXTERNAL bool char_is_space(char c);
 EXTERNAL bool char_is_digit(char c);
@@ -643,135 +636,5 @@ EXTERNAL bool char_is_id(char c);
         return char_is_digit(c) || char_is_alphabetic(c) || c == '_';
     }
     
-    EXTERNAL void memtile(void *field, isize field_size, const void* pattern, isize pattern_size)
-    {
-        PROFILE_START();
-	    REQUIRE(field_size >= 0 && (field || field_size == 0));
-	    REQUIRE(pattern_size >= 0 && (pattern || pattern_size == 0));
-
-        if (field_size <= pattern_size)
-            memcpy(field, pattern, (size_t) field_size);
-        else if(pattern_size == 0)
-            memset(field, 0, (size_t) field_size);
-        else
-        {
-            isize cursor = pattern_size;
-            isize copy_size = pattern_size;
-
-            // make one full copy
-            memcpy((char*) field, pattern, (size_t) pattern_size);
-        
-            // now copy from destination buffer, doubling size each iteration
-            for (; cursor + copy_size < field_size; copy_size *= 2) 
-            {
-                memcpy((char*) field + cursor, field, (size_t) copy_size);
-                cursor += copy_size;
-            }
-        
-            // copy any remainder
-            memcpy((char*) field + cursor, field, (size_t) (field_size - cursor));
-        }
-        PROFILE_STOP();
-    }
-    
-    EXTERNAL const void* memcheck(const void* ptr, uint8_t byte, isize size)
-    {
-	    REQUIRE(size >= 0 && (ptr != NULL || size == 0));
-
-        //pattern is 8 repeats of byte
-        uint64_t pattern = (uint64_t) 0x0101010101010101ULL * (uint64_t) byte;
-        uint8_t* curr = (uint8_t*) ptr;
-        uint8_t* end = curr + size;
-
-        while(end - curr >= 32)
-        {
-            uint64_t copied[4] = {0};
-            memcpy(copied, curr, 32);
-            if(copied[0] != pattern
-                || copied[1] != pattern
-                || copied[2] != pattern
-                || copied[3] != pattern) 
-                break;
-            curr += 32;
-        }
-
-        while(end - curr >= 8)
-        {
-            uint64_t copied = {0};
-            memcpy(&copied, curr, 8);
-            if(copied != pattern)
-                break; 
-            curr += 8;
-        }
-        
-        for(; end != curr; curr ++)
-        {
-            if(*curr != byte)
-                return curr;
-        }
-
-        return NULL;
-    }
-    
-    EXTERNAL void memswap_generic(void* a, void* b, isize size)
-    {
-        PROFILE_START();
-	    REQUIRE(size >= 0 && ((a && b) || size == 0));
-        enum {LOCAL = 8};
-        char temp[LOCAL] = {0};
-
-        char* ac = (char*) a;
-        char* bc = (char*) b;
-    
-        size_t repeats = (size_t) size / LOCAL;
-        size_t remainder = (size_t) size % LOCAL;
-        for(size_t k = 0; k < repeats; k ++)
-        {
-	        memcpy(temp,         ac + k*LOCAL, LOCAL);
-	        memcpy(ac + k*LOCAL, bc + k*LOCAL, LOCAL);
-	        memcpy(bc + k*LOCAL, temp,         LOCAL);
-        }
-
-        ac += repeats*LOCAL;
-        bc += repeats*LOCAL;
-        for(size_t i = 0; i < remainder; i++)
-        {
-            char t = ac[i];
-            ac[i] = bc[i];
-            bc[i] = t;         
-        }
-        PROFILE_STOP();
-    }
-
-    EXTERNAL void memswap(void* a, void* b, isize size)
-    {
-	    REQUIRE(size >= 0 && ((a && b) || size == 0));
-        PROFILE_START();
-        char temp[32] = {0};
-        switch(size) {
-            #define SWAP_X(N) \
-                case N: { \
-                    memcpy(temp, a, N); \
-                    memcpy(a, b, N); \
-                    memcpy(b, temp, N); \
-                } break;
-
-            SWAP_X(1)
-            SWAP_X(2)
-            SWAP_X(4)
-            SWAP_X(8)
-            SWAP_X(12)
-            SWAP_X(16)
-            SWAP_X(20)
-            SWAP_X(24)
-            SWAP_X(28)
-            SWAP_X(32)
-            SWAP_X(64)
-            #undef SWAP_X
-
-            default: memswap_generic(a, b, size); break;
-        }
-        PROFILE_STOP();
-    }
 
 #endif

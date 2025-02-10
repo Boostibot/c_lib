@@ -80,6 +80,8 @@
         "assert.h": "c",
         "xlocbuf": "c",
         "xtr1common": "cpp",
-        "xlocmon": "cpp"
+        "xlocmon": "cpp",
+        "cstddef": "cpp",
+        "xlocinfo": "cpp"
     }
 }

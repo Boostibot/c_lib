@@ -115,8 +115,8 @@ typedef enum Ser_Type {
     
     SER_LIST_END,               //{u8 type}
     SER_OBJECT_END,             //{u8 type}
-    SER_RECOVERY_LIST_END,      //{u8 type, u8 size}[size bytes of tag]\0
-    SER_RECOVERY_OBJECT_END,    //{u8 type, u8 size}[size bytes of tag]\0
+    SER_RECOVERY_LIST_END,      //{u8 type, u8 size}[size bytes of tag]
+    SER_RECOVERY_OBJECT_END,    //{u8 type, u8 size}[size bytes of tag]
     SER_ERROR, //"lexing" error. Is near the ENDers section so that we can check for ender with a single compare
 
     //We have 3 string types since short strings are extremely common
@@ -636,22 +636,30 @@ EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type ta
     
     bool state = true;
     if(target_type == SER_F32) {
+        float val = 0;
         switch(type) {
-            case SER_F64: *(float*)out = object.mf64; break;
-            case SER_F32: *(float*)out = object.mf32; break;
-            case SER_I64: *(float*)out = object.mi64; break;
-            case SER_U64: *(float*)out = object.mu64; break;
+            case SER_F64: val = (float) object.mf64; state = !(val != object.mf64); break; //funny comparison for nans
+            case SER_F32: val = (float) object.mf32; break;
+            case SER_I64: val = (float) object.mi64; state = (int64_t) val == object.mi64; break;
+            case SER_U64: val = (float) object.mu64; state = (uint64_t) val == object.mu64; break;
             default: state = false; break;
         }
+
+        if(state)
+            *(float*) out = val;
     }
     else if(target_type == SER_F64) {
+        double val = 0;
         switch(type) {
-            case SER_F64: *(double*)out = object.mf64; break;
-            case SER_F32: *(double*)out = object.mf32; break;
-            case SER_I64: *(double*)out = object.mi64; break;
-            case SER_U64: *(double*)out = object.mu64; break;
+            case SER_F64: val = (double) object.mf64; break;
+            case SER_F32: val = (double) object.mf32; break;
+            case SER_I64: val = (double) object.mi64; state = (int64_t) val == object.mi64; break;
+            case SER_U64: val = (double) object.mu64; state = (uint64_t) val == object.mu64; break;
             default: state = false; break;
         }
+
+        if(state)
+            *(double*) out = val;
     }
     else if(target_type == SER_U64 && type == SER_U64) {
         *(uint64_t*) out = object.mu64;
@@ -660,7 +668,7 @@ EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type ta
     {
         int64_t val = 0;
         switch(type) {
-            case SER_U64: val = object.mi64;; break;
+            case SER_U64: val = (int64_t) object.mi64; break;
             case SER_I64: val = (int64_t) object.mu64; state = object.mu64 <= INT64_MAX; break;
             case SER_F64: val = (int64_t) object.mf64; state = val == object.mf64; break;
             case SER_F32: val = (int64_t) object.mf32; state = val == object.mf32; break;

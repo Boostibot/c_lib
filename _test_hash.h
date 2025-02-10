@@ -27,8 +27,7 @@ INTERNAL u64 random_hash_value()
 
 INTERNAL void test_hash_stress(f64 max_seconds)
 {
-	Debug_Allocator debug_alloc = {0};
-	debug_allocator_init(&debug_alloc, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_USE);
+	Debug_Allocator debug_alloc = debug_allocator_make(allocator_get_default(), DEBUG_ALLOC_LEAK_CHECK | DEBUG_ALLOC_USE);
 	{
 		typedef enum {
 			INIT,

@@ -33,7 +33,7 @@ EXTERNAL String_Builder translate_error_builder(Allocator* alloc, Platform_Error
         PROFILE_START();
         if(format != NULL)
         {
-            char local[512];
+            char local[1024];
             va_list args_copy;
             va_copy(args_copy, args);
 

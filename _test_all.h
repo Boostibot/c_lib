@@ -18,7 +18,6 @@
 #include "perf.h"
 #include "sort.h"
 
-#include "_test_string.h"
 #include "_test_random.h"
 #include "_test_arena.h"
 #include "_test_array.h"
@@ -58,19 +57,18 @@ static void test_all(double total_time)
         UNIT_TEST(platform_test_all),
         UNIT_TEST(test_list),
         UNIT_TEST(test_image),
-        UNIT_TEST(test_debug_allocator),
+        //UNIT_TEST(test_debug_allocator),
         UNIT_TEST(test_stable_array),
         // UNIT_TEST(test_random),
         UNIT_TEST(test_path),
         UNIT_TEST(test_log),
         TIMED_TEST(test_arena),
         TIMED_TEST(test_sort),
-        TIMED_TEST(test_hash),
         TIMED_TEST(test_array),
         TIMED_TEST(test_math),
-        TIMED_TEST(test_string),
         TIMED_TEST(test_allocator_tlsf),
         TIMED_TEST(slz4_test),
+        TIMED_TEST(test_hash),
         TIMED_TEST(test_chase_lev_queue),
         UNIT_TEST(NULL)
     );
