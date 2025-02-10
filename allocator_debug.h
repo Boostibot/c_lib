@@ -419,22 +419,12 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
             name ? "name: " : "", name, (llu) new_size, (llu) old_size, (llu) align);
         PANIC("debug allocator%s%s reported failure '%s'", name ? "name: " : "", name, "invalid size or align parameter");
     }
-    isize preamble_size = self->options.pre_dead_zone_size + self->options.capture_stack_frames_count*sizeof(void*);
-    isize postamble_size = self->options.post_dead_zone_size;
 
-    isize new_total_size = new_size ? preamble_size + postamble_size + align + new_size : 0;
-    isize old_total_size = old_size ? preamble_size + postamble_size + align + old_size : 0;
-
-    uint64_t old_hash = 0;
-    isize old_found = 0;
-    void* old_block_start = NULL;
-    Debug_Allocation* old_info = NULL;
-
-    //Check old_ptr if any for correctness
+    //validate old ptr (if present
+    uint64_t old_hash = _debug_alloc_ptr_hash(old_ptr);
     if(old_ptr != NULL)
     {
-        old_hash = _debug_alloc_ptr_hash(old_ptr);
-        old_found = robin_hash_find(&self->alive, old_hash); 
+        isize old_found = robin_hash_find(&self->alive, old_hash); 
         if(old_found == -1) {
             LOG_FATAL("DEBUG", "%s%s%s no allocation at 0x%08llx", 
                 name ? "name: " : "", name, (llu) old_ptr);
@@ -444,7 +434,7 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
             _debug_allocator_panic(self, old_ptr, closest, closest_dist, "invalid pointer");
         }
 
-        old_info = &self->alive.entries[old_found];
+        Debug_Allocation* old_info = &self->alive.entries[old_found];
 
         if(old_info->size != old_size) {
             LOG_FATAL("DEBUG", "debug allocator%s%s size does not match for allocation 0x%08llx: given:%lli actual:%lli", 
@@ -457,9 +447,7 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
                 name ? "name: " : "", name, (llu) old_ptr, (lli) align, (lli) old_info->align);
             _debug_allocator_panic(self, old_ptr, old_info, 0, "invalid align parameter");
         }
-
         _debug_allocation_test_dead_zones(self, old_info);
-        old_block_start = debug_allocation_get_block(old_info);
     }
     else
     {
@@ -471,71 +459,82 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
         }
     }
 
-    u8* new_block_ptr = (u8*) allocator_try_reallocate(self->parent, new_total_size, old_block_start, old_total_size, DEF_ALIGN, error);
-    u8* new_ptr = NULL;
-
-    //if hasnt failed
-    if(new_block_ptr != NULL || new_size == 0)
+    //allocate new data
+    u8* out_ptr = NULL;
+    if(new_size > 0)
     {
-        //if previous block existed remove it from control structures
-        if(old_ptr != NULL)
-            robin_hash_remove_at(&self->alive, old_hash, old_found);
-
-        //if allocated/reallocated (new block exists)
-        if(new_size != 0)
+        isize preamble_size = self->options.pre_dead_zone_size + self->options.capture_stack_frames_count*sizeof(void*);
+        isize postamble_size = self->options.post_dead_zone_size;
+        isize new_total_size = preamble_size + postamble_size + align + new_size;
+        u8* new_block_ptr = (u8*) allocator_try_reallocate(self->parent, new_total_size, NULL, 0, DEF_ALIGN, error);
+        if(new_block_ptr == NULL)
         {
-            new_ptr = (u8*) align_forward(new_block_ptr + preamble_size, align);
+            PROFILE_STOP();
+            return NULL;
+        }
 
-            void** callstack = (void**) (void*) new_block_ptr;
-            uint8_t* pre_dead_zone = (uint8_t*) (void*) (callstack + self->options.capture_stack_frames_count); 
-            uint8_t* post_dead_zone = new_ptr + new_size;
+        out_ptr = (u8*) align_forward(new_block_ptr + preamble_size, align);
+        void**   callstack = (void**) (void*) new_block_ptr;
+        uint8_t* pre_dead_zone = (uint8_t*) (void*) (callstack + self->options.capture_stack_frames_count); 
+        uint8_t* post_dead_zone = out_ptr + new_size;
              
-            Debug_Allocation new_alloc = {0};
-            new_alloc.ptr = new_ptr;
-            new_alloc.hash = _debug_alloc_ptr_hash(new_ptr);
-            new_alloc.align = (u16) align;
-            new_alloc.size = new_size;
-            new_alloc.call_stack_count = (u16) self->options.capture_stack_frames_count;
-            new_alloc.id = self->last_id++;
-            new_alloc.pre_dead_zone = (u16) (new_ptr - pre_dead_zone);
-            new_alloc.post_dead_zone = (u16) (new_block_ptr + new_total_size - post_dead_zone);
-            new_alloc.time = platform_epoch_time();
+        Debug_Allocation new_alloc = {0};
+        new_alloc.ptr = out_ptr;
+        new_alloc.hash = _debug_alloc_ptr_hash(out_ptr);
+        new_alloc.align = (u16) align;
+        new_alloc.size = new_size;
+        new_alloc.call_stack_count = (u16) self->options.capture_stack_frames_count;
+        new_alloc.id = self->last_id++;
+        new_alloc.pre_dead_zone = (u16) (out_ptr - pre_dead_zone);
+        new_alloc.post_dead_zone = (u16) (new_block_ptr + new_total_size - post_dead_zone);
+        new_alloc.time = platform_epoch_time();
 
-            if(new_alloc.call_stack_count > 0)
-                platform_capture_call_stack(callstack, new_alloc.call_stack_count, 1);
+        if(new_alloc.call_stack_count > 0)
+            platform_capture_call_stack(callstack, new_alloc.call_stack_count, 1);
 
-            memset(pre_dead_zone,  _DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) new_alloc.pre_dead_zone);
-            //memset(new_ptr,        0, (size_t) new_size);
-            //memset(new_ptr,        _DEBUG_ALLOCATOR_FILL_NUM8, (size_t) new_size); //?!?
-            memset(post_dead_zone, _DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) new_alloc.post_dead_zone);
+        isize min_size = new_size < old_size ? new_size : old_size;
+        memset(pre_dead_zone,  _DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) new_alloc.pre_dead_zone);
+        if(old_ptr) memcpy(out_ptr, old_ptr, (size_t) min_size);
+        memset(out_ptr + min_size, _DEBUG_ALLOCATOR_FILL_NUM8, (size_t) (new_size - min_size)); //?!?
+        memset(post_dead_zone, _DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) new_alloc.post_dead_zone);
             
-            isize added_index = 0;
-            bool was_added = robin_hash_set(&self->alive, new_alloc, &added_index);
-            ASSERT(was_added);
+        isize added_index = 0;
+        bool was_added = robin_hash_set(&self->alive, new_alloc, &added_index);
+        ASSERT(was_added);
             
-            #ifdef DO_ASSERTS_SLOW
-                debug_allocator_test_block(self, new_ptr);
-            #endif
-        }
-
-        self->bytes_allocated += new_size - old_size;
-        self->max_bytes_allocated = MAX(self->max_bytes_allocated, self->bytes_allocated);
-        if(self->options.do_printing && self->is_within_allocation == false)
-        {
-            self->is_within_allocation = true;
-            LOG_DEBUG("MEMORY", "size %6lli -> %-6lli ptr: 0x%08llx -> 0x%08llx align: %lli ",
-                (lli) old_size, (lli) new_size, (lli) old_ptr, (lli) new_ptr, (lli) align);
-            self->is_within_allocation = false;
-        }
-
-        if(old_ptr == NULL)
-            self->allocation_count += 1;
-        else if(new_size == 0)
-            self->deallocation_count += 1;
-        else
-            self->reallocation_count += 1;
+        #ifdef DO_ASSERTS_SLOW
+            debug_allocator_test_block(self, out_ptr);
+        #endif
     }
     
+    //dealloc old ptr
+    if(old_ptr != NULL)
+    {
+        isize old_found = robin_hash_find(&self->alive, old_hash); 
+        Debug_Allocation* old_alloc = &self->alive.entries[old_found];
+        void* old_block = debug_allocation_get_block(old_alloc);
+        isize total_size = sizeof(void*)*old_alloc->call_stack_count + old_alloc->pre_dead_zone + old_alloc->size + old_alloc->post_dead_zone;
+        allocator_try_reallocate(self->parent, 0, old_block, old_block, DEF_ALIGN, error);
+        robin_hash_remove_at(&self->alive, old_hash, old_found);
+    }
+    
+    self->bytes_allocated += new_size - old_size;
+    self->max_bytes_allocated = MAX(self->max_bytes_allocated, self->bytes_allocated);
+    if(self->options.do_printing && self->is_within_allocation == false)
+    {
+        self->is_within_allocation = true;
+        LOG_DEBUG("MEMORY", "size %6lli -> %-6lli ptr: 0x%08llx -> 0x%08llx align: %lli ",
+            (lli) old_size, (lli) new_size, (llu) old_ptr, (llu) out_ptr, (lli) align);
+        self->is_within_allocation = false;
+    }
+
+    if(old_ptr == NULL)
+        self->allocation_count += 1;
+    else if(new_size == 0)
+        self->deallocation_count += 1;
+    else
+        self->reallocation_count += 1;
+        
     #ifdef DO_ASSERTS_SLOW
         bool do_debug = true;
     #else
@@ -547,7 +546,7 @@ EXTERNAL void* debug_allocator_func(Allocator* self_, isize new_size, void* old_
         debug_allocator_test_all_blocks(self);
 
     PROFILE_STOP();
-    return new_ptr;
+    return out_ptr;
 }
 
 EXTERNAL Allocator_Stats debug_allocator_get_stats(Allocator* self_)
