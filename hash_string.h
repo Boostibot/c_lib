@@ -18,6 +18,7 @@ typedef struct Hash_String {
 EXTERNAL Hash_String hash_string_from_cstring(const char* cstr);
 EXTERNAL Hash_String hash_string_make(String string);
 EXTERNAL u64 hash_string(String string);
+EXTERNAL u64 hash_string_ptrs(const String* string);
 EXTERNAL bool hash_string_is_equal(Hash_String a, Hash_String b);         //Compares two hash strings using hash, size and the contents of data.
 EXTERNAL bool hash_string_is_equal_approx(Hash_String a, Hash_String b);  //Compares two hash strings using only hash and size. Can be forced to compare data by defining DISSABLE_APPROXIMATE_EQUAL
 
@@ -63,6 +64,11 @@ EXTERNAL u64 hash_string(String string)
     return hash64_fnv_inline(string.data, string.count);
 }
 
+EXTERNAL u64 hash_string_ptrs(const String* string)
+{
+    return hash64_fnv_inline(string->data, string->count);
+}
+
 EXTERNAL bool hash_string_is_equal(Hash_String a, Hash_String b)
 {
     if(a.hash != b.hash || a.count != b.count)
@@ -100,6 +106,5 @@ EXTERNAL void hash_string_deallocate(Allocator* alloc, Hash_String* hstring)
     string_deallocate(alloc, &hstring->string);
     hstring->hash = 0;
 }
-
 
 #endif

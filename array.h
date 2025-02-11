@@ -13,7 +13,7 @@
 //    Empty arrays are the most common arrays so having them as a special and error prone case
 //    is less than ideal. This disqualified the typed pointer to allocated array prefixed with header holding
 //    the meta data. See how stb library implements "stretchy buffers".
-//    This approach also introduces a lot of ifs, makes the meta data address unstable thus requiring more memory lookups.
+//    This approach also introduces a lot of helper functions instead of simple array.count or whatever.
 // 
 // 3) we need to hold info about allocators used for the array. We should know how to deallocate any array using its allocator.
 //
@@ -22,36 +22,13 @@
 //
 // This file is also fully freestanding. To compile the function definitions #define MODULE_IMPL_ALL and include it again in .c file. 
 
-#if !defined(MODULE_INLINE_ALLOCATOR) && !defined(MODULE_ALLOCATOR) && !defined(MODULE_ALL_COUPLED)
-    #define MODULE_INLINE_ALLOCATOR
-    #include <stdint.h>
-    #include <stdlib.h>
-    #include <assert.h>
-    #include <stdbool.h>
-    
-    #define EXTERNAL
-    #define INTERNAL static
-    #define ASSERT(x) assert(x)
-    #define ASSERT_BOUNDS(x) assert(x)
-    #define REQUIRE(x) assert(x)
-
-    typedef int64_t isize; //can also be usnigned if desired
-    typedef struct Allocator Allocator;
-
-    static void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
-    {
-        (void) from_allocator; (void) old_size; (void) align;
-        if(new_size != 0)
-            return realloc(old_ptr, (size_t) new_size);
-        else
-        {
-            free(old_ptr);
-            return NULL;
-        }
-    }
-#else
+#ifdef MODULE_ALL_COUPLED
+    #include "assert.h"
     #include "allocator.h"
 #endif
+
+typedef int64_t isize;
+typedef void* (*Allocator)(void* alloc, int mode, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align, void* other);
 
 typedef struct Untyped_Array {        
     Allocator* allocator;                
@@ -72,7 +49,7 @@ typedef struct Generic_Array {
         struct {                                 \
             Allocator* allocator;                \
             Type* data;                          \
-            isize count;                          \
+            isize count;                         \
             isize capacity;                      \
         };                                       \
         uint8_t (*ALIGN)[align];                 \
@@ -110,6 +87,12 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
 #else
     #define array_make_generic(array_ptr) ((Generic_Array){&(array_ptr)->untyped, sizeof *(array_ptr)->data, sizeof *(array_ptr)->ALIGN})
 #endif 
+
+#ifndef ASSERT
+    #include <assert.h>
+    #define ASSERT(x, ...) assert(x)
+    #define ASSERT_BOUNDS(i, capacity) assert(0 <= (i) && (i) <= capacity)
+#endif
 
 #define array_set_capacity(array_ptr, capacity) \
     generic_array_set_capacity(array_make_generic(array_ptr), (capacity))
@@ -195,14 +178,16 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
 #define MODULE_HAS_IMPL_ARRAY
 #include <string.h>
 
+#ifndef PROFILE_SCOPE
+    #define PROFILE_SCOPE(...)
+#endif
+
 EXTERNAL bool generic_array_is_invariant(Generic_Array gen)
 {
     bool is_capacity_correct = 0 <= gen.array->capacity;
     bool is_size_correct = (0 <= gen.array->count && gen.array->count <= gen.array->capacity);
-    #ifndef MODULE_INLINE_ALLOCATOR
     if(gen.array->capacity > 0)
         is_capacity_correct = is_capacity_correct && gen.array->allocator != NULL;
-    #endif
 
     bool is_data_correct = (gen.array->data == NULL) == (gen.array->capacity == 0);
     bool item_size_correct = gen.item_size > 0;
@@ -227,10 +212,6 @@ EXTERNAL void generic_array_deinit(Generic_Array gen)
     
     memset(gen.array, 0, sizeof *gen.array);
 }
-
-#ifndef PROFILE_SCOPE
-    #define PROFILE_SCOPE(...)
-#endif
 
 EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity)
 {

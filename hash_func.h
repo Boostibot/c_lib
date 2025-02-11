@@ -1,572 +1,295 @@
-#define MODULE_IMPL_ALL //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-#ifndef MODULE_MAP
-#define MODULE_MAP
+#ifndef MODULE_HASH_FN
+#define MODULE_HASH_FN
 
 #include <stdint.h>
-#include <stdbool.h>
-#include <stdlib.h>
 #include <string.h>
 
-typedef int64_t isize;
-typedef void* (*Allocator)(void* self, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align, void* error);
-
-typedef struct Map_Info {
-    uint32_t entry_size;
-    uint32_t entry_align;
-    uint32_t key_offset;
-    void* key_equals; //if null then we trust hashes
-    void* key_hash; //if null then can only use the hash interface
-} Map_Info;
-
-typedef bool     (*Key_Equals_Func)(const void* stored, const void* key);
-typedef uint64_t (*Key_Hash_Func)(const void* key);
-
-typedef struct Map_Slot {
-    uint64_t hash;
-    uint32_t index;
-    uint32_t backlink;
-} Map_Slot;
-
-typedef struct Map {
-    Allocator* alloc;
-    uint8_t* entries;
-    uint32_t count;
-    uint32_t capacity;
-
-    Map_Slot* slots;
-    uint32_t slots_removed;
-    uint32_t slots_mask; //capacity of the hash - 1
-} Map;
-
-typedef struct Map_Found {
-    uint32_t index;
-    uint32_t slot;
-    uint64_t hash; 
-} Map_Found;
-
-typedef struct Map_Find_It {
-    struct {
-        uint32_t slot;
-        uint32_t iter;
-    } internal;
-    Map_Found found;
-} Map_Find_It;
-
-#if defined(_MSC_VER)
-    #define ATTRIBUTE_INLINE_ALWAYS __forceinline
-    #define ATTRIBUTE_INLINE_NEVER  __declspec(noinline)
-#elif defined(__GNUC__) || defined(__clang__)
-    #define ATTRIBUTE_INLINE_ALWAYS __attribute__((always_inline)) inline
-    #define ATTRIBUTE_INLINE_NEVER  __attribute__((noinline))
-#else
-    #define ATTRIBUTE_INLINE_ALWAYS inline 
-    #define ATTRIBUTE_INLINE_NEVER                              
+#ifndef HASH_FN_API
+    #define HASH_FN_API static inline
+    #define MODULE_IMPL_HASH_FN
 #endif
 
-#ifndef EXTERNAL
-    #define EXTERNAL
+//Hashes a 64 bit value to 64 bit hash.
+//Note that this function is bijective meaning it can be reversed.
+//In particular 0 maps to 0.
+//source: https://stackoverflow.com/a/12996028
+HASH_FN_API uint64_t hash64_bijective(uint64_t x);
+HASH_FN_API uint64_t unhash64_bijective(uint64_t x);
+
+//Hashes a 32 bit value to 32 bit hash.
+//Note that this function is bijective meaning it can be reversed.
+//In particular 0 maps to 0.
+//source: https://stackoverflow.com/a/12996028
+HASH_FN_API uint32_t hash32_bijective(uint32_t x); 
+HASH_FN_API uint32_t unhash32_bijective(uint32_t x);
+
+//Mixes two prevously hashed values into one. 
+//Yileds good results even when hash1 and hash2 are hashes badly.
+HASH_FN_API uint64_t hash64_mix(uint64_t hash1, uint64_t hash2);
+HASH_FN_API uint32_t hash32_mix(uint32_t hash1, uint32_t hash2);
+
+//Mixes hi and lo bits of hash to produce a 32 bit hash
+HASH_FN_API uint32_t hash64_fold(uint64_t hash);
+HASH_FN_API uint32_t hash64_fold_mix(uint64_t hash);
+
+//Source: https://github.com/abrandoned/murmur2/blob/master/MurmurHash2.c (modified to not use unaligned pointers since those are UB)
+HASH_FN_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed);
+HASH_FN_API uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed);
+
+//Source: https://github.com/aappleby/smhasher/blob/master/src/Hashes.cpp
+HASH_FN_API uint32_t hash32_fnv(const void* key, int64_t size, uint32_t seed);
+HASH_FN_API uint64_t hash64_fnv(const void* key, int64_t size, uint64_t seed);
+
+HASH_FN_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed);
+
 #endif
 
-#ifndef MAP_INLINE_API
-    #define MAP_INLINE_API ATTRIBUTE_INLINE_ALWAYS static 
-    #define MODULE_IMPL_INLINE_MAP
-#endif
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_HASH_FN)) && !defined(MODULE_HAS_IMPL_HASH_FN)
+#define MODULE_HAS_IMPL_HASH_FN
 
-//regular interface (requires only key and hash is calculated using info)
-MAP_INLINE_API void      map_init(Map* map, Map_Info info, Allocator* alloc);
-MAP_INLINE_API void      map_deinit(Map* map, Map_Info info);
-MAP_INLINE_API void      map_reserve(Map* map, Map_Info info, isize count);
-MAP_INLINE_API void      map_rehash(Map* map, Map_Info info, isize count);
-
-MAP_INLINE_API bool      map_find(const Map* map, Map_Info info, const void* key, Map_Found* found);
-MAP_INLINE_API Map_Found map_find_index(const Map* map, isize index);
-MAP_INLINE_API bool      map_find_iterate(const Map* map, Map_Info info, const void* key, Map_Find_It* it);
-MAP_INLINE_API bool      map_remove(Map* map, Map_Info info, Map_Found found);
-MAP_INLINE_API Map_Found map_insert(Map* map, Map_Info info, const void* key);
-MAP_INLINE_API bool      map_insert_or_find(Map* map, Map_Info info, const void* key, Map_Found* found);
-
-//hash interface (requires key and hash)
-MAP_INLINE_API bool      map_hash_find(const Map* map, Map_Info info, const void* key, uint64_t hash, Map_Found* found);
-MAP_INLINE_API bool      map_hash_find_iterate(const Map* map, Map_Info info, const void* key, uint64_t hash, Map_Find_It* it);
-MAP_INLINE_API Map_Found map_hash_insert(Map* map, Map_Info info, const void* key, uint64_t hash);
-MAP_INLINE_API bool      map_hash_insert_or_find(Map* map, Map_Info info, const void* key, uint64_t hash, Map_Found* found);
-
-#define MAP_TEST_INVARIANTS_BASIC   ((uint32_t) 1)
-#define MAP_TEST_INVARIANTS_SLOTS   ((uint32_t) 2)
-#define MAP_TEST_INVARIANTS_HASHES  ((uint32_t) 4)
-#define MAP_TEST_INVARIANTS_FIND    ((uint32_t) 8)
-#define MAP_TEST_INVARIANTS_ALL     ((uint32_t) -1)
-ATTRIBUTE_INLINE_NEVER EXTERNAL void map_test_invariant(const Map* map, Map_Info info, uint32_t flags);
-ATTRIBUTE_INLINE_NEVER EXTERNAL void map_test_hash_invariant(const Map* map, uint32_t flags);
-#endif
-
-//Inline implementation
-#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_INLINE_MAP)) && !defined(MODULE_HAS_IMPL_INLINE_MAP)
-#define MODULE_HAS_IMPL_INLINE_MAP
-
-#ifndef ASSERT
+#ifndef REQUIRE
     #include <assert.h>
-    #define ASSERT(x, ...) assert(x)
-#endif
-#ifndef TEST
-    #include <stdio.h>
-    #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " ##__VA_ARGS__), abort()) : (void) 0)
+    #define REQUIRE(x) assert(x)
 #endif
 
-#define MAP_EMPTY_ENTRY   (uint32_t) -1
-#define MAP_REMOVED_ENTRY (uint32_t) -2
-
-ATTRIBUTE_INLINE_NEVER EXTERNAL void _map_grow_entries(Map* map, isize requested_capacity, uint32_t entry_size, uint32_t entry_align);
-ATTRIBUTE_INLINE_NEVER EXTERNAL void _map_rehash(Map* map, isize requested_capacity);
-ATTRIBUTE_INLINE_NEVER EXTERNAL void _map_deinit(Map* map, uint32_t entry_size, uint32_t entry_align);
-EXTERNAL bool _map_remove_found(Map* map, uint32_t index, uint32_t slot, uint32_t entry_size);
-
-MAP_INLINE_API void _map_check_invariants(const Map* map, Map_Info info)
+HASH_FN_API uint64_t hash64_bijective(uint64_t x) 
 {
-    #if defined(DO_ASSERTS_SLOW)
-        map_test_invariant(map, info, MAP_TEST_INVARIANTS_ALL);
-    #elif defined(DO_ASSERTS)
-        map_test_invariant(map, info, MAP_TEST_INVARIANTS_BASIC);
-    #endif
+    x = (x ^ (x >> 30)) * (uint64_t) 0xbf58476d1ce4e5b9;
+    x = (x ^ (x >> 27)) * (uint64_t) 0x94d049bb133111eb;
+    x = x ^ (x >> 31);
+    return x;
 }
 
-MAP_INLINE_API void _map_check_hash_invariants(const Map* map)
+HASH_FN_API uint64_t unhash64_bijective(uint64_t x) 
 {
-    #if defined(DO_ASSERTS_SLOW)
-        map_test_hash_invariant(map, MAP_TEST_INVARIANTS_ALL);
-    #elif defined(DO_ASSERTS)
-        map_test_hash_invariant(map, MAP_TEST_INVARIANTS_BASIC);
-    #endif
+    x = (x ^ (x >> 31) ^ (x >> 62)) * (uint64_t) 0x319642b2d24d8ec3;
+    x = (x ^ (x >> 27) ^ (x >> 54)) * (uint64_t) 0x96de1b173f119089;
+    x = x ^ (x >> 30) ^ (x >> 60);
+    return x;
 }
 
-MAP_INLINE_API void map_reserve(Map* map, Map_Info info, isize requested_capacity)
+HASH_FN_API uint32_t hash32_bijective(uint32_t x) 
 {
-    if(map->count*3/4 <= requested_capacity + map->slots_removed)
-        _map_rehash(map, requested_capacity);
-        
-    if(requested_capacity > map->capacity)
-        _map_grow_entries(map, requested_capacity, info.entry_size, info.entry_align);
+    x = ((x >> 16) ^ x) * 0x119de1f3;
+    x = ((x >> 16) ^ x) * 0x119de1f3;
+    x = (x >> 16) ^ x;
+    return x;
 }
 
-MAP_INLINE_API Map_Find_It _map_find_it_make(const Map* map, uint64_t hash)
+HASH_FN_API uint32_t unhash32_bijective(uint32_t x) 
 {
-    Map_Find_It it = {0};
-    Map_Found found = {(uint32_t) -1, (uint32_t) -1, hash};
-    it.found = found;
-    it.internal.iter = 1;
-    it.internal.slot = (uint32_t) hash & map->slots_mask;
-    return it;
+    x = ((x >> 16) ^ x) * 0x119de1f3;
+    x = ((x >> 16) ^ x) * 0x119de1f3;
+    x = (x >> 16) ^ x;
+    return x;
 }
 
-MAP_INLINE_API bool _map_find_next(const Map* map, Map_Info info, const void* key, Map_Find_It* it)
+HASH_FN_API uint64_t hash64_mix(uint64_t hash1, uint64_t hash2)
 {
-    _map_check_invariants(map, info);
-    for(;it->internal.iter <= map->slots_mask; it->internal.iter += 1)
+    hash1 ^= hash2 + 0x517cc1b727220a95 + (hash1 << 6) + (hash1 >> 2);
+    return hash1;
+}
+
+HASH_FN_API uint32_t hash32_mix(uint32_t hash1, uint32_t hash2)
+{
+    hash1 ^= hash2 + 0x9e3779b9 + (hash1 << 6) + (hash1 >> 2);
+    return hash1;
+}
+
+HASH_FN_API uint32_t hash64_fold_mix(uint64_t hash)
+{
+    return hash32_mix((uint32_t) hash, (uint32_t)(hash >> 32));
+}
+
+HASH_FN_API uint32_t hash64_fold(uint64_t hash)
+{
+    return (uint32_t) hash ^ (uint32_t)(hash >> 32);
+}
+
+HASH_FN_API uint32_t hash32_murmur(const void* key, int64_t size, uint32_t seed)
+{
+    uint32_t endian_check = 0x33221100;
+    REQUIRE(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
+    REQUIRE((key != NULL || size == 0) && size >= 0);
+
+    const uint32_t magic = 0x5bd1e995;
+    const int r = 24;
+
+    uint32_t hash = seed;
+
+    const uint8_t* data = (const uint8_t*)key;
+    const uint8_t* end = data + size;
+    for(; data < end - 3; data += 4)
     {
-        ASSERT(it->internal.iter <= map->slots_mask + 1);
-        Map_Slot* slot = &map->slots[it->internal.slot];
-        if(slot->hash == it->found.hash) {
-            uint8_t* entry = map->entries + slot->index*info.entry_size;
-            if(info.key_equals == NULL || ((Key_Equals_Func)info.key_equals)(entry + info.key_offset, key))
-            {
-                it->found.index = slot->index;
-                it->found.slot = it->internal.slot;
-                return true;
-            }
-        }
-        else if(slot->hash == MAP_EMPTY_ENTRY) 
-            break;
-        
-        it->internal.slot = (it->internal.slot + it->internal.iter) & map->slots_mask;
-    }
-    it->found.index = -1;
-    it->found.slot = -1;
-    return false;
-}
+        uint32_t read = 0; 
+        memcpy(&read, data, sizeof read);
 
-MAP_INLINE_API bool _map_insert_or_find(Map* map, Map_Info info, const void* key, uint64_t hash, Map_Found* found, bool do_only_insert)
-{
-    _map_check_invariants(map, info);
-    map_reserve(map, info, (isize) map->count + 1);
-    uint64_t i = hash & map->slots_mask;
-    uint64_t empty_i = (uint64_t) -1;
-    for(uint64_t k = 1; ; k++)
+        read *= magic;
+        read ^= read >> r;
+        read *= magic;
+
+        hash *= magic;
+        hash ^= read;
+    }
+
+    switch(size & 3)
     {
-        ASSERT(k <= map->slots_mask);
-        Map_Slot* slot = &map->slots[i];
-        //if we are inserting we dont care about duplicates. 
-        // We just insert to the first slot where we can 
-        if(do_only_insert) {
-            if(slot->index == MAP_REMOVED_ENTRY || slot->index == MAP_EMPTY_ENTRY)
-                break;
-        }
-        //if we are inserting or finding, we need to keep iterating until we find
-        // a properly empty slot. Only then we can be sure the slot is not in the map.
-        //We also keep track of the previous removed slot, so we can store it there 
-        // and thus help to clean up the hash map a bit.
-        else {
-            if(slot->index == MAP_REMOVED_ENTRY)
-                empty_i = i;
-
-            if(slot->index == MAP_EMPTY_ENTRY) {
-                if(empty_i != (uint32_t) -1)
-                    i = empty_i;
-                break; 
-            }
-
-            if(slot->hash == hash) {
-                uint8_t* entry = map->entries + slot->index*info.entry_size;
-                if(info.key_equals == NULL || ((Key_Equals_Func)info.key_equals)(entry + info.key_offset, key))
-                {
-                    found->hash = hash;
-                    found->index = slot->index;
-                    found->slot = i;
-                    return false;
-                }
-            }
-        }
-            
-        i = (i + k) & map->slots_mask;
-    }
-
-    //update hash part
-    isize added_index = map->count++;
-    Map_Slot* slot = &map->slots[i];
-    slot->hash = hash;
-    slot->index = (uint32_t) added_index;
-    map->slots_removed -= slot->index == MAP_REMOVED_ENTRY;
-    
-    //add the back link
-    ASSERT(added_index <= map->slots_mask);
-    ASSERT(map->slots[added_index].backlink == (uint32_t) -1);
-    map->slots[added_index].backlink = i;
-
-    found->hash = hash;
-    found->index = added_index;
-    found->slot = i;
-    
-    _map_check_invariants(map, info);
-    return true;
-}
-
-MAP_INLINE_API Map_Found map_find_index(const Map* map, isize index)
-{
-    _map_check_hash_invariants(map);
-    Map_Found out = {(uint32_t) -1, (uint32_t) -1, 0};
-    if(index >= map->count)
-        return out;
-
-    out.slot = map->slots[index].backlink;
-    ASSERT(out.slot <= map->slots_mask);
-    ASSERT(map->slots[out.slot].index == index);
-
-    out.hash = map->slots[out.slot].hash;
-    out.index = index;
-    return out;
-}
-
-MAP_INLINE_API bool map_remove_found(Map* map, Map_Info info, Map_Found found)
-{
-    return _map_remove_found(map, found.index, found.slot, info.entry_size);
-}
-
-MAP_INLINE_API void map_init(Map* map, Map_Info info, Allocator* alloc)
-{
-    map_deinit(map, info);
-    map->alloc = alloc;
-}
-
-MAP_INLINE_API void map_deinit(Map* map, Map_Info info)
-{
-    _map_check_invariants(map, info);
-    _map_deinit(map, info.entry_size, info.entry_align);
-    _map_check_invariants(map, info);
-}
-
-MAP_INLINE_API bool map_hash_find(const Map* map, Map_Info info, const void* key, uint64_t hash, Map_Found* found)
-{
-    Map_Find_It it = _map_find_it_make(map, hash);
-    bool out = _map_find_next(map, info, key, &it);
-    *found = it.found;
-    return out;
-}
-
-MAP_INLINE_API bool map_hash_find_iterate(const Map* map, Map_Info info, const void* key, uint64_t hash, Map_Find_It* it)
-{
-    if(it->internal.iter == 0) 
-        *it = _map_find_it_make(map, hash);
-    return _map_find_next(map, info, key, it);
-}
-
-MAP_INLINE_API Map_Found map_hash_insert(Map* map, Map_Info info, const void* key, uint64_t hash)
-{
-    Map_Found found = {0};
-    _map_insert_or_find(map, info, key, hash, &found, true);
-    return found;
-}
-
-MAP_INLINE_API bool map_hash_insert_or_find(Map* map, Map_Info info, const void* key, uint64_t hash, Map_Found* found)
-{
-    return _map_insert_or_find(map, info, key, hash, found, false);
-}
-
-MAP_INLINE_API bool map_find(const Map* map, Map_Info info, const void* key, Map_Found* found)
-{
-    ASSERT(info.key_hash);
-    return map_hash_find(map, info, key, ((Key_Hash_Func)info.key_hash)(key), found);
-}
-
-MAP_INLINE_API bool map_find_iterate(const Map* map, Map_Info info, const void* key, Map_Find_It* it)
-{
-    ASSERT(info.key_hash);
-    if(it->internal.iter == 0) 
-        *it = _map_find_it_make(map, ((Key_Hash_Func)info.key_hash)(key));
-    return _map_find_next(map, info, key, it);
-}
-
-MAP_INLINE_API Map_Found map_insert(Map* map, Map_Info info, const void* key)
-{
-    ASSERT(info.key_hash);
-    return map_hash_insert(map, info, key, ((Key_Hash_Func)info.key_hash)(key));
-}
-
-MAP_INLINE_API bool map_insert_or_find(Map* map, Map_Info info, const void* key, Map_Found* found)
-{
-    ASSERT(info.key_hash);
-    return map_hash_insert_or_find(map, info, key, ((Key_Hash_Func)info.key_hash)(key), found);
-}
-#endif
-
-#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_MAP)) && !defined(MODULE_HAS_IMPL_MAP)
-#define MODULE_HAS_IMPL_MAP
-
-static void* _map_alloc(Allocator* alloc, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align)
-{
-    #ifndef USE_MALLOC
-        return (*alloc)(alloc, new_size, old_ptr, old_size, align, NULL);
-    #else
-        if(new_size != 0) {
-            void* out = realloc(old_ptr, new_size);
-            TEST(out);
-            return out;
-        }
-        else
-            free(old_ptr);
-    #endif
-}
-
-ATTRIBUTE_INLINE_NEVER 
-void _map_grow_entries(Map* map, isize requested_capacity, uint32_t entry_size, uint32_t entry_align)
-{
-    TEST(requested_capacity <= UINT32_MAX);
-
-    isize new_capacity = map->capacity*3/2 + 8;
-    if(new_capacity < requested_capacity)
-        new_capacity = requested_capacity;
-    if(new_capacity < 16)
-        new_capacity = 16;
-    
-    map->entries = (uint8_t*) _map_alloc(map->alloc, new_capacity*entry_size, map->entries, map->capacity*entry_size, entry_align);
-    map->capacity = new_capacity;
-}
-
-ATTRIBUTE_INLINE_NEVER 
-void _map_rehash(Map* map, isize requested_capacity)
-{
-    TEST(requested_capacity <= UINT32_MAX);
-
-    _map_check_hash_invariants(map);
-    isize new_cap = 16;
-    while(new_cap < requested_capacity)
-        new_cap *= 2;
-
-    while(new_cap*4/3 < map->count)
-        new_cap *= 2;
-    
-    // allocate new slots and set all to empty
-    uint64_t new_mask = (uint64_t) new_cap - 1;
-    Map_Slot* new_slots = (Map_Slot*) _map_alloc(map->alloc, new_cap*sizeof(Map_Slot), NULL, 0, sizeof(Map_Slot));
-    memset(new_slots, -1, new_cap*sizeof(Map_Slot)); 
-
-    //copy over slots entries
-    for(isize j = 0; j <= map->slots_mask; j++)
-    {
-        Map_Slot* slot = &map->slots[j];
-        if(slot->index != MAP_EMPTY_ENTRY && slot->index != MAP_REMOVED_ENTRY)
-        {
-            uint64_t i = slot->hash & new_mask;
-            for(uint64_t k = 1; ; k++) {
-                if(new_slots[i].index == MAP_REMOVED_ENTRY || new_slots[i].index == MAP_EMPTY_ENTRY)
-                    break;
-                    
-                i = (i + k) & new_mask;
-            }           
-
-            new_slots[i].hash = slot->hash;
-            new_slots[i].index = slot->index;
-            new_slots[slot->index].backlink = i;
-        }
-    }
-
-    _map_alloc(map->alloc, 0, map->slots, (map->slots_mask + 1)*sizeof(Map_Slot), sizeof(Map_Slot));
-    map->slots = new_slots;
-    map->slots_mask = new_mask;
-    _map_check_hash_invariants(map);
-}
-
-ATTRIBUTE_INLINE_NEVER 
-void _map_deinit(Map* map, uint32_t entry_size, uint32_t entry_align)
-{
-    if(map->capacity > 0) 
-        _map_alloc(map->alloc, 0, map->entries, map->capacity*entry_size, entry_align);
-    if(map->slots_mask > 0) 
-        _map_alloc(map->alloc, 0, map->slots, (map->slots_mask + 1)*sizeof(Map_Slot), sizeof(Map_Slot));
-    memset(map, 0, sizeof* map);
-    _map_check_hash_invariants(map);
-}
-
-EXTERNAL bool _map_remove_found(Map* map, uint32_t index, uint32_t slot, uint32_t entry_size)
-{
-    if(index == (uint32_t) -1)
-    {
-        _map_check_hash_invariants(map);
-        isize removed_index = index;
-        isize last_index = map->count - 1;
-        if(last_index != removed_index)
-        {
-            isize last_slot_i = map->slots[last_index].backlink;
-            Map_Slot* last_slot = &map->slots[last_slot_i];
-            
-            void* removed_entry = map->entries + removed_index*entry_size; 
-            void* last_entry = map->entries + last_index*entry_size;
-            memcpy(removed_entry, last_entry, entry_size);
-            
-            last_slot->index = removed_index;
-            map->slots[last_index].backlink = (uint32_t) -1;
-        }
-
-        Map_Slot* removed_slot = &map->slots[slot];
-        removed_slot->index = MAP_REMOVED_ENTRY;
-        removed_slot->hash = (uint32_t) -1;
-        map->slots_removed += 1;
-        map->count -= 1;
-        _map_check_hash_invariants(map);
-        return true;
-    }
-    return false;
-}
-
-ATTRIBUTE_INLINE_NEVER
-void map_test_hash_invariant(const Map* map, uint32_t flags)
-{
-    if(map->alloc == NULL) {
-        Map null = {0};
-        TEST(memcmp(map, &null, sizeof *map) == 0);
-    }
-    else {
-        if(flags & MAP_TEST_INVARIANTS_BASIC) {
-            TEST(map->capacity < (uint32_t) -2);
-            TEST(map->count <= map->capacity);
-            TEST(map->count <= map->slots_mask + 1);
-            TEST(map->slots_removed <= map->slots_mask + 1);
-            
-            TEST((map->capacity == 0) == (map->entries == NULL));
-            TEST((map->slots_mask == 0) == (map->slots == NULL));
-            TEST((map->capacity == 0) == (map->slots_mask == 0));
-        }
-
-        if(flags & MAP_TEST_INVARIANTS_SLOTS) {
-            for(uint32_t i = 0; i <= map->slots_mask; i++)
-            {
-                Map_Slot* slot = &map->slots[i];
-                if(slot->index == MAP_EMPTY_ENTRY || slot->index == MAP_REMOVED_ENTRY)
-                    TEST(slot->hash == (uint32_t) -1);
-                else
-                    TEST(slot->index < map->count);
-                    
-                if(i < map->count)
-                {
-                    Map_Slot* linked = &map->slots[slot->backlink];
-                    TEST(slot->backlink <= map->slots_mask);
-                    TEST(linked->index == i);
-                }
-            }
-        }
-    }
-}
-
-ATTRIBUTE_INLINE_NEVER
-void map_test_invariant(const Map* map, Map_Info info, uint32_t flags)
-{
-    map_test_hash_invariant(map, flags);
-
-    if(flags & MAP_TEST_INVARIANTS_HASHES) {
-        TEST(info.key_hash);
-        for(uint32_t i = 0; i < map->count; i++)
-        {
-            Map_Found found = map_find_index(map, i);
-            uint8_t* entry = map->entries + i*info.entry_size;
-            uint8_t* key = entry + info.key_offset;
-
-            uint64_t computed_hash = ((Key_Hash_Func)info.key_hash)(key);
-            TEST(computed_hash == found.hash);
-        }
-    }
-
-    if(flags & MAP_TEST_INVARIANTS_FIND) {
-        for(uint32_t i = 0; i < map->count; i++)
-        {
-            Map_Found found = map_find_index(map, i);
-            Map_Slot* slot = &map->slots[found.slot];
-            
-            bool found_self = false;
-
-            uint8_t* entry = map->entries + i*info.entry_size;
-            uint8_t* key = entry + info.key_offset;
-            for(Map_Find_It it = {0}; map_hash_find_iterate(map, info, key, slot->hash, &it); ) {
-                TEST(it.found.hash == slot->hash);
-                if(it.found.index == i)
-                {
-                    TEST(it.found.slot == found.slot);
-                    found_self = true;
-                }
-            }
-
-            TEST(found_self);
-        }
-    }
-}
-
-#endif
-
-typedef struct String {
-    const char* data;
-    isize count;
-} String;
-
-typedef struct My_Entry {
-    String path;
-    int values[16];
-} My_Entry;
-
-typedef union My_Map {
-    Map generic;
-    struct {
-        Allocator* alloc;
-        My_Entry* entries;
-        uint32_t count;
-        uint32_t capacity;
-        
-        Map_Slot* slots;
-        uint32_t slots_removed;
-        uint32_t slots_mask; //capacity of the hash - 1
+        case 3: hash ^= data[2] << 16;
+        case 2: hash ^= data[1] << 8; 
+        case 1: hash ^= data[0];       
+        hash *= magic;
     };
-} My_Map;
 
-ATTRIBUTE_INLINE_NEVER
-uint64_t hash64_fnv(const void* key, int64_t size, uint64_t seed)
+    hash ^= hash >> 13;
+    hash *= magic;
+    hash ^= hash >> 15;
+    return hash;
+} 
+
+HASH_FN_API uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed)
 {
+    uint32_t endian_check = 0x33221100;
+    REQUIRE(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
+    REQUIRE((key != NULL || size == 0) && size >= 0);
+
+    const uint64_t magic = 0xc6a4a7935bd1e995;
+    const int r = 47;
+
+    uint64_t hash = seed ^ ((uint64_t) size * magic);
+
+    const uint8_t* data = (const uint8_t *)key;
+    const uint8_t* end = data + size;
+    for(; data < end - 7; data += 8)
+    {
+        uint64_t read = 0; 
+        memcpy(&read, data, sizeof read);
+
+        read *= magic; 
+        read ^= read >> r; 
+        read *= magic; 
+    
+        hash ^= read;
+        hash *= magic; 
+    }
+    
+    switch(size & 7)
+    {
+        case 7: hash ^= ((uint64_t) data[6]) << 48;
+        case 6: hash ^= ((uint64_t) data[5]) << 40;
+        case 5: hash ^= ((uint64_t) data[4]) << 32;
+        case 4: hash ^= ((uint64_t) data[3]) << 24;
+        case 3: hash ^= ((uint64_t) data[2]) << 16;
+        case 2: hash ^= ((uint64_t) data[1]) << 8; 
+        case 1: hash ^= ((uint64_t) data[0]);       
+        hash *= magic;
+    };
+ 
+    hash ^= hash >> r;
+    hash *= magic;
+    hash ^= hash >> r;
+    return hash;
+} 
+
+#define XXHASH_FN64_PRIME_1  0x9E3779B185EBCA87ULL
+#define XXHASH_FN64_PRIME_2  0xC2B2AE3D27D4EB4FULL
+#define XXHASH_FN64_PRIME_3  0x165667B19E3779F9ULL
+#define XXHASH_FN64_PRIME_4  0x85EBCA77C2B2AE63ULL
+#define XXHASH_FN64_PRIME_5  0x27D4EB2F165667C5ULL
+
+static inline uint64_t _xxhash64_rotate_left(uint64_t x, uint8_t bits)
+{
+    return (x << bits) | (x >> (64 - bits));
+}
+
+static inline uint64_t _xxhash64_process_single(uint64_t previous, uint64_t input)
+{
+    return _xxhash64_rotate_left(previous + input * XXHASH_FN64_PRIME_2, 31) * XXHASH_FN64_PRIME_1;
+}
+
+HASH_FN_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed)
+{
+    uint32_t endian_check = 0x33221100;
+    REQUIRE(*(uint8_t*) (void*) &endian_check == 0 && "Big endian machine detected! Please change this algorithm to suite your machine!");
+    REQUIRE((key != NULL || size == 0) && size >= 0);
+
+    uint8_t* data = (uint8_t*) (void*) key;
+    uint8_t* end = data + size;
+    
+    //Bulk computation
+    uint64_t hash = seed + XXHASH_FN64_PRIME_5;
+    if (size >= 32)
+    {
+        uint64_t state[4] = {0};
+        uint64_t block[4] = {0};
+        state[0] = seed + XXHASH_FN64_PRIME_1 + XXHASH_FN64_PRIME_2;
+        state[1] = seed + XXHASH_FN64_PRIME_2;
+        state[2] = seed;
+        state[3] = seed - XXHASH_FN64_PRIME_1;
+        
+        for(; data < end - 31; data += 32)
+        {
+            memcpy(block, data, 32);
+            state[0] = _xxhash64_process_single(state[0], block[0]);
+            state[1] = _xxhash64_process_single(state[1], block[1]);
+            state[2] = _xxhash64_process_single(state[2], block[2]);
+            state[3] = _xxhash64_process_single(state[3], block[3]);
+        }
+
+        hash = _xxhash64_rotate_left(state[0], 1)
+            + _xxhash64_rotate_left(state[1], 7)
+            + _xxhash64_rotate_left(state[2], 12)
+            + _xxhash64_rotate_left(state[3], 18);
+        hash = (hash ^ _xxhash64_process_single(0, state[0])) * XXHASH_FN64_PRIME_1 + XXHASH_FN64_PRIME_4;
+        hash = (hash ^ _xxhash64_process_single(0, state[1])) * XXHASH_FN64_PRIME_1 + XXHASH_FN64_PRIME_4;
+        hash = (hash ^ _xxhash64_process_single(0, state[2])) * XXHASH_FN64_PRIME_1 + XXHASH_FN64_PRIME_4;
+        hash = (hash ^ _xxhash64_process_single(0, state[3])) * XXHASH_FN64_PRIME_1 + XXHASH_FN64_PRIME_4;
+    }
+    hash += (uint64_t) size;
+
+    //Consume last <32 Bytes
+    for (; data + 8 <= end; data += 8)
+    {
+        uint64_t read = 0; memcpy(&read, data, sizeof read);
+        hash = _xxhash64_rotate_left(hash ^ _xxhash64_process_single(0, read), 27) * XXHASH_FN64_PRIME_1 + XXHASH_FN64_PRIME_4;
+    }
+
+    if (data + 4 <= end)
+    {
+        uint32_t read = 0; memcpy(&read, data, sizeof read);
+        hash = _xxhash64_rotate_left(hash ^ read * XXHASH_FN64_PRIME_1, 23) * XXHASH_FN64_PRIME_2 + XXHASH_FN64_PRIME_3;
+        data += 4;
+    }
+
+    while (data < end)
+        hash = _xxhash64_rotate_left(hash ^ (*data++) * XXHASH_FN64_PRIME_5, 11) * XXHASH_FN64_PRIME_1;
+        
+    // Avalanche
+    hash ^= hash >> 33;
+    hash *= XXHASH_FN64_PRIME_2;
+    hash ^= hash >> 29;
+    hash *= XXHASH_FN64_PRIME_3;
+    hash ^= hash >> 32;
+    return hash;
+}
+
+HASH_FN_API uint32_t hash32_fnv(const void* key, int64_t size, uint32_t seed)
+{
+    REQUIRE((key != NULL || size == 0) && size >= 0);
+
+    uint32_t hash = seed ^ 2166136261UL;
+    const uint8_t* data = (const uint8_t*) key;
+    for(int64_t i = 0; i < size; i++)
+    {
+        hash ^= data[i];
+        hash *= 16777619;
+    }
+    return hash;
+}
+
+HASH_FN_API uint64_t hash64_fnv(const void* key, int64_t size, uint64_t seed)
+{
+    REQUIRE((key != NULL || size == 0) && size >= 0);
+
     const uint8_t* data = (const uint8_t*) key;
     uint64_t hash = seed ^ 0x27D4EB2F165667C5ULL;
     for(int64_t i = 0; i < size; i++)
@@ -575,27 +298,4 @@ uint64_t hash64_fnv(const void* key, int64_t size, uint64_t seed)
     return hash;
 }
 
-bool string_is_equal_ptrs(const String* a, const String* b)
-{
-    return a->count == b->count && memcmp(a->data, b->data, a->count) == 0;
-}
-
-uint64_t string_hash_ptrs(const String* str)
-{
-    return hash64_fnv(str->data, str->count, 0);
-}
-
-
-#define MY_MAP_INFO (Map_Info){sizeof(My_Entry), __alignof(My_Entry), 0, string_is_equal_ptrs, string_hash_ptrs}
-
-#if 0
-bool      my_map_find(const My_Map* map, String string, Map_Found* found)           { return map_find(&map->generic, MY_MAP_INFO, &string, found); }
-bool      my_map_find_iterate(const My_Map* map, String string, Map_Find_It* it)    { return map_find_iterate(&map->generic, MY_MAP_INFO, &string, it); }
-Map_Found my_map_insert(My_Map* map, String string)                                 { return map_insert(&map->generic, MY_MAP_INFO, &string); }
-bool      my_map_insert_or_find(My_Map* map, String string, Map_Found* found)       { return map_insert_or_find(&map->generic, MY_MAP_INFO, &string, found); }
-#else
-bool      my_map_find(const My_Map* map, String string, Map_Found* found)           { return map_hash_find(&map->generic, MY_MAP_INFO, &string, string_hash_ptrs(&string), found); }
-bool      my_map_find_iterate(const My_Map* map, String string, Map_Find_It* it)    { return map_hash_find_iterate(&map->generic, MY_MAP_INFO, &string, string_hash_ptrs(&string), it); }
-Map_Found my_map_insert(My_Map* map, String string)                                 { return map_hash_insert(&map->generic, MY_MAP_INFO, &string, string_hash_ptrs(&string)); }
-bool      my_map_insert_or_find(My_Map* map, String string, Map_Found* found)       { return map_hash_insert_or_find(&map->generic, MY_MAP_INFO, &string, string_hash_ptrs(&string), found); }
 #endif

@@ -6,7 +6,6 @@
 #endif
 
 #include <stdbool.h>
-#include <math.h>
 #include <stdint.h>
 
 static inline int64_t perf_counter();
@@ -91,7 +90,7 @@ static void bench_example()
     #error unsupported platform!
 #endif
 
-#if defined(__x86_64__) || defined(_M_X64) || defined(__amd64__) && !defined(_M_ARM64EC) || defined(_M_CEE_PURE) || defined(i386) || defined(__i386__) || defined(__i386) || defined(_M_IX86)
+#if defined(__x86_64__) || defined(_M_X64) || (defined(__amd64__) && !defined(_M_ARM64EC)) || defined(_M_CEE_PURE) || defined(i386) || defined(__i386__) || defined(__i386) || defined(_M_IX86)
     #ifdef _MSC_VER
         #include <intrin.h>
         static inline int64_t perf_rdtsc(){ 

@@ -2,13 +2,31 @@
 #define MODULE_STRING
 
 #include <stdint.h>
-#include <string.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
-#include "allocator.h"
-#include "array.h"
+#ifdef MODULE_ALL_COUPLED
+    #include "assert.h"
+    #include "profile.h"
+    #include "allocator.h"
+    #include "platform.h"
+#endif
 
-typedef Platform_String String;
+typedef int64_t isize;
+typedef void* (*Allocator)(void* alloc, int mode, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align, void* other);
+
+#ifndef EXTERNAL
+    #define EXTERNAL
+#endif
+
+#ifdef MODULE_PLATFORM
+    typedef Platform_String String;
+#else
+    typedef struct String {
+        const char* data;
+        isize count;
+    } String;
+#endif
 
 //A dynamically resizeable string. Its data member is always null 
 // terminated even without any allocations. 
@@ -27,11 +45,12 @@ typedef struct String_Builder {
     };
 } String_Builder;
 
-typedef Array(String)         String_Array;
-typedef Array(String_Builder) String_Builder_Array;
-
 //Constructs a String out of a string literal
-#define STRING(cstring) BINIT(String){cstring "", sizeof(cstring "") - 1}
+#ifdef __cplusplus
+    #define STRING(cstring) String{cstring, sizeof(cstring"") - 1}
+#else
+    #define STRING(cstring) BINIT(String){cstring, sizeof(cstring"") - 1}
+#endif 
 
 EXTERNAL String string_of(const char* str); //Constructs a string from null terminated str
 EXTERNAL String string_make(const char* data, isize size); //Constructs a string
@@ -49,17 +68,21 @@ EXTERNAL bool   string_has_substring_at(String string, String substring, isize a
 EXTERNAL int    string_compare(String a, String b); //Compares sizes and then lexicographically the contents. Shorter strings are placed before longer ones.
 EXTERNAL int    string_compare_lexicographic(String a, String b); //Compares sizes and then lexicographically the contents then the contents. Shorter strings are placed before longer ones.
 
+EXTERNAL String string_trim_prefix_whitespace(String s);    //" \t\n abc   " ->       "abc   "
+EXTERNAL String string_trim_postfix_whitespace(String s);   //" \t\n abc   " -> " \t\n abc"
+EXTERNAL String string_trim_whitespace(String s);           //" \t\n abc   " ->       "abc"
+
 EXTERNAL isize  string_find_first(String in_str, String search_for, isize from); //returns the first index of search_for in in_str within [from, string.count) or -1 if no index exists
 EXTERNAL isize  string_find_last(String in_str, String search_for, isize from);  //returns the last index of search_for in in_str within [from, string.count) or -1 if no index exists
-EXTERNAL isize  string_find_first_char(String in_str, char search_for, isize from); 
-EXTERNAL isize  string_find_last_char(String in_str, char search_for, isize from); 
+EXTERNAL isize  string_find_first_char(String in_str, char search_for, isize from); //same but only searches a single char
+EXTERNAL isize  string_find_last_char(String in_str, char search_for, isize from); //same but only searches a single char
 
 EXTERNAL isize  string_find_first_or(String in_str, String search_for, isize from, isize if_not_found);
 EXTERNAL isize  string_find_last_or(String in_str, String search_for, isize from, isize if_not_found);
 EXTERNAL isize  string_find_first_char_or(String in_str, char search_for, isize from, isize if_not_found);
 EXTERNAL isize  string_find_last_char_or(String in_str, char search_for, isize from, isize if_not_found);
 
-EXTERNAL isize  string_null_terminate(char* buffer, isize buffer_size, String string);
+EXTERNAL isize  string_null_terminate(char* buffer, isize buffer_size, String string);  //writes into buffer at max buffer_size chars from string. returns the ammount of chars written not including null termination.
 EXTERNAL String string_allocate(Allocator* alloc, String string);
 EXTERNAL void   string_deallocate(Allocator* alloc, String* string);
 
@@ -84,25 +107,63 @@ EXTERNAL bool builder_is_equal(String_Builder a, String_Builder b); //Returns tr
 EXTERNAL int  builder_compare(String_Builder a, String_Builder b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
 EXTERNAL bool builder_is_invariant(String_Builder builder);
 
-EXTERNAL void builder_array_deinit(String_Builder_Array* array);
 EXTERNAL String_Builder string_concat(Allocator* allocator, String a, String b);
 EXTERNAL String_Builder string_concat3(Allocator* allocator, String a, String b, String c);
 
-EXTERNAL int  string_compare_ptrs(const String* a, const String* b); //Same as string_compare except works on pointers. Useful for qsort
-EXTERNAL bool string_is_equal_ptrs(const String* a, const String* b); //Same as string_is_equal except works on pointers. Useful for hash
-EXTERNAL bool builder_is_equal_ptrs(const String_Builder* a, const String_Builder* b); //Same as string_compare except works on pointers. Useful for qsort
-EXTERNAL int  builder_compare_ptrs(const String_Builder* a, const String_Builder* b); //Same as string_is_equal except works on pointers. Useful for hash
+//Format functions. We also have a macro wrapper for these which fake evaluate printf 
+// (its isnde sizeof so it doesnt actually get run). This makes the compielr typecheck the arguments.
+EXTERNAL void vformat_append_into(String_Builder* append_to, const char* format, va_list args);
+EXTERNAL void _format_append_into(String_Builder* append_to, const char* format, ...);
+EXTERNAL void vformat_into(String_Builder* into, const char* format, va_list args);
+EXTERNAL void _format_into(String_Builder* into, const char* format, ...);
+EXTERNAL String_Builder vformat(Allocator* alloc, const char* format, va_list args);
+EXTERNAL String_Builder _format(Allocator* alloc, const char* format, ...);
 
-EXTERNAL bool char_is_space(char c);
-EXTERNAL bool char_is_digit(char c);
-EXTERNAL bool char_is_lowercase(char c);
-EXTERNAL bool char_is_uppercase(char c);
-EXTERNAL bool char_is_alphabetic(char c);
-EXTERNAL bool char_is_id(char c);
+#define  format_into(into, format, ...)             ((void) sizeof printf((format), ##__VA_ARGS__), _format_append_into((into), (format), ##__VA_ARGS__))
+#define  format_append_into(append_to, format, ...) ((void) sizeof printf((format), ##__VA_ARGS__), _format_append_into((append_to), (format), ##__VA_ARGS__))
+#define  format(allocator, format, ...)             ((void) sizeof printf((format), ##__VA_ARGS__), _format((allocator), (format), ##__VA_ARGS__))
+
+//ptrs - these functions do the exact same thing as their non ptrs counterparts except take pointers, which is sometimes
+// useful for things like qsort or my map implementation
+EXTERNAL int  string_compare_ptrs(const String* a, const String* b); 
+EXTERNAL bool string_is_equal_ptrs(const String* a, const String* b);
+EXTERNAL bool builder_is_equal_ptrs(const String_Builder* a, const String_Builder* b);
+EXTERNAL int  builder_compare_ptrs(const String_Builder* a, const String_Builder* b);
+
+EXTERNAL bool char_is_space(char c);    
+EXTERNAL bool char_is_digit(char c); //[0-9]
+EXTERNAL bool char_is_lower(char c); //[a-z]
+EXTERNAL bool char_is_upper(char c); //[A-Z]
+EXTERNAL bool char_is_alpha(char c); //[A-Z] | [a-z]
+
+//Line iteration
+//use like so for(Line_Iterator it = {0}; line_iterator_get_line(&it, string); ) {...}
+typedef struct Line_Iterator {
+    String line;
+    isize line_number; //one based line number
+    isize line_from; //char index within the iterated string of line start
+    isize line_to;  //char index within the iterated string of line end
+} Line_Iterator;
+
+EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
+EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String string, char c);
 #endif
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_STRING)) && !defined(MODULE_HAS_IMPL_STRING)
 #define MODULE_HAS_IMPL_STRING
+    #ifndef PROFILE_START
+        #define PROFILE_START(...)
+        #define PROFILE_STOP(...)
+        #define PROFILE_INSTANT(...)
+    #endif
+
+    #ifndef ASSERT
+        #include <assert.h>
+        #define ASSERT(x, ...)              assert(x)
+        #define ASSERT_SLOW(x, ...)         assert(x)
+        #define REQUIRE(x, ...)             assert(x)
+        #define ASSERT_BOUNDS(x, ...)       assert(x)
+    #endif  
 
     EXTERNAL String string_of(const char* str)
     {
@@ -300,24 +361,9 @@ EXTERNAL bool char_is_id(char c);
         String portion = string_range(string, at_index, at_index + substring.count);
         return string_is_equal(portion, substring);
     }
-    
-    EXTERNAL String_Builder string_concat(Allocator* allocator, String a, String b)
-    {
-        String_Builder out = builder_make(allocator, a.count + b.count);
-        builder_append(&out, a);
-        builder_append(&out, b);
-        return out;
-    }
 
-    EXTERNAL String_Builder string_concat3(Allocator* allocator, String a, String b, String c)
-    {
-        String_Builder out = builder_make(allocator, a.count + b.count + c.count);
-        builder_append(&out, a);
-        builder_append(&out, b);
-        builder_append(&out, c);
-        return out;
-    }
-    
+
+    //String util functions ============================================    
     EXTERNAL isize string_null_terminate(char* buffer, isize buffer_size, String string)
     {
         isize min_size = 0;
@@ -333,7 +379,7 @@ EXTERNAL bool char_is_id(char c);
 
     EXTERNAL String string_allocate(Allocator* alloc, String string)
     {
-        char* data = (char*) allocator_allocate(alloc, string.count + 1, 1);
+        char* data = (char*) (*alloc)(alloc, 0, string.count + 1, NULL, 0, 1, NULL);
         memcpy(data, string.data, (size_t) string.count);
         data[string.count] = '\0';
         String out = {data, string.count};
@@ -343,11 +389,12 @@ EXTERNAL bool char_is_id(char c);
     EXTERNAL void string_deallocate(Allocator* alloc, String* string)
     {
         if(string->count != 0)
-            allocator_deallocate(alloc, (void*) string->data, string->count + 1, 1);
+            (char*) (*alloc)(alloc, 0, NULL, (void*) string->data, string->count + 1, 1, NULL);
         String nil = {0};
         *string = nil;
     }
     
+    //Builder functions ========================================
     static char _builder_null_termination[64] = {0};
     EXTERNAL bool builder_is_invariant(String_Builder builder)
     {
@@ -373,9 +420,8 @@ EXTERNAL bool char_is_id(char c);
     EXTERNAL void builder_deinit(String_Builder* builder)
     {
         ASSERT_SLOW(builder_is_invariant(*builder));
-
         if(builder->data != NULL && builder->data != _builder_null_termination)
-            allocator_deallocate(builder->allocator, builder->data, builder->capacity + 1, 1);
+            (*builder->allocator)(builder->allocator, 0, 0, builder->data, builder->capacity + 1, 1, NULL);
     
         memset(builder, 0, sizeof *builder);
     }
@@ -419,8 +465,8 @@ EXTERNAL bool char_is_id(char c);
         //This is rather tricky because: 
         //  when capacity >  0 we have allocated capacity + 1 bytes
         //  when capacity <= 0 we have allocated nothing
-        //Keep in mind our allocator_reallocate works as both alloc, realloc, and free all at once
-        // so we make sure to call it only once for all cases (so that arenas can be inlined better)
+        //Keep in mind our allocator works as both alloc, realloc, and free all at once
+        // so we make sure to call it only once for all cases
         if(builder->data != NULL && builder->data != _builder_null_termination)
         {
             ASSERT(builder->capacity > 0);
@@ -430,7 +476,7 @@ EXTERNAL bool char_is_id(char c);
         if(capacity == 0)
             new_alloced = 0;
 
-        builder->data = (char*) allocator_reallocate(builder->allocator, new_alloced, old_data, old_alloced, 1);
+        builder->data = (char*) (*builder->allocator)(builder->allocator, 0, new_alloced, old_data, old_alloced, 1, NULL);
         
         //Always memset the new capacity to zero so that that we dont have to set null termination
         //while pushing
@@ -554,14 +600,6 @@ EXTERNAL bool char_is_id(char c);
         return popped;
     }
     
-    EXTERNAL void builder_array_deinit(String_Builder_Array* array)
-    {
-        for(isize i = 0; i < array->count; i++)
-            builder_deinit(&array->data[i]);
-
-        array_deinit(array);
-    }
-    
     EXTERNAL String_Builder builder_of(Allocator* allocator, String string)
     {
         String_Builder builder = builder_make(allocator, 0);
@@ -569,6 +607,91 @@ EXTERNAL bool char_is_id(char c);
             builder_assign(&builder, string);
         return builder;
     }
+    
+    EXTERNAL String_Builder string_concat(Allocator* allocator, String a, String b)
+    {
+        String_Builder out = builder_make(allocator, a.count + b.count);
+        builder_append(&out, a);
+        builder_append(&out, b);
+        return out;
+    }
+
+    EXTERNAL String_Builder string_concat3(Allocator* allocator, String a, String b, String c)
+    {
+        String_Builder out = builder_make(allocator, a.count + b.count + c.count);
+        builder_append(&out, a);
+        builder_append(&out, b);
+        builder_append(&out, c);
+        return out;
+    }
+
+    //Formating functions ========================================
+    #include <stdio.h>
+    #include <stdarg.h>
+    EXTERNAL void vformat_append_into(String_Builder* append_to, const char* format, va_list args)
+    {
+        PROFILE_START();
+        if(format != NULL)
+        {
+            char local[1024];
+            va_list args_copy;
+            va_copy(args_copy, args);
+
+            int size = vsnprintf(local, sizeof local, format, args_copy);
+            isize base_size = append_to->count; 
+            builder_resize_for_overwrite(append_to, append_to->count + size);
+
+            if(size > sizeof local) {
+                PROFILE_INSTANT("format twice")
+                vsnprintf(append_to->data + base_size, size + 1, format, args);
+            }
+            else
+                memcpy(append_to->data + base_size, local, size);
+
+        }
+        PROFILE_STOP();
+        ASSERT(builder_is_invariant(*append_to));
+        return;
+    }
+    
+    EXTERNAL void _format_append_into(String_Builder* append_to, const char* format, ...)
+    {
+        va_list args;
+        va_start(args, format);
+        vformat_append_into(append_to, format, args);
+        va_end(args);
+    }
+    
+    EXTERNAL void vformat_into(String_Builder* into, const char* format, va_list args)
+    {
+        builder_clear(into);
+        vformat_append_into(into, format, args);
+    }
+
+    EXTERNAL void _format_into(String_Builder* into, const char* format, ...)
+    {
+        va_list args;
+        va_start(args, format);
+        vformat_into(into, format, args);
+        va_end(args);
+    }
+    
+    EXTERNAL String_Builder vformat(Allocator* alloc, const char* format, va_list args)
+    {
+        String_Builder builder = builder_make(alloc, 0);
+        vformat_append_into(&builder, format, args);
+        return builder;
+    }
+    
+    EXTERNAL String_Builder _format(Allocator* alloc, const char* format, ...)
+    {   
+        va_list args;
+        va_start(args, format);
+        String_Builder builder = vformat(alloc, format, args);
+        va_end(args);
+        return builder;
+    }
+
 
     EXTERNAL bool builder_is_equal(String_Builder a, String_Builder b)
     {
@@ -578,6 +701,23 @@ EXTERNAL bool char_is_id(char c);
     EXTERNAL int builder_compare(String_Builder a, String_Builder b)
     {
         return string_compare(a.string, b.string);
+    }
+    
+    EXTERNAL int  string_compare_ptrs(const String* a, const String* b)
+    {
+        return string_compare(*a, *b);
+    }
+    EXTERNAL bool string_is_equal_ptrs(const String* a, const String* b)
+    {
+        return string_is_equal(*a, *b);
+    }
+    EXTERNAL int  builder_compare_ptrs(const String_Builder* a, const String_Builder* b)
+    {
+        return builder_compare(*a, *b);
+    }
+    EXTERNAL bool builder_is_equal_ptrs(const String_Builder* a, const String_Builder* b)
+    {
+        return builder_is_equal(*a, *b);
     }
 
     EXTERNAL bool char_is_space(char c)
@@ -590,17 +730,17 @@ EXTERNAL bool char_is_id(char c);
         return '0' <= c && c <= '9';
     }
 
-    EXTERNAL bool char_is_lowercase(char c)
+    EXTERNAL bool char_is_lower(char c)
     {
         return 'a' <= c && c <= 'z';
     }
 
-    EXTERNAL bool char_is_uppercase(char c)
+    EXTERNAL bool char_is_upper(char c)
     {
         return 'A' <= c && c <= 'Z';
     }
 
-    EXTERNAL bool char_is_alphabetic(char c)
+    EXTERNAL bool char_is_alpha(char c)
     {
         //return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z');
 
@@ -608,8 +748,8 @@ EXTERNAL bool char_is_id(char c);
         //using the fact that all uppercase to lowercase letters are 32 apart.
         //That means we can just makes the fifth bit and test once.
         //You can simply test this works by comparing the result of both approaches on all char values.
-        char masked = (c - 'A') & ~(1 << 5);
-        bool is_letter = 0 <= masked && masked <= ('Z' - 'A');
+        uint32_t masked = (uint32_t) (c - 'A') & ~(1 << 5);
+        bool is_letter = masked <= 'Z' - 'A';
 
         return is_letter;
     }
@@ -629,12 +769,57 @@ EXTERNAL bool char_is_id(char c);
         else    
             return c;
     }
-
-    //all characters permitted inside a common programming language id. [0-9], _, [a-z], [A-Z]
-    EXTERNAL bool char_is_id(char c)
-    {
-        return char_is_digit(c) || char_is_alphabetic(c) || c == '_';
-    }
     
+    EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String string, char c)
+    {
+        isize line_from = 0;
+        if(iterator->line_number != 0)
+            line_from = iterator->line_to + 1;
 
+        if(line_from >= string.count)
+            return false;
+
+        isize line_to = string_find_first_char(string, c, line_from);
+        
+        if(line_to == -1)
+            line_to = string.count;
+        
+        iterator->line_number += 1;
+        iterator->line_from = line_from;
+        iterator->line_to = line_to;
+        iterator->line = string_range(string, line_from, line_to);
+
+        return true;
+    }
+
+    EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string)
+    {
+        return line_iterator_next_separated_by(iterator, string, '\n');
+    }
+
+    EXTERNAL String string_trim_prefix_whitespace(String s)
+    {
+        isize from = 0;
+        for(; from < s.count; from++)
+            if(char_is_space(s.data[from]) == false)
+                break;
+
+        return string_tail(s, from);
+    }
+    EXTERNAL String string_trim_postfix_whitespace(String s)
+    {
+        isize to = s.count;
+        for(; to-- > 0; )
+            if(char_is_space(s.data[to]) == false)
+                break;
+
+        return string_head(s, to + 1);
+    }
+    EXTERNAL String string_trim_whitespace(String s)
+    {
+        String prefix_trimmed = string_trim_prefix_whitespace(s);
+        String both_trimmed = string_trim_postfix_whitespace(prefix_trimmed);
+
+        return both_trimmed;
+    }
 #endif

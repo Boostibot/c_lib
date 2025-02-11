@@ -107,7 +107,6 @@ EXTERNAL void file_logger_deinit(File_Logger* logger);
 EXTERNAL void silent_logger_log(Logger* self, Log_Event event, const char* format, va_list args);
 #endif
 
-#define MODULE_IMPL_ALL
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_LOG)) && !defined(MODULE_HAS_IMPL_LOG)
 #define MODULE_HAS_IMPL_LOG
 

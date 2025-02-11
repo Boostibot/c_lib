@@ -1258,7 +1258,7 @@ void test_allocator_tlsf_stress(double seconds, isize at_once)
         
         allocs[i].node = tlsf_get_node(&allocator, allocs[i].ptr);
 
-        TEST((uint64_t) allocs[i].ptr == _tlsf_align_up((uint64_t) allocs[i].ptr, allocs[i].align));
+        TEST((uint64_t) allocs[i].ptr % allocs[i].align == 0);
         tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
 
         iter += 1;

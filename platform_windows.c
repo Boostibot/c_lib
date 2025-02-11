@@ -230,7 +230,7 @@ unsigned _thread_func(void* ptr)
 
 
 
-int64_t         platform_thread_get_proccessor_count();
+int64_t         platform_thread_get_processor_count();
 Platform_Thread platform_thread_get_current(); //Returns handle to the calling thread
 int32_t         platform_thread_get_current_id(); 
 Platform_Thread platform_thread_get_main(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns NULL.
@@ -330,7 +330,7 @@ bool platform_thread_is_main()
     return platform_thread_get_current().handle == platform_thread_get_main().handle;
 }
 
-int64_t platform_thread_get_proccessor_count()
+int64_t platform_thread_get_processor_count()
 {
     return GetCurrentProcessorNumber();
 }

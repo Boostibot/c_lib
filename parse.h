@@ -2,65 +2,201 @@
 #define MODULE_PARSE
 
 #include "defines.h"
+#include "assert.h"
 #include "string.h"
-#include <math.h>
 
-typedef enum Match_Kind {
-    MATCH_NORMAL,
-    MATCH_INVERTED,
-} Match_Kind;
+static inline bool match_save(isize index, isize* save_into) { *save_into = index; return true; }
 
-EXTERNAL bool match_char_custom(String str, isize* index, char c, Match_Kind match);
-EXTERNAL bool match_any_of_custom(String str, isize* index, String any_of, Match_Kind match);
-EXTERNAL bool match_whitespace_custom(String str, isize* index, Match_Kind match);
-
-//Matches a single character
 EXTERNAL bool match_char(String str, isize* index, char c);
-//Matches any number of characters contained within any_of. Returns true if matched at least one.
 EXTERNAL bool match_any_of(String str, isize* index, String any_of);
-//Matches sequence exactly.
-EXTERNAL bool match_sequence(String str, isize* index, String sequence);
-//Matches any number of whitespace chars from index
-EXTERNAL bool match_whitespace(String str, isize* index);
-//matches: [space][non space (*)] and returns true if (*) matched at least one char. Saves to from start of (*) and to to one past_end 
-EXTERNAL bool match_whitespace_separated(String str, isize* index, isize* from, isize* to); 
+EXTERNAL bool match_string(String str, isize* index, String sequence);
+EXTERNAL bool match_any_ofc(String str, isize* index, const char* any_of);
+EXTERNAL bool match_cstring(String str, isize* index, const char* sequence);
+
+EXTERNAL bool match_not_char(String str, isize* index, char c);
+EXTERNAL bool match_not_any_of(String str, isize* index, String any_of);
+EXTERNAL bool match_not_string(String str, isize* index, String sequence);
+
+EXTERNAL bool match_space(String str, isize* index);
+EXTERNAL bool match_alpha(String str, isize* index);
+EXTERNAL bool match_upper(String str, isize* index);
+EXTERNAL bool match_lower(String str, isize* index);
+EXTERNAL bool match_digits(String str, isize* index);
+
+EXTERNAL bool match_not_space(String str, isize* index);
+EXTERNAL bool match_not_alpha(String str, isize* index);
+EXTERNAL bool match_not_upper(String str, isize* index);
+EXTERNAL bool match_not_lower(String str, isize* index);
+EXTERNAL bool match_not_digits(String str, isize* index);
+
+EXTERNAL bool match_bool(String str, isize* index, bool* out); //matches "true" or "false"
+EXTERNAL bool match_choice2(String str, isize* index, bool* out, String if_true, String if_false);
+EXTERNAL bool match_choices(String str, isize* index, isize* taken, const String* choices, isize choices_count);
 
 //starts with _, [a-z], [A-Z] then is followed by any number of [0-9], _, [a-z], [A-Z]
-EXTERNAL bool match_name(String str, isize* index); 
-EXTERNAL bool match_name_chars(String str, isize* index);
+EXTERNAL bool match_id(String str, isize* index); 
 
-EXTERNAL bool match_decimal_u64(String str, isize* index, u64* out); //"00113000" -> 113000
-EXTERNAL bool match_decimal_i64(String str, isize* index, i64* out); //"-00113000" -> -113000
-EXTERNAL bool match_decimal_i32(String str, isize* index, i32* out); //"-00113000" -> -113000
+EXTERNAL bool match_decimal_u64(String str, isize* index, u64* out); //"00113000"   -> 113000
+EXTERNAL bool match_decimal_i64(String str, isize* index, i64* out); //"-00113000"  -> -113000
+EXTERNAL bool match_decimal_i32(String str, isize* index, i32* out); //"-00113000"  -> -113000
 EXTERNAL bool match_decimal_f32(String str, isize* index, f32* out); //"-0011.0300" -> -11.03000
 EXTERNAL bool match_decimal_f64(String str, isize* index, f64* out);
 
-typedef struct Line_Iterator {
-    String line;
-    isize line_number; //one based line number
-    isize line_from; //char index within the iterated string of line start
-    isize line_to;  //char index within the iterated string of line end
-} Line_Iterator;
+#if 1
+//We want to match the following lines 3:
+//[003]: "hello"  KIND_SMALL    -45.3 
+//[431]: 'string' KIND_MEDIUM   131.3 
+//[256]: "world"  KIND_BIG      1531.3 
+// 
+//We will do it in a single expression. 
+//Of course this is little bit crazy and you probably should separate it
+// into multiple ones but here just for the sake of the example we do it this way.
+//Below is a version that is more sane and includes error checking.
+typedef struct Match_Example_Result {
+    double val;
+    double num;
+    String id;
+    int kind;
+} Match_Example_Result;
 
-//use like so for(Line_Iterator it = {0}; line_iterator_get_line(&it, string); ) {...}
-EXTERNAL bool line_iterator_get_line(Line_Iterator* iterator, String string);
-EXTERNAL bool line_iterator_get_separated_by(Line_Iterator* iterator, String string, char c);
+bool match_example(String str, Match_Example_Result* result)
+{
+    isize i = 0;
+    String kinds[3] = {
+        STRING("KIND_BIG"),
+        STRING("KIND_MEDIUM"),
+        STRING("KIND_SMALL"),
+    };
 
-EXTERNAL String string_trim_prefix_whitespace(String s);
-EXTERNAL String string_trim_postfix_whitespace(String s);
-EXTERNAL String string_trim_whitespace(String s);
+    double val = 0;
+    uint64_t num = 0;
+    int64_t id_from = 0;
+    int64_t id_to = 0;
+    int64_t kind = 0;
+    bool ok = true
+        && match_cstring(str, &i, "[")
+        && match_decimal_u64(str, &i, &num)
+        && match_cstring(str, &i, "]:")
+        && (match_space(str, &i), true)
+        && (false
+            || (match_char(str, &i,         '"')
+                && match_save(i, &id_from)
+                && (match_not_char(str, &i, '"'), true)
+                && match_save(i, &id_to)
+                && match_char(str, &i,      '"'))
+            || (match_char(str, &i,         '\'')
+                && match_save(i, &id_from)
+                && (match_not_char(str, &i, '\''), true)
+                && match_save(i, &id_to)
+                && match_char(str, &i,      '\''))
+        )
+        && (match_space(str, &i), true)
+        && match_choices(str, &i, &kind, kinds, 3)
+        && (match_space(str, &i), true)
+        && match_decimal_f64(str, &i, &val);
+
+    if(ok) {
+        result->val = val;
+        result->num = num;
+        result->id = string_range(str, id_from, id_to);
+        result->kind = kind;
+    }
+    return ok;
+}
+
+bool match_example_with_errors(String str, Match_Example_Result* result, int* error_stage)
+{
+    isize i = 0;
+
+    uint64_t num = 0;
+    double val = 0;
+    
+    String kinds[3] = {
+        STRING("KIND_BIG"),
+        STRING("KIND_MEDIUM"),
+        STRING("KIND_SMALL"),
+    };
+
+    int64_t id_from = 0;
+    int64_t id_to = 0;
+    int64_t kind = 0;
+    bool ok = false;
+    do {
+        if((match_cstring(str, &i, "[")
+            && match_decimal_u64(str, &i, &num)
+            && match_cstring(str, &i, "]:")) == false) 
+        {
+            *error_stage = 1;
+            printf("bad start, expected '[' + [number] + ']'\n");
+            break;
+        }
+
+        match_space(str, &i);
+
+        char quote = 'c';
+        if(match_char(str, &i, '"'))
+            quote = '"';
+        else if(match_char(str, &i, '\''))
+            quote = '\'';
+        else
+        {
+            *error_stage = 2;
+            printf("unexpected character found while looking for start of id string\n");
+            break;
+        }
+
+        id_from = i;
+        match_not_char(str, &i, quote);
+        id_to = i;
+        if(match_char(str, &i, quote) == false)
+        {
+            *error_stage = 3;
+            printf("id string was not properly terminated found ...\n");
+            break;
+        }
+        
+        match_space(str, &i);
+        if(0) {}
+        else if(match_cstring(str, &i, "KIND_SMALL"))  kind = 0;
+        else if(match_cstring(str, &i, "KIND_MEDIUM")) kind = 1;
+        else if(match_cstring(str, &i, "KIND_SMALL"))  kind = 2;
+        else {
+            *error_stage = 4;
+            printf("Invalid enum option ...\n");
+            break;
+        }
+        match_space(str, &i);
+
+        if(match_decimal_f64(str, &i, &val) == false)
+        {
+            *error_stage = 5;
+            printf("Could not parse float value...\n");
+            break;
+        }
+        
+        //save parsed variable...
+        result->val = val;
+        result->num = num;
+        result->id = string_range(str, id_from, id_to);
+        result->kind = kind;
+        ok = true;
+    } while(0);
+
+    return ok;
+}
+#endif
 
 #endif
+
+#define MODULE_IMPL_ALL
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_PARSE)) && !defined(MODULE_HAS_IMPL_PARSE)
 #define MODULE_HAS_IMPL_PARSE
 
-
-
-
-EXTERNAL bool match_char_custom(String str, isize* index, char c, Match_Kind match)
+#include <math.h>
+EXTERNAL bool _match_char(String str, isize* index, char c, bool positive)
 {
-    if(*index < str.count && (str.data[*index] == c) == (match == MATCH_NORMAL))
+    if(*index < str.count && (str.data[*index] == c) == positive)
     {
         *index += 1;
         return true;
@@ -68,12 +204,7 @@ EXTERNAL bool match_char_custom(String str, isize* index, char c, Match_Kind mat
     return false;
 }
 
-EXTERNAL bool match_char(String str, isize* index, char c)
-{
-    return match_char_custom(str, index, c, MATCH_NORMAL);
-}
-
-EXTERNAL bool match_any_of_custom(String str, isize* index, String any_of, Match_Kind match)
+EXTERNAL bool _match_any_of(String str, isize* index, String any_of, bool positive)
 {
     isize i = *index;
     for(; i < str.count; i++)
@@ -87,7 +218,7 @@ EXTERNAL bool match_any_of_custom(String str, isize* index, String any_of, Match
                 break;
             }
 
-        if(found != (match == MATCH_NORMAL))
+        if(found != positive)
             break;
     }
 
@@ -96,14 +227,9 @@ EXTERNAL bool match_any_of_custom(String str, isize* index, String any_of, Match
     return matched;
 }
 
-EXTERNAL bool match_any_of(String str, isize* index, String any_of)
+EXTERNAL bool _match_sequence(String str, isize* index, String sequence, bool positive)
 {
-    return match_any_of_custom(str, index, any_of, MATCH_NORMAL);
-}
-
-EXTERNAL bool match_sequence(String str, isize* index, String sequence)
-{
-    if(string_has_substring_at(str, *index, sequence))
+    if(string_has_substring_at(str, sequence, *index) == positive)
     {
         *index += sequence.count;
         return true;
@@ -111,79 +237,58 @@ EXTERNAL bool match_sequence(String str, isize* index, String sequence)
     return false;   
 }
 
-EXTERNAL bool match_whitespace_custom(String str, isize* index, Match_Kind match)
+inline static bool _match_char_category(String str, isize* index, bool (*func)(char c), bool positive)
 {
     isize i = *index;
-    for(; i < str.count; i++)
-    {
-        if(char_is_space(str.data[i]) != (match == MATCH_NORMAL))
+    for(; i < str.count; i++) {
+        if(func(str.data[i]) != positive) 
             break;
     }
-
     bool matched = i != *index;
     *index = i;
     return matched;
 }
 
-
-EXTERNAL bool match_whitespace(String str, isize* index)
-{
-    return match_whitespace_custom(str, index, MATCH_NORMAL);
-}
-
-
-EXTERNAL bool match_whitespace_separated(String str, isize* index, isize* from, isize* to)
-{
-    isize index_ = *index;
-    bool matched = match_whitespace_custom(str, &index_, MATCH_NORMAL);
-    isize from_ = index_;
-    matched = matched && match_whitespace_custom(str, &index_, MATCH_INVERTED);
-    isize to_ = index_;
-
-    if(matched)
-    {
-        *index = index_;
-        *from = from_;
-        *to = to_;
-    }
-
-    return matched;
-}
-
-EXTERNAL bool match_name_chars(String str, isize* index)
-{
-    isize i = *index;
-    for(; i < str.count; i++)
-    {
-        if(char_is_id(str.data[i]) == false)
-            break;
-    }
-
-    bool matched = i != *index;
-    *index = i;
-    return matched;
-}
-
-//starts with _, [a-z], [A-Z] or _ then is followed by any number of [0-9], _, [a-z], [A-Z]
-EXTERNAL bool match_name(String str, isize* index)
+EXTERNAL bool match_id(String str, isize* index)
 {
     if(*index < str.count)
     {
-        if(str.data[*index] == '_' || char_is_alphabetic(str.data[*index]))
+        if(char_is_alpha(str.data[*index]) || str.data[*index] == '_')
         {
             *index += 1;
             for(; *index < str.count; *index += 1)
             {
-                if(char_is_id(str.data[*index]) == false)
+                char c = str.data[*index];
+                bool is_valid = char_is_alpha(c) || char_is_digit(c) || c == '_';
+                if(is_valid == false)
                     break;
             }
 
             return true;
         }
     }
-
     return false;
 }
+
+EXTERNAL bool match_char(String str, isize* index, char c)             { return _match_char(str, index, c, true); }
+EXTERNAL bool match_any_of(String str, isize* index, String any_of)    { return _match_any_of(str, index, any_of, true); }
+EXTERNAL bool match_string(String str, isize* index, String sequence)  { return _match_sequence(str, index, sequence, true);}
+
+EXTERNAL bool match_not_char(String str, isize* index, char c)             { return _match_char(str, index, c, false); }
+EXTERNAL bool match_not_any_of(String str, isize* index, String any_of)    { return _match_any_of(str, index, any_of, false); }
+EXTERNAL bool match_not_string(String str, isize* index, String sequence)  { return _match_sequence(str, index, sequence, false);}
+
+EXTERNAL bool match_space(String str, isize* index)  { return _match_char_category(str, index, char_is_space, true); } 
+EXTERNAL bool match_alpha(String str, isize* index)  { return _match_char_category(str, index, char_is_alpha, true); } 
+EXTERNAL bool match_upper(String str, isize* index)  { return _match_char_category(str, index, char_is_upper, true); } 
+EXTERNAL bool match_lower(String str, isize* index)  { return _match_char_category(str, index, char_is_lower, true); } 
+EXTERNAL bool match_digits(String str, isize* index) { return _match_char_category(str, index, char_is_digit, true); }
+
+EXTERNAL bool match_not_space(String str, isize* index)  { return _match_char_category(str, index, char_is_space, false); } 
+EXTERNAL bool match_not_alpha(String str, isize* index)  { return _match_char_category(str, index, char_is_alpha, false); } 
+EXTERNAL bool match_not_upper(String str, isize* index)  { return _match_char_category(str, index, char_is_upper, false); } 
+EXTERNAL bool match_not_lower(String str, isize* index)  { return _match_char_category(str, index, char_is_lower, false); } 
+EXTERNAL bool match_not_digits(String str, isize* index) { return _match_char_category(str, index, char_is_digit, false); }
 
 //matches a sequence of digits in decimal: "00113000" -> 113000
 EXTERNAL bool match_decimal_u64(String str, isize* index, u64* out)
@@ -296,7 +401,6 @@ EXTERNAL bool match_decimal_f32(String str, isize* index, f32* out)
     return true;
 }
 
-//@TODO: do we need this?
 EXTERNAL bool match_decimal_f64(String str, isize* index, f64* out)
 {
     u64 before_dot = 0;
@@ -320,59 +424,6 @@ EXTERNAL bool match_decimal_f64(String str, isize* index, f64* out)
 
     *out = result;
     return true;
-}
-
-EXTERNAL bool line_iterator_get_separated_by(Line_Iterator* iterator, String string, char c)
-{
-    isize line_from = 0;
-    if(iterator->line_number != 0)
-        line_from = iterator->line_to + 1;
-
-    if(line_from >= string.count)
-        return false;
-
-    isize line_to = string_find_first_char(string, c, line_from);
-        
-    if(line_to == -1)
-        line_to = string.count;
-        
-    iterator->line_number += 1;
-    iterator->line_from = line_from;
-    iterator->line_to = line_to;
-    iterator->line = string_range(string, line_from, line_to);
-
-    return true;
-}
-
-EXTERNAL bool line_iterator_get_line(Line_Iterator* iterator, String string)
-{
-    return line_iterator_get_separated_by(iterator, string, '\n');
-}
-
-EXTERNAL String string_trim_prefix_whitespace(String s)
-{
-    isize from = 0;
-    for(; from < s.count; from++)
-        if(char_is_space(s.data[from]) == false)
-            break;
-
-    return string_tail(s, from);
-}
-EXTERNAL String string_trim_postfix_whitespace(String s)
-{
-    isize to = s.count;
-    for(; to-- > 0; )
-        if(char_is_space(s.data[to]) == false)
-            break;
-
-    return string_head(s, to + 1);
-}
-EXTERNAL String string_trim_whitespace(String s)
-{
-    String prefix_trimmed = string_trim_prefix_whitespace(s);
-    String both_trimmed = string_trim_postfix_whitespace(prefix_trimmed);
-
-    return both_trimmed;
 }
 
 #if 0
