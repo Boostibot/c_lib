@@ -47,6 +47,7 @@ typedef struct Hash_Entry {
 typedef struct Hash_It {
     uint32_t index;  
     uint32_t iter; 
+    Hash_Entry* entry;
 } Hash_It;
 
 #ifndef EXTERNAL
@@ -74,6 +75,8 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
     return entry->value - table->empty_value > 1;
 }
 #endif
+
+#define MODULE_IMPL_ALL
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_HASH)) && !defined(MODULE_HAS_IMPL_HASH)
 #define MODULE_HAS_IMPL_HASH
@@ -127,12 +130,12 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
             uint64_t removed = table->empty_value + 1;
             uint64_t mask = (uint64_t) table->capacity - 1;
             for(;;) {
-                Hash_Entry entry = table->entries[it->index];
-                if(entry.value == empty)
+                it->entry = &table->entries[it->index];
+                if(it->entry->value == empty)
                     break;
                 
-                if(entry.hash == hash)
-                    if(entry.value != removed)
+                if(it->entry->hash == hash)
+                    if(it->entry->value != removed)
                         return true;
                 
                 ASSERT(it->iter <= table->capacity && "must not be completely full!");
@@ -140,6 +143,7 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
                 it->iter += 1; 
             }
         }
+        it->entry = NULL;
         return false;
     }
     
@@ -188,8 +192,10 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
                 
                 if(table->entries[i].value == removed)
                     empty_index = i;
-                else if(table->entries[i].hash == hash)
+                else if(table->entries[i].hash == hash) {
+                    *index = i;
                     return false;
+                }
             }
             
             ASSERT(it <= table->capacity && "must not be completely full!");
@@ -203,7 +209,7 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
         table->entries[i].value = value;
         table->entries[i].hash = hash;
         table->count += 1;
-        
+        *index = i;
         _hash_check_invariants(table);
         return true;
     }
@@ -225,7 +231,7 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
     {
         #ifndef USE_MALLOC
             ASSERT(alloc);
-            return (*alloc)(alloc, new_size, old_ptr, old_size, align, NULL);
+            return (*alloc)(alloc, 0, new_size, old_ptr, old_size, align, NULL);
         #else
             if(new_size != 0) {
                 void* out = realloc(old_ptr, new_size);

@@ -572,29 +572,6 @@ EXTERNAL void debug_allocator_get_stats(Allocator* self_, isize align_and_reques
 {
     Debug_Allocator* self = (Debug_Allocator*) (void*) self_;
     uint64_t request = (uint64_t) align_and_request >> 32;
-    switch (request)
-    {
-        case ALLOC_REQUEST_PARENT               : *(isize*) out = 0; return self_;
-        case ALLOC_REQUEST_NAME                 : *(isize*) out = 0; return self_;
-        case ALLOC_REQUEST_TYPE_NAME            : *(isize*) out = 0; return self_;
-        case ALLOC_REQUEST_ALLOCATION_COUNT     : *(isize*) out = 0; return self_;
-        case ALLOC_REQUEST_DEALLOCATION_COUNT   : *(isize*) out = 0; return self_;
-        case ALLOC_REQUEST_REALLOCATION_COUNT   : *(isize*) out = 0; return self_;
-        case ALLOC_REQUEST_MAX_ALIVE_ALLOCATIONS: *(isize*) out = 0; return self_;
-        case ALLOC_REQUEST_MAX_BYTES_ALLOCATED  : *(isize*) self->max_bytes_allocated; return self_;
-        case ALLOC_REQUEST_CAN_RESIZE           : *(isize*) out = 0; return self_;
-        case ALLOC_REQUEST_CAN_FREE_ALL         : *(isize*) out = 0; return self_;
-        case ALLOC_REQUEST_CAN_GROW             : *(isize*) out = 0; return self_;
-        case ALLOC_REQUEST_IS_TOP_LEVEL         : *(isize*) out = 0; return self_;
-        case ALLOC_REQUEST_FIXED_MEMORY_SIZE    : *(isize*) out = 0; return self_;
-        default: return NULL;
-        case ALLOC_REQUEST_ALLOCATION_COUNT: *(isize*) out = self->allocation_count; return self_;
-        case ALLOC_REQUEST_ALLOCATION_COUNT: *(isize*) out = self->allocation_count; return self_;
-        case ALLOC_REQUEST_ALLOCATION_COUNT: *(isize*) out = self->allocation_count; return self_;
-        case ALLOC_REQUEST_ALLOCATION_COUNT: *(isize*) out = self->allocation_count; return self_;
-        case ALLOC_REQUEST_ALLOCATION_COUNT: *(isize*) out = self->allocation_count; return self_;
-    }
-
     Allocator_Stats out = {0};
     out.type_name = "Debug_Allocator";
     out.name = self->options.name;

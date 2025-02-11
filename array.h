@@ -23,7 +23,9 @@
 // This file is also fully freestanding. To compile the function definitions #define MODULE_IMPL_ALL and include it again in .c file. 
 
 #ifdef MODULE_ALL_COUPLED
+    #include "defines.h"
     #include "assert.h"
+    #include "profile.h"
     #include "allocator.h"
 #endif
 
@@ -94,8 +96,6 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
     #define ASSERT_BOUNDS(i, capacity) assert(0 <= (i) && (i) <= capacity)
 #endif
 
-#define array_set_capacity(array_ptr, capacity) \
-    generic_array_set_capacity(array_make_generic(array_ptr), (capacity))
     
 //Initializes the array. If the array is already initialized deinitializes it first.
 //Thus expects a properly formed array. Suppling a non-zeroed memory will cause errors!
@@ -130,8 +130,7 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
     generic_array_resize(array_make_generic(array_ptr), (to_size), false) 
 
 //Sets the array size to 0. Does not deallocate the array
-#define array_clear(array_ptr) \
-    array_resize_for_overwrite((array_ptr), 0)
+#define array_clear(array_ptr) ((array_ptr)->count = 0)
 
 //Appends item_count items to the end of the array growing it
 #define array_append(array_ptr, items, item_count) (\
@@ -142,9 +141,10 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
     ) \
     
 //Discards current items in the array and replaces them with the provided items
-#define array_assign(array_ptr, items, item_count) \
-    array_clear(array_ptr), \
-    array_append((array_ptr), (items), (item_count))
+#define array_assign(array_ptr, items, item_count) (\
+        array_clear(array_ptr), \
+        array_append((array_ptr), (items), (item_count)) \
+    )\
     
 //Copies from from_arr into to_arr_ptr overriding its elements. 
 #define array_copy(to_arr_ptr, from_arr) \
@@ -167,11 +167,9 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
         ASSERT_BOUNDS((array).count > 0 && "cannot get last from empty array!"), \
         &(array).data[(array).count - 1] \
     ) \
-
-//Returns the total size of the array in bytes
-#define array_byte_size(array) \
-    ((array).count * isizeof *(array).data)
-
+    
+#define array_set_capacity(array_ptr, capacity) \
+    generic_array_set_capacity(array_make_generic(array_ptr), (capacity))
 #endif
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ARRAY)) && !defined(MODULE_HAS_IMPL_ARRAY)

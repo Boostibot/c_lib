@@ -27,14 +27,9 @@ EXTERNAL isize memfind_last_not(const void* ptr, uint8_t value, isize size);
 EXTERNAL isize memfind_pattern_not(const void* ptr, uint64_t value, isize size);
 EXTERNAL isize memfind_pattern_last_not(const void* ptr, uint64_t value, isize size); //Same thing as memfind_pattern_not except in reverse
 
-//SWAR programming utils (taken from bit twiddling hacks)
-// https://graphics.stanford.edu/~seander/bithacks.html
-static inline uint64_t mem_broadcast8(uint8_t val)      {return 0x0101010101010101ull*val;}
-static inline uint64_t mem_broadcast16(uint16_t val)    {return 0x0001000100010001ull*val;}
-static inline uint64_t mem_broadcast32(uint32_t val)    {return (val << 32) | val;}
-static inline uint64_t mem_has_zero_byte(uint64_t val)  {return (val - 0x01010101ull) & ~val & 0x80808080ull; }
-
 #endif
+
+#define MODULE_IMPL_ALL
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_MEM)) && !defined(MODULE_HAS_IMPL_MEM)
 #define MODULE_HAS_IMPL_MEM
@@ -163,7 +158,7 @@ EXTERNAL isize memfind_pattern_not(const void* ptr, uint64_t val, isize size)
         if(*curr != (uint8_t) val_copy)
             return curr - (uint8_t*) ptr;
     }
-
+    
     return -1;
 }
 
@@ -194,29 +189,55 @@ EXTERNAL isize memfind_pattern_last_not(const void* ptr, uint64_t val, isize siz
     return -1;
 }
 
-EXTERNAL isize memfind_last_swar(const void* ptr, uint8_t value, isize size)
+#if defined(_MSC_VER)
+    #include <intrin.h>
+    inline static int32_t mem_swar_find_last_set(uint64_t num)
+    {
+        unsigned long out = 0;
+        _BitScanReverse64(&out, (unsigned long long) num);
+        return (int32_t) out;
+    }
+#elif defined(__GNUC__) || defined(__clang__)
+    inline static int32_t mem_swar_find_last_set(uint64_t num)
+    {
+        return 64 - __builtin_clzll((unsigned long long) num) - 1;
+    }
+#else
+    #error unsupported compiler!
+#endif
+
+//SWAR programming utils (taken from bit twiddling hacks)
+// https://graphics.stanford.edu/~seander/bithacks.html
+static inline uint64_t mem_swar_has_zero_byte(uint64_t val)  
+{
+    return (val - 0x01010101ull) & ~val & 0x80808080ull; 
+}
+
+//https://stackoverflow.com/a/68701617
+static inline uint64_t mem_swar_compare_eq_sign(uint64_t x, uint64_t y) 
+{
+    uint64_t xored = x ^ y;
+    uint64_t mask = ((((xored >> 1) | 0x8080808080808080) - xored) & 0x8080808080808080);
+    return mask;
+}
+
+EXTERNAL isize memfind_last(const void* ptr, uint8_t value, isize size)
 {
     //This could be a lot faster using simd but I didnt 
     REQUIRE(size >= 0 && (ptr != NULL || size == 0));
     uint8_t* curr = (uint8_t*) ptr + size;
     uint8_t* start = (uint8_t*) ptr;
 
-    uint64_t val = value*0x0101010101010101ull;
-    for(; curr - start >= 32; curr -= 32) {
-        uint64_t c[4]; memcpy(c, curr - 32, 32);
-        uint64_t m[4];
-        m[0] = mem_has_zero_byte(c[0] ^ val);
-        m[1] = mem_has_zero_byte(c[1] ^ val);
-        m[2] = mem_has_zero_byte(c[2] ^ val);
-        m[3] = mem_has_zero_byte(c[3] ^ val);
-        if(m[0] | m[1] | m[2] | m[3]) 
-            break;
-    }
-
+    uint64_t c = 0;
+    uint64_t p = value*0x0101010101010101ull;
     for(; curr - start >= 8; curr -= 8) {
         uint64_t c; memcpy(&c, curr - 8, 8);
-        if(mem_has_zero_byte(val ^ c))
-            break; 
+        if(mem_swar_has_zero_byte(p ^ c))
+        {
+            uint64_t matching = mem_swar_compare_eq_sign(c, p);
+            uint64_t index = mem_swar_find_last_set(matching);
+            return curr - (uint8_t*) ptr - index;
+        }
     }
     
     for(; start != curr; curr ++) {
@@ -226,7 +247,6 @@ EXTERNAL isize memfind_last_swar(const void* ptr, uint8_t value, isize size)
 
     return -1;
 }
-
 
 EXTERNAL isize memfind(const void* ptr, uint8_t value, isize size)
 {
@@ -244,106 +264,4 @@ EXTERNAL isize memfind_last_not(const void* ptr, uint8_t value, isize size)
 {
     return memfind_pattern_last_not(ptr, value*0x0101010101010101ull, size); 
 }
-
-#define MEM_FIND_SWAR 0
-#define MEM_FIND_AVX2 1
-
-#if !defined(MEM_FIND) || MEM_FIND == MEM_FIND_AVX2
-
-#if defined(__x86_64__) || defined(_M_X64) || defined(__amd64__) && !defined(_M_ARM64EC) || defined(_M_CEE_PURE) || defined(i386) || defined(__i386__) || defined(__i386) || defined(_M_IX86)
-
-#if defined(_MSC_VER) && !defined(__clang__)
-    #include <intrin.h>
-    static int32_t _mem_find_last_set_bit64(uint64_t num)
-    {
-        unsigned long out = 0;
-        _BitScanReverse64(&out, (unsigned long long) num);
-        return (int32_t) out;
-    }
-
-    static inline void _mem_movsb(void* dest, const void* src, unsigned long long count)
-    {
-        __movsb(dest, src, count);
-    }
-
-    #define MEM_ALIGNAS(x) __declspec(align(x))
-#elif defined(__GNUC__) || defined(__clang__)
-    #include <x86intrin.h>
-    static int32_t _mem_find_last_set_bit64(uint64_t num)
-    {
-        return 64 - __builtin_clzll((unsigned long long) num) - 1;
-    }
-
-    static inline void _mem_movsb(void* dest, const void* src, unsigned long long count)
-    {
-        __asm__ volatile(
-            "movq %0, %%rdi;"
-            "movq %1, %%rsi;"
-            "movq %2, %%rcx;"
-            "rep movsb;"
-            :
-            : "r"(dest), "r"(src), "r"(count)
-            : "rdi", "rsi", "rcx", "memory"
-        );
-    }
-
-    #define MEM_ALIGNAS(x) alignas(x)
-#else
-    #error unsupported compiler!
-#endif
-
-EXTERNAL isize memfind_last_avx2(const void* ptr, uint8_t value, isize size)
-{
-    __m256i pattern = _mm256_set1_epi8(value);
-    uint8_t* curr = (uint8_t*) ptr + size;
-    uint8_t* start = (uint8_t*) ptr;
-    for(; curr - start >= 32; curr -= 32) {
-        __m256i c = _mm256_loadu_si256((const __m256i*) curr);
-        __m256i eq = _mm256_cmpeq_epi8(c, pattern);
-        uint32_t mask = (uint32_t) _mm256_movemask_epi8(eq);
-        if(mask != 0)
-        {
-            isize offset = _mem_find_last_set_bit64(mask);
-            return curr - (uint8_t*) ptr + offset;
-        } 
-    }
-
-    isize rem = curr - start; 
-    if(rem != 0) {
-        //there are faster ways to handle this but this one is very simple
-        // and I dont care much so i use that.
-        MEM_ALIGNAS(32) uint8_t local[32]; 
-        _mm256_store_si256((__m256i*) local, pattern);
-        _mem_movsb(local, start, rem);
-        
-        __m256i c = _mm256_load_si256((const __m256i*) local);
-        __m256i eq = _mm256_cmpeq_epi8(c, pattern);
-        uint32_t mask = (uint32_t) _mm256_movemask_epi8(eq);
-        if(mask != 0)
-        {
-            isize offset = _mem_find_last_set_bit64(mask);
-            return curr - (uint8_t*) ptr + offset;
-        } 
-    }
-    return -1;
-}
-    #define MEM_FIND MEM_FIND_AVX2
-#else
-
-#endif
-#endif
-
-#ifndef MEM_FIND
-    #define MEM_FIND MEM_FIND_SWAR
-#endif
-
-EXTERNAL isize memfind_last(const void* ptr, uint8_t value, isize size)
-{
-    #ifdef MEM_FIND == MEM_FIND_SWAR
-        memfind_last_swar(ptr, value, size);
-    #else
-        memfind_last_avx2(ptr, value, size);
-    #endif
-}
-
 #endif

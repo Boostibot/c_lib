@@ -136,6 +136,9 @@ EXTERNAL bool char_is_lower(char c); //[a-z]
 EXTERNAL bool char_is_upper(char c); //[A-Z]
 EXTERNAL bool char_is_alpha(char c); //[A-Z] | [a-z]
 
+EXTERNAL char char_to_upper(char c);
+EXTERNAL char char_to_lower(char c);
+
 //Line iteration
 //use like so for(Line_Iterator it = {0}; line_iterator_get_line(&it, string); ) {...}
 typedef struct Line_Iterator {
@@ -389,7 +392,7 @@ EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String st
     EXTERNAL void string_deallocate(Allocator* alloc, String* string)
     {
         if(string->count != 0)
-            (char*) (*alloc)(alloc, 0, NULL, (void*) string->data, string->count + 1, 1, NULL);
+            (char*) (*alloc)(alloc, 0, 0, (void*) string->data, string->count + 1, 1, NULL);
         String nil = {0};
         *string = nil;
     }
@@ -747,8 +750,8 @@ EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String st
         //this is just a cute way of doing the two range checks in one
         //using the fact that all uppercase to lowercase letters are 32 apart.
         //That means we can just makes the fifth bit and test once.
-        //You can simply test this works by comparing the result of both approaches on all char values.
-        uint32_t masked = (uint32_t) (c - 'A') & ~(1 << 5);
+        //Note that clang produces the same assembly for both the naive version above and this one.
+        unsigned masked = (unsigned) (c - 'A') & ~(1u << 5);
         bool is_letter = masked <= 'Z' - 'A';
 
         return is_letter;
