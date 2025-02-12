@@ -91,7 +91,7 @@ EXTERNAL Allocator_Stats                 allocator_get_stats(Allocator* alloc);
 #define ALLOCATE(alloc, new_count, T)                       (T*) allocator_allocate((alloc), (new_count)*sizeof(T), __alignof(T))
 #define DEALLOCATE(alloc, old_ptr, old_count, T)                 allocator_deallocate((alloc), (old_ptr), (old_count)*sizeof(T), __alignof(T))
 
-EXTERNAL void allocator_panic(Allocator_Error* error);
+EXTERNAL void allocator_panic(Allocator_Error error);
 EXTERNAL void allocator_error(Allocator_Error* error_or_null, Allocator_Error_Type error_type, Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align, const char* format, ...);
 
 //All of these return the previously used Allocator_Set. This enables simple set/restore pair. 
@@ -194,7 +194,7 @@ EXTERNAL void* align_backward(void* ptr, isize align_to);
         }
 
         if(error_or_null == NULL)
-            allocator_panic(&error);
+            allocator_panic(error);
         else
             *error_or_null = error;
     }
