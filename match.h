@@ -21,7 +21,7 @@
 //Note that the floating point parsing is not *perfectly* accurate for extremely large or very small numbers (though it is very very close).
 //If you want to make this perfectly accurate just replace the match_decimal_number_convert function for your own.
 
-EXTERNAL bool match_any(String str, isize* index, isize count); //matches any character. Returns if *index + count <= str.count
+EXTERNAL bool match_any(String str, isize* index, isize count); //matches any character. Returns *index + count <= str.count
 EXTERNAL bool match_char(String str, isize* index, char c); //matches char c once. Returns true if matched
 EXTERNAL bool match_chars(String str, isize* index, char c); //matches char c repeatedly. Returns true if at least one was matched
 EXTERNAL bool match_one_of(String str, isize* index, String one_of); //matches any char of one_of once. Returns true if matched
@@ -61,7 +61,7 @@ EXTERNAL bool match_not_id_chars(String str, isize* index);
 
 EXTERNAL bool match_bool(String str, isize* index, bool* out); //matches "true" or "false" and indicates out respectively
 EXTERNAL bool match_choice(String str, isize* index, bool* out, String if_true, String if_false); //matches either of the strings and indicates which one
-EXTERNAL bool match_choices(String str, isize* index, isize* taken, const String* choices, isize choices_count); //matches one of the strings and indicates its 0-based index
+EXTERNAL bool match_choices(String str, isize* index, isize* taken, const String* choices, isize choices_count); //matches one of the strings and indicates its 0-based index (useful for enums)
 
 //Matching of decimal numbers. These functions are by default quite strict and dont allow things like
 // leading plus, leading zeroes, leading dot, trailing dot (they will match the number just wont consume the dot)...
@@ -131,9 +131,9 @@ static inline bool match_example(String str, Match_Example_Result* result)
     int64_t kind = 0;
     bool ok = true
         && match_cstring(str, &i, "[")
-        && match_decimal_u64(str, &i, &num)
+        && match_decimal_u64_options(str, &i, &num, MATCH_NUM_LEADING_ZEROS)
         && match_cstring(str, &i, "]:")
-        && (match_space(str, &i), true)
+        && (match_space(str, &i), true) //optional space
         && (false
             || (match_char(str, &i,         '"')
                 && (id_from = i, true)
@@ -146,11 +146,12 @@ static inline bool match_example(String str, Match_Example_Result* result)
                 && (id_to = i, true)
                 && match_char(str, &i,      '\''))
         )
-        && (match_space(str, &i), true)
+        && (match_space(str, &i), true) //optional space
         && match_choices(str, &i, &kind, kinds, 3)
-        && (match_space(str, &i), true)
-        && match_decimal_f64(str, &i, &val);
-
+        && match_space(str, &i) //mandatory space
+        && match_decimal_f64_options(str, &i, &val, MATCH_NUM_DOT | MATCH_NUM_MINUS)
+        && (i == str.count || match_space(str, &i)); //the end or there is mandatory space
+    
     if(ok) {
         result->val = val;
         result->num = num;
@@ -264,7 +265,7 @@ inline static bool _match_char_category(String str, isize* index, bool (*is_cate
         if(is_category_char(str.data[*index]) != positive) 
             break;
     
-    return *index == start;
+    return *index != start;
 }
 
 inline static bool _match_is_id_body_char(char c)
@@ -798,12 +799,12 @@ static void test_match()
     test_match_i64("9999999999999999999999", INT64_MAX, true, MATCH_NUM_CLAMP_TO_RANGE);
     test_match_i64("-9999999999999999999999", INT64_MIN, true, MATCH_NUM_MINUS | MATCH_NUM_CLAMP_TO_RANGE);
 
-    test_match_ok_example("[3]: \"hello\"  KIND_SMALL    -45.3 ",        3, "hello", 0, -45.3);
+    test_match_ok_example("[003]: \"hello\"  KIND_SMALL    -45.3 ",        3, "hello", 0, -45.3);
     test_match_ok_example("[431]: 'string'   KIND_MEDIUM   131.3   xxx",   431, "string", 1, 131.3);
     test_match_ok_example("[256]: \"world\"  KIND_BIG      1531.3  51854", 256, "world", 2, 1531.3);
     test_match_ok_example("[516316316464]: \"very long id\"  KIND_BIG  \v\f\n  484864846444165115131135648668.45443513515313518798784131845535778", 
         516316316464, "very long id", 2, 484864846444165115131135648668.45443513515313518798784131845535778);
-    test_match_ok_example("[0]:\"\"KIND_SMALL-0", 0, "", 0, 0);
+    test_match_ok_example("[0]:\"\"KIND_SMALL -0", 0, "", 0, 0);
     
     test_match_failed_example("");
     test_match_failed_example("[]:    \"hello\"  KIND_SMALL    -45.3 ");
@@ -817,7 +818,11 @@ static void test_match()
     test_match_failed_example("[256]: \"world\"  KIND_SMALLL   1531.3  51854");
     test_match_failed_example("[256]: \"world\"  KIND_MEDIUMHH 1531.3  51854");
     test_match_failed_example("[256]: \"world\"  KIND_SMALL    +1531.3  51854");
-    test_match_failed_example("[256]: \"world\"  KIND_MEDIUM   ALPHA ");
+    test_match_failed_example("[003]: \"hello\"  KIND_SMALL    -45.3aaa");
+    test_match_failed_example("[003]: \"hello\"  KIND_SMALL    inf");
+    test_match_failed_example("[003]: \"hello\"  KIND_SMALL    infinity");
+    test_match_failed_example("[003]: \"hello\"  KIND_SMALL    1.3e5");
+    test_match_failed_example("[003]: \"hello\"  KIND_SMALL    nan");
     test_match_failed_example("[256]: \"world\"  KIND_MEDIUM   a");
     test_match_failed_example("[256]: \"world\"  KIND_MEDIUM   ");
 }
