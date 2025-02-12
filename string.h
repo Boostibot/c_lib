@@ -62,6 +62,7 @@ EXTERNAL String string_safe_head(String string, isize to); //returns string_head
 EXTERNAL String string_safe_tail(String string, isize from); //returns string_tail using from. If from is outside the range [0, string.count] clamps it to the range. 
 EXTERNAL String string_safe_range(String string, isize from, isize to); //returns a string containing characters staring from from and ending in to ( [from, to) interval )
 EXTERNAL bool   string_is_equal(String a, String b); //Returns true if the sizes and contents of the strings match
+EXTERNAL bool   string_is_equal_nocase(String a, String b); //Returns true if the sizes and contents of the strings match when ascii of both is converted to lowercase
 EXTERNAL bool   string_is_prefixed_with(String string, String prefix); 
 EXTERNAL bool   string_is_postfixed_with(String string, String postfix);
 EXTERNAL bool   string_has_substring_at(String string, String substring, isize at_index); //Returns true if string has substring at index from_index
@@ -336,6 +337,18 @@ EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String st
     EXTERNAL bool string_is_equal(String a, String b)
     {
         return a.count == b.count && memcmp(a.data, b.data, (size_t) a.count) == 0;
+    }
+
+    EXTERNAL bool string_is_equal_nocase(String a, String b)
+    {
+        if(a.count == b.count)
+        {
+            for(isize i = 0; i < a.count; i++)
+                if(char_to_lower(a.data[i]) != char_to_lower(b.data[i]))
+                    return false;
+            return true;
+        }
+        return false;
     }
 
     EXTERNAL bool string_is_prefixed_with(String string, String prefix)
@@ -767,7 +780,7 @@ EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String st
     
     EXTERNAL char char_to_lower(char c)
     {
-        if('A' <= c && c <= 'A')
+        if('A' <= c && c <= 'Z')
             return c - 'A' + 'a';
         else    
             return c;
