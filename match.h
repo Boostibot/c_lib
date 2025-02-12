@@ -7,6 +7,17 @@
 #include "string.h"
 
 //A file for simple, fast and convenient parsing. See the bottom of the header section for a working example.
+//
+//The core primitive is matching: all functions take pointer to an index and try to match some specific pattern (ie. whitespace).
+// If they fail they return false and do nothing. If they succeed they move the index to the end of the parsed pattern and return true.
+// One can extract the parsed portion by saving the index before and after successful match, then slicing the input string. 
+// Additionally some functions (number parsing) also directly output the parsed number.
+// 
+//One of the goals of this module is make the parsing be very detailed (but not tedious!) - it should match the bare minimum specified
+// and everything else is an error. The optionality can be added later on by the programmer but done so explicitly. For example
+// many parsing functions automatically skip whitespace before or after numbers/whatever else - we dont do that here.
+// This is useful for implementing strict parsers of file formats/validating inputs etc.
+// 
 //Note that the floating point parsing is not *perfectly* accurate for extremely large or very small numbers (though it is very very close).
 //If you want to make this perfectly accurate just replace the match_decimal_number_convert function for your own.
 
@@ -52,10 +63,10 @@ EXTERNAL bool match_bool(String str, isize* index, bool* out); //matches "true" 
 EXTERNAL bool match_choice(String str, isize* index, bool* out, String if_true, String if_false); //matches either of the strings and indicates which one
 EXTERNAL bool match_choices(String str, isize* index, isize* taken, const String* choices, isize choices_count); //matches one of the strings and indicates its 0-based index
 
-//Matching of decimal numbers. These functions are by default very strict and dont allow things like
-// leading plus, leading zeroes, leading dot, trailing dot, inf, nan...
-//When the number doesnt fit into the destination type report error. 
-// The specific behaviour can be configured by using the _option variants with the appropriate flags
+//Matching of decimal numbers. These functions are by default quite strict and dont allow things like
+// leading plus, leading zeroes, leading dot, trailing dot (they will match the number just wont consume the dot)...
+// When the number doesnt fit into the destination type these functions fail (floats always fit).
+// The specific behaviour can be configured by using the _option variants with one of the many appropriate flags
 EXTERNAL bool match_decimal_u64(String str, isize* index, uint64_t* out); //matches numbers like "1130"   -> 113. 
 EXTERNAL bool match_decimal_i64(String str, isize* index, int64_t* out); //matches numbers like "-113"  -> -113
 EXTERNAL bool match_decimal_f64(String str, isize* index, double* out); //matches numbers like "-11.03", "-12.3e-4", "-inf", "nan"
@@ -63,8 +74,8 @@ EXTERNAL bool match_decimal_u32(String str, isize* index, uint32_t* out); //matc
 EXTERNAL bool match_decimal_i32(String str, isize* index, int32_t* out); //matches numbers like "-113"  -> -113
 EXTERNAL bool match_decimal_f32(String str, isize* index, float* out);  //matches numbers like "-11.03" -> -11.03
 
-#define MATCH_NUM_INF             1
-#define MATCH_NUM_NAN             2 
+#define MATCH_NUM_INF             1    //allows floating point infinities (does nothing for ints)
+#define MATCH_NUM_NAN             2    //allows floating point nans (does nothing for ints)
 #define MATCH_NUM_EXP             4    //allows floating point "1.3e-10" (negative exponents are always allowed, leading plus only with MATCH_NUM_PLUS, leading zeros only with MATCH_NUM_LEADING_ZEROS)
 #define MATCH_NUM_DOT             8    //allows floating point numbers with a dot
 #define MATCH_NUM_PLUS            16   //allows numbers like "+10"
