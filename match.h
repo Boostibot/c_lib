@@ -6,7 +6,8 @@
 #include <string.h>
 #include "string.h"
 
-//A file for simple, fast and convenient parsing. See the bottom of the header section for a working example
+//A file for simple, fast and convenient parsing. See the bottom of the header section for a working example.
+//Note that the floating point parsing is perfectly accurate (well at least from the little testing I have done).
 
 EXTERNAL bool match_any(String str, isize* index, isize count); //matches any character. Returns if *index + count <= str.count
 EXTERNAL bool match_char(String str, isize* index, char c); //matches char c once. Returns true if matched
@@ -16,7 +17,8 @@ EXTERNAL bool match_any_of(String str, isize* index, String any_of); //matches a
 EXTERNAL bool match_string(String str, isize* index, String sequence); //matches the exact sequence. The sequence needs to match as one part
 inline static bool match_cstring(String str, isize* index, const char* sequence) { return match_string(str, index, string_of(sequence)); }
 
-EXTERNAL bool match_space(String str, isize* index);    //matches char_is_space
+//these functions match the appropriate char_is_xxxxx repeatedly and return true if at least one char was matched. 
+EXTERNAL bool match_space(String str, isize* index);    
 EXTERNAL bool match_alpha(String str, isize* index);
 EXTERNAL bool match_upper(String str, isize* index);
 EXTERNAL bool match_lower(String str, isize* index);
@@ -42,12 +44,13 @@ EXTERNAL bool match_not_digits(String str, isize* index);
 EXTERNAL bool match_not_id_chars(String str, isize* index); 
 
 EXTERNAL bool match_bool(String str, isize* index, bool* out); //matches "true" or "false" and indicates out respectively
-EXTERNAL bool match_choice(String str, isize* index, bool* out, String if_true, String if_false);
-EXTERNAL bool match_choices(String str, isize* index, isize* taken, const String* choices, isize choices_count); //matches one
+EXTERNAL bool match_choice(String str, isize* index, bool* out, String if_true, String if_false); //matches either of the strings and indicates which one
+EXTERNAL bool match_choices(String str, isize* index, isize* taken, const String* choices, isize choices_count); //matches one of the strings and indicates its 0-based index
 
 //Matching of decimal numbers. These functions are by default very strict and dont allow things like
-// leading plus, leading zeroes, leading dot, trailing dot and when the number doesnt fit into the destination type
-// report error. The specific behaviour can be configured by using the _option variants with the appropriate flags
+// leading plus, leading zeroes, leading dot, trailing dot, inf, nan...
+//When the number doesnt fit into the destination type report error. 
+// The specific behaviour can be configured by using the _option variants with the appropriate flags
 EXTERNAL bool match_decimal_u64(String str, isize* index, uint64_t* out); //matches numbers like "113000"   -> 113000. 
 EXTERNAL bool match_decimal_i64(String str, isize* index, int64_t* out); //matches numbers like "-113000"  -> -113000
 EXTERNAL bool match_decimal_f64(String str, isize* index, double* out); //matches numbers like "-11.0300" -> -11.03000
@@ -59,7 +62,7 @@ EXTERNAL bool match_decimal_f32(String str, isize* index, float* out);  //matche
 #define MATCH_NUM_MINUS                 2  //allows numbers like "-10" 
 #define MATCH_NUM_PLUS                  4  //allows numbers like "+10"
 #define MATCH_NUM_CLAMP_TO_RANGE        8  //when the number doesnt fit into the destination type, clamps it to it (ie will return UINT64_MAX instead of failure)
-#define MATCH_NUM_DISALLOW_DOT          16 //dissalows floting point numbers with a dot - the resulting numbers are integers but with arbitrbitrarily alrge exponent
+#define MATCH_NUM_DISALLOW_DOT          16 //disallows floating point numbers with a dot - the resulting numbers are integers but with arbitrarily large exponent
 #define MATCH_NUM_ALLOW_LEADING_DOT     32 //allows numbers like ".5"
 #define MATCH_NUM_ALLOW_TRAILING_DOT    64 //allows numbers like "5." - note that even in conjuction with MATCH_NUM_ALLOW_LEADING_DOT "." is still invalid
 EXTERNAL bool match_decimal_f64_options(String str, isize* index, double* out, uint32_t flags);
@@ -75,7 +78,7 @@ EXTERNAL bool match_decimal_number_int_part(String str, isize* index, Matched_Nu
 EXTERNAL bool match_decimal_number_frac_part(String str, isize* index, Matched_Number* in_out);
 EXTERNAL double match_decimal_number_convert(Matched_Number number);
 
-//We want to match the following lines 3:
+//We want to match the following 3 lines:
 //[003]: "hello"  KIND_SMALL    -45.3 
 //[431]: 'string' KIND_MEDIUM   131.3 
 //[256]: "world"  KIND_BIG      1531.3 
