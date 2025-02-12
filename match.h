@@ -1,6 +1,9 @@
 #ifndef MODULE_MATCH
 #define MODULE_MATCH
 
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
 #include "string.h"
 
 //A file for simple, fast and convenient parsing. See the bottom of the header section for a working example
@@ -55,7 +58,7 @@ EXTERNAL bool match_decimal_f32(String str, isize* index, float* out);  //matche
 #define MATCH_NUM_ALLOW_LEADING_ZEROS   1  //allows numbers like "0001"
 #define MATCH_NUM_MINUS                 2  //allows numbers like "-10" 
 #define MATCH_NUM_PLUS                  4  //allows numbers like "+10"
-#define MATCH_NUM_CLAMP_TO_RANGE           8  //when the number doesnt fit into the destination type, clamps it to it (ie will return UINT64_MAX instead of failure)
+#define MATCH_NUM_CLAMP_TO_RANGE        8  //when the number doesnt fit into the destination type, clamps it to it (ie will return UINT64_MAX instead of failure)
 #define MATCH_NUM_DISALLOW_DOT          16 //dissalows floting point numbers with a dot - the resulting numbers are integers but with arbitrbitrarily alrge exponent
 #define MATCH_NUM_ALLOW_LEADING_DOT     32 //allows numbers like ".5"
 #define MATCH_NUM_ALLOW_TRAILING_DOT    64 //allows numbers like "5." - note that even in conjuction with MATCH_NUM_ALLOW_LEADING_DOT "." is still invalid
@@ -91,9 +94,9 @@ static inline bool match_example(String str, Match_Example_Result* result)
 {
     isize i = 0;
     String kinds[3] = {
-        STRING("KIND_BIG"),
-        STRING("KIND_MEDIUM"),
         STRING("KIND_SMALL"),
+        STRING("KIND_MEDIUM"),
+        STRING("KIND_BIG"),
     };
 
     double val = 0;
@@ -134,21 +137,10 @@ static inline bool match_example(String str, Match_Example_Result* result)
 
 #endif
 
-#define MODULE_IMPL_ALL
-
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_MATCH)) && !defined(MODULE_HAS_IMPL_MATCH)
 #define MODULE_HAS_IMPL_MATCH
-EXTERNAL bool match_any(String str, isize* index, isize count)
-{
-    if(*index + count <= str.count)
-    {
-        *index += count;
-        return true;
-    }
-    return false;
-}
 
-EXTERNAL bool _match_char(String str, isize* index, char c, bool positive)
+inline static bool _match_char(String str, isize* index, char c, bool positive)
 {
     if(*index < str.count && (str.data[*index] == c) == positive)
     {
@@ -158,7 +150,7 @@ EXTERNAL bool _match_char(String str, isize* index, char c, bool positive)
     return false;
 }
 
-EXTERNAL bool _match_chars(String str, isize* index, char chars, bool positive)
+inline static bool _match_chars(String str, isize* index, char chars, bool positive)
 {
     isize start = *index;
     isize i = start;
@@ -185,7 +177,7 @@ EXTERNAL bool _match_chars(String str, isize* index, char chars, bool positive)
     return i == start;
 }
 
-EXTERNAL bool _match_one_of(String str, isize* index, String one_of, bool positive)
+inline static bool _match_one_of(String str, isize* index, String one_of, bool positive)
 {
     isize i = *index;
     if(i < str.count) {
@@ -199,19 +191,21 @@ EXTERNAL bool _match_one_of(String str, isize* index, String one_of, bool positi
     }
     return false;
 }
-EXTERNAL bool _match_any_of(String str, isize* index, String any_of, bool positive)
+inline static bool _match_any_of(String str, isize* index, String any_of, bool positive)
 {
     isize start = *index;
     while(_match_one_of(str, index, any_of, positive));
     return *index == start;
 }
 
-EXTERNAL bool _match_sequence(String str, isize* index, String sequence, bool positive)
+inline static bool _match_sequence(String str, isize* index, String sequence, bool positive)
 {
-    if(string_has_substring_at(str, sequence, *index) == positive)
+    if(*index + sequence.count <= str.count) 
     {
-        *index += sequence.count;
-        return true;
+        if((memcmp(str.data + *index, sequence.data, sequence.count) == 0) == positive) {
+            *index += sequence.count;
+            return true;
+        }
     }
     return false;   
 }
@@ -228,6 +222,16 @@ inline static bool _match_char_category(String str, isize* index, bool (*is_cate
 inline static bool _match_is_id_body_char(char c)
 {
     return char_is_alpha(c) || char_is_digit(c) || c == '_';
+}
+
+EXTERNAL bool match_any(String str, isize* index, isize count)
+{
+    if(*index + count <= str.count)
+    {
+        *index += count;
+        return true;
+    }
+    return false;
 }
 
 EXTERNAL bool match_char(String str, isize* index, char c)             { return _match_char(str, index, c, true); }
@@ -546,6 +550,7 @@ EXTERNAL bool match_decimal_f32(String str, isize* index, float* out)
 #if (defined(MODULE_ALL_TEST) || defined(MODULE_MATCH_TEST)) && !defined(MODULE_MATCH_HAS_TEST)
 #define MODULE_MATCH_HAS_TEST
 
+#include "string.h"
 static void test_match_ok_example(const char* input, int64_t num, const char* id, int kind, double val)
 {
     double epsilon = 1e-8;
