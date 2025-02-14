@@ -23,7 +23,7 @@ This is a perpetually ongoing development C codebase I use for personal projects
 - *`image.h`: Generic image container and subimage view into it. Works with any pixel format as long as it fits evenly into some number of bytes (ie. doesnt do bitpacking). 
 - *`slz4.h`: Simple but quite fast LZ4 compressor/decompressor. On the enwik8 dataset achieves compression speed of 130MB/s, 2.10 compression ratio and decompression speed of 2.7GB/s. Tested for safety and full standard compliance.
 - *`sort.h`: A generic C sorting implementation (ie. like `qsort`) which abuses `__forceinline` (or similar) directive to inline the function-pointer argument to generate close to optimal assembly. Has a quick sort impelmentation that matches perf of pdqsort on random data as well as very optimized heapsort which outperforms pdqsort by about 20% on large (> 3000 items) datasets. Yes, I was surprised too - turns out heapsort is *really* fast when written properly. 
-- *`profile.h`: WIP extremely low overhead tracing profiler both in terms of runtime and assembly. All of the data processing and compression to the on disk format is done in separate thread. When runtime dissabled has essentially zero perf impact.   
+- *`wip/profile2.h`: WIP low overhead tracing profiler both in terms of runtime and assembly. All of the data processing and compression to the on disk format is done in separate thread. When runtime dissabled has essentially zero perf impact.   
 
 Files marked with* are *completely* freestanding - they dont depend on any other file and can be compiled separately. See below for more info.
 
