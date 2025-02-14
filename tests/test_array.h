@@ -1,14 +1,13 @@
 #pragma once
 
-#include "array.h"
-#include "random.h"
-#include "time.h"
-#include "allocator_debug.h"
+#include "../array.h"
+#include "../random.h"
+#include "../time.h"
+#include "../allocator_debug.h"
 
 INTERNAL void test_array_stress(f64 max_seconds)
 {
-	Debug_Allocator debug_alloc = {0};
-	debug_allocator_init_use(&debug_alloc, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_USE);
+	Debug_Allocator debug_alloc = debug_allocator_make(allocator_get_default(), DEBUG_ALLOC_LEAK_CHECK | DEBUG_ALLOC_USE);
 	{
 		PROFILE_START();
 		enum Action 
@@ -52,11 +51,11 @@ INTERNAL void test_array_stress(f64 max_seconds)
 
 		isize max_size = 0;
 		isize max_capacity = 0;
-		f64 start = clock_s();
+		f64 start = clock_sec();
 		for(isize i = 0; i < MAX_ITERS; i++)
 		{
 			PROFILE_START(iter);
-			if(clock_s() - start >= max_seconds && i >= MIN_ITERS)
+			if(clock_sec() - start >= max_seconds && i >= MIN_ITERS)
 				break;
 
 			isize action = random_discrete(dist, ARRAY_LEN(dist));

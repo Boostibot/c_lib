@@ -1,365 +1,302 @@
 #ifndef MODULE_PERF
 #define MODULE_PERF
 
-#include <stdbool.h>
-#include <math.h>
-#include <stdint.h>
-
-#ifndef ASSERT
-	#include <assert.h>
-	#define ASSERT(x) assert(x)
-#endif
-
 #ifndef EXTERNAL
 	#define EXTERNAL 
 #endif
 
-typedef struct Perf_Counter {
-	int64_t counter;
-	int64_t runs;
-	int64_t frquency;
-	int64_t mean_estimate;
-	int64_t sum_of_squared_offset_counters;
-	int64_t max_counter;
-	int64_t min_counter;
-} Perf_Counter;
+#include <stdbool.h>
+#include <stdint.h>
 
-typedef struct Perf_Stats {
-	int64_t runs;
-	int64_t batch_size;
-
-	double total_s;
-	double average_s;
-	double min_s;
-	double max_s;
-	double standard_deviation_s;
-	double normalized_standard_deviation_s; //(σ/μ)
-} Perf_Stats;
-
-typedef struct Perf_Benchmark {
-	Perf_Stats inline_stats;
-	Perf_Counter counter;
-
-	//Set only once. To reuse a benchmark struct (unusual)
-	// for multiple benchmarks these must be set to 0!
-	Perf_Stats* stats;
-	int64_t start;
-	int64_t time;
-	int64_t warmup;
-	int64_t batch_size;
-
-	//Chnages on every iteration!
-	int64_t iter;
-	int64_t iter_begin_time;
-} Perf_Benchmark;
-
-//Returns the current time in nanoseconds. The time is relative to an arbitrary point in time, thus only difference of two perf_now() makes sense.
-EXTERNAL int64_t		perf_now();
-EXTERNAL int64_t		perf_freq(); //returns the frequency of the perf counter
-EXTERNAL int64_t		perf_submit(Perf_Counter* counter, int64_t measured);
-EXTERNAL int64_t		perf_submit_no_init(Perf_Counter* counter, int64_t measured);
-EXTERNAL Perf_Stats	perf_get_stats(Perf_Counter counter, int64_t batch_size);
-EXTERNAL Perf_Counter perf_counter_merge(Perf_Counter a, Perf_Counter b, bool* could_combine_everything_or_null);
-EXTERNAL Perf_Counter	perf_counter_init(int64_t mean_estimate);
+static inline int64_t perf_counter();
+static inline int64_t perf_counter_freq();
+static inline int64_t perf_rdtsc();
+static inline void    perf_rdtsc_barrier();
 
 //Prevents the compiler from otpimizing away the variable (and thus its value) pointed to by ptr.
-void perf_do_not_optimize(const void* ptr);
+static inline void perf_do_not_optimize(const void* ptr);
 
-//Maintains a benchmark. See example below for how to use this.
-EXTERNAL bool perf_benchmark(Perf_Benchmark* bench, double time);
+//A very simple benchmark optimized for absolutele developer convenience. See bench_example
+typedef struct Quickbench {
+	int64_t runs;
+    int64_t rdtsc_freq;
+	double total;
+	double average;
+	double min;
+	double max;
+    double actual_duration;
+    double duration;
+    double warmup;
+    int64_t _internal[16];
+} Quickbench;
 
-//Maintains a benchmark requiring manual measurement. Allows to submit more settings. 
-// Measurements need to be added using perf_benchmark_submit() to register!
-EXTERNAL bool perf_benchmark_custom(Perf_Benchmark* bench, Perf_Stats* stats_or_null, double warmup, double time, int64_t batch_size);
-//Submits the measured time in nanoseconds to the benchmark. The measurement is discareded if warmup is still in progress. 
-EXTERNAL void perf_benchmark_submit(Perf_Benchmark* bench, int64_t measured);
+static inline bool quickbench(Quickbench* stats, double duration);
+static inline bool quickbench_with_explicit_warmup(Quickbench* stats, double duration, double warmup);
+EXTERNAL int64_t calculate_tsc_freq(int64_t qpc_dur, int64_t tsc_dur);
 
-//Needs implementation:
-int64_t platform_perf_counter();
-int64_t platform_perf_counter_frequency();
+#if 0
+static void bench_example()
+{
+    Quickbench bench = {0};
+    while(quickbench(&bench, 1.0)) {
+        //this code is measured
+        int64_t val = 1000 % bench.runs;
+        perf_do_not_optimize(&val);
+    }
+    printf("average:%lfns min:%lfns\n", bench.average*1e9, bench.min*1e9);
+}
+#endif
 
-#include <stdlib.h>
-static void perf_benchmark_example() 
-{	
-	//For 3 seconds time the conctents of the loop and capture the resulting stats.
-	Perf_Benchmark bench1 = {0};
-	while(perf_benchmark(&bench1, 3)) {
-		//`bench1.iter` is index of the current every iteration
-		//`bench1.iter_begin_time` is the value of perf_now() at the start time of the current iteration 
-		volatile double result = sqrt((double) bench1.iter); (void) result; //make sure the result is not optimized away
-	}
+//Nasty nasty inline implementation below =========================
+#if defined(_WIN32) || defined(_WIN64)
+    #ifdef __cplusplus
+    extern "C" {
+    #endif
+    typedef union _LARGE_INTEGER LARGE_INTEGER;
+    __declspec(dllimport) int __stdcall QueryPerformanceCounter(LARGE_INTEGER* out);
+    __declspec(dllimport) int __stdcall QueryPerformanceFrequency(LARGE_INTEGER* out);
+    #ifdef __cplusplus
+    }
+    #endif
+    
+    static inline int64_t perf_counter()
+    {
+        int64_t out = 0;
+        QueryPerformanceCounter((LARGE_INTEGER*) (void*) &out);
+        return out;
+    }
 
-	//do something with stats ...
-	bench1.stats->average_s += 10; 
+    static inline int64_t perf_counter_freq()
+    {
+        static int64_t freq = 0;
+        if(freq == 0) QueryPerformanceFrequency((LARGE_INTEGER*) (void*) &freq);
+        return freq;
+    }
+    
+#elif defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
+    #include <time.h>
+    static inline int64_t perf_counter()
+    {
+        struct timespec ts = {0};
+        (void) clock_gettime(CLOCK_MONOTONIC_RAW , &ts);
+        return (int64_t) ts.tv_nsec + ts.tv_sec * 1000000000LL;
+    }
 
-	//Sometimes it is necessary to do contiguous setup in order to
-	// have data to benchmark with. In such a case every itration where the setup
-	// occurs will be havily influenced by it. We can discard this iteration by
-	// setting it.discard = true;
+    static inline int64_t perf_counter_freq()
+    {
+        return (int64_t) 1000000000LL;
+    }
+#else
+    #error unsupported platform!
+#endif
 
-	//We benchmark the free function. In order to have something to free we need
-	// to call malloc. But we dont care about malloc in this test => malloc 100
-	// items and then free each. We simply dont submit the malloc timings.
-	Perf_Stats stats = {0};
-	void* ptrs[100] = {0};
-	int count = 0;
+#if defined(__x86_64__) || defined(_M_X64) || (defined(__amd64__) && !defined(_M_ARM64EC)) || defined(_M_CEE_PURE) || defined(i386) || defined(__i386__) || defined(__i386) || defined(_M_IX86)
+    #ifdef _MSC_VER
+        #include <intrin.h>
+        static inline int64_t perf_rdtsc() { 
+            _ReadWriteBarrier(); 
+            return (int64_t) __rdtsc(); 
+        }
+        static inline void perf_rdtsc_barrier() { 
+            _ReadWriteBarrier(); 
+            _mm_lfence();
+        }
+    #else
+        #include <x86intrin.h>
+        static inline int64_t perf_rdtsc() { 
+            __asm__ __volatile__("":::"memory");
+            return (int64_t) __rdtsc(); 
+        }
+        static inline void perf_rdtsc_barrier() { 
+            __asm__ __volatile__("":::"memory");
+            _mm_lfence();
+        }
+    #endif
+#elif defined(_M_ARM64) || defined(_M_ARM64EC) || defined(__aarch64__) || defined(__ARM_ARCH_ISA_A64)
+    #if defined(_MSC_VER) && !defined(__clang__)
+        #include <intrin.h>
+    #endif
 
-	//Alternative way of doing benchmark loops, helpful to keep the `bench` variable scoped but the stats not 
-	// (which is useful for organization when doing several different benchmarks within a single function). 
-	//The `&stats` paramater is optional and when not specified the stats are stored inside the bench variable
-	for(Perf_Benchmark bench = {0}; perf_benchmark_custom(&bench, &stats, 0.5, 3.5, 1); ) {
-		if(count > 0)
+    //msvc version taken from: https://gist.github.com/mmozeiko/98bb947fb5a9d5b8a695adf503308a58#file-armv8_tsc-h-L19-L45
+    //inline assembly Adapted from: https://github.com/cloudius-systems/osv/blob/master/arch/aarch64/arm-clock.cc
+    static inline int64_t perf_rdtsc() {
+        //Please note we read CNTVCT cpu system register which provides
+        //the accross-system consistent value of the virtual system counter.
+        int64_t cntvct;
+        #if defined(_MSC_VER) && !defined(__clang__)
+            // "Accessing CNTVCT_EL0" in https://developer.arm.com/documentation/ddi0601/latest/AArch64-Registers/CNTVCT-EL0--Counter-timer-Virtual-Count-Register
+            cntvct = _ReadStatusReg(ARM64_SYSREG(3, 3, 14, 0, 2));
+        #else
+            asm volatile ("mrs %0, cntvct_el0; " : "=r"(cntvct) :: "memory");
+        #endif
+        return cntvct;
+    }
+
+    static inline void perf_rdtsc_barrier() {
+        #if defined(_MSC_VER) && !defined(__clang__)
+            __isb(_ARM64_BARRIER_SY);
+        #else
+            asm volatile ("isb;" ::: "memory");
+        #endif
+    }
+#else
+    #define PERF_TSC_FALLBACK	
+    static inline int64_t perf_rdtsc()          {return perf_counter();}
+    static inline void    perf_rdtsc_barrier()  {}
+#endif
+
+static inline void perf_do_not_optimize(const void* ptr) 
+{ 
+	#if defined(__GNUC__) || defined(__clang__)
+		__asm__ __volatile__("" : "+r"(ptr));
+	#else
+		static volatile int __perf_always_zero = 0;
+		if(__perf_always_zero != 0)
 		{
-			int64_t before = perf_now();
-			free(ptrs[--count]);
-			perf_benchmark_submit(&bench, perf_now() - before);
+			volatile int* vol_ptr = (volatile int*) (void*) ptr;
+			//If we would use the following line the compiler could infer that 
+			//we are only really modifying the value at ptr. Thus if we did 
+			// perf_do_not_optimize(long_array) it would gurantee no optimize only at the first element.
+			//The precise version is also not very predictable. Often the compilers decide to only keep the first element
+			// of the array no metter which one we actually request not to optimize. 
+			//
+			// __perf_always_zero = *vol_ptr;
+			__perf_always_zero = vol_ptr[*vol_ptr];
 		}
-		else
-		{
-			count = 100;
-			for(int i = 0; i < 100; i++)
-				ptrs[i] = malloc(256);
-		}
-	};
+	#endif
+}
+
+#if defined(_MSC_VER)
+    #define ATTRIBUTE_INLINE_NEVER  __declspec(noinline)
+    #define ATTRIBUTE_NO_CHECK      __declspec(safebuffers) 
+#elif defined(__GNUC__) || defined(__clang__)
+    #define ATTRIBUTE_INLINE_NEVER  __attribute__((noinline))
+    #define ATTRIBUTE_NO_CHECK 
+#else
+    #define ATTRIBUTE_INLINE_NEVER                              
+    #define ATTRIBUTE_NO_CHECK 
+#endif
+
+ATTRIBUTE_INLINE_NEVER ATTRIBUTE_NO_CHECK
+EXTERNAL bool _quickbench_explicit(Quickbench* stats, double duration, double warmup);
+
+static inline bool quickbench(Quickbench* stats, double duration) 
+{ 
+    return _quickbench_explicit(stats, duration, -1); 
+}
+
+static inline bool quickbench_with_explicit_warmup(Quickbench* stats, double duration, double warmup)
+{
+    return _quickbench_explicit(stats, duration, warmup); 
 }
 #endif
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_PERF)) && !defined(MODULE_HAS_IMPL_PERF)
 #define MODULE_HAS_IMPL_PERF
 
-	EXTERNAL Perf_Counter perf_counter_init(int64_t mean_estimate)
-	{
-		Perf_Counter out = {0};
-		out.frquency = platform_perf_counter_frequency();
-		out.max_counter = INT64_MIN;
-		out.min_counter = INT64_MAX;
-		out.mean_estimate = mean_estimate;
-		return out;
-	}
-	
-	EXTERNAL int64_t perf_submit_no_init(Perf_Counter* counter, int64_t delta)
-	{
-		int64_t offset_delta = delta - counter->mean_estimate;
-		counter->counter += delta;
-		counter->sum_of_squared_offset_counters += offset_delta*offset_delta;
-		counter->min_counter = delta < counter->min_counter ? delta : counter->min_counter;
-		counter->max_counter = delta > counter->max_counter ? delta : counter->max_counter;
-		counter->runs += 1; 
-		return counter->runs - 1;
-	}
+EXTERNAL int64_t calculate_tsc_freq(int64_t qpc_dur, int64_t tsc_dur)
+{
+    //duration = qpc_dur/qpc_freq = tsc_dur/tsc_freq
+    // => tsc_freq = qpc_freq*tsc_dur/qpc_dur
+    #if defined(_MSC_VER) && !defined(__clang__)
+        int64_t qpc_freq = perf_counter_freq();
+        uint64_t hi, lo = _umul128((uint64_t) qpc_freq, (uint64_t) tsc_dur, &hi);
+        uint64_t rem, quo = _udiv128(hi, lo, (uint64_t) qpc_dur, &rem);
+        return (int64_t) quo;
+    #else
+        return (int64_t) ((__uint128_t)qpc_freq * (__uint128_t)tsc_dur/ (__uint128_t)qpc_dur);
+    #endif
+}
 
-	EXTERNAL int64_t perf_submit(Perf_Counter* counter, int64_t delta)
-	{
-		ASSERT(counter != NULL && delta >= 0 && "invalid submit");
-		if(counter->frquency == 0)
-			*counter = perf_counter_init(delta);
-	
-		return perf_submit_no_init(counter, delta);
-	}
-	
-	//@TODO: RDTSC!
-	EXTERNAL int64_t perf_now()
-	{
-		return platform_perf_counter();
-	}
+ATTRIBUTE_INLINE_NEVER ATTRIBUTE_NO_CHECK
+EXTERNAL bool _quickbench_explicit(Quickbench* stats, double duration, double warmup)
+{
+    int64_t after = perf_rdtsc();
+    perf_rdtsc_barrier();
+    
+    typedef struct _Quickbench_Internal {
+        bool is_init;
+	    bool is_after_warmup;
+        bool _[6];
 
-	EXTERNAL int64_t perf_freq()
-	{
-		return platform_perf_counter_frequency();
-	}
+	    int64_t iter_begin_tsc;
+	    int64_t time_sum;
+	    int64_t time_min;
+	    int64_t time_max;
 
-	EXTERNAL Perf_Counter perf_counter_merge(Perf_Counter a, Perf_Counter b, bool* could_combine_everything_or_null)
-	{
-		Perf_Counter out = {0};
-		out.max_counter = a.max_counter > b.max_counter ? b.max_counter : a.max_counter;
-		out.min_counter = a.min_counter < b.min_counter ? b.min_counter : a.min_counter;
-		out.frquency = a.frquency > b.frquency ? b.frquency : a.frquency;
-		out.runs = a.runs + b.runs;
-		out.counter = a.counter + b.counter;
-		if(a.mean_estimate == b.mean_estimate)
-		{
-			out.mean_estimate = a.mean_estimate;
-			out.sum_of_squared_offset_counters = a.sum_of_squared_offset_counters + b.sum_of_squared_offset_counters;
-			if(could_combine_everything_or_null)
-				*could_combine_everything_or_null = true;
-		}
-		else
-		{
-			if(could_combine_everything_or_null)
-				*could_combine_everything_or_null = false;
-		}
+	    int64_t warmup_end_qpc;
+	    int64_t duration_end_tsc;
+        int64_t warmup_tsc_freq_estimate;
+    
+	    int64_t begin_qpc;
+	    int64_t begin_tsc;
+	    int64_t end_qpc;
+	    int64_t end_tsc;
+    } _Quickbench_Internal;
 
-		return out;
-	}
+    _Quickbench_Internal* bench = (_Quickbench_Internal*) (void*) stats->_internal;
+    int64_t before = bench->iter_begin_tsc;
+    if(bench->is_after_warmup)
+    {
+        int64_t diff = after - before;
+        bench->time_sum += diff; 
+        bench->time_min = bench->time_min < diff ? bench->time_min : diff;
+        bench->time_max = bench->time_max > diff ? bench->time_max : diff;
+        stats->runs += 1;
+    }
+    else
+    {
+        int64_t now_qpc = perf_counter();
+        int64_t now_tsc = perf_rdtsc();
+        perf_rdtsc_barrier();
+        if(bench->is_init == false)
+        {
+            bench->is_init = true;
+            bench->begin_tsc = now_tsc;
+            bench->begin_qpc = now_qpc;
+            bench->time_min = INT64_MAX;
+            bench->time_max = INT64_MIN;
+            bench->duration_end_tsc = INT64_MAX;
+            stats->duration = duration;
+            stats->warmup = warmup < 0 ? duration/10 : warmup;
+            bench->warmup_end_qpc = now_qpc + (int64_t) (stats->warmup*perf_counter_freq());
+        }
+        if(now_qpc > bench->warmup_end_qpc)
+        {
+            int64_t qpc_warmup_dur = now_qpc - bench->begin_qpc;
+            int64_t tsc_warmup_dur = now_tsc - bench->begin_tsc;
+            int64_t freq = calculate_tsc_freq(qpc_warmup_dur, tsc_warmup_dur);
+            bench->is_after_warmup = true;
+            bench->warmup_tsc_freq_estimate = freq;
+            bench->duration_end_tsc = bench->begin_tsc + (int64_t) (duration*freq);
+        }
+    }
+    
+    if(after > bench->duration_end_tsc)
+    {
+        bench->end_qpc = perf_counter();
+        bench->end_tsc = perf_rdtsc();
+        perf_rdtsc_barrier();
 
-	EXTERNAL Perf_Stats perf_get_stats(Perf_Counter counter, int64_t batch_size)
-	{
-		if(batch_size <= 0)
-			batch_size = 1;
+        int64_t freq = calculate_tsc_freq(bench->end_qpc - bench->begin_qpc, bench->end_tsc - bench->begin_tsc);
+        stats->actual_duration = (double)(bench->end_qpc - bench->begin_qpc)/perf_counter_freq();
+        stats->rdtsc_freq = freq;
+	    stats->total = 0;
+	    stats->average = 0;
+	    stats->min = 0;
+	    stats->max = 0;
+        if(stats->runs > 0 && freq > 0) {
+            stats->total = (double) bench->time_sum/freq;
+            stats->average = (double) (bench->time_sum/stats->runs)/freq;
+            stats->min = (double) bench->time_min/freq;
+            stats->max = (double) bench->time_max/freq;
+        } 
+        return false;
+    }
 
-		if(counter.frquency == 0)
-			counter.frquency = platform_perf_counter_frequency();
+    perf_rdtsc_barrier();
+    bench->iter_begin_tsc = perf_rdtsc();
+    return true;
+}
 
-		ASSERT(counter.min_counter * counter.runs <= counter.counter && "min must be smaller than sum");
-		ASSERT(counter.max_counter * counter.runs >= counter.counter && "max must be bigger than sum");
-        
-		//batch_size is in case we 'batch' our tested function: 
-		// ie instead of measure the tested function once we run it 100 times
-		// this just means that each run is multiplied batch_size times
-		int64_t iters = batch_size * (counter.runs);
-        
-		double batch_deviation_s = 0;
-		if(counter.runs > 1)
-		{
-			double n = (double) counter.runs;
-			double sum = (double) counter.counter;
-			double sum2 = (double) counter.sum_of_squared_offset_counters;
-            
-			//Welford's algorithm for calculating varience
-			double varience_ns = (sum2 - (sum * sum) / n) / (n - 1.0);
-
-			//deviation = sqrt(varience) and deviation is unit dependent just like mean is
-			batch_deviation_s = sqrt(fabs(varience_ns)) / (double) counter.frquency;
-		}
-
-		double total_s = 0.0;
-		double mean_s = 0.0;
-		double min_s = 0.0;
-		double max_s = 0.0;
-
-		ASSERT(counter.min_counter * counter.runs <= counter.counter);
-		ASSERT(counter.max_counter * counter.runs >= counter.counter);
-		if(counter.frquency != 0)
-		{
-			total_s = (double) counter.counter / (double) counter.frquency;
-			min_s = (double) counter.min_counter / (double) (batch_size * counter.frquency);
-			max_s = (double) counter.max_counter / (double) (batch_size * counter.frquency);
-		}
-		if(iters != 0)
-			mean_s = total_s / (double) iters;
-
-		ASSERT(mean_s >= 0 && min_s >= 0 && max_s >= 0);
-
-		//We assume that summing all measure times in a batch 
-		// (and then dividing by its size = making an average)
-		// is equivalent to picking random samples from the original distribution
-		// => Central limit theorem applies which states:
-		// deviation_sampling = deviation / sqrt(samples)
-        
-		// We use this to obtain the original deviation
-		// => deviation = deviation_sampling * sqrt(samples)
-        
-		// but since we also need to take the average of each batch
-		// to get the deviation of a single element we get:
-		// deviation_element = deviation_sampling * sqrt(samples) / samples
-		//                   = deviation_sampling / sqrt(samples)
-
-		double sqrt_batch_size = sqrt((double) batch_size);
-		Perf_Stats stats = {0};
-
-		//since min and max are also somewhere within the confidence interval
-		// keeping the same confidence in them requires us to also apply the same correction
-		// to the distance from the mean (this time * sqrt_batch_size because we already 
-		// divided by batch_size when calculating min_s)
-		stats.min_s = mean_s + (min_s - mean_s) * sqrt_batch_size; 
-		stats.max_s = mean_s + (max_s - mean_s) * sqrt_batch_size; 
-
-		//the above correction can push min to be negative 
-		// happens mostly with noop and generally is not a problem
-		if(stats.min_s < 0.0)
-			stats.min_s = 0.0;
-		if(stats.max_s < 0.0)
-			stats.max_s = 0.0;
-	
-		stats.total_s = total_s;
-		stats.standard_deviation_s = batch_deviation_s / sqrt_batch_size;
-		stats.average_s = mean_s; 
-		stats.batch_size = batch_size;
-		stats.runs = iters;
-
-		if(stats.average_s > 0)
-			stats.normalized_standard_deviation_s = stats.standard_deviation_s / stats.average_s;
-
-		//stats must be plausible
-		ASSERT(stats.runs >= 0);
-		ASSERT(stats.batch_size >= 0);
-		ASSERT(stats.total_s >= 0.0);
-		ASSERT(stats.average_s >= 0.0);
-		ASSERT(stats.min_s >= 0.0);
-		ASSERT(stats.max_s >= 0.0);
-		ASSERT(stats.standard_deviation_s >= 0.0);
-		ASSERT(stats.normalized_standard_deviation_s >= 0.0);
-
-		return stats;
-	}
-
-	EXTERNAL bool perf_benchmark_custom(Perf_Benchmark* bench, Perf_Stats* stats_or_null, double warmup, double time, int64_t batch_size)
-	{
-		int64_t now = perf_now();
-		if(bench->start == 0)
-		{
-			bench->counter.frquency = perf_freq();
-			bench->warmup = (int64_t) (warmup*bench->counter.frquency);
-			bench->time = (int64_t) (time*bench->counter.frquency);
-			bench->start = now;
-			bench->batch_size = batch_size;
-			bench->stats = stats_or_null;
-			if(bench->stats == NULL)
-				bench->stats = &bench->inline_stats;
-
-			//so that after += 1 is 0
-			bench->iter = -1;
-		}
-
-		bench->iter += 1;
-		bench->iter_begin_time = now;
-		int64_t ellpased = now - bench->start;
-		if(ellpased <= bench->time)
-			return true;
-		else
-		{
-			*bench->stats = perf_get_stats(bench->counter, bench->batch_size);
-			return false;
-		}
-	}
-
-	EXTERNAL bool perf_benchmark(Perf_Benchmark* bench, double time)
-	{
-		int64_t last = bench->iter_begin_time;
-		bool out = perf_benchmark_custom(bench, NULL, time/8, time, 1);
-
-		if(last > 0)
-			perf_benchmark_submit(bench, bench->iter_begin_time-last);
-
-		//One more perf_now() so that we best isolate the actual timed code.
-		bench->iter_begin_time = perf_now();
-		return out;
-	}
-
-	EXTERNAL void perf_benchmark_submit(Perf_Benchmark* bench, int64_t measurement)
-	{
-		if(bench->iter_begin_time - bench->start > bench->warmup)
-			perf_submit(&bench->counter, measurement);
-	}
-
-	void perf_do_not_optimize(const void* ptr) 
-	{ 
-		#if defined(__GNUC__) || defined(__clang__)
-			__asm__ __volatile__("" : "+r"(ptr));
-		#else
-			static volatile int __perf_always_zero = 0;
-			if(__perf_always_zero != 0)
-			{
-				volatile int* vol_ptr = (volatile int*) (void*) ptr;
-				//If we would use the following line the compiler could infer that 
-				//we are only really modifying the value at ptr. Thus if we did 
-				// perf_do_not_optimize(long_array) it would gurantee no optimize only at the first element.
-				//The precise version is also not very predictable. Often the compilers decide to only keep the first element
-				// of the array no metter which one we actually request not to optimize. 
-				//
-				// __perf_always_zero = *vol_ptr;
-				__perf_always_zero = vol_ptr[*vol_ptr];
-			}
-		#endif
-	}
 #endif

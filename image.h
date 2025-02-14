@@ -1,11 +1,22 @@
 #ifndef MODULE_IMAGE
 #define MODULE_IMAGE
 
-#include "allocator.h"
 #include <limits.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
 
-//@TODO: flip_x, flip_y, rotate 90
-//@TODO: set_chanels, convert
+#ifdef MODULE_ALL_COUPLED
+    #include "assert.h"
+    #include "allocator.h"
+#endif
+
+#ifndef EXTERNAL
+    #define EXTERNAL
+#endif
+
+typedef int64_t isize;
+typedef void* (*Allocator)(void* alloc, int mode, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align, void* other);
 
 //some of the predefined pixel formats.
 //Other custom formats can specified by using some positive number for Pixel_Type.
@@ -45,12 +56,12 @@ typedef enum Pixel_Type {
 // of a pixel as a unit.
 typedef struct Image {
     Allocator* allocator;
-    u8* pixels; 
-    i32 pixel_size;
+    uint8_t* pixels; 
+    int32_t pixel_size;
     Pixel_Type type; 
 
-    i32 width;
-    i32 height;
+    int32_t width;
+    int32_t height;
 
     isize capacity;
 } Image;
@@ -58,30 +69,29 @@ typedef struct Image {
 // A non owning view into a subset of Image's data. 
 // Has the same relationship to Image as String to String_Builder
 typedef struct Subimage {
-    u8* pixels;
-    i32 pixel_size;
+    uint8_t* pixels;
+    int32_t pixel_size;
     Pixel_Type type;
 
-    i32 containing_width;
-    i32 containing_height;
+    int32_t containing_width;
+    int32_t containing_height;
 
-    i32 from_x;
-    i32 from_y;
+    int32_t from_x;
+    int32_t from_y;
     
-    i32 width;
-    i32 height;
+    int32_t width;
+    int32_t height;
 } Subimage;
 
-STATIC_ASSERT(sizeof(Image) <= 8*5);
-STATIC_ASSERT(sizeof(Subimage) <= 8*5);
+#define IMAGE_ALIGN 32 //for simd
 
 //returns the human readable name of the pixel type. 
-// Example return values are "u8", "f32", "i64", ..., "custom" (for pixel_type > 0) and "invalid" (pixel_type < 0 and none of the predefined)
+// Example return values are "uint8_t", "f32", "i64", ..., "custom" (for pixel_type > 0) and "invalid" (pixel_type < 0 and none of the predefined)
 EXTERNAL const char* pixel_type_name(Pixel_Type pixel_type);
 //Returns the size of the pixel type. The return value is always bigger than 0.
-EXTERNAL i32 pixel_type_size(Pixel_Type pixel_type);
-EXTERNAL i32 pixel_type_size_or_zero(Pixel_Type pixel_type);
-EXTERNAL i32 pixel_channel_count(Pixel_Type pixel_type, isize pixel_size);
+EXTERNAL int32_t pixel_type_size(Pixel_Type pixel_type);
+EXTERNAL int32_t pixel_type_size_or_zero(Pixel_Type pixel_type);
+EXTERNAL int32_t pixel_channel_count(Pixel_Type pixel_type, isize pixel_size);
 
 EXTERNAL void image_init_unshaped(Image* image, Allocator* alloc);
 EXTERNAL void image_init(Image* image, Allocator* alloc, isize pixel_size, Pixel_Type type);
@@ -105,7 +115,7 @@ EXTERNAL Image image_from_subimage(Subimage to_copy, Allocator* alloc);
 EXTERNAL Subimage image_portion(Image image, isize from_x, isize from_y, isize width, isize height);
 EXTERNAL Subimage image_range(Image image, isize from_x, isize from_y, isize to_x, isize to_y);
 
-EXTERNAL i32   image_channel_count(Image image);
+EXTERNAL int32_t   image_channel_count(Image image);
 EXTERNAL isize image_pixel_count(Image image);
 EXTERNAL isize image_byte_stride(Image image);
 EXTERNAL isize image_byte_size(Image image);
@@ -114,7 +124,7 @@ EXTERNAL Subimage subimage_of(Image image);
 EXTERNAL Subimage subimage_make(void* pixels, isize width, isize height, isize pixel_size, Pixel_Type type);
 EXTERNAL bool subimage_is_contiguous(Subimage view); //returns true if the view is contiguous in memory
 EXTERNAL void* subimage_at(Subimage image, isize x, isize y);
-EXTERNAL i32 subimage_channel_count(Subimage image);
+EXTERNAL int32_t subimage_channel_count(Subimage image);
 EXTERNAL isize subimage_pixel_count(Subimage image);
 EXTERNAL isize subimage_byte_stride(Subimage image);
 EXTERNAL isize subimage_byte_size(Subimage image);
@@ -123,17 +133,31 @@ EXTERNAL Subimage subimage_portion(Subimage view, isize from_x, isize from_y, is
 EXTERNAL Subimage subimage_range(Subimage view, isize from_x, isize from_y, isize to_x, isize to_y);
 EXTERNAL void subimage_copy(Subimage to_image, Subimage image, isize offset_x, isize offset_y);
 
+EXTERNAL void subimage_flip_x(Subimage image, void* temp_pixel, isize temp_size);
+EXTERNAL void subimage_flip_y(Subimage image, void* temp_row, isize temp_size);
 #endif
+
+#define MODULE_IMPL_ALL
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_IMAGE)) && !defined(MODULE_HAS_IMPL_IMAGE)
 #define MODULE_HAS_IMPL_IMAGE
+
+#ifndef ASSERT
+    #include <assert.h>
+    #include <stdlib.h>
+    #include <stdio.h>
+    #define ASSERT(x, ...) assert(x)
+    #define REQUIRE(x, ...) assert(x)
+    #define CHECK_BOUNDS(i, count, ...) assert(0 <= (i) && (i) <= (count))
+    #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
+#endif
 
 EXTERNAL const char* pixel_type_name(Pixel_Type pixel_type)
 {
     switch(pixel_type)
     {
         case PIXEL_TYPE_NONE: return "none";
-        case PIXEL_TYPE_U8: return "u8";
+        case PIXEL_TYPE_U8: return "uint8_t";
         case PIXEL_TYPE_U16: return "u16";
         case PIXEL_TYPE_U24: return "u24";
         case PIXEL_TYPE_U32: return "u32";
@@ -142,7 +166,7 @@ EXTERNAL const char* pixel_type_name(Pixel_Type pixel_type)
         case PIXEL_TYPE_I8: return "i8";
         case PIXEL_TYPE_I16: return "i16";
         case PIXEL_TYPE_I24: return "i24";
-        case PIXEL_TYPE_I32: return "i32";
+        case PIXEL_TYPE_I32: return "int32_t";
         case PIXEL_TYPE_I64: return "i64";
 
         case PIXEL_TYPE_F8: return "f8";
@@ -161,7 +185,7 @@ EXTERNAL const char* pixel_type_name(Pixel_Type pixel_type)
     }
 }
 
-EXTERNAL i32 pixel_type_size_or_zero(Pixel_Type pixel_type)
+EXTERNAL int32_t pixel_type_size_or_zero(Pixel_Type pixel_type)
 {
     switch(pixel_type)
     {
@@ -186,27 +210,28 @@ EXTERNAL i32 pixel_type_size_or_zero(Pixel_Type pixel_type)
         case PIXEL_TYPE_INVALID: 
         default: {
             if(pixel_type > 0)
-                return (i32) pixel_type;
+                return (int32_t) pixel_type;
             else
                 return 0;
         }
     }
 }
 
-EXTERNAL i32 pixel_type_size(Pixel_Type pixel_type)
+EXTERNAL int32_t pixel_type_size(Pixel_Type pixel_type)
 {
-    return MAX(pixel_type_size_or_zero(pixel_type), 1);
+    int32_t size = pixel_type_size_or_zero(pixel_type);
+    return size > 1 ? size : 1; 
 }
 
-EXTERNAL i32 pixel_channel_count(Pixel_Type pixel_type, isize pixel_size)
+EXTERNAL int32_t pixel_channel_count(Pixel_Type pixel_type, isize pixel_size)
 {
-    i32 format_size = pixel_type_size(pixel_type);
+    int32_t format_size = pixel_type_size(pixel_type);
     ASSERT(format_size > 0);
-    i32 out = (i32) pixel_size / format_size;
+    int32_t out = (int32_t) pixel_size / format_size;
     return out;
 }
 
-EXTERNAL i32 image_channel_count(Image image)
+EXTERNAL int32_t image_channel_count(Image image)
 {
     return pixel_channel_count(image.type, image.pixel_size);
 }
@@ -230,7 +255,8 @@ EXTERNAL isize image_byte_size(Image image)
 
 EXTERNAL void image_deinit(Image* image)
 {
-    allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN);
+    if(image->capacity)
+        (*image->allocator)(image->allocator, 0, 0, image->pixels, image->capacity, IMAGE_ALIGN, NULL);
     memset(image, 0, sizeof *image);
 }
 
@@ -238,7 +264,7 @@ EXTERNAL void image_init(Image* image, Allocator* alloc, isize pixel_size, Pixel
 {
     image_deinit(image);
     image->allocator = alloc;
-    image->pixel_size = (i32) pixel_size;
+    image->pixel_size = (int32_t) pixel_size;
     image->type = type;
 }
 
@@ -263,12 +289,12 @@ EXTERNAL void* image_at(Image image, isize x, isize y)
     CHECK_BOUNDS(y, image.height);
 
     isize byte_stride = image_byte_stride(image);
-    u8* pixel = image.pixels + x*image.pixel_size + y*byte_stride;
+    uint8_t* pixel = image.pixels + x*image.pixel_size + y*byte_stride;
 
     return pixel;
 }
 
-EXTERNAL i32 subimage_channel_count(Subimage image)
+EXTERNAL int32_t subimage_channel_count(Subimage image)
 {
     return pixel_channel_count(image.type, image.pixel_size);
 }
@@ -294,17 +320,17 @@ EXTERNAL isize subimage_byte_size(Subimage image)
 EXTERNAL Subimage subimage_make(void* pixels, isize width, isize height, isize pixel_size, Pixel_Type type)
 {
     Subimage view = {0};
-    view.pixels = (u8*) pixels;
-    view.pixel_size = (i32) pixel_size;
+    view.pixels = (uint8_t*) pixels;
+    view.pixel_size = (int32_t) pixel_size;
     view.type = type;
 
-    view.containing_width = (i32) width;
-    view.containing_height = (i32) height;
+    view.containing_width = (int32_t) width;
+    view.containing_height = (int32_t) height;
 
     view.from_x = 0;
     view.from_y = 0;
-    view.width = (i32) width;
-    view.height = (i32) height;
+    view.width = (int32_t) width;
+    view.height = (int32_t) height;
     return view;
 }
 
@@ -329,10 +355,10 @@ EXTERNAL Subimage subimage_range(Subimage view, isize from_x, isize from_y, isiz
     CHECK_BOUNDS(from_x, to_x);
     CHECK_BOUNDS(from_y, to_y);
 
-    out.from_x = (i32) from_x;
-    out.from_y = (i32) from_y;
-    out.width = (i32) (to_x - from_x);
-    out.height = (i32) (to_y - from_y);
+    out.from_x = (int32_t) from_x;
+    out.from_y = (int32_t) from_y;
+    out.width = (int32_t) (to_x - from_x);
+    out.height = (int32_t) (to_y - from_y);
 
     return out;
 }
@@ -356,14 +382,14 @@ EXTERNAL void* subimage_at(Subimage view, isize x, isize y)
     CHECK_BOUNDS(x, view.width);
     CHECK_BOUNDS(y, view.height);
 
-    i32 containing_x = (i32) x + view.from_x;
-    i32 containing_y = (i32) y + view.from_y;
+    int32_t containing_x = (int32_t) x + view.from_x;
+    int32_t containing_y = (int32_t) y + view.from_y;
     
     isize byte_stride = subimage_byte_stride(view);
 
-    u8* data = (u8*) view.pixels;
+    uint8_t* data = (uint8_t*) view.pixels;
     isize offset = containing_x*view.pixel_size + containing_y*byte_stride;
-    u8* pixel = data + offset;
+    uint8_t* pixel = data + offset;
 
     return pixel;
 }
@@ -371,8 +397,8 @@ EXTERNAL void* subimage_at(Subimage view, isize x, isize y)
 EXTERNAL void subimage_copy(Subimage to_image, Subimage from_image, isize offset_x, isize offset_y)
 {
     //Simple implementation
-    i32 copy_width = from_image.width;
-    i32 copy_height = from_image.height;
+    int32_t copy_width = from_image.width;
+    int32_t copy_height = from_image.height;
     if(copy_width == 0 || copy_height == 0)
         return;
 
@@ -383,8 +409,8 @@ EXTERNAL void subimage_copy(Subimage to_image, Subimage from_image, isize offset
     isize from_image_stride = subimage_byte_stride(from_image); 
     isize row_byte_size = copy_width * from_image.pixel_size;
 
-    u8* to_image_ptr = (u8*) subimage_at(to_portion, 0, 0);
-    u8* from_image_ptr = (u8*) subimage_at(from_image, 0, 0);
+    uint8_t* to_image_ptr = (uint8_t*) subimage_at(to_portion, 0, 0);
+    uint8_t* from_image_ptr = (uint8_t*) subimage_at(from_image, 0, 0);
 
     //Copy in the right order so we dont override any data
     if(from_image_ptr >= to_image_ptr)
@@ -438,11 +464,13 @@ EXTERNAL void image_reserve(Image* image, isize capacity)
     {
         REQUIRE(image->allocator != NULL);
 
+        //this weird realloc is on purpose to allow copying from self to self.
+        uint8_t* new_pixels = (uint8_t*) (*image->allocator)(image->allocator, 0, capacity, NULL, 0, IMAGE_ALIGN, NULL);
         isize old_byte_size = image_byte_size(*image);
-        u8* new_pixels = (u8*) allocator_allocate(image->allocator, capacity, DEF_ALIGN);
         
         memcpy(new_pixels, image->pixels, (size_t) old_byte_size);
-        allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN);
+        if(image->capacity)
+            (*image->allocator)(image->allocator, 0, 0, image->pixels, image->capacity, IMAGE_ALIGN, NULL);
 
         image->pixels = new_pixels;
         image->capacity = capacity;
@@ -457,8 +485,9 @@ EXTERNAL void image_reshape(Image* image, isize width, isize height, isize pixel
     {
         REQUIRE(image->allocator != NULL);
 
-        u8* new_pixels = (u8*) allocator_allocate(image->allocator, needed_size, DEF_ALIGN);
-        allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN);
+        uint8_t* new_pixels = (uint8_t*) (*image->allocator)(image->allocator, 0, needed_size, NULL, 0, IMAGE_ALIGN, NULL);
+        if(image->capacity)
+            (*image->allocator)(image->allocator, 0, 0, image->pixels, image->capacity, IMAGE_ALIGN, NULL);
 
         image->pixels = new_pixels;
         image->capacity = needed_size;
@@ -470,9 +499,9 @@ EXTERNAL void image_reshape(Image* image, isize width, isize height, isize pixel
         memmove(image->pixels, data_or_null, (size_t) needed_size);
     }
 
-    image->width = (i32) width;
-    image->height = (i32) height;
-    image->pixel_size = (i32) pixel_size;
+    image->width = (int32_t) width;
+    image->height = (int32_t) height;
+    image->pixel_size = (int32_t) pixel_size;
     image->type = type;
 }
 
@@ -499,24 +528,24 @@ EXTERNAL void image_resize(Image* image, isize width, isize height)
     isize new_byte_size = width * height * (isize) image->pixel_size;
 
     Image new_image = *image;
-    new_image.width = (i32) width;
-    new_image.height = (i32) height;
+    new_image.width = (int32_t) width;
+    new_image.height = (int32_t) height;
     if(new_byte_size > image->capacity)
     {
-        new_image.pixels = (u8*) allocator_allocate(image->allocator, new_byte_size, DEF_ALIGN);
+        new_image.pixels = (uint8_t*) (*image->allocator)(image->allocator, 0, new_byte_size, NULL, 0, IMAGE_ALIGN, NULL);
         new_image.capacity = new_byte_size;
         memset(new_image.pixels, 0, (size_t) new_byte_size);
     }
 
     Subimage to_view = subimage_of(new_image);
     Subimage from_view = subimage_of(*image);
-    from_view.width = MIN(from_view.width, to_view.width);
-    from_view.height = MIN(from_view.height, to_view.height);
+    from_view.width = from_view.width < to_view.width ? from_view.width : to_view.width;
+    from_view.height = from_view.height < to_view.height ? from_view.height : to_view.height;
 
     subimage_copy(to_view, from_view, 0, 0);
 
     if(new_byte_size > image->capacity)
-        allocator_deallocate(image->allocator, image->pixels, image->capacity, DEF_ALIGN);
+        (*image->allocator)(image->allocator, 0, 0, image->pixels, image->capacity, IMAGE_ALIGN, NULL);
 
     *image = new_image;
 }
@@ -524,6 +553,51 @@ EXTERNAL void image_resize(Image* image, isize width, isize height)
 EXTERNAL void image_copy(Image* to_image, Subimage from_image, isize offset_x, isize offset_y)
 {
     subimage_copy(subimage_of(*to_image), from_image, offset_x, offset_y);
+}
+
+EXTERNAL void subimage_flip_y(Subimage image, void* temp_row, isize temp_size)
+{
+    isize row_size = subimage_byte_stride(image);
+    REQUIRE(temp_size >= row_size);
+    for(isize y = 0; y < image.height/2; y++) {
+        void* from_row1 = subimage_at(image, 0, y);
+        void* from_row2 = subimage_at(image, 0, image.height - y);
+        
+        memcpy(temp_row, from_row1, row_size);
+        memcpy(from_row1, from_row2, row_size);
+        memcpy(from_row2, temp_row, row_size);
+    }
+}
+
+EXTERNAL void subimage_flip_x(Subimage image, void* temp_pixel, isize temp_size)
+{
+    isize stride = subimage_byte_stride(image);   
+    REQUIRE(image.pixel_size <= temp_size); 
+    for(isize y = 0; y < image.height; y++) 
+    {
+        uint8_t* row = image.pixels + stride*y;
+        void* te = temp_pixel;
+        #define IMAGE_FLIP_ROW(row, width, size)        \
+            for(isize x = 0; x < width/2; x++) {        \
+                uint8_t* a1 = row + size*x;             \
+                uint8_t* a2 = row + size*(width - x);   \
+                memcpy(te, a1, size);                   \
+                memcpy(a1, a2, size);                   \
+                memcpy(a2, te, size);                   \
+            }                                           \
+
+        //have versions for specific common sizes and do the generic
+        switch(image.pixel_size) {
+            case 1:  IMAGE_FLIP_ROW(row, image.width, 1); break;
+            case 2:  IMAGE_FLIP_ROW(row, image.width, 2); break;
+            case 3:  IMAGE_FLIP_ROW(row, image.width, 3); break;
+            case 4:  IMAGE_FLIP_ROW(row, image.width, 4); break;
+            case 8:  IMAGE_FLIP_ROW(row, image.width, 8); break;
+            case 12: IMAGE_FLIP_ROW(row, image.width, 12); break;
+            case 16: IMAGE_FLIP_ROW(row, image.width, 16); break;
+            default: IMAGE_FLIP_ROW(row, image.width, image.pixel_size); break;
+        }
+    }
 }
 
 #endif

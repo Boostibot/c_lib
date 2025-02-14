@@ -17,9 +17,9 @@ typedef struct Allocation_List_Block {
     struct Allocation_List_Block* next_block; 
     struct Allocation_List_Block* prev_block;
 
-    u64 align       : 16;
-    u64 size        : 47;
-    u64 is_offset   : 1;
+    uint64_t align       : 16;
+    uint64_t size        : 47;
+    uint64_t is_offset   : 1;
 
     #ifdef DO_ASSERTS_SLOW
     char magic[8];
@@ -53,7 +53,7 @@ EXTERNAL isize allocation_list_get_block_size(Allocation_List* self, void* old_p
 EXTERNAL Allocation_List_Block* allocation_list_get_block_header(Allocation_List* self, void* old_ptr);
 
 EXTERNAL void tracking_allocator_init(Tracking_Allocator* self, const char* name);
-EXTERNAL void tracking_allocator_init_use(Tracking_Allocator* self, const char* name, u64 flags);  //convenience function that inits the allocator then imidietely makes it the default or scratch. On deinit restores to previous defaults
+EXTERNAL void tracking_allocator_init_use(Tracking_Allocator* self, const char* name, uint64_t flags);  //convenience function that inits the allocator then imidietely makes it the default or scratch. On deinit restores to previous defaults
 EXTERNAL void tracking_allocator_deinit(Tracking_Allocator* self);
  
 EXTERNAL void* tracking_allocator_malloc(Tracking_Allocator* self, isize size);
@@ -85,8 +85,8 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
     #define ALLOCATION_LIST_SIZE_BITS       46
     #define ALLOCATION_LIST_ALIGN_BITS      17
     #define ALLOCATION_LIST_IS_OFFSET_BIT   63
-    #define ALLOCATION_LIST_SIZE_MASK       (((u64) 1 << ALLOCATION_LIST_SIZE_BITS) - 1)
-    #define ALLOCATION_LIST_ALIGN_MASK      (((u64) 1 << ALLOCATION_LIST_ALIGN_BITS) - 1)
+    #define ALLOCATION_LIST_SIZE_MASK       (((uint64_t) 1 << ALLOCATION_LIST_SIZE_BITS) - 1)
+    #define ALLOCATION_LIST_ALIGN_MASK      (((uint64_t) 1 << ALLOCATION_LIST_ALIGN_BITS) - 1)
 
     INTERNAL void _allocation_list_assert_block_coherency(Allocation_List* self, Allocation_List_Block* block)
     {
@@ -145,22 +145,22 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
             
             //If is overaligned and the resulting pointer is offset from its 
             // would be have been place save the offset just before it
-            // (we can use u64 because there will be at least 64 bits of
+            // (we can use uint64_t because there will be at least 64 bits of
             // free space since we capped the alignment to 8)
             bool is_offset = out_ptr != would_have_been_place;
             if(is_offset)
             {
-                u64* offset = (u64*) (void*) new_block_ptr - 1;
-                *offset = (u64) new_allocation - (u64) new_block_ptr;
+                uint64_t* offset = (uint64_t*) (void*) new_block_ptr - 1;
+                *offset = (uint64_t) new_allocation - (uint64_t) new_block_ptr;
             }
 
-            new_block_ptr->is_offset = is_offset;
+            new_block_ptr->is_offset = is_offset; 
             #ifdef __GNUC__
                 #pragma GCC diagnostic push
                 #pragma GCC diagnostic ignored "-Wconversion"
             #endif
-            new_block_ptr->align = (u64) align; 
-            new_block_ptr->size = (u64) new_size; 
+            new_block_ptr->align = (uint64_t) align; 
+            new_block_ptr->size = (uint64_t) new_size; 
             #ifdef __GNUC__
                 #pragma GCC diagnostic pop
             #endif
@@ -207,7 +207,7 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
             void* old_allocation = old_block_ptr;
             if(old_block_ptr->is_offset)
             {
-                u64* offset = ((u64*) old_allocation) - 1;
+                uint64_t* offset = ((uint64_t*) old_allocation) - 1;
                 old_allocation = (u8*) old_allocation - *offset;
             }   
 
@@ -252,7 +252,7 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
         self->name = name;
     }
 
-    EXTERNAL void tracking_allocator_init_use(Tracking_Allocator* self, const char* name, u64 flags)
+    EXTERNAL void tracking_allocator_init_use(Tracking_Allocator* self, const char* name, uint64_t flags)
     {
         (void) flags;
         tracking_allocator_init(self, name);

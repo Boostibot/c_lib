@@ -167,21 +167,27 @@
 //   The other kind is _tlsf_check_[thing]_invariants() which is a simple wrapper around the test variant. 
 //   This wrapper is used internally upon entry/exit of each function and gets turned into a noop in release builds.
 
+#ifdef MODULE_ALL_COUPLED
+    #include "allocator.h"
+#endif
+
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-#if !defined(MODULE_ALLOCATOR) && !defined(MODULE_ALL_COUPLED)
+
+#if !defined(MODULE_ALLOCATOR)
     #include <assert.h>
     #include <stdlib.h>
+    #include <stdio.h>
     
     #define EXTERNAL
     #define INTERNAL static
     #define ASSERT(x, ...) assert(x)
-    #define TEST(x, ...)  (!(x) ? abort() : (void) 0)
-
-    typedef int64_t isize; //I have not tested it with unsigned... might require some changes
-    typedef struct Allocator { int64_t dummy; } Allocator;
+    #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
 #endif
+
+typedef int64_t isize;
+typedef void* (*Allocator)(void* alloc, int mode, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align, void* other);
 
 //The type used for offsets. 64 bit allows for full address space allocations 
 // (which might be used to track virtual memory) but introduces extra 8B of needed storage
@@ -247,7 +253,7 @@ typedef struct Tlsf_Allocator {
     isize deallocation_count;
     isize bytes_allocated;
     isize max_bytes_allocated;
-    uint32_t max_concurent_allocations;
+    uint32_t max_concurrent_allocations;
 
     uint32_t node_first_free;
     uint32_t node_capacity;
@@ -499,8 +505,8 @@ INTERNAL isize _tlsf_allocate(Tlsf_Allocator* allocator, isize size, isize align
     
     allocator->node_count += 1;
     allocator->allocation_count += 1;
-    if(allocator->max_concurent_allocations < allocator->allocation_count - allocator->deallocation_count)
-        allocator->max_concurent_allocations = (uint32_t) (allocator->allocation_count - allocator->deallocation_count);
+    if(allocator->max_concurrent_allocations < allocator->allocation_count - allocator->deallocation_count)
+        allocator->max_concurrent_allocations = (uint32_t) (allocator->allocation_count - allocator->deallocation_count);
 
     allocator->bytes_allocated += size;
     if(allocator->max_bytes_allocated < allocator->bytes_allocated)
@@ -688,52 +694,53 @@ EXTERNAL void tlsf_grow_nodes(Tlsf_Allocator* allocator, void* new_node_memory, 
     allocator->node_capacity = (uint32_t) new_node_capacity;
     _tlsf_check_invariants(allocator);
 }
-
-#ifdef MODULE_ALLOCATOR
-    INTERNAL void* _tlsf_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
-    {
-        Tlsf_Allocator* allocator = (Tlsf_Allocator*) (void*) self;
-        void* new_ptr = NULL;
-        if(new_size > 0)
-        {
-            new_ptr = tlsf_malloc(allocator, new_size, align, 0);
-            if(new_ptr == NULL)
+    
+INTERNAL void* _tlsf_allocator_func(void* self, int mode, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align, void* other)
+{
+    #ifdef MODULE_ALLOCATOR
+        if(mode == ALLOCATOR_MODE_ALLOC) {
+            Tlsf_Allocator* allocator = (Tlsf_Allocator*) self;
+            void* new_ptr = NULL;
+            if(new_size > 0)
             {
-                if(allocator->last_fail_reason & TLSF_FAIL_REASON_NEED_MORE_MEMORY)
-                    allocator_error(error, ALLOCATOR_ERROR_OUT_OF_MEM, self, new_size, old_ptr, old_size, align, "Out of memory");
+                new_ptr = tlsf_malloc(allocator, new_size, align, 0);
+                if(new_ptr != NULL) {}
+                else if(allocator->last_fail_reason & TLSF_FAIL_REASON_NEED_MORE_MEMORY)
+                    allocator_error((Allocator_Error*) other, ALLOCATOR_ERROR_OUT_OF_MEM, self, new_size, old_ptr, old_size, align, "Out of memory");
                 else if(allocator->last_fail_reason & TLSF_FAIL_REASON_NEED_MORE_NODES)
-                    allocator_error(error, ALLOCATOR_ERROR_OUT_OF_MEM, self, new_size, old_ptr, old_size, align, "Maximum number of allocations %i reached", (int) allocator->node_capacity);
+                    allocator_error((Allocator_Error*) other, ALLOCATOR_ERROR_OUT_OF_MEM, self, new_size, old_ptr, old_size, align, "Maximum number of allocations %i reached", (int) allocator->node_capacity);
                 else if(allocator->last_fail_reason & TLSF_FAIL_REASON_UNSUPPORTED_SIZE)
-                    allocator_error(error, ALLOCATOR_ERROR_INVALID_PARAMS, self, new_size, old_ptr, old_size, align, 
+                    allocator_error((Allocator_Error*) other, ALLOCATOR_ERROR_INVALID_PARAMS, self, new_size, old_ptr, old_size, align, 
                         "Invalid arguments. Size %lli is more then TLSF_MAX_SIZE (%lli) or less then 0.", (long long) new_size, (long long) TLSF_MAX_SIZE);
             }
-        }
-        if(new_ptr && old_size > 0)
-        {
-            ASSERT(old_ptr);
-            memcpy(new_ptr, old_ptr, old_size < new_size ? old_size : new_size);
-        }
+            if(new_ptr && old_size > 0)
+            {
+                ASSERT(old_ptr);
+                memcpy(new_ptr, old_ptr, old_size < new_size ? old_size : new_size);
+            }
 
-        if(old_size > 0)
-            tlsf_free(allocator, old_ptr);
+            if(old_size > 0)
+                tlsf_free(allocator, old_ptr);
         
-        return new_ptr;
-    }
-
-    INTERNAL Allocator_Stats _tlsf_allocator_get_stats(Allocator* self)
-    {
-        Tlsf_Allocator* allocator = (Tlsf_Allocator*) (void*) self;
-        Allocator_Stats stats = {0};
-        stats.type_name = "Tlsf_Allocator";
-        stats.is_top_level = false;
-        stats.allocation_count = allocator->allocation_count;
-        stats.deallocation_count = allocator->deallocation_count;
-        stats.bytes_allocated = allocator->bytes_allocated;
-        stats.max_bytes_allocated = allocator->max_bytes_allocated;
-        stats.max_concurent_allocations = allocator->max_concurent_allocations;
-        return stats;
-    }   
-#endif
+            return new_ptr;
+        }
+        if(mode == ALLOCATOR_MODE_GET_STATS) {
+            Tlsf_Allocator* allocator = (Tlsf_Allocator*) (void*) self;
+            Allocator_Stats stats = {0};
+            stats.type_name = "Tlsf_Allocator";
+            stats.is_top_level = false;
+            stats.allocation_count = allocator->allocation_count;
+            stats.deallocation_count = allocator->deallocation_count;
+            stats.bytes_allocated = allocator->bytes_allocated;
+            stats.max_bytes_allocated = allocator->max_bytes_allocated;
+            stats.max_concurrent_allocations = allocator->max_concurrent_allocations;
+            *(Allocator_Stats*) other = stats;
+        }
+    #else
+        (void) self, mode, new_size, old_ptr, old_size, align, other;
+    #endif
+    return NULL;
+}
 
 EXTERNAL bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize memory_size, void* node_memory, isize node_memory_size)
 {
@@ -750,11 +757,7 @@ EXTERNAL bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize m
     allocator->memory_size = memory_size;
     allocator->node_capacity = (uint32_t) node_capacity;
     allocator->node_count = 0;
-    
-    #ifdef MODULE_ALLOCATOR
-        allocator->allocator.func = _tlsf_allocator_func;
-        allocator->allocator.get_stats = _tlsf_allocator_get_stats;
-    #endif
+    allocator->allocator = _tlsf_allocator_func;
     
     memset(allocator->nodes, TLSF_INVALID, (size_t) node_capacity*sizeof(Tlsf_Node));
     memset(allocator->bin_first_free, TLSF_INVALID, sizeof allocator->bin_first_free);
@@ -989,7 +992,7 @@ EXTERNAL void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags)
     TEST(allocator->nodes != NULL);
     TEST(allocator->node_count <= allocator->node_capacity);
     TEST(allocator->deallocation_count <= allocator->allocation_count);
-    TEST(allocator->allocation_count - allocator->deallocation_count <= allocator->max_concurent_allocations);
+    TEST(allocator->allocation_count - allocator->deallocation_count <= allocator->max_concurrent_allocations);
     TEST(allocator->bytes_allocated <= allocator->max_bytes_allocated);
     
     //Check FIRST and LAST nodes.
@@ -1258,7 +1261,7 @@ void test_allocator_tlsf_stress(double seconds, isize at_once)
         
         allocs[i].node = tlsf_get_node(&allocator, allocs[i].ptr);
 
-        TEST((uint64_t) allocs[i].ptr == _tlsf_align_up((uint64_t) allocs[i].ptr, allocs[i].align));
+        TEST((uint64_t) allocs[i].ptr % allocs[i].align == 0);
         tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
 
         iter += 1;
@@ -1299,198 +1302,4 @@ void test_allocator_tlsf(double seconds)
     printf("[TEST]: test_allocator_tlsf(%lf) success!\n", seconds);
 }
 
-//Include the benchmark only when being included alongside the rest of the codebase
-// since I cant be bothered to make it work without any additional includes
-#ifdef MODULE_ALLOCATOR
-    #include "perf.h"
-    #include "random.h"
-    #include "log.h"
-    #include "arena.h"
-    void benchmark_allocator_tlsf_single(double seconds, bool touch, isize at_once, isize min_size, isize max_size, isize min_align_log2, isize max_align_log2)
-    {
-        LOG_INFO("BENCH", "Running benchmarks for %s with touch:%s at_once:%lli size:[%lli, %lli) align_log:[%lli %lli)", 
-            format_seconds(seconds).data, touch ? "true" : "false", at_once, min_size, max_size, min_align_log2, max_align_log2);
-
-        enum {
-            CACHED_COUNT = 1024,
-            BATCH_SIZE = 1,
-        };
-        typedef struct Alloc {
-            void* ptr;
-            uint32_t node;
-            uint32_t _;
-        } Alloc;
-
-        typedef struct Cached_Random {
-            int32_t size;
-            int32_t align;
-            int32_t index;
-        } Cached_Random;
-
-        enum {
-            DO_ARENA,
-            DO_TLSF,
-            DO_MALLOC,
-        };
-    
-        Arena arena = {0};
-        TEST(arena_init(&arena, "tlsf_arena", 0, 0));
-        isize memory_size = 1024*1024*1024;
-        arena_commit(&arena, memory_size);
-
-        Alloc* allocs = (Alloc*) malloc(at_once * sizeof(Alloc));
-        memset(allocs, -1, at_once * sizeof(Alloc));
-
-        Cached_Random* randoms = (Cached_Random*) malloc(CACHED_COUNT * sizeof(Cached_Random));
-
-        double warmup = seconds/10;
-
-        for(isize i = 0; i < CACHED_COUNT; i++)
-        {
-            Cached_Random cached = {0};
-            cached.size = (int32_t) random_range(min_size, max_size);
-            cached.align = (int32_t) ((isize) 1 << random_range(min_align_log2, max_align_log2));
-            cached.index = (int32_t) random_i64();
-
-            randoms[i] = cached;
-        }
-
-        Tlsf_Allocator tlsf = {0};
-        void* tlsf_memory = malloc(memory_size);
-        isize node_memory_size = (at_once + 2)*sizeof(Tlsf_Node);
-        void* tlsf_nodes = malloc(node_memory_size);
-        tlsf_init(&tlsf, tlsf_memory, memory_size, tlsf_nodes, node_memory_size);
-
-        Perf_Stats stats_tlsf = {0};
-        Perf_Stats stats_tlsf_free = {0};
-    
-        Perf_Stats stats_malloc_alloc = {0};
-        Perf_Stats stats_malloc_free = {0};
-        
-        Perf_Stats stats_arena_alloc = {0};
-        Perf_Stats stats_arena_free = {0};
-
-        for(isize j = 0; j < 3; j++)
-        {
-            Perf_Stats* stats_alloc = NULL;
-            Perf_Stats* stats_free = NULL;
-            if(j == DO_ARENA) {
-                stats_alloc = &stats_arena_alloc;
-                stats_free = &stats_arena_free;
-            }
-            
-            if(j == DO_TLSF) {
-                stats_alloc = &stats_tlsf;
-                stats_free = &stats_tlsf_free;
-            }
-            
-            if(j == DO_MALLOC) {
-                stats_alloc = &stats_malloc_alloc;
-                stats_free = &stats_malloc_free;
-            }
-
-            isize curr_batch = 0;
-            isize accumulated_alloc = 0;
-            isize accumulated_free = 0;
-            isize failed = 0;
-
-            isize active_allocs = 0;
-            for(Perf_Benchmark bench_alloc = {0}, bench_free = {0}; ;) 
-            {
-                bool continue1 = perf_benchmark_custom(&bench_alloc, stats_alloc, warmup, seconds, BATCH_SIZE);;
-                bool continue2 = perf_benchmark_custom(&bench_free, stats_free, warmup, seconds, BATCH_SIZE);;
-                if(continue1 == false || continue2 == false)
-                    break;
-                    
-                _tlsf_check_invariants(&tlsf);
-
-                isize iter = bench_alloc.iter;
-                Cached_Random random = randoms[iter % CACHED_COUNT];
-
-                isize i = (isize) ((uint64_t) random.index % at_once);
-                //At the start only alloc
-                if(active_allocs < at_once)
-                {
-                    i = active_allocs;
-                    active_allocs += 1;
-                }
-                else
-                {
-                    i64 before_free = perf_now();
-                    if(j == DO_MALLOC) 
-                        free(allocs[i].ptr);
-                    if(j == DO_TLSF) 
-                    {
-                        //tlsf_free(&tlsf, allocs[i].ptr);
-                        tlsf_deallocate(&tlsf, allocs[i].node);
-                    }
-                    if(j == DO_ARENA) 
-                    {
-                        arena_reset(&arena, 0);
-                        active_allocs = 0;
-                    }
-
-                    i64 after_free = perf_now();
-                    accumulated_free += after_free - before_free;
-                }  
-
-                i64 before_alloc = perf_now();
-                if(j == DO_MALLOC) 
-                    allocs[i].ptr = malloc(random.size);
-                if(j == DO_TLSF) 
-                {
-                    //allocs[i].ptr = tlsf_malloc(&tlsf, random.size, random.align);
-                    allocs[i].ptr = tlsf.memory + tlsf_allocate(&tlsf, &allocs[i].node, random.size, random.align, 0);
-                }
-                if(j == DO_ARENA) 
-                    allocs[i].ptr = arena_push_nonzero(&arena, random.size, random.align, NULL);
-
-                if(allocs[i].ptr == NULL)
-                    failed += 1;
-                if(touch && allocs[i].ptr)
-                    memset(allocs[i].ptr, 0, random.size);
-                i64 after_alloc = perf_now();
-                
-                if(iter >= at_once)
-                    accumulated_alloc += after_alloc - before_alloc;
-
-                if(iter >= at_once && curr_batch % BATCH_SIZE == 0)
-                {
-                    perf_benchmark_submit(&bench_free, accumulated_free);
-                    perf_benchmark_submit(&bench_alloc, accumulated_alloc);
-                    accumulated_free = 0;
-                    accumulated_alloc = 0;
-                }
-                curr_batch += 1;
-            }
-
-            //printf("failed:%lli \n", failed);
-        }
-    
-        free(allocs);
-        free(randoms);
-        free(tlsf_memory);
-        free(tlsf_nodes);
-        arena_deinit(&arena);
-
-        /*log_perf_stats_hdr(log_info("BENCH"), "ALLOC:        ");
-        log_perf_stats_row(log_info("BENCH"), "arena         ", stats_arena_alloc);
-        log_perf_stats_row(log_info("BENCH"), "tlsf          ", stats_tlsf);
-        log_perf_stats_row(log_info("BENCH"), "malloc        ", stats_malloc_alloc);
-        
-        log_perf_stats_hdr(log_info("BENCH"), "FREE:         ");
-        log_perf_stats_row(log_info("BENCH"), "arena         ", stats_arena_free);
-        log_perf_stats_row(log_info("BENCH"), "tlsf          ", stats_tlsf_free);
-        log_perf_stats_row(log_info("BENCH"), "malloc        ", stats_malloc_free);*/
-    }
-
-    void benchmark_allocator_tlsf(bool touch, double seconds)
-    {
-        benchmark_allocator_tlsf_single(seconds, touch, 4096, 8, 64, 0, 4);
-        benchmark_allocator_tlsf_single(seconds, touch, 1024, 64, 512, 0, 4);
-        benchmark_allocator_tlsf_single(seconds, touch, 1024, 8, 64, 0, 4);
-        benchmark_allocator_tlsf_single(seconds, touch, 256, 64, 512, 0, 4);
-        benchmark_allocator_tlsf_single(seconds, touch, 1024, 4000, 8000, 0, 4);
-    }
-    #endif
 #endif

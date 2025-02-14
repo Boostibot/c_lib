@@ -1,6 +1,6 @@
 #pragma once
-#include "random.h"
-#include "assert.h"
+#include "../random.h"
+#include "../assert.h"
 
 #define RANDOM_TEST_ITERS		(1000*1000*200)
 #define RANDOM_TEST_EPSILON		(2e-4)

@@ -1,7 +1,7 @@
 #pragma once
-#include "scratch.h"
-#include "random.h"
-#include "time.h"
+#include "../scratch.h"
+#include "../random.h"
+#include "../time.h"
 
 static char* arena_push_string(Scratch* arena, const char* string)
 {
@@ -128,10 +128,10 @@ static void test_arena_stress(f64 time)
 	// uint64_t random_seed = 0x6b3979953b41cf7d;
 	// *random_state() = random_state_make(random_seed);
 
-    f64 start = clock_s();
+    f64 start = clock_sec();
 	for(isize i = 0; i < MAX_ITERS; i++)
 	{
-		if(clock_s() - start >= time && i >= MIN_ITERS)
+		if(clock_sec() - start >= time && i >= MIN_ITERS)
 			break;
 
 		isize action = random_discrete(dist, ARRAY_LEN(dist));

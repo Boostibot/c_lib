@@ -1,7 +1,8 @@
 ﻿#ifndef MODULE_PLATFORM
 #define MODULE_PLATFORM
 
-//Because I cant be bothered making sure 
+//Because I cant be bothered making sure nothing has included
+// these before we did
 #define _GNU_SOURCE
 #define _GNU_SOURCE_
 #define __USE_GNU
@@ -11,10 +12,7 @@
 
 #include <stdint.h>
 #include <limits.h>
-
-#ifndef __cplusplus
 #include <stdbool.h>
-#endif
 
 //This is a complete operating system abstraction layer. Its implementation is as straight forward and light as possible.
 //It uses sized strings on all inputs and returns null terminated strings for maximum compatibility and performance.
@@ -187,8 +185,6 @@ typedef struct Platform_Mutex {
     void* handle;
 } Platform_Mutex;
 
-//@TODO: thread processor affinity!
-
 //@NOTE: We made pretty much all of the threaded functions (except init-like) into non failing
 //       even though they CAN internally return error (we just assert). That is because:
 // 1) One can generally do very little when a mutex fails.
@@ -208,7 +204,7 @@ typedef struct Platform_Mutex {
 //The thread automatically cleans itself up upon completion or termination.
 Platform_Error platform_thread_launch(Platform_Thread* thread_or_null, int64_t stack_size_or_zero, int (*func)(void*), void* context);
 
-int64_t         platform_thread_get_proccessor_count();
+int64_t         platform_thread_get_processor_count();
 Platform_Thread platform_thread_get_current(); //Returns handle to the calling thread
 int32_t         platform_thread_get_current_id(); 
 const char*     platform_thread_get_current_name(); 
@@ -226,7 +222,7 @@ void            platform_thread_attach_deinit(void (*func)(void* context), void*
 
 // //Interface 2
 // Platform_Error  platform_thread_launch(int64_t stack_size_or_zero, void (*func)(void*), void* context, const char* name);
-// int64_t         platform_thread_get_proccessor_count();
+// int64_t         platform_thread_get_processor_count();
 // int32_t         platform_thread_get_current_id(); 
 // int32_t         platform_thread_get_main_id(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns NULL.
 // const char*     platform_thread_get_current_name(); 
@@ -300,12 +296,6 @@ int64_t platform_perf_counter();
 int64_t platform_perf_counter_frequency();  
 //returns platform_perf_counter() take at time of platform_init()
 int64_t platform_perf_counter_startup();    
-
-//Functions which deal with __rdtsc or equivalent on ARM
-PLATFORM_INTRINSIC int64_t platform_rdtsc();
-PLATFORM_INTRINSIC int64_t platform_rdtsc_fence();
-int64_t platform_rdtsc_frequency();
-int64_t platform_rdtsc_startup();
 
 //=========================================
 // Filesystem
@@ -775,18 +765,6 @@ const char* platform_exception_to_string(Platform_Exception error);
     PLATFORM_INTRINSIC int32_t platform_pop_count64(uint64_t num)
     {
         return (int32_t) __popcnt64((unsigned long long)num);
-    }
-
-    PLATFORM_INTRINSIC int64_t platform_rdtsc()
-    {
-        _ReadWriteBarrier(); 
-	    return (int64_t) __rdtsc();
-    }
-
-    PLATFORM_INTRINSIC int64_t platform_rdtsc_fence()
-    {
-        _ReadWriteBarrier(); 
-        _mm_lfence();
     }
 
     #pragma warning(pop)

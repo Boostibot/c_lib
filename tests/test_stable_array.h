@@ -1,20 +1,19 @@
 #pragma once
 
-#include "stable_array.h"
-#include "allocator_debug.h"
+#include "../stable_array.h"
+#include "../allocator_debug.h"
 
 static void test_stable_array()
 {
-    Debug_Allocator resources_alloc = {0};
-    debug_allocator_init(&resources_alloc, allocator_get_default(), DEBUG_ALLOCATOR_DEINIT_LEAK_CHECK | DEBUG_ALLOCATOR_CAPTURE_CALLSTACK);
+	Debug_Allocator debug_alloc = debug_allocator_make(allocator_get_default(), DEBUG_ALLOC_LEAK_CHECK | DEBUG_ALLOC_USE);
     {
         Stable_Array stable = {0};
-        stable_array_init(&stable, resources_alloc.alloc, sizeof(i32));
+        stable_array_init(&stable, debug_alloc.alloc, sizeof(int32_t));
 
-        i32* val = NULL;
+        int32_t* val = NULL;
         isize i1 = stable_array_insert(&stable, (void**) &val);
 
-        i32* val_get = (i32*) stable_array_at(&stable, i1);
+        int32_t* val_get = (int32_t*) stable_array_at(&stable, i1);
         TEST(val == val_get);
         *val = 32;
 
@@ -28,20 +27,18 @@ static void test_stable_array()
         enum {INSERT_COUNT = 129};
         for(isize i = 0; i < INSERT_COUNT; i++)
         {
-            i32* at = NULL;
+            int32_t* at = NULL;
             isize index = stable_array_insert(&stable, (void**) &at);
-            *at = (i32) i;
+            *at = (int32_t) i;
             TEST(index == i);
         }
-
-        STABLE_ARRAY_FOR_EACH_BEGIN(stable, i32*, ptr, isize, index)
-            i32* at = (i32*) stable_array_at(&stable, index);
-            TEST(*at == index);
-        STABLE_ARRAY_FOR_EACH_END
+        
+        STABLE_ARRAY_FOR(&stable, it, int32_t, value) 
+            TEST(*value == it.index);
 
         for(isize i = 0; i < INSERT_COUNT; i++)
         {
-            i32* at = (i32*) stable_array_at(&stable, i);
+            int32_t* at = (int32_t*) stable_array_at(&stable, i);
             TEST(*at == i);
             stable_array_remove(&stable, i);
         }
@@ -49,5 +46,5 @@ static void test_stable_array()
         stable_array_deinit(&stable);
     }
 
-    debug_allocator_deinit(&resources_alloc);
+    debug_allocator_deinit(&debug_alloc);
 }

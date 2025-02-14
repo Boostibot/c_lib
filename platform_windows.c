@@ -230,7 +230,7 @@ unsigned _thread_func(void* ptr)
 
 
 
-int64_t         platform_thread_get_proccessor_count();
+int64_t         platform_thread_get_processor_count();
 Platform_Thread platform_thread_get_current(); //Returns handle to the calling thread
 int32_t         platform_thread_get_current_id(); 
 Platform_Thread platform_thread_get_main(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns NULL.
@@ -330,7 +330,7 @@ bool platform_thread_is_main()
     return platform_thread_get_current().handle == platform_thread_get_main().handle;
 }
 
-int64_t platform_thread_get_proccessor_count()
+int64_t platform_thread_get_processor_count()
 {
     return GetCurrentProcessorNumber();
 }
@@ -393,7 +393,7 @@ void platform_thread_detach(Platform_Thread* thread)
     {
         bool state = CloseHandle(thread->handle);
         thread->handle = NULL;
-        assert(state); 
+        (void) state; assert(state); 
     }
 }
 
@@ -465,14 +465,14 @@ void platform_futex_wake_all(volatile void* futex)
 //=========================================
 // Timings
 //=========================================
-static int64_t startup_perf_counter = 0;
-static int64_t startup_epoch_time = 0;
-static int64_t perf_counter_freq = 0;
+static int64_t g_startup_perf_counter = 0;
+static int64_t g_startup_epoch_time = 0;
+static int64_t g_perf_counter_freq = 0;
 void _platform_deinit_timings()
 {
-    startup_perf_counter = 0;
-    perf_counter_freq = 0;
-    startup_epoch_time = 0;
+    g_startup_perf_counter = 0;
+    g_perf_counter_freq = 0;
+    g_startup_epoch_time = 0;
 }
 
 int64_t platform_perf_counter()
@@ -485,113 +485,21 @@ int64_t platform_perf_counter()
 
 int64_t platform_perf_counter_startup()
 {
-    if(startup_perf_counter == 0)
-        startup_perf_counter = platform_perf_counter();
-    return startup_perf_counter;
+    if(g_startup_perf_counter == 0)
+        g_startup_perf_counter = platform_perf_counter();
+    return g_startup_perf_counter;
 }
 
 int64_t platform_perf_counter_frequency()
 {
-    if(perf_counter_freq == 0)
+    if(g_perf_counter_freq == 0)
     {
         LARGE_INTEGER ticks;
         ticks.QuadPart = 0;
         (void) QueryPerformanceFrequency(&ticks);
-        perf_counter_freq = ticks.QuadPart;
+        g_perf_counter_freq = ticks.QuadPart;
     }
-    return perf_counter_freq;
-}
-
-//Directly copied from: https://gist.github.com/pmttavara/6f06fc5c7679c07375483b06bb77430c
-#if 1
-    // SPDX-FileCopyrightText: 2022 Phillip Trudeau-Tavara <pmttavara@protonmail.com>
-    // SPDX-License-Identifier: 0BSD
-
-    // https://hero.handmade.network/forums/code-discussion/t/7485-queryperformancefrequency_returning_10mhz_bug/2
-    // https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/timers#partition-reference-tsc-mechanism
-
-    #include <stdbool.h>
-    #include <stdint.h>
-
-    #define WIN32_LEAN_AND_MEAN
-    #define VC_EXTRALEAN
-    #define NOMINMAX
-    #include <Windows.h>
-    #include <intrin.h>
-
-    static inline uint64_t get_rdtsc_freq(void) {
-
-        // Cache the answer so that multiple calls never take the slow path more than once
-        static uint64_t tsc_freq = 0;
-        if (tsc_freq) {
-            return tsc_freq;
-        }
-
-        // Fast path: Load kernel-mapped memory page
-        HMODULE ntdll = LoadLibraryA("ntdll.dll");
-        if (ntdll) {
-
-            int (*NtQuerySystemInformation)(int, void *, unsigned int, unsigned int *) =
-                (int (*)(int, void *, unsigned int, unsigned int *))GetProcAddress(ntdll, "NtQuerySystemInformation");
-            if (NtQuerySystemInformation) {
-
-                volatile uint64_t *hypervisor_shared_page = NULL;
-                unsigned int size = 0;
-
-                // SystemHypervisorSharedPageInformation == 0xc5
-                int result = (NtQuerySystemInformation)(0xc5, (void *)&hypervisor_shared_page, sizeof(hypervisor_shared_page), &size);
-
-                // success
-                if (size == sizeof(hypervisor_shared_page) && result >= 0) {
-                    // docs say ReferenceTime = ((VirtualTsc * TscScale) >> 64)
-                    //      set ReferenceTime = 10000000 = 1 second @ 10MHz, solve for VirtualTsc
-                    //       =>    VirtualTsc = 10000000 / (TscScale >> 64)
-                    tsc_freq = (10000000ull << 32) / (hypervisor_shared_page[1] >> 32);
-                    // If your build configuration supports 128 bit arithmetic, do this:
-                    // tsc_freq = ((unsigned __int128)10000000ull << (unsigned __int128)64ull) / hypervisor_shared_page[1];
-                }
-            }
-            FreeLibrary(ntdll);
-        }
-
-        // Slow path
-        if (!tsc_freq) {
-
-            // Get time before sleep
-            uint64_t qpc_begin = 0; QueryPerformanceCounter((LARGE_INTEGER *)&qpc_begin);
-            uint64_t tsc_begin = __rdtsc();
-
-            Sleep(2);
-
-            // Get time after sleep
-            uint64_t qpc_end = qpc_begin + 1; QueryPerformanceCounter((LARGE_INTEGER *)&qpc_end);
-            uint64_t tsc_end = __rdtsc();
-
-            // Do the math to extrapolate the RDTSC ticks elapsed in 1 second
-            uint64_t qpc_freq = 0; QueryPerformanceFrequency((LARGE_INTEGER *)&qpc_freq);
-            tsc_freq = (tsc_end - tsc_begin) * qpc_freq / (qpc_end - qpc_begin);
-        }
-
-        // Failure case
-        if (!tsc_freq) {
-            tsc_freq = 1000000000;
-        }
-
-        return tsc_freq;
-    }
-#endif
-
-int64_t platform_rdtsc_frequency()
-{
-    return get_rdtsc_freq();
-}
-
-static int64_t startup_rdtsc = 0;
-int64_t platform_rdtsc_startup()
-{
-    if(startup_rdtsc == 0)
-        startup_rdtsc = platform_rdtsc();
-    return startup_rdtsc;
+    return g_perf_counter_freq;
 }
 
 static int64_t _filetime_to_epoch_time(FILETIME t)  
@@ -613,11 +521,13 @@ int64_t platform_epoch_time()
 
 int64_t platform_epoch_time_startup()
 {
-    if(startup_epoch_time == 0)
-        startup_epoch_time = platform_epoch_time();
+    if(g_startup_epoch_time == 0)
+        g_startup_epoch_time = platform_epoch_time();
 
-    return startup_epoch_time;
+    return g_startup_epoch_time;
 }
+
+
 
 //=========================================
 // Filesystem
@@ -724,7 +634,7 @@ static void _buffer_resize(Buffer_Base* buffer, int64_t item_size, int64_t new_s
 
 static void _buffer_append(Buffer_Base* buffer, int64_t item_size, const void* data, int64_t data_count, int64_t data_size)
 {
-    assert(item_size == data_size);
+    assert(item_size == data_size); (void) data_size;
     _buffer_reserve(buffer, item_size, buffer->size + data_count);
     memcpy((char*) buffer->data + buffer->size*item_size, data, data_count*item_size);
     buffer->size += data_count;
@@ -2470,9 +2380,6 @@ void platform_init()
 {
     platform_deinit();
     _platform_thread_get_main_init();
-
-    platform_rdtsc_frequency();
-    platform_rdtsc_startup();
 
     platform_perf_counter();
     platform_epoch_time_startup();

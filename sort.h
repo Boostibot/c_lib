@@ -7,7 +7,7 @@
 // are replaced with mov instructions. We implement insertion sort, heap sort, quick sort and merge sort as well
 // as few convenience functions. 
 // The heapsort and quicksort routines are heavily optimized and reach state of the art performance. 
-// On random integers we are about 20% faster tan MSVC std::sort and on par with pdqsort. On large sizes (> 3000)
+// On random integers hqsort is about 20% faster tan MSVC std::sort and on par with pdqsort. On large sizes (> 3000)
 // we use our efficient heapsort implementation and consistently outperform pdqsort by about 20%-30% (as of 9/3/2024).
  
 #include <stdlib.h>
@@ -30,7 +30,8 @@
 typedef bool (*Is_Less_Func)(const void* a, const void* b, void* context); 
 typedef int64_t isize;
 
-//Sorts items from smallest to biggest using the is_less comparison function. Similar to qsort.
+//Sorts items from smallest to biggest using the is_less comparison function. Similar to qsort. 
+//Performs quicksort for medium sized arrays and optimized heap sort for large arrays
 SORT_API void  hqsort(void* items, isize item_count, isize item_size, Is_Less_Func is_less, void* context);
     
 //The following 4 functions sort the input items using the is_less comparison function. 
@@ -527,7 +528,7 @@ SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_it
     static void test_sort(double seconds)
     {
         #ifndef TEST
-            #define TEST(x) (!(x) ? printf("test_sort TEST('%s') failed\n", #x), abort() : (void) 0)
+            #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
         #endif
         
         enum {

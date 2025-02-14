@@ -44,8 +44,6 @@
 //Add our example so we can run it
 #define _UNICODE_EXAMPLE
 
-#include "log.h"
-
 #ifdef MODULE_LOG
 #define printf(format, ...) LOG_INFO("TEST", (format), ##__VA_ARGS__)
 #endif
@@ -57,10 +55,10 @@
 #include <time.h>
 #include <locale.h> //so that visual studio actually prints our strings
 
-
 #ifndef TEST
-#include <assert.h>
-#define TEST(a, msg, ...) (!(a) ? printf(msg, ##__VA_ARGS__), assert((a) && (msg)) : (void) 0)
+    #include <stdlib.h>
+    #include <stdio.h>
+    #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
 #endif // !TEST
 
 //Handcrafted tests between utfs
@@ -76,8 +74,8 @@ static void test_unicode(double max_time)
 {
     (void) max_time;
     setlocale(LC_ALL, "en_US.UTF-8"); //so that visual studio actually prints our strings
-    ASSERT(sizeof(char)    == sizeof(uint8_t)  && "On this platform wide strings are utf8");
-    ASSERT(sizeof(wchar_t) == sizeof(uint16_t) && "On this platform wide strings are utf16");
+    TEST(sizeof(char)    == sizeof(uint8_t)  && "On this platform wide strings are utf8");
+    TEST(sizeof(wchar_t) == sizeof(uint16_t) && "On this platform wide strings are utf16");
 
     //Run examples
     printf("unicode running test and examples:\n");

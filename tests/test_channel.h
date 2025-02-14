@@ -17,8 +17,8 @@ typedef long long unsigned  llu;
     #define chan_debug_wait(n)                   _chan_wait_n(n)
 #endif
 
-#include "channel.h"
-#include "sync.h"
+#include "../channel.h"
+#include "../sync.h"
 
 #ifdef CHANNEL_DEBUG
     static _Thread_local const char* _thread_name = "<undefined>";
@@ -67,9 +67,10 @@ typedef long long unsigned  llu;
 
 #include <time.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 #ifndef TEST
-    #define TEST(x, ...) (!(x) ? printf("TEST(%s) failed", #x), abort() : (void) 0)
+    #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
 #endif // !TEST
 
 #define THROUGHPUT_INT_CHAN_INFO _CHAN_SINIT(Channel_Info){sizeof(int)}

@@ -11,8 +11,8 @@
     #define TEST(x, ...)                        //asserts x is true - does NOT get removed in release builds 
     #define ASSERT(x, ...)                      //asserts x is true - gets removed in release builds
     #define ASSERT_SLOW(x, ...)                 //asserts x is true - gets removed in release and optimized debug builds -
-    #define CHECK_BOUNDS(i, to)                //asserts i is in [0, to)
-    #define CHECK_BOUNDS_RANGE(i, from, to)    //asserts i is in [from, to)
+    #define CHECK_BOUNDS(i, to)                 //asserts i is in [0, to)
+    #define CHECK_BOUNDS_RANGE(i, from, to)     //asserts i is in [from, to)
     #define STATIC_ASSERT(x)                    //if x is not true compilation fails. x must be constant expression.
     #define TODO(...)                           //declares this code is imcomplete with TEST(FALSE). 
     #define UNREACHABLE(...)                    //asserts this code is unreachable with ASSERT(FALSE). Also adds optimalization hints
@@ -23,7 +23,7 @@
 
     #if !defined(ASSERT_CUSTOM_SETTINGS)
         #define DO_BOUNDS_CHECKS        // checks bounds prior to lookup 
-        #define DO_REQUIRES             // enables requires - checking pre conditions or imporatnt asserts 
+        #define DO_REQUIRES             // enables requires - checking pre conditions or important asserts 
         #if !defined(NDEBUG)
             #define DO_ASSERTS          // enables assertions - usually post conditions, sanity checks for my own implementation
             #define DO_ASSERTS_SLOW     // enables slow assertions - expensive assertions or once that change the time complexity of an algorithm
@@ -127,14 +127,14 @@
     #ifdef DO_BOUNDS_CHECKS
         #define ASSERT_BOUNDS(x, ...)              (!(x) ? PANIC_EXPR("BOUNDS", "ASSERT_BOUNDS("#x")", ##__VA_ARGS__) : (void) 0) 
                     
-        #define CHECK_BOUNDS(i, to) \
+        #define CHECK_BOUNDS(i, to, ...) \
             ((uint64_t) (i) < (uint64_t) (to) \
                 ? (void) 0 \
                 : PANIC_EXPR("BOUNDS", "CHECK_BOUNDS("#i","#to")", \
                     "Bounds check failed! %lli is not from the interval [0, %lli)!", \
                     (long long) (i), (long long) (to)))           
 
-        #define CHECK_BOUNDS_RANGE(i, from, to) \
+        #define CHECK_BOUNDS_RANGE(i, from, to, ...) \
             ((from) <= (i) && (i) < (to) \
                 ? (void) 0 \
                 : PANIC_EXPR("BOUNDS", "CHECK_BOUNDS_RANGE("#i", "#from","#to")", \
@@ -192,7 +192,7 @@ EXTERNAL void panic(const char* function, const char* joined, ...)
     va_list args;               
     va_start(args, joined);   
     vpanic(function, joined, args);
-    va_end(args);  
+    //va_end(args); //unreachable... 
 }
 
 #include <stdlib.h>

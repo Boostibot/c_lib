@@ -13,7 +13,7 @@
 //    Empty arrays are the most common arrays so having them as a special and error prone case
 //    is less than ideal. This disqualified the typed pointer to allocated array prefixed with header holding
 //    the meta data. See how stb library implements "stretchy buffers".
-//    This approach also introduces a lot of ifs, makes the meta data address unstable thus requiring more memory lookups.
+//    This approach also introduces a lot of helper functions instead of simple array.count or whatever.
 // 
 // 3) we need to hold info about allocators used for the array. We should know how to deallocate any array using its allocator.
 //
@@ -22,36 +22,20 @@
 //
 // This file is also fully freestanding. To compile the function definitions #define MODULE_IMPL_ALL and include it again in .c file. 
 
-#if !defined(MODULE_INLINE_ALLOCATOR) && !defined(MODULE_ALLOCATOR) && !defined(MODULE_ALL_COUPLED)
-    #define MODULE_INLINE_ALLOCATOR
-    #include <stdint.h>
-    #include <stdlib.h>
-    #include <assert.h>
-    #include <stdbool.h>
-    
-    #define EXTERNAL
-    #define INTERNAL static
-    #define ASSERT(x) assert(x)
-    #define ASSERT_BOUNDS(x) assert(x)
-    #define REQUIRE(x) assert(x)
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
 
-    typedef int64_t isize; //can also be usnigned if desired
-    typedef struct Allocator Allocator;
-
-    static void* allocator_reallocate(Allocator* from_allocator, isize new_size, void* old_ptr, isize old_size, isize align)
-    {
-        (void) from_allocator; (void) old_size; (void) align;
-        if(new_size != 0)
-            return realloc(old_ptr, (size_t) new_size);
-        else
-        {
-            free(old_ptr);
-            return NULL;
-        }
-    }
-#else
+#ifdef MODULE_ALL_COUPLED
+    #include "defines.h"
+    #include "assert.h"
+    #include "profile.h"
     #include "allocator.h"
 #endif
+
+typedef int64_t isize;
+typedef void* (*Allocator)(void* alloc, int mode, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align, void* other);
 
 typedef struct Untyped_Array {        
     Allocator* allocator;                
@@ -72,7 +56,7 @@ typedef struct Generic_Array {
         struct {                                 \
             Allocator* allocator;                \
             Type* data;                          \
-            isize count;                          \
+            isize count;                         \
             isize capacity;                      \
         };                                       \
         uint8_t (*ALIGN)[align];                 \
@@ -97,6 +81,9 @@ typedef Array(void*)    ptr_Array;
 typedef i64_Array isize_Array;
 typedef u64_Array usize_Array;
 
+#ifndef EXTERNAL
+    #define EXTERNAL
+#endif
 EXTERNAL void generic_array_init(Generic_Array gen, Allocator* allocator);
 EXTERNAL void generic_array_deinit(Generic_Array gen);
 EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity); 
@@ -111,8 +98,13 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
     #define array_make_generic(array_ptr) ((Generic_Array){&(array_ptr)->untyped, sizeof *(array_ptr)->data, sizeof *(array_ptr)->ALIGN})
 #endif 
 
-#define array_set_capacity(array_ptr, capacity) \
-    generic_array_set_capacity(array_make_generic(array_ptr), (capacity))
+#ifndef ASSERT
+    #include <assert.h>
+    #define ASSERT(x, ...)              assert(x)
+    #define ASSERT_SLOW(x, ...)         assert(x)
+    #define REQUIRE(x, ...)             assert(x)
+    #define CHECK_BOUNDS(i, count, ...) assert(0 <= (i) && (i) <= count)
+#endif  
     
 //Initializes the array. If the array is already initialized deinitializes it first.
 //Thus expects a properly formed array. Suppling a non-zeroed memory will cause errors!
@@ -147,8 +139,7 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
     generic_array_resize(array_make_generic(array_ptr), (to_size), false) 
 
 //Sets the array size to 0. Does not deallocate the array
-#define array_clear(array_ptr) \
-    array_resize_for_overwrite((array_ptr), 0)
+#define array_clear(array_ptr) ((array_ptr)->count = 0)
 
 //Appends item_count items to the end of the array growing it
 #define array_append(array_ptr, items, item_count) (\
@@ -159,9 +150,10 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
     ) \
     
 //Discards current items in the array and replaces them with the provided items
-#define array_assign(array_ptr, items, item_count) \
-    array_clear(array_ptr), \
-    array_append((array_ptr), (items), (item_count))
+#define array_assign(array_ptr, items, item_count) (\
+        array_clear(array_ptr), \
+        array_append((array_ptr), (items), (item_count)) \
+    )\
     
 //Copies from from_arr into to_arr_ptr overriding its elements. 
 #define array_copy(to_arr_ptr, from_arr) \
@@ -175,34 +167,35 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
 
 //Removes a single item from the end of the array
 #define array_pop(array_ptr) (\
-        ASSERT_BOUNDS((array_ptr)->count > 0 && "cannot pop from empty array!"), \
+        CHECK_BOUNDS(0, (array_ptr)->count, "cannot pop from empty array!"), \
         (array_ptr)->data[--(array_ptr)->count] \
     ) \
     
 //Returns the value of the last item. The array must not be empty!
 #define array_last(array) (\
-        ASSERT_BOUNDS((array).count > 0 && "cannot get last from empty array!"), \
+        CHECK_BOUNDS(0, (array).count, "cannot get last from empty array!"), \
         &(array).data[(array).count - 1] \
     ) \
-
-//Returns the total size of the array in bytes
-#define array_byte_size(array) \
-    ((array).count * isizeof *(array).data)
-
+    
+#define array_set_capacity(array_ptr, capacity) \
+    generic_array_set_capacity(array_make_generic(array_ptr), (capacity))
 #endif
+
+#define MODULE_IMPL_ALL
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ARRAY)) && !defined(MODULE_HAS_IMPL_ARRAY)
 #define MODULE_HAS_IMPL_ARRAY
-#include <string.h>
+
+#ifndef PROFILE_SCOPE
+    #define PROFILE_SCOPE(...)
+#endif
 
 EXTERNAL bool generic_array_is_invariant(Generic_Array gen)
 {
     bool is_capacity_correct = 0 <= gen.array->capacity;
     bool is_size_correct = (0 <= gen.array->count && gen.array->count <= gen.array->capacity);
-    #ifndef MODULE_INLINE_ALLOCATOR
     if(gen.array->capacity > 0)
         is_capacity_correct = is_capacity_correct && gen.array->allocator != NULL;
-    #endif
 
     bool is_data_correct = (gen.array->data == NULL) == (gen.array->capacity == 0);
     bool item_size_correct = gen.item_size > 0;
@@ -216,21 +209,17 @@ EXTERNAL void generic_array_init(Generic_Array gen, Allocator* allocator)
 {
     generic_array_deinit(gen);
     gen.array->allocator = allocator;
-    ASSERT(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_invariant(gen));
 }
 
 EXTERNAL void generic_array_deinit(Generic_Array gen)
 {
-    ASSERT(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_invariant(gen));
     if(gen.array->capacity > 0)
-        allocator_reallocate(gen.array->allocator, 0, gen.array->data, gen.array->capacity * gen.item_size, gen.item_align);
+        (*gen.array->allocator)(gen.array->allocator, 0, 0, gen.array->data, gen.array->capacity * gen.item_size, gen.item_align, NULL);
     
     memset(gen.array, 0, sizeof *gen.array);
 }
-
-#ifndef PROFILE_SCOPE
-    #define PROFILE_SCOPE(...)
-#endif
 
 EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity)
 {
@@ -241,14 +230,14 @@ EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity)
 
         isize old_byte_size = gen.item_size * gen.array->capacity;
         isize new_byte_size = gen.item_size * capacity;
-        gen.array->data = (uint8_t*) allocator_reallocate(gen.array->allocator, new_byte_size, gen.array->data, old_byte_size, gen.item_align);
+        gen.array->data = (uint8_t*) (*gen.array->allocator)(gen.array->allocator, 0, new_byte_size, gen.array->data, old_byte_size, gen.item_align, NULL);
 
         //trim the size if too big
         gen.array->capacity = capacity;
         if(gen.array->count > gen.array->capacity)
             gen.array->count = gen.array->capacity;
         
-        ASSERT(generic_array_is_invariant(gen));
+            ASSERT_SLOW(generic_array_is_invariant(gen));
     }
 }
 
@@ -259,12 +248,12 @@ EXTERNAL void generic_array_resize(Generic_Array gen, isize to_size, bool zero_n
         memset(gen.array->data + gen.array->count*gen.item_size, 0, (size_t) ((to_size - gen.array->count)*gen.item_size));
         
     gen.array->count = to_size;
-    ASSERT(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_invariant(gen));
 }
 
 EXTERNAL void generic_array_reserve(Generic_Array gen, isize to_fit)
 {
-    ASSERT(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_invariant(gen));
     if(gen.array->capacity > to_fit)
         return;
         
@@ -282,6 +271,6 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
     generic_array_reserve(gen, gen.array->count+data_count);
     memcpy(gen.array->data + gen.item_size * gen.array->count, data, (size_t) (gen.item_size * data_count));
     gen.array->count += data_count;
-    ASSERT(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_invariant(gen));
 }
 #endif

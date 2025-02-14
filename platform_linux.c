@@ -204,7 +204,7 @@ int64_t platform_allocation_granularity()
 #include <unistd.h>
 
 
-int64_t platform_thread_get_proccessor_count()
+int64_t platform_thread_get_processor_count()
 {
     cpu_set_t cs;
     CPU_ZERO(&cs);

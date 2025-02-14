@@ -1,6 +1,8 @@
 #ifndef MODULE_CHANNEL
 #define MODULE_CHANNEL
 
+//TODO simplify
+
 //==========================================================================
 // Channel (high throuput concurrent queue)
 //==========================================================================

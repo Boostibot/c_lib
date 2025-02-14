@@ -38,7 +38,7 @@ HASH_FN_API uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed)
 
 //Source: https://github.com/aappleby/smhasher/blob/master/src/Hashes.cpp
 HASH_FN_API uint32_t hash32_fnv(const void* key, int64_t size, uint32_t seed);
-HASH_FN_API uint64_t hash64_fnv(const void* key, int64_t size, uint32_t seed);
+HASH_FN_API uint64_t hash64_fnv(const void* key, int64_t size, uint64_t seed);
 
 HASH_FN_API uint64_t xxhash64(const void* key, int64_t size, uint64_t seed);
 
@@ -286,7 +286,7 @@ HASH_FN_API uint32_t hash32_fnv(const void* key, int64_t size, uint32_t seed)
     return hash;
 }
 
-HASH_FN_API uint64_t hash64_fnv(const void* key, int64_t size, uint32_t seed)
+HASH_FN_API uint64_t hash64_fnv(const void* key, int64_t size, uint64_t seed)
 {
     REQUIRE((key != NULL || size == 0) && size >= 0);
 

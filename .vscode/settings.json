@@ -67,6 +67,22 @@
         "sched.h": "c",
         "__memory": "cpp",
         "__functional_03": "cpp",
-        "ptrace.h": "c"
+        "ptrace.h": "c",
+        "ctime": "cpp",
+        "xlocale": "cpp",
+        "format": "cpp",
+        "xiosbase": "cpp",
+        "xutility": "cpp",
+        "xstring": "cpp",
+        "charconv": "cpp",
+        "xmemory": "cpp",
+        "stdatomic.h": "c",
+        "assert.h": "c",
+        "xlocbuf": "c",
+        "xtr1common": "cpp",
+        "xlocmon": "cpp",
+        "cstddef": "cpp",
+        "xlocinfo": "cpp",
+        "allocator.h": "c"
     }
 }

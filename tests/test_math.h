@@ -1,13 +1,12 @@
 #pragma once
 
-#include "math.h"
+#include "../math.h"
 #include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
 
 #ifndef TEST
-#include <assert.h>
-#define TEST(a, msg, ...) (!(a) ? printf((msg), ##__VA_ARGS__), assert((a) && (msg)) : (void) 0)
+    #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
 #endif // !TEST
 
 #define TEST_MATH_EPSILON (EPSILON*2)

@@ -1,4 +1,4 @@
-#include "chase_lev_queue.h"
+#include "../chase_lev_queue.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,7 +6,7 @@
 #include <stdlib.h>
 
 #ifndef TEST
-    #define TEST(x, ...) (!(x) ? printf("error %s!\n",#x), abort() : (void) 0)
+    #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
 #endif
 
 static void test_chase_lev_sequential(isize count, isize reserve_to)

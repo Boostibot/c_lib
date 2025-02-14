@@ -12,12 +12,13 @@ typedef struct Hash_String {
         };
         String string;
     };
-    u64 hash;
+    uint64_t hash;
 } Hash_String;
 
 EXTERNAL Hash_String hash_string_from_cstring(const char* cstr);
 EXTERNAL Hash_String hash_string_make(String string);
-EXTERNAL u64 hash_string(String string);
+EXTERNAL uint64_t hash_string(String string);
+EXTERNAL uint64_t hash_string_ptrs(const String* string);
 EXTERNAL bool hash_string_is_equal(Hash_String a, Hash_String b);         //Compares two hash strings using hash, size and the contents of data.
 EXTERNAL bool hash_string_is_equal_approx(Hash_String a, Hash_String b);  //Compares two hash strings using only hash and size. Can be forced to compare data by defining DISSABLE_APPROXIMATE_EQUAL
 
@@ -28,6 +29,14 @@ EXTERNAL void hash_string_deallocate(Allocator* alloc, Hash_String* hstring);
 #define HSTRING(string_literal) BINIT(Hash_String){string_literal "", sizeof(string_literal "") - 1, hash64_fnv_inline(string_literal "", sizeof(string_literal "") - 1)}
 #define HSTRING_FMT "[%08llx]:'%.*s'" 
 #define HSTRING_PRINT(hstring) (hstring).hash, (int) (hstring).count, (hstring).data
+
+#if defined(_MSC_VER)
+    #define ATTRIBUTE_INLINE_ALWAYS __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+    #define ATTRIBUTE_INLINE_ALWAYS __attribute__((always_inline)) inline
+#else
+    #define ATTRIBUTE_INLINE_ALWAYS inline
+#endif
 
 //@NOTE: We use fnv because of its extreme simplicity making it very likely to be inlined
 //       and thus for static strings be evaluated at compile time. 
@@ -58,9 +67,14 @@ EXTERNAL Hash_String hash_string_from_cstring(const char* cstr)
     return hash_string_make(string_of(cstr));
 }
 
-EXTERNAL u64 hash_string(String string)
+EXTERNAL uint64_t hash_string(String string)
 {
     return hash64_fnv_inline(string.data, string.count);
+}
+
+EXTERNAL uint64_t hash_string_ptrs(const String* string)
+{
+    return hash64_fnv_inline(string->data, string->count);
 }
 
 EXTERNAL bool hash_string_is_equal(Hash_String a, Hash_String b)
@@ -100,6 +114,5 @@ EXTERNAL void hash_string_deallocate(Allocator* alloc, Hash_String* hstring)
     string_deallocate(alloc, &hstring->string);
     hstring->hash = 0;
 }
-
 
 #endif
