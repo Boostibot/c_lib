@@ -1,29 +1,33 @@
 This is a perpetually ongoing development C codebase I use for personal projects. It reflects my current opinions of what is desirable but that does not mean the solutions given here are optimal. If you have any remarks I will be more than happy to hear them.
 
 # Description of some files
-- `array.h` **(freestanding)**: Generic, type-safe array in pure C. This mostly works like `std::vector`.
-- `hash.h` **(freestanding)**: Small and performant hash table building block. This is not a fully fledged hash table, but just a 64 -> 64 bit hash mapping. All other tables can be implemented using this. Read the comment for more rationale.
-- `string.h` **(freestanding)**: Collection of utility hash function operating on both slice-like and dynamic strings. 
-- `scratch.h` **(freestanding)**: "Safe" arena implementation. Works like regular arena but contains code that cheaply check protect agains prevents accidental overriding of data. 
-- `allocator_tlsf.h`: **(freestanding)** A TLSF style allocator on top of a given memory block. All operations are hard O(1). All book-keeping is done in seperate memory, allowing interface for allocation on the GPU. Is about 25% faster then malloc but currently essentially usnuseed because of its complexity.
-- `allocator_debug.h`: Wrapper around generic allocator that verifies no overwrites and detects leaks. Has support for on demand checking of all blocks, continual printing of allocations etc. Can capture callstack to print exactly where the problematic allocation came from.
-- `allocator.h` **(freestanding)**: Interface for generic allocators.
-- `platform.h` **(freestanding)**: A fully fledged platform layer supporting windows and linux. Contains code for threading, intrinsics, virtual memory, filesystem (reading, writing, listing observing changes), debug facilities (callstack capturing, printing, sandboxing) and many more.  
+- *`array.h`: Generic, type-safe array in pure C. This mostly works like `std::vector`.
+- *`hash.h`: Small and performant hash table building block. This is not a fully fledged hash table, but just a 64 -> 64 bit hash mapping. All other tables can be implemented using this. Read the comment for more rationale.
+- *`string.h`: Collection of utility hash function operating on both slice-like and dynamic strings. 
+- *`scratch.h`: "Safe" arena implementation. Works like regular arena but contains code that cheaply check protect agains prevents accidental overriding of data. 
+- *`random.h`: Convenient fast, non-cryptographic random number generation. Has both global state and local state interface.
+- *`time.h`: Simple header for cross platform time stamps. 
+- *`math.h`: Float vector math library.
+- *`perf.h`: Cross platform wrappers around `rdtsc()` instruction and a construct optimized for convenient yet suprisingly accurate benchmarking.
 - `path.h`: Robust path parsing, normalization and mutation algorithms. Correctly parses linux and all kinds of strange windows paths.
-- `slz4.h`: **(freestanding)** Simple but quite fast LZ4 compressor/decompressor. On the enwik8 dataset achieves compression speed of 130MB/s, 2.10 compression ratio and decompression speed of 2.7GB/s. Tested for safety and full standard compliance.
-- `sort.h` **(freestanding)**: A generic C sorting implementation (ie. like `qsort`) which abuses `__forceinline` (or similar) directive to inline the function-pointer argument to generate close to optimal assembly. Has a quick sort impelmentation that matches perf of pdqsort on random data as well as very optimized heapsort which outperforms pdqsort by about 20% on large (> 3000 items) datasets. Yes, I was surprised too - turns out heapsort is *really* fast when written properly. 
-- `profile.h` **(freestanding)**: WIP extremely low overhead tracing profiler both in terms of runtime and assembly. All of the data processing and compression to the on disk format is done in separate thread. When runtime dissabled has essentially zero perf impact.   
-- `stable_array.h` **(freestanding)**: O(1) Fast, memory efficient free-list like structure keeping stable pointers. Accessible through handles. Is suitable for storing large amounts of data or implementing SQL-like tables. 
-- `deprecated/unicode.h` **(freestanding)**: Conversion between UTF8, UTF16, UTF32 with proper error checking. Extensively tested.
-- `math.h` **(freestanding)**: Float vector math operations.
-- `random.h` **(freestanding)**: Convenient fast, non-cryptographic random number generation. Has both global state and local state interface.
-- `time.h` **(freestanding)**: Simple header for cross platform time stamps. 
-- `perf.h` **(freestanding)**: Cross platform wrappers around `rdtsc()` instruction and a construct for very conveneinet (yet suprisingly accurate) benchmarking.
-- `match.h`: A convenient set of functions for parsing *strict* parsing of text and various floating point formats. The primitives are designed to be very strict yet composable, making it easy to build parsers that validate compliance.
-- `serialize.h` **(freestanding)**: Procedures for binary JSON-like parsing in "immediate style". That is, no tree structure is made, instead the contents are parsed as they come in. The format itself is forward and backward compatible and includes mechanism for seamless error recovery through writer defined magic numbers which are transparent to the reader.
-- `channel.h` **(freestanding)**: Novel Go-like concurrent channel. Fixed capacity MPMC ordered queue. As long as the channel is not empty/full is fully lock free on pop/push. Just like Go has procedures for closing which still allow to retrieve the stored data (this is extremely hard to achieve and where the novelty comes from). 
-- `chase_lev_queue.h` **(freestanding)**: SPMC Chase-Lev lock-free queue.
-- `image.h` **(freestanding)**: Generic image container and subimage view into it. Works with any pixel format as long as it fits evenly into some number of bytes (ie. doesnt do bitpacking). 
+- `match.h`: A convenient set of functions for parsing of text and various floating point formats. The primitives are designed to be strict yet composable, making it easy to build parsers that validate compliance.
+- *`platform.h`: A fully fledged platform layer supporting windows and linux. Contains code for threading, intrinsics, virtual memory, filesystem (reading, writing, listing observing changes), debug facilities (callstack capturing, printing, sandboxing) and many more.  
+- *`allocator.h`: Interface for generic allocators.
+- `allocator_debug.h`: Wrapper around generic allocator that verifies no overwrites and detects leaks. Has support for on demand checking of all blocks, continual printing of allocations etc. Can capture callstack to print exactly where the problematic allocation came from.
+- `allocator_tlsf.h`:* A TLSF style allocator on top of a given memory block. All operations are hard O(1). All book-keeping is done in seperate memory, allowing interface for allocation on the GPU. Is about 25% faster then malloc but currently essentially usnuseed because of its complexity.
+- *`deprecated/unicode.h`: Conversion between UTF8, UTF16, UTF32 with proper error checking. Extensively tested.
+- *`chase_lev_queue.h`: SPMC Chase-Lev lock-free queue.
+- *`stable_array.h`: O(1) Fast, memory efficient free-list like structure keeping stable pointers. Accessible through handles. Is suitable for storing large amounts of data or implementing SQL-like tables. 
+- *`serialize.h`: Procedures for binary JSON-like parsing in "immediate style". That is, no tree structure is made, instead the contents are parsed as they come in. The format itself is forward and backward compatible and includes mechanism for seamless error recovery through writer defined magic numbers which are transparent to the reader.
+- *`channel.h`: Novel Go-like concurrent channel. Fixed capacity MPMC ordered queue. As long as the channel is not empty/full is fully lock free on pop/push. Just like Go has procedures for closing which still allow to retrieve the stored data (this is extremely hard to achieve and where the novelty comes from). 
+- *`image.h`: Generic image container and subimage view into it. Works with any pixel format as long as it fits evenly into some number of bytes (ie. doesnt do bitpacking). 
+- `slz4.h`:* Simple but quite fast LZ4 compressor/decompressor. On the enwik8 dataset achieves compression speed of 130MB/s, 2.10 compression ratio and decompression speed of 2.7GB/s. Tested for safety and full standard compliance.
+- *`sort.h`: A generic C sorting implementation (ie. like `qsort`) which abuses `__forceinline` (or similar) directive to inline the function-pointer argument to generate close to optimal assembly. Has a quick sort impelmentation that matches perf of pdqsort on random data as well as very optimized heapsort which outperforms pdqsort by about 20% on large (> 3000 items) datasets. Yes, I was surprised too - turns out heapsort is *really* fast when written properly. 
+- *`profile.h`: WIP extremely low overhead tracing profiler both in terms of runtime and assembly. All of the data processing and compression to the on disk format is done in separate thread. When runtime dissabled has essentially zero perf impact.   
+
+Files marked with* are *completely* freestanding - they dont depend on any other file and can be compiled separately. See below for more info.
+
+
 
 # Code structure
 The codebase is structured in the "stb" style, that is both `.h` and `.c` 'files' are within the same physical file. This makes just about everything simpler. To include a declaration simply include the given file. Files can be included any number of times. To pull in the implementation define before including `#define MODULE_[FILE]_IMPL` or `#define MODULE_IMPL_ALL` to include implementation of all files. Unlike the stb libraries this can also be done multiple times within single compilation unit (we simply add separate include guards for the declarations and implementation). This means for simple single compilation projects its sufficient to `#define MODULE_IMPL_ALL` at the very top of the main file and proceed without worrying about anything else! The benefits are:
