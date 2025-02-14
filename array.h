@@ -181,8 +181,6 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
     generic_array_set_capacity(array_make_generic(array_ptr), (capacity))
 #endif
 
-#define MODULE_IMPL_ALL
-
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ARRAY)) && !defined(MODULE_HAS_IMPL_ARRAY)
 #define MODULE_HAS_IMPL_ARRAY
 

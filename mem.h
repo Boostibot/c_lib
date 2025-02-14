@@ -31,8 +31,6 @@ EXTERNAL isize memfind_pattern_last_not(const void* ptr, uint64_t value, isize s
 
 #endif
 
-#define MODULE_IMPL_ALL
-
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_MEM)) && !defined(MODULE_HAS_IMPL_MEM)
 #define MODULE_HAS_IMPL_MEM
 

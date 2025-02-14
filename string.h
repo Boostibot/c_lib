@@ -149,8 +149,6 @@ typedef struct Line_Iterator {
 EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
 #endif
 
-#define MODULE_IMPL_ALL
-
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_STRING)) && !defined(MODULE_HAS_IMPL_STRING)
 #define MODULE_HAS_IMPL_STRING
     #ifndef PROFILE_START

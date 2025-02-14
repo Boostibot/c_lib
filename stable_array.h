@@ -158,7 +158,6 @@ static void* _stable_array_iter_per_slot(Stable_Array_Iter* it, isize item_size)
 }
 #endif
 
-#define MODULE_IMPL_ALL
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_STABLE_ARRAY)) && !defined(MODULE_HAS_IMPL_STABLE_ARRAY)
 #define MODULE_HAS_IMPL_STABLE_ARRAY
 

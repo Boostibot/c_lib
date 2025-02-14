@@ -45,7 +45,6 @@ EXTERNAL void* arena_allocator_func(void* self, int mode, isize new_size, void* 
 #define ARENA_PUSH(arena_ptr, count, Type) ((Type*) arena_push((arena_ptr), (count) * sizeof(Type), __alignof(Type)))
 #endif
 
-#define MODULE_IMPL_ALL
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ARENA)) && !defined(MODULE_HAS_IMPL_ARENA)
 #define MODULE_HAS_IMPL_ARENA
 

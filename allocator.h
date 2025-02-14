@@ -119,8 +119,6 @@ EXTERNAL void* align_backward(void* ptr, isize align_to);
 
 #endif
 
-#define MODULE_IMPL_ALL
-
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ALLOCATOR)) && !defined(MODULE_HAS_IMPL_ALLOCATOR)
 #define MODULE_HAS_IMPL_ALLOCATOR
 

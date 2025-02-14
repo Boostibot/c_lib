@@ -117,7 +117,6 @@ EXTERNAL void debug_allocator_print_alive_allocations(const char* name, Log_Type
 EXTERNAL void* debug_allocator_func(void* self, int mode, isize new_size, void* old_ptr, isize old_size, isize align, void* rest);
 #endif
 
-#define MODULE_IMPL_ALL
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_DEBUG_ALLOCATOR)) && !defined(MODULE_HAS_IMPL_DEBUG_ALLOCATOR)
 #define MODULE_HAS_IMPL_DEBUG_ALLOCATOR
 

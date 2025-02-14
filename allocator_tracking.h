@@ -88,7 +88,7 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
     #define ALLOCATION_LIST_SIZE_MASK       (((uint64_t) 1 << ALLOCATION_LIST_SIZE_BITS) - 1)
     #define ALLOCATION_LIST_ALIGN_MASK      (((uint64_t) 1 << ALLOCATION_LIST_ALIGN_BITS) - 1)
 
-    INTERNAL void _allocation_list_assert_block_coherency(Allocation_List* self, Allocation_List_Block* block)
+    static void _allocation_list_assert_block_coherency(Allocation_List* self, Allocation_List_Block* block)
     {
         (void) self;
         if(block == NULL)
@@ -122,8 +122,7 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
     EXTERNAL void* allocation_list_allocate(Allocation_List* self, Allocator* parent_or_null, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
     {
         PROFILE_START();
-        isize capped_align = MAX(align, DEF_ALIGN);
-
+        isize capped_align = align > DEF_ALIGN ? align : DEF_ALIGN;
         void* out_ptr = NULL;
         if(new_size != 0)
         {
@@ -138,7 +137,7 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
             if(new_allocation == NULL)
                 goto error;
 
-            u8* would_have_been_place = (u8*) new_allocation + sizeof(Allocation_List_Block);
+            uint8_t* would_have_been_place = (uint8_t*) new_allocation + sizeof(Allocation_List_Block);
             out_ptr = align_forward(would_have_been_place, capped_align);
 
             Allocation_List_Block* new_block_ptr = (Allocation_List_Block*) out_ptr - 1;
@@ -208,7 +207,7 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
             if(old_block_ptr->is_offset)
             {
                 uint64_t* offset = ((uint64_t*) old_allocation) - 1;
-                old_allocation = (u8*) old_allocation - *offset;
+                old_allocation = (uint8_t*) old_allocation - *offset;
             }   
 
             isize old_allocation_size = old_size + capped_align - DEF_ALIGN + (isize) sizeof(Allocation_List_Block);

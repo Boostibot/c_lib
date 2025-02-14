@@ -137,8 +137,6 @@ EXTERNAL void subimage_flip_x(Subimage image, void* temp_pixel, isize temp_size)
 EXTERNAL void subimage_flip_y(Subimage image, void* temp_row, isize temp_size);
 #endif
 
-#define MODULE_IMPL_ALL
-
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_IMAGE)) && !defined(MODULE_HAS_IMPL_IMAGE)
 #define MODULE_HAS_IMPL_IMAGE
 

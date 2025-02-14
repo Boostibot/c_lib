@@ -76,8 +76,6 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
 }
 #endif
 
-#define MODULE_IMPL_ALL
-
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_HASH)) && !defined(MODULE_HAS_IMPL_HASH)
 #define MODULE_HAS_IMPL_HASH
 
