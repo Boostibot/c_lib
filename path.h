@@ -307,7 +307,7 @@ EXTERNAL void path_parse_root(String path, Path_Info* info)
             info->root_kind = PATH_ROOT_SLASH;
         }
         //Windows style root
-        else if(root_path.count >= 2 && char_is_alphabetic(root_path.data[0]) && root_path.data[1] == ':')
+        else if(root_path.count >= 2 && char_is_alpha(root_path.data[0]) && root_path.data[1] == ':')
         {
             info->root_content_from = root_from;
             info->root_content_to = root_from + 1;
@@ -655,7 +655,7 @@ EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
     if(into->info.has_trailing_slash)
     {
         ASSERT(into->info.segment_count > 0);
-        builder_resize(&into->builder, into->builder.count - 1);        
+        builder_resize(&into->builder, into->builder.count - 1, '\0');        
         into->info.has_trailing_slash = false;
     }
 
@@ -711,7 +711,7 @@ EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
 
                     case PATH_ROOT_WIN: {
                         char c = 'C';
-                        if(root_content.count > 0 && char_is_alphabetic(root_content.data[0]))
+                        if(root_content.count > 0 && char_is_alpha(root_content.data[0]))
                             c = root_content.data[0];
                         else
                             LOG_WARN("path", "Strange prefix '%.*s' with PATH_ROOT_WIN", STRING_PRINT(root_content));
@@ -780,7 +780,7 @@ EXTERNAL bool path_builder_append(Path_Builder* into, Path path, int flags)
                         String last_segement = string_tail(into->string, last_segment_i);
                         if(string_is_equal(last_segement, STRING("..")) == false)
                         {
-                            builder_resize(&into->builder, last_segment_i);
+                            builder_resize(&into->builder, last_segment_i, '\0');
                             into->info.segment_count -= 1;
                             push_segment = false;
                         }
@@ -1066,7 +1066,7 @@ EXTERNAL Path_Builder path_get_current_working_directoryXXX(Allocator* alloc, Pl
 {
     char backing[1024];
     isize curr_size = ARRAY_LEN(backing);
-    void* buffer = backing;
+    char* buffer = backing;
 
     for(int i = 0; i < 16; i++)
     {
@@ -1081,7 +1081,7 @@ EXTERNAL Path_Builder path_get_current_working_directoryXXX(Allocator* alloc, Pl
         if(buffer == backing)
             buffer = NULL;
 
-        buffer = realloc(buffer, curr_size);
+        buffer = (char*) realloc(buffer, curr_size);
     }
 
     Path_Builder builder = path_normalize(alloc, path_parse_cstring(buffer), 0);

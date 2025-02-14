@@ -82,6 +82,7 @@
         "xtr1common": "cpp",
         "xlocmon": "cpp",
         "cstddef": "cpp",
-        "xlocinfo": "cpp"
+        "xlocinfo": "cpp",
+        "allocator.h": "c"
     }
 }

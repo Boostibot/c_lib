@@ -22,6 +22,11 @@
 //
 // This file is also fully freestanding. To compile the function definitions #define MODULE_IMPL_ALL and include it again in .c file. 
 
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+
 #ifdef MODULE_ALL_COUPLED
     #include "defines.h"
     #include "assert.h"
@@ -76,6 +81,9 @@ typedef Array(void*)    ptr_Array;
 typedef i64_Array isize_Array;
 typedef u64_Array usize_Array;
 
+#ifndef EXTERNAL
+    #define EXTERNAL
+#endif
 EXTERNAL void generic_array_init(Generic_Array gen, Allocator* allocator);
 EXTERNAL void generic_array_deinit(Generic_Array gen);
 EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity); 
@@ -92,10 +100,11 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
 
 #ifndef ASSERT
     #include <assert.h>
-    #define ASSERT(x, ...) assert(x)
-    #define ASSERT_BOUNDS(i, capacity) assert(0 <= (i) && (i) <= capacity)
-#endif
-
+    #define ASSERT(x, ...)              assert(x)
+    #define ASSERT_SLOW(x, ...)         assert(x)
+    #define REQUIRE(x, ...)             assert(x)
+    #define CHECK_BOUNDS(i, count, ...) assert(0 <= (i) && (i) <= count)
+#endif  
     
 //Initializes the array. If the array is already initialized deinitializes it first.
 //Thus expects a properly formed array. Suppling a non-zeroed memory will cause errors!
@@ -158,13 +167,13 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
 
 //Removes a single item from the end of the array
 #define array_pop(array_ptr) (\
-        ASSERT_BOUNDS((array_ptr)->count > 0 && "cannot pop from empty array!"), \
+        CHECK_BOUNDS(0, (array_ptr)->count, "cannot pop from empty array!"), \
         (array_ptr)->data[--(array_ptr)->count] \
     ) \
     
 //Returns the value of the last item. The array must not be empty!
 #define array_last(array) (\
-        ASSERT_BOUNDS((array).count > 0 && "cannot get last from empty array!"), \
+        CHECK_BOUNDS(0, (array).count, "cannot get last from empty array!"), \
         &(array).data[(array).count - 1] \
     ) \
     
@@ -172,9 +181,10 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
     generic_array_set_capacity(array_make_generic(array_ptr), (capacity))
 #endif
 
+#define MODULE_IMPL_ALL
+
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ARRAY)) && !defined(MODULE_HAS_IMPL_ARRAY)
 #define MODULE_HAS_IMPL_ARRAY
-#include <string.h>
 
 #ifndef PROFILE_SCOPE
     #define PROFILE_SCOPE(...)
@@ -199,14 +209,14 @@ EXTERNAL void generic_array_init(Generic_Array gen, Allocator* allocator)
 {
     generic_array_deinit(gen);
     gen.array->allocator = allocator;
-    ASSERT(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_invariant(gen));
 }
 
 EXTERNAL void generic_array_deinit(Generic_Array gen)
 {
-    ASSERT(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_invariant(gen));
     if(gen.array->capacity > 0)
-        allocator_reallocate(gen.array->allocator, 0, gen.array->data, gen.array->capacity * gen.item_size, gen.item_align);
+        (*gen.array->allocator)(gen.array->allocator, 0, 0, gen.array->data, gen.array->capacity * gen.item_size, gen.item_align, NULL);
     
     memset(gen.array, 0, sizeof *gen.array);
 }
@@ -220,14 +230,14 @@ EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity)
 
         isize old_byte_size = gen.item_size * gen.array->capacity;
         isize new_byte_size = gen.item_size * capacity;
-        gen.array->data = (uint8_t*) allocator_reallocate(gen.array->allocator, new_byte_size, gen.array->data, old_byte_size, gen.item_align);
+        gen.array->data = (uint8_t*) (*gen.array->allocator)(gen.array->allocator, 0, new_byte_size, gen.array->data, old_byte_size, gen.item_align, NULL);
 
         //trim the size if too big
         gen.array->capacity = capacity;
         if(gen.array->count > gen.array->capacity)
             gen.array->count = gen.array->capacity;
         
-        ASSERT(generic_array_is_invariant(gen));
+            ASSERT_SLOW(generic_array_is_invariant(gen));
     }
 }
 
@@ -238,12 +248,12 @@ EXTERNAL void generic_array_resize(Generic_Array gen, isize to_size, bool zero_n
         memset(gen.array->data + gen.array->count*gen.item_size, 0, (size_t) ((to_size - gen.array->count)*gen.item_size));
         
     gen.array->count = to_size;
-    ASSERT(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_invariant(gen));
 }
 
 EXTERNAL void generic_array_reserve(Generic_Array gen, isize to_fit)
 {
-    ASSERT(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_invariant(gen));
     if(gen.array->capacity > to_fit)
         return;
         
@@ -261,6 +271,6 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
     generic_array_reserve(gen, gen.array->count+data_count);
     memcpy(gen.array->data + gen.item_size * gen.array->count, data, (size_t) (gen.item_size * data_count));
     gen.array->count += data_count;
-    ASSERT(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_invariant(gen));
 }
 #endif

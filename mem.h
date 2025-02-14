@@ -17,6 +17,8 @@ EXTERNAL void memtile(void *field, isize field_size, const void* pattern, isize 
 //Swaps the contents of the memory blocks a and b
 EXTERNAL void memswap(void* a, void* b, isize size);
 
+//find first/last byte or not-byte. Return its index if found, -1 if not. 
+//These functions are about 8x faster than the naive (which makes sense considering they are doing 8B at the time).
 EXTERNAL isize memfind(const void* ptr, uint8_t value, isize size);
 EXTERNAL isize memfind_last(const void* ptr, uint8_t value, isize size);
 EXTERNAL isize memfind_not(const void* ptr, uint8_t value, isize size);
@@ -109,7 +111,7 @@ EXTERNAL void memswap(void* a, void* b, isize size)
 {
     REQUIRE(size >= 0 && ((a && b) || size == 0));
     PROFILE_START();
-    char temp[32] = {0};
+    char temp[64] = {0};
     switch(size) {
         #define SWAP_X(N) \
             case N: { \
@@ -180,10 +182,10 @@ EXTERNAL isize memfind_pattern_last_not(const void* ptr, uint64_t val, isize siz
     }
     
     uint64_t val_copy = val;
-    for(; start != curr; curr ++, val_copy <<= 8) {
-        uint8_t hi_byte = val_copy >> (64 - 8);
-        if(*curr != (uint8_t) val_copy)
-            return curr - (uint8_t*) ptr;
+    for(; curr - start >= 1; curr -= 1, val_copy <<= 8) {
+        uint8_t hi_byte = (uint8_t) (val_copy >> (64 - 8));
+        if(*(curr - 1) != (uint8_t) hi_byte)
+            return curr - start - 1;
     }
 
     return -1;
@@ -210,14 +212,14 @@ EXTERNAL isize memfind_pattern_last_not(const void* ptr, uint64_t val, isize siz
 // https://graphics.stanford.edu/~seander/bithacks.html
 static inline uint64_t mem_swar_has_zero_byte(uint64_t val)  
 {
-    return (val - 0x01010101ull) & ~val & 0x80808080ull; 
+    return (val - 0x0101010101010101ull) & ~val & 0x8080808080808080ull; 
 }
 
 //https://stackoverflow.com/a/68701617
 static inline uint64_t mem_swar_compare_eq_sign(uint64_t x, uint64_t y) 
 {
     uint64_t xored = x ^ y;
-    uint64_t mask = ((((xored >> 1) | 0x8080808080808080) - xored) & 0x8080808080808080);
+    uint64_t mask = ((((xored >> 1) | 0x8080808080808080ull) - xored) & 0x8080808080808080ull);
     return mask;
 }
 
@@ -228,21 +230,21 @@ EXTERNAL isize memfind_last(const void* ptr, uint8_t value, isize size)
     uint8_t* curr = (uint8_t*) ptr + size;
     uint8_t* start = (uint8_t*) ptr;
 
-    uint64_t c = 0;
     uint64_t p = value*0x0101010101010101ull;
     for(; curr - start >= 8; curr -= 8) {
         uint64_t c; memcpy(&c, curr - 8, 8);
-        if(mem_swar_has_zero_byte(p ^ c))
+        uint64_t diff = p ^ c;
+        if(mem_swar_has_zero_byte(diff))
         {
             uint64_t matching = mem_swar_compare_eq_sign(c, p);
-            uint64_t index = mem_swar_find_last_set(matching);
+            uint64_t index = 8 - mem_swar_find_last_set(matching)/8;
             return curr - (uint8_t*) ptr - index;
         }
     }
     
-    for(; start != curr; curr ++) {
-        if(*curr != value)
-            return curr - (uint8_t*) ptr;
+    for(; curr - start >= 1; curr -= 1) {
+        if(*(curr - 1) == value)
+            return curr - start - 1;
     }
 
     return -1;

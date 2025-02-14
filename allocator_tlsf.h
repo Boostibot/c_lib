@@ -167,21 +167,27 @@
 //   The other kind is _tlsf_check_[thing]_invariants() which is a simple wrapper around the test variant. 
 //   This wrapper is used internally upon entry/exit of each function and gets turned into a noop in release builds.
 
+#ifdef MODULE_ALL_COUPLED
+    #include "allocator.h"
+#endif
+
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-#if !defined(MODULE_ALLOCATOR) && !defined(MODULE_ALL_COUPLED)
+
+#if !defined(MODULE_ALLOCATOR)
     #include <assert.h>
     #include <stdlib.h>
+    #include <stdio.h>
     
     #define EXTERNAL
     #define INTERNAL static
     #define ASSERT(x, ...) assert(x)
-    #define TEST(x, ...)  (!(x) ? abort() : (void) 0)
-
-    typedef int64_t isize; //I have not tested it with unsigned... might require some changes
-    typedef struct Allocator { int64_t dummy; } Allocator;
+    #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
 #endif
+
+typedef int64_t isize;
+typedef void* (*Allocator)(void* alloc, int mode, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align, void* other);
 
 //The type used for offsets. 64 bit allows for full address space allocations 
 // (which might be used to track virtual memory) but introduces extra 8B of needed storage
@@ -247,7 +253,7 @@ typedef struct Tlsf_Allocator {
     isize deallocation_count;
     isize bytes_allocated;
     isize max_bytes_allocated;
-    uint32_t max_concurent_allocations;
+    uint32_t max_concurrent_allocations;
 
     uint32_t node_first_free;
     uint32_t node_capacity;
@@ -499,8 +505,8 @@ INTERNAL isize _tlsf_allocate(Tlsf_Allocator* allocator, isize size, isize align
     
     allocator->node_count += 1;
     allocator->allocation_count += 1;
-    if(allocator->max_concurent_allocations < allocator->allocation_count - allocator->deallocation_count)
-        allocator->max_concurent_allocations = (uint32_t) (allocator->allocation_count - allocator->deallocation_count);
+    if(allocator->max_concurrent_allocations < allocator->allocation_count - allocator->deallocation_count)
+        allocator->max_concurrent_allocations = (uint32_t) (allocator->allocation_count - allocator->deallocation_count);
 
     allocator->bytes_allocated += size;
     if(allocator->max_bytes_allocated < allocator->bytes_allocated)
@@ -688,52 +694,53 @@ EXTERNAL void tlsf_grow_nodes(Tlsf_Allocator* allocator, void* new_node_memory, 
     allocator->node_capacity = (uint32_t) new_node_capacity;
     _tlsf_check_invariants(allocator);
 }
-
-#ifdef MODULE_ALLOCATOR
-    INTERNAL void* _tlsf_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
-    {
-        Tlsf_Allocator* allocator = (Tlsf_Allocator*) (void*) self;
-        void* new_ptr = NULL;
-        if(new_size > 0)
-        {
-            new_ptr = tlsf_malloc(allocator, new_size, align, 0);
-            if(new_ptr == NULL)
+    
+INTERNAL void* _tlsf_allocator_func(void* self, int mode, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align, void* other)
+{
+    #ifdef MODULE_ALLOCATOR
+        if(mode == ALLOCATOR_MODE_ALLOC) {
+            Tlsf_Allocator* allocator = (Tlsf_Allocator*) self;
+            void* new_ptr = NULL;
+            if(new_size > 0)
             {
-                if(allocator->last_fail_reason & TLSF_FAIL_REASON_NEED_MORE_MEMORY)
-                    allocator_error(error, ALLOCATOR_ERROR_OUT_OF_MEM, self, new_size, old_ptr, old_size, align, "Out of memory");
+                new_ptr = tlsf_malloc(allocator, new_size, align, 0);
+                if(new_ptr != NULL) {}
+                else if(allocator->last_fail_reason & TLSF_FAIL_REASON_NEED_MORE_MEMORY)
+                    allocator_error((Allocator_Error*) other, ALLOCATOR_ERROR_OUT_OF_MEM, self, new_size, old_ptr, old_size, align, "Out of memory");
                 else if(allocator->last_fail_reason & TLSF_FAIL_REASON_NEED_MORE_NODES)
-                    allocator_error(error, ALLOCATOR_ERROR_OUT_OF_MEM, self, new_size, old_ptr, old_size, align, "Maximum number of allocations %i reached", (int) allocator->node_capacity);
+                    allocator_error((Allocator_Error*) other, ALLOCATOR_ERROR_OUT_OF_MEM, self, new_size, old_ptr, old_size, align, "Maximum number of allocations %i reached", (int) allocator->node_capacity);
                 else if(allocator->last_fail_reason & TLSF_FAIL_REASON_UNSUPPORTED_SIZE)
-                    allocator_error(error, ALLOCATOR_ERROR_INVALID_PARAMS, self, new_size, old_ptr, old_size, align, 
+                    allocator_error((Allocator_Error*) other, ALLOCATOR_ERROR_INVALID_PARAMS, self, new_size, old_ptr, old_size, align, 
                         "Invalid arguments. Size %lli is more then TLSF_MAX_SIZE (%lli) or less then 0.", (long long) new_size, (long long) TLSF_MAX_SIZE);
             }
-        }
-        if(new_ptr && old_size > 0)
-        {
-            ASSERT(old_ptr);
-            memcpy(new_ptr, old_ptr, old_size < new_size ? old_size : new_size);
-        }
+            if(new_ptr && old_size > 0)
+            {
+                ASSERT(old_ptr);
+                memcpy(new_ptr, old_ptr, old_size < new_size ? old_size : new_size);
+            }
 
-        if(old_size > 0)
-            tlsf_free(allocator, old_ptr);
+            if(old_size > 0)
+                tlsf_free(allocator, old_ptr);
         
-        return new_ptr;
-    }
-
-    INTERNAL Allocator_Stats _tlsf_allocator_get_stats(Allocator* self)
-    {
-        Tlsf_Allocator* allocator = (Tlsf_Allocator*) (void*) self;
-        Allocator_Stats stats = {0};
-        stats.type_name = "Tlsf_Allocator";
-        stats.is_top_level = false;
-        stats.allocation_count = allocator->allocation_count;
-        stats.deallocation_count = allocator->deallocation_count;
-        stats.bytes_allocated = allocator->bytes_allocated;
-        stats.max_bytes_allocated = allocator->max_bytes_allocated;
-        stats.max_concurent_allocations = allocator->max_concurent_allocations;
-        return stats;
-    }   
-#endif
+            return new_ptr;
+        }
+        if(mode == ALLOCATOR_MODE_GET_STATS) {
+            Tlsf_Allocator* allocator = (Tlsf_Allocator*) (void*) self;
+            Allocator_Stats stats = {0};
+            stats.type_name = "Tlsf_Allocator";
+            stats.is_top_level = false;
+            stats.allocation_count = allocator->allocation_count;
+            stats.deallocation_count = allocator->deallocation_count;
+            stats.bytes_allocated = allocator->bytes_allocated;
+            stats.max_bytes_allocated = allocator->max_bytes_allocated;
+            stats.max_concurrent_allocations = allocator->max_concurrent_allocations;
+            *(Allocator_Stats*) other = stats;
+        }
+    #else
+        (void) self, mode, new_size, old_ptr, old_size, align, other;
+    #endif
+    return NULL;
+}
 
 EXTERNAL bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize memory_size, void* node_memory, isize node_memory_size)
 {
@@ -750,11 +757,7 @@ EXTERNAL bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize m
     allocator->memory_size = memory_size;
     allocator->node_capacity = (uint32_t) node_capacity;
     allocator->node_count = 0;
-    
-    #ifdef MODULE_ALLOCATOR
-        allocator->allocator.func = _tlsf_allocator_func;
-        allocator->allocator.get_stats = _tlsf_allocator_get_stats;
-    #endif
+    allocator->allocator = _tlsf_allocator_func;
     
     memset(allocator->nodes, TLSF_INVALID, (size_t) node_capacity*sizeof(Tlsf_Node));
     memset(allocator->bin_first_free, TLSF_INVALID, sizeof allocator->bin_first_free);
@@ -989,7 +992,7 @@ EXTERNAL void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags)
     TEST(allocator->nodes != NULL);
     TEST(allocator->node_count <= allocator->node_capacity);
     TEST(allocator->deallocation_count <= allocator->allocation_count);
-    TEST(allocator->allocation_count - allocator->deallocation_count <= allocator->max_concurent_allocations);
+    TEST(allocator->allocation_count - allocator->deallocation_count <= allocator->max_concurrent_allocations);
     TEST(allocator->bytes_allocated <= allocator->max_bytes_allocated);
     
     //Check FIRST and LAST nodes.

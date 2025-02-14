@@ -93,21 +93,21 @@ static void bench_example()
 #if defined(__x86_64__) || defined(_M_X64) || (defined(__amd64__) && !defined(_M_ARM64EC)) || defined(_M_CEE_PURE) || defined(i386) || defined(__i386__) || defined(__i386) || defined(_M_IX86)
     #ifdef _MSC_VER
         #include <intrin.h>
-        static inline int64_t perf_rdtsc(){ 
+        static inline int64_t perf_rdtsc() { 
             _ReadWriteBarrier(); 
             return (int64_t) __rdtsc(); 
         }
-        static inline void perf_rdtsc_barrier(){ 
+        static inline void perf_rdtsc_barrier() { 
             _ReadWriteBarrier(); 
             _mm_lfence();
         }
     #else
         #include <x86intrin.h>
-        static inline int64_t perf_rdtsc(){ 
+        static inline int64_t perf_rdtsc() { 
             __asm__ __volatile__("":::"memory");
             return (int64_t) __rdtsc(); 
         }
-        static inline void perf_rdtsc_barrier(){ 
+        static inline void perf_rdtsc_barrier() { 
             __asm__ __volatile__("":::"memory");
             _mm_lfence();
         }

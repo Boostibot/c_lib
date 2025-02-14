@@ -3,6 +3,10 @@
 
 #include "allocator.h"
 #include "profile.h"
+#include "platform.h"
+#include "assert.h"
+#include "defines.h"
+#include <string.h>
 
 #define ARENA_DEF_RESERVE_SIZE (16*GB)
 #define ARENA_DEF_COMMIT_SIZE  ( 4*MB) 
@@ -17,10 +21,10 @@
 typedef struct Arena {
     Allocator alloc[1];
 
-    u8* data;
-    u8* used_to;
-    u8* commit_to;
-    u8* reserved_to;
+    uint8_t* data;
+    uint8_t* used_to;
+    uint8_t* commit_to;
+    uint8_t* reserved_to;
     isize commit_granularity;
 
     const char* name;
@@ -35,12 +39,13 @@ EXTERNAL void arena_commit_ptr(Arena* arena, const void* position, Allocator_Err
 EXTERNAL void arena_reset(Arena* arena, isize to);
 EXTERNAL void arena_commit(Arena* arena, isize to);
 
-EXTERNAL void* arena_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* stats);
-EXTERNAL Allocator_Stats arena_allocator_get_stats(Allocator* self);
+
+EXTERNAL void* arena_allocator_func(void* self, int mode, isize new_size, void* old_ptr, isize old_size, isize align, void* rest);
 
 #define ARENA_PUSH(arena_ptr, count, Type) ((Type*) arena_push((arena_ptr), (count) * sizeof(Type), __alignof(Type)))
 #endif
 
+#define MODULE_IMPL_ALL
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ARENA)) && !defined(MODULE_HAS_IMPL_ARENA)
 #define MODULE_HAS_IMPL_ARENA
 
@@ -59,12 +64,11 @@ EXTERNAL Platform_Error arena_init(Arena* arena, const char* name, isize reserve
     reserve_size = DIV_CEIL(reserve_size, alloc_granularity)*alloc_granularity;
     commit_granularity = DIV_CEIL(commit_granularity, alloc_granularity)*alloc_granularity;
 
-    u8* data = NULL;
+    uint8_t* data = NULL;
     Platform_Error error = platform_virtual_reallocate((void**) &data, NULL, reserve_size, PLATFORM_VIRTUAL_ALLOC_RESERVE, PLATFORM_MEMORY_PROT_NO_ACCESS);
     if(error == 0)
     {
-        arena->alloc[0].func = arena_allocator_func;
-        arena->alloc[0].get_stats = arena_allocator_get_stats;
+        arena->alloc[0] = arena_allocator_func;
 
         arena->data = data;
         arena->used_to = data;
@@ -88,10 +92,10 @@ INTERNAL ATTRIBUTE_INLINE_NEVER void _arena_commit_no_inline(Arena* arena, const
 {
     PROFILE_START();
     {
-        isize size = (u8*) to - arena->commit_to;
+        isize size = (uint8_t*) to - arena->commit_to;
         isize commit = DIV_CEIL(size, arena->commit_granularity)*arena->commit_granularity;
 
-        u8* new_commit_to = arena->used_to + commit;
+        uint8_t* new_commit_to = arena->used_to + commit;
         if(new_commit_to > arena->reserved_to)
         {
             allocator_error(error_or_null, ALLOCATOR_ERROR_OUT_OF_MEM, arena->alloc, size, NULL, 0, 1, 
@@ -120,13 +124,13 @@ EXTERNAL void arena_commit_ptr(Arena* arena, const void* to, Allocator_Error* er
 {
     //If + function call to not pollute the call site with code that will 
     // get executed extremely rarely (probably about twice)
-    if((u8*) to > arena->commit_to)
+    if((uint8_t*) to > arena->commit_to)
         _arena_commit_no_inline(arena, to, error_or_null);
 }
 
 EXTERNAL void* arena_push_nonzero(Arena* arena, isize size, isize align, Allocator_Error* error_or_null)
 {
-    u8* out = (u8*) align_forward(arena->used_to, align);
+    uint8_t* out = (uint8_t*) align_forward(arena->used_to, align);
     arena_commit_ptr(arena, out + size, error_or_null);
     arena->used_to = out + size;
     return out;
@@ -141,7 +145,7 @@ EXTERNAL void* arena_push(Arena* arena, isize size, isize align)
 
 EXTERNAL void arena_reset_ptr(Arena* arena, const void* position)
 {
-    arena->used_to = (u8*) position;
+    arena->used_to = (uint8_t*) position;
 }
 
 EXTERNAL void arena_reset(Arena* arena, isize to)
@@ -154,27 +158,29 @@ EXTERNAL void arena_commit(Arena* arena, isize to)
     arena_commit_ptr(arena, arena->data + to, NULL);
 }
 
-EXTERNAL void* arena_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
+EXTERNAL void* arena_allocator_func(void* self, int mode, isize new_size, void* old_ptr, isize old_size, isize align, void* rest)
 {
-    Arena* arena = (Arena*) (void*) self;
+    if(mode == ALLOCATOR_MODE_ALLOC) {
+        Arena* arena = (Arena*) (void*) self;
 
-    REQUIRE(old_ptr == arena->data);
-    REQUIRE(old_size == arena->used_to - arena->data);
-    REQUIRE(is_power_of_two(align));
+        REQUIRE(old_ptr == arena->data);
+        REQUIRE(old_size == arena->used_to - arena->data);
+        REQUIRE(is_power_of_two(align));
 
-    arena_reset_ptr(arena, arena->data);
-    return arena_push_nonzero(arena, new_size, align, error);
+        arena_reset_ptr(arena, arena->data);
+        return arena_push_nonzero(arena, new_size, align, (Allocator_Error*) rest);
+    }
+    if(mode == ALLOCATOR_MODE_GET_STATS) {
+        Arena* arena = (Arena*) (void*) self;
+        Allocator_Stats stats = {0};
+        stats.is_top_level = true;
+        stats.type_name = "Arena";
+        stats.name = arena->name;
+        stats.fixed_memory_pool_size = arena->reserved_to - arena->data; 
+        stats.bytes_allocated = arena->used_to - arena->data;
+        *(Allocator_Stats*) rest = stats;
+    }
+    return NULL;
 }
 
-EXTERNAL Allocator_Stats arena_allocator_get_stats(Allocator* self)
-{
-    Arena* arena = (Arena*) (void*) self;
-    Allocator_Stats stats = {0};
-    stats.is_top_level = true;
-    stats.type_name = "Arena";
-    stats.name = arena->name;
-    stats.fixed_memory_pool_size = arena->reserved_to - arena->data; 
-    stats.bytes_allocated = arena->used_to - arena->data;
-    return stats;
-}
 #endif

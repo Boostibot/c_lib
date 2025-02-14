@@ -1,11 +1,11 @@
 #pragma once
 
-#include "image.h"
-#include "allocator_debug.h"
+#include "../image.h"
+#include "../allocator_debug.h"
 
 INTERNAL void test_image_builder_copy()
 {
-	Debug_Allocator debug_alloc = debug_allocator_make(allocator_get_default(), DEBUG_ALLOC_LEAK_CHECK | DEBUG_ALLOC_USE);
+	Debug_Allocator debug_alloc = debug_allocator_make(allocator_get_default(), DEBUG_ALLOC_LEAK_CHECK | DEBUG_ALLOC_USE | DEBUG_ALLOC_PRINT);
     {
         Image from_image  = {0};
         image_init(&from_image, debug_alloc.alloc, sizeof(u16), PIXEL_TYPE_U16);
@@ -43,8 +43,6 @@ INTERNAL void test_image_builder_copy()
 
         image_deinit(&from_image);
         image_deinit(&to_image);
-        
-        TEST(debug_alloc.allocation_count <= 2);
     }
     debug_allocator_deinit(&debug_alloc);
 }

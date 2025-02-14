@@ -403,10 +403,10 @@ EXTERNAL bool match_decimal_number_int(String str, isize* index, uint64_t* out_m
         if(i + 4 > str.count)
             break;
 
-        u8 d0 = (u8) str.data[i+0] - (u8) '0';
-        u8 d1 = (u8) str.data[i+1] - (u8) '0';
-        u8 d2 = (u8) str.data[i+2] - (u8) '0';
-        u8 d3 = (u8) str.data[i+3] - (u8) '0';
+        uint8_t d0 = (uint8_t) str.data[i+0] - (uint8_t) '0';
+        uint8_t d1 = (uint8_t) str.data[i+1] - (uint8_t) '0';
+        uint8_t d2 = (uint8_t) str.data[i+2] - (uint8_t) '0';
+        uint8_t d3 = (uint8_t) str.data[i+3] - (uint8_t) '0';
         
         if(d0 > 9) { i += 0; goto end; } mantissa = mantissa*10 + d0;
         if(d1 > 9) { i += 1; goto end; } mantissa = mantissa*10 + d1;

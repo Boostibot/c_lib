@@ -13,6 +13,8 @@
 // *any* benefits over a tracking allocator with linked list of allocations. As such they should
 // mostly be use for scratch allocator functionality where the quick free-all is a major advantage.
 
+#include "platform.h"
+#include "defines.h"
 #include "allocator.h"
 #include "profile.h"
 
@@ -79,8 +81,7 @@ EXTERNAL void* scratch_push_nonzero_generic(Scratch* scratch, isize size, isize 
 #define scratch_push(arena_ptr, count, Type)         ((Type*) scratch_push_generic((arena_ptr), (count) * sizeof(Type), __alignof(Type), NULL))
 #define scratch_push_nonzero(arena_ptr, count, Type) ((Type*) scratch_push_nonzero_generic((arena_ptr), (count) * sizeof(Type), __alignof(Type), NULL))
 
-EXTERNAL void* scratch_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
-EXTERNAL Allocator_Stats scratch_allocator_get_stats(Allocator* self);
+EXTERNAL void* scratch_allocator_func(void* self, int mode, isize new_size, void* old_ptr, isize old_size, isize align, void* rest);
 
 EXTERNAL Scratch_Arena* global_scratch_arena();
 EXTERNAL Scratch        global_scratch_acquire();
@@ -437,9 +438,7 @@ EXTERNAL Scratch        global_scratch_acquire();
 
         //Assign the arena frame. Fill the allocator part. 
         // For simple cases (acquire frame, push, release frame) this gets optimized away.
-        out.alloc[0].func = scratch_allocator_func;
-        out.alloc[0].get_stats = scratch_allocator_get_stats;
-
+        out.alloc[0] = scratch_allocator_func;
         arena->frame_count += 1;
 
         _scratch_arena_check_invariants(arena);
@@ -471,33 +470,32 @@ EXTERNAL Scratch        global_scratch_acquire();
 
         PROFILE_STOP();
     }
-
-    EXTERNAL void* scratch_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
-    {
-        Scratch* scratch = (Scratch*) (void*) self;
-        void* out = scratch_push_nonzero_generic(scratch, new_size, align, error);
-        if(out)
-            memcpy(out, old_ptr, (size_t) MIN(old_size, new_size));
     
-        return out;
-    }
-
-    EXTERNAL Allocator_Stats scratch_allocator_get_stats(Allocator* self)
+    EXTERNAL void* scratch_allocator_func(void* self, int mode, isize new_size, void* old_ptr, isize old_size, isize align, void* rest)
     {
-        Scratch* scratch = (Scratch*) (void*) self;
-        Allocator_Stats stats = {0};
+        Scratch* scratch = (Scratch*) self;
+        if(mode == ALLOCATOR_MODE_ALLOC) {
+            void* out = scratch_push_nonzero_generic(scratch, new_size, align, (Allocator_Error*) rest);
+            if(out)
+                memcpy(out, old_ptr, (size_t) MIN(old_size, new_size));
     
-        Scratch_Arena* arena = scratch->arena;
-        Scratch_Stack* stack = scratch->stack;
-        u8* start = *(scratch->frame_ptr - 1);
-        stats.type_name = "Scratch";
-        stats.name = arena->name;
-        stats.is_top_level = true;
-        stats.is_capable_of_free_all = true;
-        stats.fixed_memory_pool_size = stack->reserved_to - start;
-        stats.bytes_allocated = *scratch->frame_ptr - start;
-        stats.max_bytes_allocated = *scratch->frame_ptr - start;
-        return stats;
+            return out;
+        }
+        if(mode == ALLOCATOR_MODE_GET_STATS) {
+            Allocator_Stats stats = {0};
+            Scratch_Arena* arena = scratch->arena;
+            Scratch_Stack* stack = scratch->stack;
+            u8* start = *(scratch->frame_ptr - 1);
+            stats.type_name = "Scratch";
+            stats.name = arena->name;
+            stats.is_top_level = true;
+            stats.is_capable_of_free_all = true;
+            stats.fixed_memory_pool_size = stack->reserved_to - start;
+            stats.bytes_allocated = *scratch->frame_ptr - start;
+            stats.max_bytes_allocated = *scratch->frame_ptr - start;
+            *(Allocator_Stats*) rest = stats;
+        }
+        return NULL;
     }
 
     EXTERNAL ATTRIBUTE_INLINE_ALWAYS Scratch_Arena* global_scratch_arena()

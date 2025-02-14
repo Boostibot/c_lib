@@ -96,7 +96,7 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
     #endif
     #ifndef TEST
         #include <stdio.h>
-        #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " ##__VA_ARGS__), abort()) : (void) 0)
+        #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
     #endif
 
     static void _hash_check_invariants(const Hash* table)
@@ -123,7 +123,6 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
 
     static bool _hash_find_next(const Hash* table, uint64_t hash, Hash_It* it)
     {
-        _hash_check_invariants(table);
         if(table->count > 0)
         {
             uint64_t empty = table->empty_value;
@@ -147,6 +146,8 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
         return false;
     }
     
+    //lowlevel insert into a slot without any guarantee that its the right. (well, except invariants)
+    //Sometimes this comes in handy
     EXTERNAL void  _hash_hacky_insert(Hash* table, isize index, uint64_t hash, uint64_t value)
     {
         _hash_check_invariants(table);
@@ -292,7 +293,7 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
 
         isize required = to_size > from_table->count ? to_size : from_table->count;
         isize rehash_to = 16;
-        while(rehash_to*3/4 > required)
+        while(rehash_to*3/4 < required)
             rehash_to *= 2;
 
         TEST(rehash_to <= UINT32_MAX);
@@ -353,12 +354,13 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
     EXTERNAL void hash_reserve(Hash* table, isize to_size)
     {
         _hash_check_invariants(table);
-        if(table->capacity*3/4 <= to_size)
+        if(table->capacity*3/4 <= to_size + table->gravestone_count)
             hash_copy_rehash(table, table, to_size);
     }
     
     EXTERNAL bool hash_find(const Hash* table, uint64_t hash, isize* index)
     {
+        _hash_check_invariants(table);
         Hash_It it = _hash_it_make(table, hash);
         bool out = _hash_find_next(table, hash, &it);
         if(index)
@@ -368,8 +370,13 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
 
     EXTERNAL bool hash_iterate(const Hash* table, uint64_t hash, Hash_It* it)
     {
+        _hash_check_invariants(table);
         if(it->iter == 0)
             *it = _hash_it_make(table, hash);
+        else {
+            it->index = (it->index + (uint64_t) it->iter) & (table->capacity - 1);
+            it->iter += 1; 
+        }
         return _hash_find_next(table, hash, it);
     }
     
@@ -412,7 +419,7 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
         TEST((table->entries == NULL) == (table->capacity == 0));
         TEST((table->count >= 0 && table->capacity >= 0 && table->gravestone_count >= 0)); 
         TEST(((uint64_t) table->capacity & ((uint64_t) table->capacity-1)) == 0); // capacity needs to be power of two or zero
-        TEST(table->capacity*3/4 >= table->count);
+        TEST(table->capacity*3/4 >= table->count + table->gravestone_count);
 
         if(table->entries != NULL)
             TEST(table->allocator != NULL);
@@ -425,7 +432,8 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
             {
                 Hash_Entry entry = table->entries[i];
                 if(hash_entry_is_used(table, &entry)) {
-                    TEST(hash_find(table, entry.hash, NULL));
+                    Hash_It it = _hash_it_make(table, entry.hash);
+                    TEST(_hash_find_next(table, entry.hash, &it));
                     used_count += 1;
                 }
                 else if(entry.value == table->empty_value + 1)

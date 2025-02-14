@@ -1,7 +1,7 @@
 #pragma once
-#include "scratch.h"
-#include "random.h"
-#include "time.h"
+#include "../scratch.h"
+#include "../random.h"
+#include "../time.h"
 
 static char* arena_push_string(Scratch* arena, const char* string)
 {

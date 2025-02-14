@@ -109,7 +109,7 @@ ATTRIBUTE_INLINE_NEVER EXTERNAL void map_test_hash_invariant(const Map* map, uin
 #endif
 #ifndef TEST
     #include <stdio.h>
-    #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " ##__VA_ARGS__), abort()) : (void) 0)
+    #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
 #endif
 
 #define MAP_EMPTY_ENTRY   (uint32_t) -1

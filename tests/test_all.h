@@ -7,27 +7,30 @@
 
 #define MODULE_ALL_COUPLED
 #define MODULE_ALL_TEST
-#include "platform.h"
-#include "defines.h"
-#include "assert.h"
-#include "profile.h"
-#include "list.h"
-#include "path.h"
-#include "allocator_tlsf.h"
-#include "slz4.h"
-#include "perf.h"
-#include "sort.h"
+#include "../platform.h"
+#include "../defines.h"
+#include "../assert.h"
+#include "../profile.h"
+#include "../list.h"
+#include "../path.h"
+#include "../allocator_tlsf.h"
+#include "../slz4.h"
+#include "../match.h"
+#include "../perf.h"
+#include "../sort.h"
+#include "../mem.h"
 
-#include "_test_random.h"
-#include "_test_arena.h"
-#include "_test_array.h"
-#include "_test_hash.h"
-#include "_test_log.h"
-#include "_test_math.h"
-#include "_test_stable_array.h"
-#include "_test_image.h"
-#include "_test_chase_lev_queue.h"
-//#include "_test_string_map.h"
+#include "test_random.h"
+#include "test_arena.h"
+#include "test_array.h"
+#include "test_hash.h"
+#include "test_log.h"
+#include "test_mem.h"
+#include "test_math.h"
+#include "test_stable_array.h"
+#include "test_image.h"
+#include "test_chase_lev_queue.h"
+//#include "test_string_map.h"
 
 typedef enum Test_Func_Type {
     TEST_FUNC_TYPE_SIMPLE,
@@ -57,18 +60,19 @@ static void test_all(double total_time)
         UNIT_TEST(platform_test_all),
         UNIT_TEST(test_list),
         UNIT_TEST(test_image),
-        //UNIT_TEST(test_debug_allocator),
         UNIT_TEST(test_stable_array),
         // UNIT_TEST(test_random),
         UNIT_TEST(test_path),
         UNIT_TEST(test_log),
+        UNIT_TEST(test_match),
+        TIMED_TEST(test_mem),
         TIMED_TEST(test_arena),
+        TIMED_TEST(test_hash),
         TIMED_TEST(test_sort),
         TIMED_TEST(test_array),
         TIMED_TEST(test_math),
         TIMED_TEST(test_allocator_tlsf),
         TIMED_TEST(slz4_test),
-        TIMED_TEST(test_hash),
         TIMED_TEST(test_chase_lev_queue),
         UNIT_TEST(NULL)
     );
@@ -92,9 +96,9 @@ static void test_all(double total_time)
     }
 
     #if PLATFORM_OS == PLATFORM_OS_UNIX
-        #include "platform_linux.c"
+        #include "../platform_linux.c"
     #elif PLATFORM_OS == PLATFORM_OS_WINDOWS
-        #include "platform_windows.c"
+        #include "../platform_windows.c"
     #else
         #error Unsupported OS! Add implementation
     #endif

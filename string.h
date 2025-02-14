@@ -4,32 +4,24 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef MODULE_ALL_COUPLED
     #include "assert.h"
     #include "profile.h"
     #include "allocator.h"
-    #include "platform.h"
 #endif
 
 typedef int64_t isize;
 typedef void* (*Allocator)(void* alloc, int mode, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align, void* other);
 
-#ifndef EXTERNAL
-    #define EXTERNAL
-#endif
+//Slice-like string. 
+typedef struct String {
+    const char* data;
+    isize count;
+} String;
 
-#ifdef MODULE_PLATFORM
-    typedef Platform_String String;
-#else
-    typedef struct String {
-        const char* data;
-        isize count;
-    } String;
-#endif
-
-//A dynamically resizeable string. Its data member is always null 
-// terminated even without any allocations. 
+//A dynamically resizeable string. Its data member is always null terminated. 
 // (as long as it was properly initialized - ie. not in = {0} state)
 typedef struct String_Builder {
     Allocator* allocator;
@@ -52,6 +44,10 @@ typedef struct String_Builder {
     #define STRING(cstring) BINIT(String){cstring, sizeof(cstring"") - 1}
 #endif 
 
+#ifndef EXTERNAL
+    #define EXTERNAL
+#endif
+
 EXTERNAL String string_of(const char* str); //Constructs a string from null terminated str
 EXTERNAL String string_make(const char* data, isize size); //Constructs a string
 EXTERNAL char   string_at_or(String str, isize at, char if_out_of_range); //returns str.data[at] or if_out_of_range if the index at is not within [0, str.count)
@@ -67,7 +63,7 @@ EXTERNAL bool   string_is_prefixed_with(String string, String prefix);
 EXTERNAL bool   string_is_postfixed_with(String string, String postfix);
 EXTERNAL bool   string_has_substring_at(String string, String substring, isize at_index); //Returns true if string has substring at index from_index
 EXTERNAL int    string_compare(String a, String b); //Compares sizes and then lexicographically the contents. Shorter strings are placed before longer ones.
-EXTERNAL int    string_compare_lexicographic(String a, String b); //Compares sizes and then lexicographically the contents then the contents. Shorter strings are placed before longer ones.
+EXTERNAL int    string_compare_lexicographic(String a, String b); //Compares lexicographically the contents then the sizes. Shorter strings are placed before longer ones.
 
 EXTERNAL String string_trim_prefix_whitespace(String s);    //" \t\n abc   " ->       "abc   "
 EXTERNAL String string_trim_postfix_whitespace(String s);   //" \t\n abc   " -> " \t\n abc"
@@ -83,18 +79,18 @@ EXTERNAL isize  string_find_last_or(String in_str, String search_for, isize from
 EXTERNAL isize  string_find_first_char_or(String in_str, char search_for, isize from, isize if_not_found);
 EXTERNAL isize  string_find_last_char_or(String in_str, char search_for, isize from, isize if_not_found);
 
-EXTERNAL isize  string_null_terminate(char* buffer, isize buffer_size, String string);  //writes into buffer at max buffer_size chars from string. returns the ammount of chars written not including null termination.
+EXTERNAL isize  string_null_terminate(char* buffer, isize buffer_size, String string);  //writes into buffer at max buffer_size chars from string. returns the amount of chars written not including null termination.
 EXTERNAL String string_allocate(Allocator* alloc, String string);
 EXTERNAL void   string_deallocate(Allocator* alloc, String* string);
 
+#define BUILDER_REISIZE_FOR_OVERWRITE -1
 EXTERNAL String_Builder builder_make(Allocator* alloc_or_null, isize capacity_or_zero);
 EXTERNAL String_Builder builder_of(Allocator* allocator, String string);  //Allocates a String_Builder from String using an allocator.
 EXTERNAL void builder_init(String_Builder* builder, Allocator* alloc);
 EXTERNAL void builder_init_with_capacity(String_Builder* builder, Allocator* alloc, isize capacity_or_zero);
 EXTERNAL void builder_deinit(String_Builder* builder);             
 EXTERNAL void builder_set_capacity(String_Builder* builder, isize capacity);             
-EXTERNAL void builder_resize(String_Builder* builder, isize capacity);        
-EXTERNAL void builder_resize_for_overwrite(String_Builder* builder, isize to_size);
+EXTERNAL void builder_resize(String_Builder* builder, isize capacity, int fill_with_char_or_minus_one);        
 EXTERNAL void builder_reserve(String_Builder* builder, isize capacity);
 EXTERNAL void builder_clear(String_Builder* builder);             
 EXTERNAL void builder_push(String_Builder* builder, char c);             
@@ -105,14 +101,14 @@ EXTERNAL void builder_insert_hole(String_Builder* builder, isize at, isize hole_
 EXTERNAL void builder_insert(String_Builder* builder, isize at, String string);
 EXTERNAL void builder_assign(String_Builder* builder, String string); //Sets the contents of the builder to be equal to string
 EXTERNAL bool builder_is_equal(String_Builder a, String_Builder b); //Returns true if the contents and sizes of the strings match
-EXTERNAL int  builder_compare(String_Builder a, String_Builder b); //Compares sizes and then lexographically the contents. Shorter strings are placed before longer ones.
+EXTERNAL int  builder_compare(String_Builder a, String_Builder b); //Compares sizes and then lexicographically the contents. Shorter strings are placed before longer ones.
 EXTERNAL bool builder_is_invariant(String_Builder builder);
 
 EXTERNAL String_Builder string_concat(Allocator* allocator, String a, String b);
 EXTERNAL String_Builder string_concat3(Allocator* allocator, String a, String b, String c);
 
 //Format functions. We also have a macro wrapper for these which fake evaluate printf 
-// (its isnde sizeof so it doesnt actually get run). This makes the compielr typecheck the arguments.
+// (its evaluated inside sizeof so it doesnt actually get run). This makes the compiler typecheck the arguments.
 EXTERNAL void vformat_append_into(String_Builder* append_to, const char* format, va_list args);
 EXTERNAL void _format_append_into(String_Builder* append_to, const char* format, ...);
 EXTERNAL void vformat_into(String_Builder* into, const char* format, va_list args);
@@ -140,18 +136,20 @@ EXTERNAL bool char_is_alpha(char c); //[A-Z] | [a-z]
 EXTERNAL char char_to_upper(char c);
 EXTERNAL char char_to_lower(char c);
 
-//Line iteration
-//use like so for(Line_Iterator it = {0}; line_iterator_get_line(&it, string); ) {...}
+//Line iteration - handles line terminations for linux, windows, mac - "\n", "\r\n", "\r"
+//use like so: for(Line_Iterator it = {0}; line_iterator_next(&it, string); ) {...}
 typedef struct Line_Iterator {
     String line;
     isize line_number; //one based line number
-    isize line_from; //char index within the iterated string of line start
-    isize line_to;  //char index within the iterated string of line end
+    isize line_from; 
+    isize line_to;  
+    isize next_line_from;
 } Line_Iterator;
 
 EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
-EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String string, char c);
 #endif
+
+#define MODULE_IMPL_ALL
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_STRING)) && !defined(MODULE_HAS_IMPL_STRING)
 #define MODULE_HAS_IMPL_STRING
@@ -166,7 +164,7 @@ EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String st
         #define ASSERT(x, ...)              assert(x)
         #define ASSERT_SLOW(x, ...)         assert(x)
         #define REQUIRE(x, ...)             assert(x)
-        #define ASSERT_BOUNDS(x, ...)       assert(x)
+        #define CHECK_BOUNDS(i, count, ...) assert(0 <= (i) && (i) <= count)
     #endif  
 
     EXTERNAL String string_of(const char* str)
@@ -207,22 +205,24 @@ EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String st
         return string_tail(string_head(string, to), from);
     }
 
+    #define _CLAMP(val, min, max) ((val) < (min) ? min : (val) > (max) ? (max) : (val))
     EXTERNAL String string_safe_head(String string, isize to)
     {
-        return string_head(string, CLAMP(to, 0, string.count));
+        return string_head(string, _CLAMP(to, 0, string.count));
     }
     
     EXTERNAL String string_safe_tail(String string, isize from)
     {
-        return string_tail(string, CLAMP(from, 0, string.count));
+        return string_tail(string, _CLAMP(from, 0, string.count));
     }
 
     EXTERNAL String string_safe_range(String string, isize from, isize to)
     {
-        isize escaped_from = CLAMP(from, 0, string.count);
-        isize escaped_to = CLAMP(to, 0, string.count);
-        return string_range(string, escaped_from, escaped_to);
+        isize clamped_to = _CLAMP(to, 0, string.count);
+        isize clamped_from = _CLAMP(from, 0, to);
+        return string_range(string, clamped_from, clamped_to);
     }
+    #undef _CLAMP
 
     EXTERNAL isize string_find_first_or(String in_str, String search_for, isize from, isize if_not_found)
     {
@@ -424,10 +424,15 @@ EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String st
         if(builder.capacity > 0)
             is_capacity_correct = is_capacity_correct && builder.allocator != NULL;
 
-        //If is not in 0 state must be null terminated (both right after and after the whole capacity for safety)
+        //If is not in 0 state must be null terminated. 
+        //In particular everything between count and capacity needs to be zero
+        //This property is used to not have to add `\0` on pushes/appends
         bool is_null_terminated = true;
-        if(builder.data != NULL)
-            is_null_terminated = builder.data[builder.count] == '\0' && builder.data[builder.capacity] == '\0';
+        if(builder.data != NULL) {
+            for(isize i = builder.count; i <= builder.capacity; i++)
+                if(builder.data[i] != '\0')
+                    is_null_terminated = false;
+        }
         
         bool result = is_capacity_correct && is_size_correct && is_data_correct && is_null_terminated && null_termination_not_corrupted;
         ASSERT(result);
@@ -530,21 +535,15 @@ EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String st
         builder_set_capacity(builder, new_capacity);
     }
 
-    EXTERNAL void builder_resize_for_overwrite(String_Builder* builder, isize to_size)
+    EXTERNAL void builder_resize(String_Builder* builder, isize to_size, int fill_with_or_minus_one)
     {
+        ASSERT_SLOW(builder_is_invariant(*builder));
         builder_reserve(builder, to_size);
         if(to_size >= builder->count)
-            builder->data[to_size] = '\0';
-        else
-            //We clear the memory when shrinking so that we dont have to clear it when pushing!
-            memset(builder->data + to_size, 0, (size_t) ((builder->count - to_size)));
-    }
-
-    EXTERNAL void builder_resize(String_Builder* builder, isize to_size)
-    {
-        builder_reserve(builder, to_size);
-        if(to_size >= builder->count)
-            memset(builder->data + builder->count, 0, (size_t) ((to_size - builder->count)));
+        {
+            if((uint32_t) fill_with_or_minus_one < 256)
+                memset(builder->data + builder->count, fill_with_or_minus_one, (size_t) ((to_size - builder->count)));
+        }
         else
             //We clear the memory when shrinking so that we dont have to clear it when pushing!
             memset(builder->data + to_size, 0, (size_t) ((builder->count - to_size)));
@@ -555,7 +554,7 @@ EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String st
 
     EXTERNAL void builder_clear(String_Builder* builder)
     {
-        builder_resize(builder, 0);
+        builder_resize(builder, 0, BUILDER_REISIZE_FOR_OVERWRITE);
     }
 
     EXTERNAL void builder_append(String_Builder* builder, String string)
@@ -579,25 +578,26 @@ EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String st
     
     EXTERNAL void builder_insert_hole(String_Builder* builder, isize at, isize hole_size, int fill_with_char_or_minus_one)
     {
-        ASSERT_BOUNDS(0 <= at && at <= builder->count);
+        CHECK_BOUNDS(at, builder->count);
         builder_reserve(builder, builder->count + hole_size);
         memmove(builder->data + at + hole_size, builder->data + at, (size_t) hole_size);
-        if(fill_with_char_or_minus_one != -1)
+        if((uint32_t) fill_with_char_or_minus_one < 256)
             memset(builder->data + at, fill_with_char_or_minus_one, (size_t) hole_size);
 
         builder->count += hole_size;
-        builder->data[builder->count] = '\0';
+        ASSERT_SLOW(builder_is_invariant(*builder));
     }
     
     EXTERNAL void builder_insert(String_Builder* builder, isize at, String string)
     {
-        builder_insert_hole(builder, at, string.count, -1);
+        builder_insert_hole(builder, at, string.count, BUILDER_REISIZE_FOR_OVERWRITE);
         memcpy(builder->data + at, string.data, (size_t) string.count);
+        ASSERT_SLOW(builder_is_invariant(*builder));
     }
 
     EXTERNAL void builder_assign(String_Builder* builder, String string)
     {
-        builder_resize(builder, string.count);
+        builder_resize(builder, string.count, BUILDER_REISIZE_FOR_OVERWRITE);
         memcpy(builder->data, string.data, (size_t) string.count);
         ASSERT_SLOW(builder_is_invariant(*builder));
     }
@@ -610,7 +610,7 @@ EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String st
 
     EXTERNAL char builder_pop(String_Builder* builder)
     {
-        ASSERT_BOUNDS(builder->count > 0);
+        CHECK_BOUNDS(0, builder->count);
         char popped = builder->data[--builder->count];
         builder->data[builder->count] = '\0';
         return popped;
@@ -655,7 +655,7 @@ EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String st
 
             int size = vsnprintf(local, sizeof local, format, args_copy);
             isize base_size = append_to->count; 
-            builder_resize_for_overwrite(append_to, append_to->count + size);
+            builder_resize(append_to, append_to->count + size, BUILDER_REISIZE_FOR_OVERWRITE);
 
             if(size > sizeof local) {
                 PROFILE_INSTANT("format twice")
@@ -786,31 +786,45 @@ EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String st
             return c;
     }
     
-    EXTERNAL bool line_iterator_next_separated_by(Line_Iterator* iterator, String string, char c)
+    EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string)
     {
-        isize line_from = 0;
-        if(iterator->line_number != 0)
-            line_from = iterator->line_to + 1;
-
+        isize line_from = iterator->next_line_from;
         if(line_from >= string.count)
             return false;
 
-        isize line_to = string_find_first_char(string, c, line_from);
+        isize next_line_from = string.count;
+        isize line_to = string.count;
+        for(isize i = line_from; i < string.count; i++) {
+            //linux style
+            if(string.data[i] == '\n')
+            {
+                line_to = i;
+                next_line_from = i+1;
+                break;
+            }
+            if(string.data[i] == '\r')
+            {
+                //windows
+                if(i + 1 < string.count && string.data[i] == '\n')
+                    next_line_from = i+2;
+                //mac
+                else
+                    next_line_from = i+1;
+
+                line_to = i;
+                break;
+            }
+        }
         
-        if(line_to == -1)
-            line_to = string.count;
-        
+        if(next_line_from > string.count)
+            next_line_from = string.count;
+
         iterator->line_number += 1;
         iterator->line_from = line_from;
         iterator->line_to = line_to;
+        iterator->next_line_from = next_line_from;
         iterator->line = string_range(string, line_from, line_to);
-
         return true;
-    }
-
-    EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string)
-    {
-        return line_iterator_next_separated_by(iterator, string, '\n');
     }
 
     EXTERNAL String string_trim_prefix_whitespace(String s)

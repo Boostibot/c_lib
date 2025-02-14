@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef MODULE_ALL_COUPLED
     #include "defines.h"
@@ -57,7 +58,7 @@ typedef struct Allocator_Stats {
     isize bytes_allocated;
     isize max_bytes_allocated;  //maximum bytes_allocated during the entire lifetime of the allocator
 
-    isize max_concurent_allocations;
+    isize max_concurrent_allocations; 
     isize allocation_count;     //The number of allocation requests (old_ptr == NULL). Does not include reallocs!
     isize deallocation_count;   //The number of deallocation requests (new_size == 0). Does not include reallocs!
     isize reallocation_count;   //The number of reallocation requests (*else*).
@@ -117,6 +118,8 @@ EXTERNAL void* align_forward(void* ptr, isize align_to);
 EXTERNAL void* align_backward(void* ptr, isize align_to);
 
 #endif
+
+#define MODULE_IMPL_ALL
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ALLOCATOR)) && !defined(MODULE_HAS_IMPL_ALLOCATOR)
 #define MODULE_HAS_IMPL_ALLOCATOR
@@ -243,13 +246,10 @@ EXTERNAL void* align_backward(void* ptr, isize align_to);
     EXTERNAL void* malloc_allocate(isize new_size, void* old_ptr, isize old_size, isize align)
     {
         REQUIRE(new_size >= 0 && old_size >= 0 && align >= 0);
-
         void* new_ptr = NULL;
         PROFILE_START();
         {
             #if defined(_WIN32) || defined(_WIN64)
-                __declspec(dllimport) void* __cdecl _aligned_realloc(void*  _Block, size_t _Size, size_t _Alignment);
-                __declspec(dllimport) void __cdecl _aligned_free(void* _Block);
                 if(new_size == 0)
                     _aligned_free(old_ptr);
                 else 
@@ -259,13 +259,13 @@ EXTERNAL void* align_backward(void* ptr, isize align_to);
                 if(new_size == 0)
                     free(old_ptr);
                 else if(align <= 16) 
-                    new_ptr = realloc(old_ptr, (size_t) new_size, (size_t) align);
+                    new_ptr = realloc(old_ptr, (size_t) new_size);
                 else {
                     isize min_size = new_size < old_size ? new_size : old_size;
                     new_ptr = aligned_alloc((size_t) align, (size_t) new_size);
                     if(new_ptr != 0)
                     {
-                        mempcy(new_ptr, old_ptr, min_size);
+                        memcpy(new_ptr, old_ptr, min_size);
                         free(old_ptr);
                     }
                 }

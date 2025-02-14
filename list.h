@@ -187,7 +187,9 @@
 #define MODULE_LIST_HAS_TEST
 
 #ifndef TEST
-    #define TEST(x) assert(x)
+    #include <stdlib.h>
+    #include <stdio.h>
+    #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
 #endif
 
 static void test_list()

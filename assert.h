@@ -127,14 +127,14 @@
     #ifdef DO_BOUNDS_CHECKS
         #define ASSERT_BOUNDS(x, ...)              (!(x) ? PANIC_EXPR("BOUNDS", "ASSERT_BOUNDS("#x")", ##__VA_ARGS__) : (void) 0) 
                     
-        #define CHECK_BOUNDS(i, to) \
+        #define CHECK_BOUNDS(i, to, ...) \
             ((uint64_t) (i) < (uint64_t) (to) \
                 ? (void) 0 \
                 : PANIC_EXPR("BOUNDS", "CHECK_BOUNDS("#i","#to")", \
                     "Bounds check failed! %lli is not from the interval [0, %lli)!", \
                     (long long) (i), (long long) (to)))           
 
-        #define CHECK_BOUNDS_RANGE(i, from, to) \
+        #define CHECK_BOUNDS_RANGE(i, from, to, ...) \
             ((from) <= (i) && (i) < (to) \
                 ? (void) 0 \
                 : PANIC_EXPR("BOUNDS", "CHECK_BOUNDS_RANGE("#i", "#from","#to")", \
