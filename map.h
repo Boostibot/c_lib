@@ -28,8 +28,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "allocator_debug.h"
-
 typedef int64_t isize;
 typedef void* (*Allocator)(void* alloc, int mode, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align, void* other);
 
