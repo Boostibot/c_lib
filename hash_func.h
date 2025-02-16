@@ -196,12 +196,12 @@ HASH_FN_API uint64_t hash64_murmur(const void* key, int64_t size, uint64_t seed)
 #define XXHASH_FN64_PRIME_4  0x85EBCA77C2B2AE63ULL
 #define XXHASH_FN64_PRIME_5  0x27D4EB2F165667C5ULL
 
-static inline uint64_t _xxhash64_rotate_left(uint64_t x, uint8_t bits)
+HASH_FN_API inline uint64_t _xxhash64_rotate_left(uint64_t x, uint8_t bits)
 {
     return (x << bits) | (x >> (64 - bits));
 }
 
-static inline uint64_t _xxhash64_process_single(uint64_t previous, uint64_t input)
+HASH_FN_API inline uint64_t _xxhash64_process_single(uint64_t previous, uint64_t input)
 {
     return _xxhash64_rotate_left(previous + input * XXHASH_FN64_PRIME_2, 31) * XXHASH_FN64_PRIME_1;
 }
@@ -293,7 +293,7 @@ HASH_FN_API uint64_t hash64_fnv(const void* key, int64_t size, uint64_t seed)
     const uint8_t* data = (const uint8_t*) key;
     uint64_t hash = seed ^ 0x27D4EB2F165667C5ULL;
     for(int64_t i = 0; i < size; i++)
-        hash = (hash * 0x100000001b3ULL) ^ (uint64_t) data[i];
+        hash = (hash * 0x100000001b3ULL) ^ data[i];
 
     return hash;
 }

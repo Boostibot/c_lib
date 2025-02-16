@@ -1,9 +1,10 @@
 #ifndef MODULE_PATH
 #define MODULE_PATH
 
+#include "assert.h"
+#include "log.h"
 #include "string.h"
 #include "scratch.h"
-#include "log.h"
 
 // This is a not exhaustive filepath handling facility. 
 // We require all strings to pass through some basic parsing and be wrapped in Path struct. 
@@ -1065,7 +1066,7 @@ EXTERNAL Path path_get_startup_working_directory()
 EXTERNAL Path_Builder path_get_current_working_directoryXXX(Allocator* alloc, Platform_Error* error_or_null)
 {
     char backing[1024];
-    isize curr_size = ARRAY_LEN(backing);
+    isize curr_size = ARRAY_COUNT(backing);
     char* buffer = backing;
 
     for(int i = 0; i < 16; i++)
@@ -1132,7 +1133,7 @@ void test_path_normalize(int flags, const char* cpath, const char* cexpected)
 {
     PROFILE_START();
     const char* prefixes[] = {"", "\\\\?\\", "\\\\.\\"};
-    for(isize i = 0; i < ARRAY_LEN(prefixes); i++)
+    for(isize i = 0; i < ARRAY_COUNT(prefixes); i++)
     {
         SCRATCH_SCOPE(arena) {
             String_Builder prefixed_path = string_concat(arena.alloc, string_of(prefixes[i]), string_of(cpath));
@@ -1154,7 +1155,7 @@ void test_canonicalize_with_roots_and_prefixes(int flags, const char* cabs_path,
     const char* roots[]      = {"\\", "C:/", "F:\\", "//Server/", "\\\\xxserverxx\\"};
     const char* norm_roots[] = {"/", "C:/", "F:/", "//Server/", "//xxserverxx/"};
     
-    for(isize i = 0; i < ARRAY_LEN(roots); i++)
+    for(isize i = 0; i < ARRAY_COUNT(roots); i++)
     {
         SCRATCH_SCOPE(arena) {
             String_Builder prefixed_path = string_concat(arena.alloc, string_of(roots[i]), string_of(cabs_path));
@@ -1174,7 +1175,7 @@ enum {
 void test_path_make_relative_absolute_with_prefixes(int flags, const char* crelative, const char* cpath, const char* cexpected)
 {
     const char* prefixes[] = {"", "\\\\?\\", "\\\\.\\"};
-    for(isize i = 0; i < ARRAY_LEN(prefixes); i++)
+    for(isize i = 0; i < ARRAY_COUNT(prefixes); i++)
     {
         SCRATCH_SCOPE(arena) {
             String_Builder prefixed_relative = string_concat(arena.alloc, string_of(prefixes[i]), string_of(crelative));

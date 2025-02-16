@@ -28,7 +28,7 @@ static void test_memtile()
     
     char field[128] = {0};
     char expected[128] = {0};
-    for(isize i = 0; i < ARRAY_LEN(test_cases); i++)
+    for(isize i = 0; i < ARRAY_COUNT(test_cases); i++)
     {
         Test_Case test_case = test_cases[i];
         isize pattern_len = (isize) strlen(test_case.pattern);
@@ -139,7 +139,7 @@ static void test_memcheck(double time)
             bytes[i] = random_u64();
 
         char c = (char) random_u64();
-        test_memfind_single((const char*) bytes, sizeof(bytes), c);
+        test_memfind_single((const char*) bytes, c, sizeof(bytes));
     }
 }
 

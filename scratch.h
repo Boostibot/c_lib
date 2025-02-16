@@ -269,7 +269,7 @@ EXTERNAL Scratch        global_scratch_acquire();
 
         commit_granularity = _ROUND_UP(commit_granularity, alloc_granularity);
         reserve_size = _ROUND_UP(reserve_size, alloc_granularity*SCRATCH_ARENA_CHANNELS);
-        level_count = MIN(level_count, reserve_size/isizeof(u8*));
+        level_count = MIN(level_count, reserve_size/(isize) sizeof(u8*));
         level_count = _ROUND_UP(level_count, SCRATCH_ARENA_CHANNELS);
 
         //reserve eveyrthing
@@ -278,7 +278,7 @@ EXTERNAL Scratch        global_scratch_acquire();
             
         //commit levels
         u8* datas[SCRATCH_ARENA_CHANNELS] = {NULL};
-        isize frames_commit_size = _ROUND_UP(level_count*isizeof(u8*)/SCRATCH_ARENA_CHANNELS, commit_granularity);
+        isize frames_commit_size = _ROUND_UP(level_count*(isize) sizeof(u8*)/SCRATCH_ARENA_CHANNELS, commit_granularity);
         for(isize i = 0; i < SCRATCH_ARENA_CHANNELS; i++)
         {
             if(error != 0)

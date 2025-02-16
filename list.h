@@ -21,8 +21,12 @@
 #include <stddef.h>
 
 //#define to enable extra checks 
-#ifdef DO_ASSERTS_SLOW
-    #define LIST_DEBUB
+#ifndef LIST_DEBUB
+    #ifdef DO_ASSERTS_SLOW
+        #define LIST_DEBUB 1
+    #else
+        #define LIST_DEBUB 0
+    #endif
 #endif
 
 #ifndef ASSERT
@@ -31,7 +35,7 @@
     #define REQUIRE(x) assert(x)
 #endif
 
-#ifdef LIST_DEBUB
+#if LIST_DEBUB > 0
     #define _is_properly_linked(node, next, prev, NULL) (1                                  \
             && ((node) != NULL && (node)->next != NULL ? (node)->next->prev == (node) : 1)  \
             && ((node) != NULL && (node)->prev != NULL ? (node)->prev->next == (node) : 1)  \

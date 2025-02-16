@@ -8,7 +8,7 @@
 #include "../time.h"
 #include <string.h>
 
-int u64_comp_func(const void* a_, const void* b_)
+INTERNAL int u64_comp_func(const void* a_, const void* b_)
 {
 	u64 a = *(u64*) a_;
 	u64 b = *(u64*) b_;
@@ -38,7 +38,7 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 			{REMOVE,			120},
 			{REHASH,			10},
 		};
-		random_discrete_make(dist, ARRAY_LEN(dist));
+		random_discrete_make(dist, ARRAY_COUNT(dist));
 
 		enum {
 			MAX_ITERS = 10*1000*1000,
@@ -62,8 +62,7 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 		Hash other_table = {debug_alloc.alloc};
 
 		Array(Action) history = {debug_alloc.alloc};
-		//uint64_t seed = random_seed();
-		uint64_t seed = 18419477311765462541;
+		uint64_t seed = random_seed();
 		*random_state() = random_state_make(seed);
 
 		isize max_size = 0;
@@ -74,7 +73,7 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 			if(clock_sec() - start >= max_seconds && i >= MIN_ITERS)
 				break;
 
-			Action action = (Action) random_discrete(dist, ARRAY_LEN(dist));
+			Action action = (Action) random_discrete(dist, ARRAY_COUNT(dist));
 			array_push(&history, action);
 
 			//get allowed random value
@@ -166,9 +165,9 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 					array_copy(&other_truth_key_array, truth_key_array);
 					
 					//swap all acessors
-					swap_any(&truth_val_array, &other_truth_val_array, sizeof truth_val_array);
-					swap_any(&truth_key_array, &other_truth_key_array, sizeof truth_key_array);
-					swap_any(&table, &other_table, sizeof table);
+					random_swap_any(&truth_val_array, &other_truth_val_array, sizeof truth_val_array);
+					random_swap_any(&truth_key_array, &other_truth_key_array, sizeof truth_key_array);
+					random_swap_any(&table, &other_table, sizeof table);
 				} break;
 
 				case REHASH: {

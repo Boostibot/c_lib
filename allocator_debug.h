@@ -106,8 +106,8 @@ EXTERNAL void debug_allocator_deinit(Debug_Allocator* allocator);
 
 EXTERNAL void** debug_allocation_get_callstack(const Debug_Allocation* alloc);
 EXTERNAL const Debug_Allocation* debug_allocator_get_allocation(const Debug_Allocator* allocator, void* ptr); 
-EXTERNAL void debug_allocator_test_all_allocations(const Debug_Allocator* self);
-EXTERNAL void debug_allocator_test_allocation(const Debug_Allocator* self, void* user_ptr);
+EXTERNAL void debug_allocator_test_all_allocations(const Allocator* self);
+EXTERNAL void debug_allocator_test_allocation(const Allocator* self, void* user_ptr);
 EXTERNAL void debug_allocator_test_invariants(const Debug_Allocator* self);
 
 #define DEBUG_ALLOC_PRINT_ALIVE_CALLSTACK 1
@@ -125,15 +125,19 @@ EXTERNAL void* debug_allocator_func(void* self, int mode, isize new_size, void* 
 #define _DEBUG_ALLOCATOR_MAGIC_NUM8  0x9D //another one
 #define _DEBUG_ALLOCATOR_MAGIC_NUM64 0x9D9D9D9D9D9D9D9Dull
 
-static Debug_Allocation* _debug_allocator_get_new_allocation(Debug_Allocator* self);
-static Debug_Allocation* _debug_allocator_find_allocation(const Debug_Allocator* self, void* ptr);
-static void _debug_allocator_insert_allocation(Debug_Allocator* debug, Debug_Allocation* allocation);
-static void _debug_allocator_remove_allocation_and_deallocate(Debug_Allocator* debug, Debug_Allocation* allocation);
-static void _debug_allocator_remove_allocation(Debug_Allocator* self, Debug_Allocation* allocation);
-static void _debug_allocator_check_invariants(const Debug_Allocator* self);
-static void _debug_allocator_panic(const Debug_Allocator* self, void* user_ptr, const Debug_Allocation* allocation, isize dist, const char* panic_reason);
-static void _debug_allocation_test_dead_zones(const Debug_Allocator* self, const Debug_Allocation* allocation);
-static Debug_Allocation* _debug_allocation_get_closest(const Debug_Allocator* self, void* ptr, isize* dist_or_null);
+#ifndef INTERNAL
+    #define INTERNAL inline static
+#endif
+
+INTERNAL Debug_Allocation* _debug_allocator_get_new_allocation(Debug_Allocator* self);
+INTERNAL Debug_Allocation* _debug_allocator_find_allocation(const Debug_Allocator* self, void* ptr);
+INTERNAL void _debug_allocator_insert_allocation(Debug_Allocator* debug, Debug_Allocation* allocation);
+INTERNAL void _debug_allocator_remove_allocation(Debug_Allocator* self, Debug_Allocation* allocation);
+INTERNAL void _debug_allocator_deallocate_allocation(Debug_Allocator* self, Debug_Allocation* allocation);
+INTERNAL void _debug_allocator_check_invariants(const Debug_Allocator* self);
+INTERNAL void _debug_allocator_panic(const Debug_Allocator* self, void* user_ptr, const Debug_Allocation* allocation, isize dist, const char* panic_reason);
+INTERNAL void _debug_allocation_test_dead_zones(const Debug_Allocator* self, const Debug_Allocation* allocation);
+INTERNAL Debug_Allocation* _debug_allocation_get_closest(const Debug_Allocator* self, void* ptr, isize* dist_or_null);
 
 EXTERNAL void debug_allocator_init(Debug_Allocator* self, Allocator* parent, Allocator* internal, Debug_Allocator_Options options)
 {
@@ -164,21 +168,31 @@ EXTERNAL void debug_allocator_deinit(Debug_Allocator* self)
         const char* name = self->options.name;
         LOG_FATAL("DEBUG", "debug allocator%s%s leaking memory. Printing all allocations (%lli) below:", 
                 name ? "name: " : "", name, (lli) self->alive_count);
-        debug_allocator_print_alive_allocations(">DEBUG", LOG_FATAL, self, -1, true);
+        debug_allocator_print_alive_allocations(">DEBUG", LOG_FATAL, self, -1, DEBUG_ALLOC_PRINT_ALIVE_CALLSTACK | DEBUG_ALLOC_PRINT_ALIVE_TIME);
         PANIC("debug allocator%s%s reported failure '%s'", name ? "name: " : "", name, "memory leaked");
     }
     if(self->allocation_hash) {
         for(isize i = 0; i < _DEBUG_ALLOC_HASH_SIZE; i++) {
-            for(Debug_Allocation* curr = self->allocation_hash[i]; curr; curr = curr->next) {
+            for(Debug_Allocation* curr = self->allocation_hash[i]; curr; ) {
+                ASSERT(curr->size != -1);
+                Debug_Allocation* next = curr->next;
                 _debug_allocation_test_dead_zones(self, curr);
-
+                _debug_allocator_deallocate_allocation(self, curr);
+                curr = next;
             }
         }
+
         DEALLOCATE(self->internal_alloc, self->allocation_hash, _DEBUG_ALLOC_HASH_SIZE, Debug_Allocation*);
     }
-    
+
+    for(Debug_Allocation_Block* curr = self->allocation_blocks; curr; ) {
+        Debug_Allocation_Block* next = curr->next;
+        DEALLOCATE(self->internal_alloc, curr, 1, Debug_Allocation_Block);
+        curr = next;
+    }
+
     if(self->options.do_set_as_default)
-        allocator_set(self->allocator_backup);
+        allocators_set(self->allocator_backup);
     memset(self, 0, sizeof *self);
 }
 
@@ -301,6 +315,9 @@ EXTERNAL void* debug_allocator_func(void* self_void, int mode, isize new_size, v
             if(new_alloc->call_stack_count > 0)
                 platform_capture_call_stack(callstack, new_alloc->call_stack_count, 1);
 
+            ASSERT(new_block_ptr <= pre_dead_zone && pre_dead_zone + new_alloc->pre_dead_zone <= out_ptr);
+            ASSERT(out_ptr + new_size <= post_dead_zone && post_dead_zone + new_alloc->post_dead_zone <= new_block_ptr + new_total_size);
+
             isize min_size = new_size < old_size ? new_size : old_size;
             memset(pre_dead_zone,  _DEBUG_ALLOCATOR_MAGIC_NUM8, (size_t) new_alloc->pre_dead_zone);
             if(old_ptr) memcpy(out_ptr, old_ptr, (size_t) min_size);
@@ -309,13 +326,15 @@ EXTERNAL void* debug_allocator_func(void* self_void, int mode, isize new_size, v
             
             _debug_allocator_insert_allocation(self, new_alloc);
             #ifdef DO_ASSERTS_SLOW
-                debug_allocator_test_allocation(self, out_ptr);
+                debug_allocator_test_allocation(self->alloc, out_ptr);
             #endif
         }
     
         //dealloc old ptr
-        if(old_size != 0)
-            _debug_allocator_remove_allocation_and_deallocate(self, old_alloc);
+        if(old_size != 0) {
+            _debug_allocator_deallocate_allocation(self, old_alloc);
+            _debug_allocator_remove_allocation(self, old_alloc);
+        }
     
         self->bytes_allocated += new_size - old_size;
         self->max_bytes_allocated = MAX(self->max_bytes_allocated, self->bytes_allocated);
@@ -338,7 +357,7 @@ EXTERNAL void* debug_allocator_func(void* self_void, int mode, isize new_size, v
             _debug_allocator_check_invariants(self);
         #else
             if(self->options.do_continual_checks)
-                debug_allocator_test_all_allocations(self);
+                debug_allocator_test_all_allocations(self.alloc);
         #endif
 
         PROFILE_STOP();
@@ -364,7 +383,7 @@ EXTERNAL void* debug_allocator_func(void* self_void, int mode, isize new_size, v
     return NULL;
 }
 
-static uint64_t _debug_alloc_ptr_hash(void* ptr) 
+INTERNAL uint64_t _debug_alloc_ptr_hash(void* ptr) 
 {
     uint64_t x = (uint64_t) ptr; 
     x = (x ^ (x >> 31) ^ (x >> 62)) * (uint64_t) 0x319642b2d24d8ec3;
@@ -373,7 +392,7 @@ static uint64_t _debug_alloc_ptr_hash(void* ptr)
     return x;
 }
 
-static Debug_Allocation* _debug_allocator_get_new_allocation(Debug_Allocator* self)
+INTERNAL Debug_Allocation* _debug_allocator_get_new_allocation(Debug_Allocator* self)
 {
     if(self->allocation_first_free == NULL)
     {
@@ -396,7 +415,7 @@ static Debug_Allocation* _debug_allocator_get_new_allocation(Debug_Allocator* se
     return out;
 }
 
-static void _debug_allocator_insert_allocation(Debug_Allocator* self, Debug_Allocation* allocation)
+INTERNAL void _debug_allocator_insert_allocation(Debug_Allocator* self, Debug_Allocation* allocation)
 {
     uint64_t hash = _debug_alloc_ptr_hash(allocation->ptr);
     uint64_t bucket_i = hash % _DEBUG_ALLOC_HASH_SIZE;
@@ -411,7 +430,7 @@ static void _debug_allocator_insert_allocation(Debug_Allocator* self, Debug_Allo
     self->alive_count += 1;
 }
 
-static Debug_Allocation* _debug_allocator_find_allocation(const Debug_Allocator* self, void* ptr)
+INTERNAL Debug_Allocation* _debug_allocator_find_allocation(const Debug_Allocator* self, void* ptr)
 {
     uint64_t hash = _debug_alloc_ptr_hash(ptr);
     uint64_t bucket_i = hash % _DEBUG_ALLOC_HASH_SIZE;
@@ -423,11 +442,19 @@ static Debug_Allocation* _debug_allocator_find_allocation(const Debug_Allocator*
     return NULL;
 }
 
-static void _debug_allocator_remove_allocation(Debug_Allocator* self, Debug_Allocation* allocation)
+INTERNAL void _debug_allocator_remove_allocation(Debug_Allocator* self, Debug_Allocation* allocation)
 {
     if(allocation->next)
         allocation->next->prev = allocation->prev;
-
+        
+    {
+        //if is first in chain, make the bucket point to the next allocation
+        uint64_t hash = _debug_alloc_ptr_hash(allocation->ptr);
+        uint64_t bucket_i = hash % _DEBUG_ALLOC_HASH_SIZE;
+        bool is_pointing_at_me = self->allocation_hash[bucket_i] == allocation;
+        ASSERT(is_pointing_at_me == (allocation->prev == NULL));
+    }
+    
     if(allocation->prev)
         allocation->prev->next = allocation->next;
     else {
@@ -447,16 +474,16 @@ static void _debug_allocator_remove_allocation(Debug_Allocator* self, Debug_Allo
     ASSERT(self->alive_count >= 0);
 }
 
-static void _debug_allocator_remove_allocation_and_deallocate(Debug_Allocator* self, Debug_Allocation* allocation)
+
+INTERNAL void _debug_allocator_deallocate_allocation(Debug_Allocator* self, Debug_Allocation* allocation)
 {
-    void* block = debug_allocation_get_callstack(allocation) - allocation->call_stack_count;
+    void* block = debug_allocation_get_callstack(allocation);
     isize total_size = sizeof(void*)*allocation->call_stack_count + allocation->pre_dead_zone + allocation->size + allocation->post_dead_zone;
     allocator_deallocate(self->parent_alloc, block, total_size, DEF_ALIGN);
-    _debug_allocator_remove_allocation(self, allocation);
 }
 
 #include <time.h>
-static void _debug_allocator_panic(const Debug_Allocator* self, void* user_ptr, const Debug_Allocation* allocation, isize dist, const char* panic_reason)
+INTERNAL void _debug_allocator_panic(const Debug_Allocator* self, void* user_ptr, const Debug_Allocation* allocation, isize dist, const char* panic_reason)
 {
     if(allocation) {
         if(dist == 0)
@@ -480,7 +507,7 @@ static void _debug_allocator_panic(const Debug_Allocator* self, void* user_ptr, 
     PANIC("debug allocator%s%s reported failure '%s'", self->options.name ? "name: " : "", self->options.name, panic_reason);
 }
 
-static void _debug_allocation_test_dead_zones(const Debug_Allocator* self, const Debug_Allocation* allocation)
+INTERNAL void _debug_allocation_test_dead_zones(const Debug_Allocator* self, const Debug_Allocation* allocation)
 {
     uint8_t* pre_dead_zone = (uint8_t*) allocation->ptr - allocation->pre_dead_zone;
     uint8_t* post_dead_zone = (uint8_t*) allocation->ptr + allocation->size;
@@ -585,7 +612,7 @@ static void _debug_allocation_test_dead_zones(const Debug_Allocator* self, const
     }
 }
 
-static Debug_Allocation* _debug_allocation_get_closest(const Debug_Allocator* self, void* ptr, isize* dist_or_null)
+INTERNAL Debug_Allocation* _debug_allocation_get_closest(const Debug_Allocator* self, void* ptr, isize* dist_or_null)
 {
     Debug_Allocation* closest = NULL;
     isize closest_dist = INT64_MAX;
@@ -609,8 +636,12 @@ static Debug_Allocation* _debug_allocation_get_closest(const Debug_Allocator* se
     return closest;
 }
 
-EXTERNAL void debug_allocator_test_all_allocations(const Debug_Allocator* self)
+EXTERNAL void debug_allocator_test_all_allocations(const Allocator* self_alloc)
 {
+    if(self_alloc == NULL || *self_alloc != debug_allocator_func)
+        return;
+
+    const Debug_Allocator* self = (const Debug_Allocator*) (void*) self_alloc;
     isize size_sum = 0;
     if(self->allocation_hash)
         for(isize i = 0; i < _DEBUG_ALLOC_HASH_SIZE; i++) {
@@ -627,14 +658,14 @@ EXTERNAL void debug_allocator_test_all_allocations(const Debug_Allocator* self)
 EXTERNAL void debug_allocator_test_invariants(const Debug_Allocator* self)
 {
     //TODO: test hash invariants - well linked, can find all...
-    debug_allocator_test_all_allocations(self);
+    debug_allocator_test_all_allocations(self->alloc);
     TEST(self->allocation_count >= self->deallocation_count && self->deallocation_count >= 0);
     TEST(self->reallocation_count >= 0);
     TEST(0 <= self->bytes_allocated && self->bytes_allocated <= self->max_bytes_allocated);
     TEST((self->alive_count == 0) == (self->bytes_allocated == 0));
 }
 
-static void _debug_allocator_check_invariants(const Debug_Allocator* self)
+INTERNAL void _debug_allocator_check_invariants(const Debug_Allocator* self)
 {
     (void) self;
     #ifdef DO_ASSERTS_SLOW
@@ -647,14 +678,18 @@ EXTERNAL const Debug_Allocation* debug_allocator_get_allocation(const Debug_Allo
     return _debug_allocator_find_allocation(self, ptr);
 } 
 
-EXTERNAL void debug_allocator_test_allocation(const Debug_Allocator* self, void* user_ptr)
+EXTERNAL void debug_allocator_test_allocation(const Allocator* self_alloc, void* user_ptr)
 {
+    if(self_alloc == NULL || *self_alloc != debug_allocator_func)
+        return;
+
+    const Debug_Allocator* self = (const Debug_Allocator*) (void*) self_alloc;
     const Debug_Allocation* found = debug_allocator_get_allocation(self, user_ptr);
     TEST(found != NULL);
     _debug_allocation_test_dead_zones(self, found);
 }
 
-static int _debug_allocation_alloc_id_compare(const void* a_, const void* b_)
+INTERNAL int _debug_allocation_alloc_id_compare(const void* a_, const void* b_)
 {
     Debug_Allocation* a = (Debug_Allocation*) a_;
     Debug_Allocation* b = (Debug_Allocation*) b_;
@@ -711,8 +746,8 @@ EXTERNAL void debug_allocator_print_alive_allocations(const char* name, Log_Type
             snprintf(time_buffer, sizeof time_buffer, " time:%02i:%02i:%02i", local_time.tm_hour, local_time.tm_min, local_time.tm_sec);
         }
 
-        LOG(log_type, name, "[%0*lli]: size:%10%s ptr:0x%016llx align:%lli%s",
-            max_id_width, (lli) curr.id, (llu) curr.ptr, format_bytes(curr.size).data, (lli) curr.align, time_buffer);
+        LOG(log_type, name, "[%0*lli]: size:%10s ptr:0x%016llx align:%lli%s",
+            max_id_width, (lli) curr.id, format_bytes(curr.size).data, (llu) curr.ptr, (lli) curr.align, time_buffer);
     
         if((flags & DEBUG_ALLOC_PRINT_ALIVE_CALLSTACK) && curr.call_stack_count > 0) 
             log_captured_callstack(log_type, name, debug_allocation_get_callstack(&curr), curr.call_stack_count);

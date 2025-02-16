@@ -97,10 +97,10 @@ typedef struct Stable_Array_Iter {
     bool did_break;
 } Stable_Array_Iter;
 
-static inline Stable_Array_Iter _stable_array_iter_precond(Stable_Array* stable, isize from_id);
-static inline bool  _stable_array_iter_cond(Stable_Array_Iter* it);
-static inline void  _stable_array_iter_postcond(Stable_Array_Iter* it);
-static inline void* _stable_array_iter_per_slot(Stable_Array_Iter* it, isize item_size);
+inline static Stable_Array_Iter _stable_array_iter_precond(Stable_Array* stable, isize from_id);
+inline static bool  _stable_array_iter_cond(Stable_Array_Iter* it);
+inline static void  _stable_array_iter_postcond(Stable_Array_Iter* it);
+inline static void* _stable_array_iter_per_slot(Stable_Array_Iter* it, isize item_size);
 
 #define STABLE_ARRAY_FOR_CUSTOM(table_ptr, it, T, item, item_size, from_id) \
     for(Stable_Array_Iter it = _stable_array_iter_precond(table_ptr, from_id); _stable_array_iter_cond(&it); _stable_array_iter_postcond(&it)) \
@@ -120,7 +120,7 @@ static inline void* _stable_array_iter_per_slot(Stable_Array_Iter* it, isize ite
     #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
 #endif
 
-static Stable_Array_Iter _stable_array_iter_precond(Stable_Array* stable, isize from_id)
+inline static Stable_Array_Iter _stable_array_iter_precond(Stable_Array* stable, isize from_id)
 {
     Stable_Array_Iter it = {0};
     it.stable = stable;
@@ -130,7 +130,7 @@ static Stable_Array_Iter _stable_array_iter_precond(Stable_Array* stable, isize 
     return it;
 }
 
-static bool _stable_array_iter_cond(Stable_Array_Iter* it)
+inline static bool _stable_array_iter_cond(Stable_Array_Iter* it)
 {
     if(it->did_break == false && it->block_i < it->stable->blocks_count) {
         it->block = &it->stable->blocks[it->block_i];
@@ -139,14 +139,14 @@ static bool _stable_array_iter_cond(Stable_Array_Iter* it)
     return false;
 }
 
-static void _stable_array_iter_postcond(Stable_Array_Iter* it)
+inline static void _stable_array_iter_postcond(Stable_Array_Iter* it)
 {
     it->did_break = (it->item_i != STABLE_ARRAY_BLOCK_SIZE);
     it->item_i = 0;
     it->block_i++;
 }
 
-static void* _stable_array_iter_per_slot(Stable_Array_Iter* it, isize item_size)
+inline static void* _stable_array_iter_per_slot(Stable_Array_Iter* it, isize item_size)
 {
     ASSERT(item_size == it->stable->item_size);
     Stable_Array_Block* block = &it->stable->blocks[it->block_i];
@@ -161,10 +161,6 @@ static void* _stable_array_iter_per_slot(Stable_Array_Iter* it, isize item_size)
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_STABLE_ARRAY)) && !defined(MODULE_HAS_IMPL_STABLE_ARRAY)
 #define MODULE_HAS_IMPL_STABLE_ARRAY
 
-#define _STABLE_ARRAY_DO_CHECKS
-#define _STABLE_ARRAY_DO_SLOW_CHECKS
-#define _STABLE_ARRAY_BLOCKS_ARR_ALIGN 8
-
 #ifndef INTERNAL
      #define INTERNAL static
 #endif
@@ -173,12 +169,20 @@ static void* _stable_array_iter_per_slot(Stable_Array_Iter* it, isize item_size)
 INTERNAL void _stable_array_check_invariants(const Stable_Array* stable)
 {
     (void) stable;
-    #if defined(DO_ASSERTS)
-        #if defined(_STABLE_ARRAY_DO_SLOW_CHECKS) && defined(DO_ASSERTS_SLOW)
-            stable_array_test_invariants(stable, true);
+    #ifndef STABLE_DEBUG
+        #if defined(DO_ASSERTS_SLOW)
+            #define STABLE_DEBUG 2
+        #elif !defined(NDEBUG)
+            #define STABLE_DEBUG 1
         #else
-            stable_array_test_invariants(stable, false);
+            #define STABLE_DEBUG 0
         #endif
+    #endif
+
+    #if STABLE_DEBUG > 1
+        stable_array_test_invariants(stable, true);
+    #elif STABLE_DEBUG > 0
+        stable_array_test_invariants(stable, false);
     #endif
 }
 
@@ -201,7 +205,7 @@ INTERNAL void _stable_array_check_invariants(const Stable_Array* stable)
     #error unsupported compiler!
 #endif
 
-static void* _stable_array_alloc(Allocator* alloc, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align)
+INTERNAL void* _stable_array_alloc(Allocator* alloc, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align)
 {
     #ifndef USE_MALLOC
         ASSERT(alloc);
@@ -253,7 +257,7 @@ EXTERNAL void stable_array_deinit(Stable_Array* stable)
     }
 
     if(stable->blocks_count)
-        _stable_array_alloc(stable->allocator, 0, stable->blocks, stable->blocks_count*sizeof(Stable_Array_Block), _STABLE_ARRAY_BLOCKS_ARR_ALIGN);
+        _stable_array_alloc(stable->allocator, 0, stable->blocks, stable->blocks_count*sizeof(Stable_Array_Block), 8);
     memset(stable, 0, sizeof *stable);
 }
 
@@ -351,7 +355,7 @@ EXTERNAL void stable_array_reserve(Stable_Array* stable, isize to_size)
             isize old_alloced = stable->blocks_capacity * sizeof(Stable_Array_Block);
             isize new_alloced = new_capacity * sizeof(Stable_Array_Block);
             
-            uint8_t* alloced = (uint8_t*) _stable_array_alloc(stable->allocator, new_alloced, stable->blocks, old_alloced, _STABLE_ARRAY_BLOCKS_ARR_ALIGN);
+            uint8_t* alloced = (uint8_t*) _stable_array_alloc(stable->allocator, new_alloced, stable->blocks, old_alloced, 8);
             memset(alloced + old_alloced, 0, (size_t) (new_alloced - old_alloced));
 
             stable->blocks = (Stable_Array_Block*) alloced;

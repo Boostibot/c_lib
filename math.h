@@ -40,11 +40,11 @@
     #define ATTRIBUTE_ALIGNED(align)            _Alignas(align)
 #endif
 
-#ifndef BINIT
+#ifndef SINIT
     #ifdef __cplusplus
-        #define BINIT(Struct) Struct
+        #define SINIT(Struct) Struct
     #else
-        #define BINIT(Struct) (Struct)
+        #define SINIT(Struct) (Struct)
     #endif
 #endif
 
@@ -131,12 +131,12 @@ ATTRIBUTE_ALIGNED(16) typedef union Mat4 {
 } Mat4;
 
     
-#define vec2(...) BINIT(Vec2){__VA_ARGS__}
-#define vec3(...) BINIT(Vec3){__VA_ARGS__}
-#define vec4(...) BINIT(Vec4){__VA_ARGS__}
-#define ivec2(...) BINIT(iVec2){__VA_ARGS__}
-#define ivec3(...) BINIT(iVec3){__VA_ARGS__}
-#define ivec4(...) BINIT(iVec4){__VA_ARGS__}
+#define vec2(...) SINIT(Vec2){__VA_ARGS__}
+#define vec3(...) SINIT(Vec3){__VA_ARGS__}
+#define vec4(...) SINIT(Vec4){__VA_ARGS__}
+#define ivec2(...) SINIT(iVec2){__VA_ARGS__}
+#define ivec3(...) SINIT(iVec3){__VA_ARGS__}
+#define ivec4(...) SINIT(iVec4){__VA_ARGS__}
 
 #define m(a, b) a < b ? a : b
 #define M(a, b) a > b ? a : b

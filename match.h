@@ -166,7 +166,11 @@ static inline bool match_example(String str, Match_Example_Result* result)
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_MATCH)) && !defined(MODULE_HAS_IMPL_MATCH)
 #define MODULE_HAS_IMPL_MATCH
 
-inline static bool _match_char(String str, isize* index, char c, bool positive)
+#ifndef INTERNAL
+    #define INTERNAL inline static
+#endif
+
+INTERNAL bool _match_char(String str, isize* index, char c, bool positive)
 {
     if(*index < str.count && (str.data[*index] == c) == positive) {
         *index += 1;
@@ -185,7 +189,7 @@ EXTERNAL bool _match_char_nocase(String str, isize* index, char c, bool positive
     return false;
 }
 
-inline static bool _match_chars(String str, isize* index, char chars, bool positive)
+INTERNAL bool _match_chars(String str, isize* index, char chars, bool positive)
 {
     isize start = *index;
     isize i = start;
@@ -211,7 +215,7 @@ inline static bool _match_chars(String str, isize* index, char chars, bool posit
     return i == start;
 }
 
-inline static bool _match_one_of(String str, isize* index, String one_of, bool positive)
+INTERNAL bool _match_one_of(String str, isize* index, String one_of, bool positive)
 {
     isize i = *index;
     if(i < str.count) {
@@ -225,14 +229,14 @@ inline static bool _match_one_of(String str, isize* index, String one_of, bool p
     }
     return false;
 }
-inline static bool _match_any_of(String str, isize* index, String any_of, bool positive)
+INTERNAL bool _match_any_of(String str, isize* index, String any_of, bool positive)
 {
     isize start = *index;
     while(_match_one_of(str, index, any_of, positive));
     return *index == start;
 }
 
-inline static bool _match_string(String str, isize* index, String sequence, bool positive)
+INTERNAL bool _match_string(String str, isize* index, String sequence, bool positive)
 {
     if(*index + sequence.count <= str.count) 
     {
@@ -258,7 +262,7 @@ EXTERNAL bool _match_string_nocase(String str, isize* index, String sequence, bo
     return false;   
 }
 
-inline static bool _match_char_category(String str, isize* index, bool (*is_category_char)(char c), bool positive)
+INTERNAL bool _match_char_category(String str, isize* index, bool (*is_category_char)(char c), bool positive)
 {
     isize start = *index;
     for(; *index < str.count; (*index)++) 
@@ -268,7 +272,7 @@ inline static bool _match_char_category(String str, isize* index, bool (*is_cate
     return *index != start;
 }
 
-inline static bool _match_is_id_body_char(char c)
+INTERNAL bool _match_is_id_body_char(char c)
 {
     return char_is_alpha(c) || char_is_digit(c) || c == '_';
 }
@@ -483,7 +487,7 @@ EXTERNAL double match_decimal_number_convert(uint64_t mantissa, int64_t exponent
     return result;
 }
 
-static inline bool _match_string_maybe_nocase(String str, isize* index, String seq, uint32_t flags)
+INTERNAL bool _match_string_maybe_nocase(String str, isize* index, String seq, uint32_t flags)
 {
     if(flags & MATCH_NUM_CASE_SENSITIVE)
         return match_string(str, index, seq);
@@ -491,7 +495,7 @@ static inline bool _match_string_maybe_nocase(String str, isize* index, String s
         return match_string_nocase(str, index, seq);
 }
 
-static inline bool _match_decimal_f64_options(String str, isize* index, double* out, String dot_text, String exp_text, String inf_text, String nan_text, bool default_dot_exp, uint32_t flags)
+INTERNAL bool _match_decimal_f64_options(String str, isize* index, double* out, String dot_text, String exp_text, String inf_text, String nan_text, bool default_dot_exp, uint32_t flags)
 {
     isize i = *index;
     uint64_t mantissa = 0;

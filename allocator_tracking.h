@@ -10,8 +10,8 @@
 // The main purpose of Tracking_Allocator is to be a quick substitute until more complex allocators are built.
 // Tracking_Allocator also exposes a malloc like interface for some basic control over allocations
 
+#include <stdlib.h>
 #include "allocator.h"
-#define ALLOCATION_LIST_MAGIC "TrackAl"
 
 typedef struct Allocation_List_Block {
     struct Allocation_List_Block* next_block; 
@@ -21,7 +21,7 @@ typedef struct Allocation_List_Block {
     uint64_t size        : 47;
     uint64_t is_offset   : 1;
 
-    #ifdef DO_ASSERTS_SLOW
+    #ifdef DO_ASSERTS
     char magic[8];
     #endif
 } Allocation_List_Block;
@@ -44,6 +44,7 @@ typedef struct Tracking_Allocator {
     isize reallocation_count;
 
     Allocator_Set allocator_backup;
+    uint64_t flags;
 } Tracking_Allocator;
 
 EXTERNAL void  allocation_list_free_all(Allocation_List* self, Allocator* parent_or_null);
@@ -52,49 +53,38 @@ EXTERNAL void* allocation_list_allocate(Allocation_List* self, Allocator* parent
 EXTERNAL isize allocation_list_get_block_size(Allocation_List* self, void* old_ptr);
 EXTERNAL Allocation_List_Block* allocation_list_get_block_header(Allocation_List* self, void* old_ptr);
 
-EXTERNAL void tracking_allocator_init(Tracking_Allocator* self, const char* name);
-EXTERNAL void tracking_allocator_init_use(Tracking_Allocator* self, const char* name, uint64_t flags);  //convenience function that inits the allocator then imidietely makes it the default or scratch. On deinit restores to previous defaults
+#define TRACKING_ALLOCATOR_INIT_USE 1
+EXTERNAL void tracking_allocator_init(Tracking_Allocator* self, const char* name, uint64_t flags);
 EXTERNAL void tracking_allocator_deinit(Tracking_Allocator* self);
  
 EXTERNAL void* tracking_allocator_malloc(Tracking_Allocator* self, isize size);
 EXTERNAL void* tracking_allocator_realloc(Tracking_Allocator* self, void* old_ptr, isize new_size);
 EXTERNAL void tracking_allocator_free(Tracking_Allocator* self, void* old_ptr);
 
-EXTERNAL void* tracking_allocator_func(Allocator* self, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error);
-EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
-
+EXTERNAL void* tracking_allocator_func(void* self_void, int mode, isize new_size, void* old_ptr, isize old_size, isize align, void* rest);
 #endif
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ALLOCATOR_MALLOC)) && !defined(MODULE_HAS_IMPL_ALLOCATOR_MALLOC)
 #define MODULE_HAS_IMPL_ALLOCATOR_MALLOC
 
     //the way this file is written this can simple be changed to malloc just by defining MALLOC_ALLOCATOR_NAKED
-    #ifdef MALLOC_ALLOCATOR_NAKED
-        #include <stdlib.h>
+    #ifdef PROFILE_START
         #define PROFILE_START(...)
         #define PROFILE_STOP(...)
-        #define MALLOC_ALLOCATOR_MALLOC(size) malloc(size)
-        #define MALLOC_ALLOCATOR_FREE(pointer) free(pointer)
-    #else
-        #include "platform.h"
-        #include "profile.h"
-        #define MALLOC_ALLOCATOR_MALLOC(size) platform_heap_reallocate(size, NULL, DEF_ALIGN)
-        #define MALLOC_ALLOCATOR_FREE(pointer) platform_heap_reallocate(0, pointer, DEF_ALIGN)
-    #endif 
+    #endif
 
-    #define ALLOCATION_LIST_SIZE_BITS       46
-    #define ALLOCATION_LIST_ALIGN_BITS      17
-    #define ALLOCATION_LIST_IS_OFFSET_BIT   63
-    #define ALLOCATION_LIST_SIZE_MASK       (((uint64_t) 1 << ALLOCATION_LIST_SIZE_BITS) - 1)
-    #define ALLOCATION_LIST_ALIGN_MASK      (((uint64_t) 1 << ALLOCATION_LIST_ALIGN_BITS) - 1)
-
-    static void _allocation_list_assert_block_coherency(Allocation_List* self, Allocation_List_Block* block)
+    #ifndef INTERNAL
+        #define INTERNAL inline static
+    #endif
+    
+    #define ALLOCATION_LIST_MAGIC "TrackAl"
+    INTERNAL void _allocation_list_assert_block_coherency(Allocation_List* self, Allocation_List_Block* block)
     {
         (void) self;
         if(block == NULL)
             return;
 
-        #ifdef DO_ASSERTS_SLOW
+        #ifdef DO_ASSERTS
             ASSERT_SLOW(memcmp(block->magic, ALLOCATION_LIST_MAGIC, sizeof ALLOCATION_LIST_MAGIC) == 0);
             ASSERT_SLOW((block->next_block == NULL) == (self->last_block == block));
             if(block->prev_block != NULL)
@@ -131,7 +121,7 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
             if(parent_or_null != NULL)
                 new_allocation = allocator_try_reallocate(parent_or_null, new_allocation_size, NULL, 0, DEF_ALIGN, error);
             else
-                new_allocation = MALLOC_ALLOCATOR_MALLOC(new_allocation_size);
+                new_allocation = malloc(new_allocation_size);
 
             //if error return error
             if(new_allocation == NULL)
@@ -164,7 +154,7 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
                 #pragma GCC diagnostic pop
             #endif
             
-            #ifdef DO_ASSERTS_SLOW
+            #ifdef DO_ASSERTS
                 memcpy(new_block_ptr->magic, ALLOCATION_LIST_MAGIC, sizeof ALLOCATION_LIST_MAGIC);
             #endif
 
@@ -214,7 +204,7 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
             if(parent_or_null != NULL)
                 allocator_try_reallocate(parent_or_null, 0, old_allocation, old_allocation_size, DEF_ALIGN, error);
             else
-                MALLOC_ALLOCATOR_FREE(old_allocation);
+                free(old_allocation);
         }
             
         PROFILE_STOP();
@@ -239,69 +229,62 @@ EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self);
         Allocation_List_Block* block = allocation_list_get_block_header(self, old_ptr);
         return block->size;
     }
-
-    EXTERNAL void tracking_allocator_init(Tracking_Allocator* self, const char* name)
+    
+    EXTERNAL void tracking_allocator_init(Tracking_Allocator* self, const char* name, uint64_t flags)
     {
-        if(self == NULL)
-            return;
-
         tracking_allocator_deinit(self);
-        self->alloc[0].func = tracking_allocator_func;
-        self->alloc[0].get_stats = tracking_allocator_get_stats;
+        self->alloc[0] = tracking_allocator_func;
         self->name = name;
-    }
-
-    EXTERNAL void tracking_allocator_init_use(Tracking_Allocator* self, const char* name, uint64_t flags)
-    {
-        (void) flags;
-        tracking_allocator_init(self, name);
-        self->allocator_backup = allocator_set_default(&self->alloc[0]);
+        self->flags = flags;
+        if(flags & TRACKING_ALLOCATOR_INIT_USE)
+            self->allocator_backup = allocator_set_default(&self->alloc[0]);
     }
     
     EXTERNAL void tracking_allocator_deinit(Tracking_Allocator* self)
     {
         allocation_list_free_all(&self->list, self->parent);
-        allocator_set(self->allocator_backup);
+        if(self->flags & TRACKING_ALLOCATOR_INIT_USE)
+            allocators_set(self->allocator_backup);
+
         memset(self, 0, sizeof *self);
     }
 
-    EXTERNAL void* tracking_allocator_func(Allocator* self_, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error)
+    EXTERNAL void* tracking_allocator_func(void* self_void, int mode, isize new_size, void* old_ptr, isize old_size, isize align, void* rest)
     {
-        Tracking_Allocator* self = (Tracking_Allocator*) (void*) self_;
-        void* out = allocation_list_allocate(&self->list, self->parent, new_size, old_ptr, old_size, align, error);
+        Tracking_Allocator* self = (Tracking_Allocator*) (void*) self_void;
+        if(mode == ALLOCATOR_MODE_ALLOC) {
+            void* out = allocation_list_allocate(&self->list, self->parent, new_size, old_ptr, old_size, align, (Allocator_Error*) rest);
 
-        if(old_size == 0)
-            self->allocation_count += 1;
-        else if(new_size == 0)
-            self->deallocation_count += 1;
-        else
-            self->reallocation_count += 1;
+            if(old_size == 0)
+                self->allocation_count += 1;
+            if(new_size == 0)
+                self->deallocation_count += 1;
+            if(new_size != 0 && old_size != 0)
+                self->reallocation_count += 1;
 
-        self->bytes_allocated += new_size - old_size;
-        if(self->max_bytes_allocated < self->bytes_allocated)
-            self->max_bytes_allocated = self->bytes_allocated;
+            self->bytes_allocated += new_size - old_size;
+            if(self->max_bytes_allocated < self->bytes_allocated)
+                self->max_bytes_allocated = self->bytes_allocated;
 
-        return out;
-    }
-
-    EXTERNAL Allocator_Stats tracking_allocator_get_stats(Allocator* self_)
-    {
-        Tracking_Allocator* self = (Tracking_Allocator*) (void*) self_;
-        Allocator_Stats out = {0};
-        out.type_name = "Tracking_Allocator";
-        out.name = self->name;
-        out.parent = NULL;
-        out.is_top_level = true;
-        out.is_growing = true;
-        out.is_capable_of_resize = true;
-        out.is_capable_of_free_all = true;
-        out.max_bytes_allocated = self->max_bytes_allocated;
-        out.bytes_allocated = self->bytes_allocated;
-        out.allocation_count = self->allocation_count;
-        out.deallocation_count = self->deallocation_count;
-        out.reallocation_count = self->reallocation_count;
-
-        return out;
+            return out;
+        }
+        if(mode) {
+            Allocator_Stats out = {0};
+            out.type_name = "Tracking_Allocator";
+            out.name = self->name;
+            out.parent = NULL;
+            out.is_top_level = true;
+            out.is_growing = true;
+            out.is_capable_of_resize = true;
+            out.is_capable_of_free_all = true;
+            out.max_bytes_allocated = self->max_bytes_allocated;
+            out.bytes_allocated = self->bytes_allocated;
+            out.allocation_count = self->allocation_count;
+            out.deallocation_count = self->deallocation_count;
+            out.reallocation_count = self->reallocation_count;
+            *(Allocator_Stats*) rest = out;
+        }
+        return NULL;
     }
 
     EXTERNAL void* tracking_allocator_malloc(Tracking_Allocator* self, isize size)

@@ -181,7 +181,7 @@
     #include <stdio.h>
     
     #define EXTERNAL
-    #define INTERNAL static
+    #define INTERNAL inline static
     #define ASSERT(x, ...) assert(x)
     #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
 #endif
@@ -1104,8 +1104,8 @@ INTERNAL void _tlsf_check_invariants(Tlsf_Allocator* allocator)
 #if (defined(MODULE_ALL_TEST) || defined(MODULE_ALLOCATOR_TLSF_TEST)) && !defined(MODULE_ALLOCATOR_TLSF_HAS_TEST)
 #define MODULE_ALLOCATOR_TLSF_HAS_TEST
 
-#ifndef ARRAY_LEN
-    #define ARRAY_LEN(arr) (isize)(sizeof(arr)/sizeof((arr)[0]))
+#ifndef ARRAY_COUNT
+    #define ARRAY_COUNT(arr) (isize)(sizeof(arr)/sizeof((arr)[0]))
 #endif
 
 #include <time.h>
@@ -1132,14 +1132,14 @@ void test_tlsf_alloc_unit()
         {35, 16},
     };
 
-    for(isize i = 0; i < ARRAY_LEN(allocs); i++)
+    for(isize i = 0; i < ARRAY_COUNT(allocs); i++)
     {
         tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
         tlsf_allocate(&allocator, &allocs[i].node, allocs[i].size, allocs[i].align, 0);
         tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
     }
         
-    for(isize i = 0; i < ARRAY_LEN(allocs); i++)
+    for(isize i = 0; i < ARRAY_COUNT(allocs); i++)
     {
         tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
         tlsf_deallocate(&allocator, allocs[i].node);

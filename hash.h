@@ -96,8 +96,12 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
         #include <stdio.h>
         #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
     #endif
+    
+    #ifndef INTERNAL
+        #define INTERNAL inline static
+    #endif
 
-    static void _hash_check_invariants(const Hash* table)
+    INTERNAL void _hash_check_invariants(const Hash* table)
     {
         #ifndef HASH_DEBUG
             #if defined(DO_ASSERTS_SLOW)
@@ -109,17 +113,18 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
             #endif
         #endif
 
-        if(HASH_DEBUG > 0)
+        #if MAP_DEBUG > 0
             hash_test_invariants(table, HASH_DEBUG > 1);
+        #endif
     }
 
-    static Hash_It _hash_it_make(const Hash* table, uint64_t hash)
+    INTERNAL Hash_It _hash_it_make(const Hash* table, uint64_t hash)
     {
         Hash_It it = {hash & (table->capacity - 1), 1};
         return it;
     }
 
-    static bool _hash_find_next(const Hash* table, uint64_t hash, Hash_It* it)
+    INTERNAL bool _hash_find_next(const Hash* table, uint64_t hash, Hash_It* it)
     {
         if(table->count > 0)
         {
@@ -164,7 +169,7 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
         _hash_check_invariants(table);
     }
 
-    static bool _hash_find_or_insert(Hash* table, uint64_t hash, uint64_t value, bool insert_only, isize* index) 
+    INTERNAL bool _hash_find_or_insert(Hash* table, uint64_t hash, uint64_t value, bool insert_only, isize* index) 
     {
         hash_reserve(table, table->count + 1);
 
@@ -226,7 +231,7 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
         _hash_check_invariants(to_table);
     }
     
-    static void* _hash_alloc(Allocator* alloc, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align)
+    INTERNAL void* _hash_alloc(Allocator* alloc, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align)
     {
         #ifndef USE_MALLOC
             ASSERT(alloc);

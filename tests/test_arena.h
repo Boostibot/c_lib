@@ -117,7 +117,7 @@ static void test_arena_stress(f64 time)
         {RELEASE, 1},
         {ALLOCATE, 5},
     };
-	random_discrete_make(dist, ARRAY_LEN(dist));
+	random_discrete_make(dist, ARRAY_COUNT(dist));
 
     Scratch_Arena arena_stack = {0};
     scratch_arena_init(&arena_stack, "test_arena", 0, 0, MAX_LEVELS);
@@ -134,7 +134,7 @@ static void test_arena_stress(f64 time)
 		if(clock_sec() - start >= time && i >= MIN_ITERS)
 			break;
 
-		isize action = random_discrete(dist, ARRAY_LEN(dist));
+		isize action = random_discrete(dist, ARRAY_COUNT(dist));
         if(levels <= 0)
             action = ACQUIRE;
         else if(levels >= MAX_LEVELS && action == ACQUIRE)

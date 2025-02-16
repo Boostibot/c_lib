@@ -504,7 +504,7 @@ EXTERNAL void deser_skip_to_depth(Ser_Reader* r, isize depth)
 
 ATTRIBUTE_INLINE_NEVER static bool _deser_recover(const Ser_Value* object);
 
-static bool _ser_type_is_ender_or_error(Ser_Type type)
+inline static bool _ser_type_is_ender_or_error(Ser_Type type)
 {
     return (uint32_t) type - SER_LIST_END <= SER_COMPOUND_TYPES_COUNT;
 }
@@ -596,6 +596,7 @@ static isize _ser_find_first_or(Ser_String in_str, Ser_String search_for, isize 
     return if_not_found;
 }
 
+ATTRIBUTE_INLINE_NEVER
 static bool _deser_recover(const Ser_Value*  object)
 {
     if(object->type == SER_LIST || object->type == SER_OBJECT)

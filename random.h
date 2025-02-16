@@ -29,7 +29,7 @@ EXTERNAL float    random_bits_to_f32(uint32_t random);
 
 EXTERNAL void     random_bytes(void* into, int64_t size); //writes size bytes of random data into into
 EXTERNAL void     random_shuffle(void* elements, int64_t element_count, int64_t element_size); //Randomly shuffles the provided array
-EXTERNAL void     swap_any(void* a, void* b, int64_t size); //Swaps two values of the given size
+EXTERNAL void     random_swap_any(void* a, void* b, int64_t size); //Swaps two values of the given size
 
 typedef struct Random_State {
 	uint64_t state[4];
@@ -105,13 +105,13 @@ static inline uint64_t random_xiroshiro256(uint64_t s[4])
 
 	#if defined(__GNUC__) || defined(__clang__)
 		#define _RAND_THREAD_LOCAL __thread
-		static uint32_t _count_leading_zeros(uint64_t number)
+		inline static uint32_t _count_leading_zeros(uint64_t number)
 		{
 			return (uint32_t) __builtin_clzll(number);
 		}
 
 		#include <time.h>
-		static uint64_t _precise_clock_time()
+		inline static uint64_t _precise_clock_time()
 		{
 			struct timespec ts;
 			(void) clock_gettime(CLOCK_REALTIME, &ts);
@@ -121,14 +121,14 @@ static inline uint64_t random_xiroshiro256(uint64_t s[4])
 		#define _RAND_THREAD_LOCAL __declspec(thread)
 
 		#include <intrin.h>
-		static uint32_t _count_leading_zeros(uint64_t number)
+		inline static uint32_t _count_leading_zeros(uint64_t number)
 		{
 			unsigned long index = 0;
 			_BitScanReverse64(&index, number);
 			return (uint32_t) (63 - index);
 		}
 
-		static uint64_t _precise_clock_time()
+		inline static uint64_t _precise_clock_time()
 		{
 			#if defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64) 
 				return (uint64_t) __rdtsc();
@@ -145,8 +145,8 @@ static inline uint64_t random_xiroshiro256(uint64_t s[4])
 
 	#else
 		#define _RAND_THREAD_LOCAL
-		static uint32_t _count_leading_zeros(uint64_t number);
-		static uint64_t _precise_clock_time()
+		inline static uint32_t _count_leading_zeros(uint64_t number);
+		inline static uint64_t _precise_clock_time()
 
 		#error "add a custom implementation for this compiler!"
 	#endif
@@ -190,7 +190,7 @@ static inline uint64_t random_xiroshiro256(uint64_t s[4])
 		return random_u64;
 	}
 
-	static uint64_t _random_bounded(Random_State* state, uint64_t range) 
+	inline static uint64_t _random_bounded(Random_State* state, uint64_t range) 
 	{
 		--range;
 		uint64_t index = _count_leading_zeros(range | 1);
@@ -314,10 +314,10 @@ static inline uint64_t random_xiroshiro256(uint64_t s[4])
 		random_bytes_from(random_state(), into, size);
 	}
 
-	EXTERNAL void swap_any(void* a, void* b, int64_t size)
+	EXTERNAL void random_swap_any(void* a, void* b, int64_t size)
 	{
 		REQUIRE(size >= 0);
-		enum {LOCAL = 64};
+		enum {LOCAL = 16};
 		char temp[LOCAL] = {0};
 	
 		int64_t repeats = size / LOCAL;
@@ -366,7 +366,7 @@ static inline uint64_t random_xiroshiro256(uint64_t s[4])
 				int64_t offset = (int64_t) _random_bounded(state, (uint64_t) (element_count - i));
 				int64_t j = offset +  i;
 
-				swap_any(elems + i*s, elems + j*s, s);
+				random_swap_any(elems + i*s, elems + j*s, s);
 			}
 		}
 	}

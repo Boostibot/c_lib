@@ -47,7 +47,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 		i64_Array* arr = &array1;
 		i64_Array* other_array = &array2;
 		
-		random_discrete_make(dist, ARRAY_LEN(dist));
+		random_discrete_make(dist, ARRAY_COUNT(dist));
 
 		isize max_size = 0;
 		isize max_capacity = 0;
@@ -58,7 +58,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 			if(clock_sec() - start >= max_seconds && i >= MIN_ITERS)
 				break;
 
-			isize action = random_discrete(dist, ARRAY_LEN(dist));
+			isize action = random_discrete(dist, ARRAY_COUNT(dist));
 			TEST(generic_array_is_invariant(array_make_generic(arr)));
 			
 			switch(action)
@@ -141,8 +141,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 					TEST(other_array->count == arr->count);
 					TEST(other_array->capacity >= other_array->count);
 
-					swap_any(&other_array, &arr, sizeof(arr));
-
+					random_swap_any(&other_array, &arr, sizeof(arr));
 					break;
 				}
 			}

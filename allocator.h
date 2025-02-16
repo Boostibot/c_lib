@@ -109,7 +109,8 @@ EXTERNAL Allocator* allocator_get_default(); //returns the default allocator. Mo
 
 EXTERNAL Allocator_Set allocator_set_default(Allocator* new_default);
 EXTERNAL Allocator_Set allocator_set_static(Allocator* new_default);
-EXTERNAL Allocator_Set allocator_set(Allocator_Set backup); 
+EXTERNAL Allocator_Set allocators_set(Allocator_Set backup); 
+EXTERNAL Allocator_Set allocators_get(); 
 
 EXTERNAL bool  is_power_of_two(isize num);
 EXTERNAL bool  is_power_of_two_or_zero(isize num);
@@ -125,6 +126,10 @@ EXTERNAL void* align_backward(void* ptr, isize align_to);
     #ifndef PROFILE_START
         #define PROFILE_START(...)
         #define PROFILE_STOP(...)
+    #endif
+    
+    #ifndef INTERNAL
+        #define INTERNAL inline static
     #endif
 
     #ifndef REQUIRE
@@ -299,6 +304,7 @@ EXTERNAL void* align_backward(void* ptr, isize align_to);
     EXTERNAL Allocator* allocator_get_default() { return g_allocators.allocator_default; }
     EXTERNAL Allocator* allocator_get_static()  { return g_allocators.allocator_static; }
     EXTERNAL Allocator* allocator_get_malloc()  { return &_malloc_alloc; }
+    EXTERNAL Allocator_Set allocators_get()     { return g_allocators; }
 
     EXTERNAL Allocator_Set allocator_set_default(Allocator* new_default)
     {
@@ -312,7 +318,8 @@ EXTERNAL void* align_backward(void* ptr, isize align_to);
         g_allocators.allocator_static = new_static;
         return prev;
     }
-    EXTERNAL Allocator_Set allocator_set(Allocator_Set set_to)
+    
+    EXTERNAL Allocator_Set allocators_set(Allocator_Set set_to)
     {
         Allocator_Set prev = {0};
         g_allocators = set_to;

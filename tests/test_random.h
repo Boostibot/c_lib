@@ -14,7 +14,7 @@ static void test_swap_any()
 		int64_t before[10]	 = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 		int64_t expected[10] = {1, 4, 3, 2, 5, 6, 7, 8, 9, 10};
 
-		swap_any(&before[1], &before[3], sizeof(before[0]));
+		random_swap_any(&before[1], &before[3], sizeof(before[0]));
 		for(int64_t i = 0; i < 10; i++)
 			TEST(before[i] == expected[i]);
 	}
@@ -22,7 +22,7 @@ static void test_swap_any()
 	{
 		int32_t before[10]   = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 		int32_t expected[10] = {1, 4, 3, 2, 5, 6, 7, 8, 9, 10};
-		swap_any(&before[1], &before[3], sizeof(before[0]));
+		random_swap_any(&before[1], &before[3], sizeof(before[0]));
 
 		for(int32_t i = 0; i < 10; i++)
 			TEST(before[i] == expected[i]);
@@ -33,7 +33,7 @@ static void test_swap_any()
 
 		Big before[10]   = {{1}, {2}, {3}, {4}, {5, 3, 2, 3, -1, 3}, {6}, {7}, {8, 1, 13}, {9}, {10, 11}};
 		Big expected[10] = {{1}, {2}, {3}, {4}, {10, 11}, {6}, {7}, {8, 1, 13}, {9}, {5, 3, 2, 3, -1, 3}};
-		swap_any(&before[4], &before[9], sizeof(before[0]));
+		random_swap_any(&before[4], &before[9], sizeof(before[0]));
 
 		for(int32_t i = 0; i < 10; i++)
 			TEST(memcmp(&before[i], &expected[i], sizeof(before[0])) == 0);

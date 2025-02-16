@@ -26,7 +26,7 @@ EXTERNAL Hash_String hash_string_allocate(Allocator* alloc, Hash_String hstring)
 EXTERNAL void hash_string_deallocate(Allocator* alloc, Hash_String* hstring);
 
 //Makes a hashed string out of string literal, with optimizations evaluating the hash at compile time (except on GCC). Fails for anything but string literals
-#define HSTRING(string_literal) BINIT(Hash_String){string_literal "", sizeof(string_literal "") - 1, hash64_fnv_inline(string_literal "", sizeof(string_literal "") - 1)}
+#define HSTRING(string_literal) SINIT(Hash_String){string_literal "", sizeof(string_literal "") - 1, hash64_fnv_inline(string_literal "", sizeof(string_literal "") - 1)}
 #define HSTRING_FMT "[%08llx]:'%.*s'" 
 #define HSTRING_PRINT(hstring) (hstring).hash, (int) (hstring).count, (hstring).data
 
@@ -45,7 +45,7 @@ ATTRIBUTE_INLINE_ALWAYS static uint64_t hash64_fnv_inline(const char* data, isiz
 {
     uint64_t hash = 0;
     for(int64_t i = 0; i < size; i++)
-        hash = (hash * 0x100000001b3ULL) ^ (uint64_t) data[i];
+        hash = (hash * 0x100000001b3ULL) ^ (uint8_t) data[i];
 
     return hash;
 }

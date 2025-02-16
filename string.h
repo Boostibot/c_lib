@@ -41,7 +41,7 @@ typedef struct String_Builder {
 #ifdef __cplusplus
     #define STRING(cstring) String{cstring, sizeof(cstring"") - 1}
 #else
-    #define STRING(cstring) BINIT(String){cstring, sizeof(cstring"") - 1}
+    #define STRING(cstring) SINIT(String){cstring, sizeof(cstring"") - 1}
 #endif 
 
 #ifndef EXTERNAL
@@ -82,6 +82,7 @@ EXTERNAL isize  string_find_last_char_or(String in_str, char search_for, isize f
 EXTERNAL isize  string_null_terminate(char* buffer, isize buffer_size, String string);  //writes into buffer at max buffer_size chars from string. returns the amount of chars written not including null termination.
 EXTERNAL String string_allocate(Allocator* alloc, String string);
 EXTERNAL void   string_deallocate(Allocator* alloc, String* string);
+EXTERNAL void   string_reallocate(Allocator* alloc, String* string, String new_val);
 
 #define BUILDER_REISIZE_FOR_OVERWRITE -1
 EXTERNAL String_Builder builder_make(Allocator* alloc_or_null, isize capacity_or_zero);
@@ -402,12 +403,19 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
 
     EXTERNAL void string_deallocate(Allocator* alloc, String* string)
     {
-        if(string->count != 0)
+        if(string->data != NULL)
             (char*) (*alloc)(alloc, 0, 0, (void*) string->data, string->count + 1, 1, NULL);
         String nil = {0};
         *string = nil;
     }
     
+    EXTERNAL void string_reallocate(Allocator* alloc, String* string, String new_val)
+    {
+        String old_val = *string;
+        *string = string_allocate(alloc, new_val);
+        string_deallocate(alloc, &old_val);
+    }
+
     //Builder functions ========================================
     static char _builder_null_termination[64] = {0};
     EXTERNAL bool builder_is_invariant(String_Builder builder)

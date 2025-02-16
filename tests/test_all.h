@@ -19,6 +19,8 @@
 #include "../perf.h"
 #include "../sort.h"
 #include "../mem.h"
+#include "../map.h"
+#include "../allocator_tracking.h"
 
 #include "test_random.h"
 #include "test_arena.h"
@@ -26,11 +28,12 @@
 #include "test_hash.h"
 #include "test_log.h"
 #include "test_mem.h"
+#include "test_map.h"
 #include "test_math.h"
 #include "test_stable_array.h"
 #include "test_image.h"
 #include "test_chase_lev_queue.h"
-//#include "test_string_map.h"
+#include "test_debug_allocator.h"
 
 typedef enum Test_Func_Type {
     TEST_FUNC_TYPE_SIMPLE,
@@ -51,13 +54,12 @@ typedef struct Test_Run_Context {
 static bool run_test(Test_Run_Context context);
 static int run_tests(int* total, double time, ...);
 
-#define UNIT_TEST(func) BINIT(Test_Run_Context){(void*) (func), #func, TEST_FUNC_TYPE_SIMPLE}
-#define TIMED_TEST(func, ...) BINIT(Test_Run_Context){(void*) (func), #func, TEST_FUNC_TYPE_TIMED, 0, ##__VA_ARGS__}
+#define UNIT_TEST(func) SINIT(Test_Run_Context){(void*) (func), #func, TEST_FUNC_TYPE_SIMPLE}
+#define TIMED_TEST(func, ...) SINIT(Test_Run_Context){(void*) (func), #func, TEST_FUNC_TYPE_TIMED, 0, ##__VA_ARGS__}
 
 static void test_all(double total_time)
 {
     run_tests(NULL, total_time, 
-        TIMED_TEST(test_hash),
         UNIT_TEST(platform_test_all),
         UNIT_TEST(test_list),
         UNIT_TEST(test_image),
@@ -66,14 +68,17 @@ static void test_all(double total_time)
         UNIT_TEST(test_path),
         UNIT_TEST(test_log),
         UNIT_TEST(test_match),
-        TIMED_TEST(test_mem),
-        TIMED_TEST(test_arena),
-        TIMED_TEST(test_hash),
-        TIMED_TEST(test_sort),
+        TIMED_TEST(test_map),
         TIMED_TEST(test_array),
+        TIMED_TEST(test_hash),
+        TIMED_TEST(test_hash),
+        TIMED_TEST(test_arena),
         TIMED_TEST(test_math),
-        TIMED_TEST(test_allocator_tlsf),
+        TIMED_TEST(test_mem),
+        TIMED_TEST(test_sort),
         TIMED_TEST(slz4_test),
+        TIMED_TEST(test_allocator_tlsf),
+        TIMED_TEST(test_debug_allocator),
         TIMED_TEST(test_chase_lev_queue),
         UNIT_TEST(NULL)
     );

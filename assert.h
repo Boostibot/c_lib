@@ -37,7 +37,6 @@
     #define PP_CONCAT(a, b)         _PP_CONCAT(a, b)
     #define PP_UNIQ(a)              PP_CONCAT(a, __LINE__)
 
-
     #ifdef _MSC_VER
         #define ASSUME_UNREACHABLE()  __assume(0)
         #define ATTRIBUTE_NORETURN    __declspec(noreturn)
