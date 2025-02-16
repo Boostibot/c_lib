@@ -357,7 +357,7 @@ EXTERNAL void* debug_allocator_func(void* self_void, int mode, isize new_size, v
             _debug_allocator_check_invariants(self);
         #else
             if(self->options.do_continual_checks)
-                debug_allocator_test_all_allocations(self.alloc);
+                debug_allocator_test_all_allocations(self->alloc);
         #endif
 
         PROFILE_STOP();

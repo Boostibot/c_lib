@@ -113,6 +113,7 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
             #endif
         #endif
 
+        (void) table;
         #if MAP_DEBUG > 0
             hash_test_invariants(table, HASH_DEBUG > 1);
         #endif

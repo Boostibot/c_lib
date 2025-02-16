@@ -140,6 +140,7 @@ MAP_INLINE_API void map_debug_test_invariant(const Map* map, Map_Info info)
         #endif
     #endif
 
+    (void) map, info;
     #if MAP_DEBUG > 1
         map_test_invariant(map, info, MAP_TEST_INVARIANTS_ALL);
     #elif MAP_DEBUG > 0

@@ -3,7 +3,7 @@
 
 // A simple base64 encode/decode facility. It does not require any allocations or other system resources.
 // 
-// This implementation idffers from msot online in three ways:
+// This implementation differs from most online in three ways:
 // 1: We allow decoding of multiple concatenated encoded blocks blocks. This means "YQ==YQ==" will decode to "aa".
 // 2: We do error checking in the decoding and return place of the error.
 // 3: We allow to set the encoding/decoding programatically.
@@ -30,36 +30,30 @@
 
 typedef struct Base64_Encoding
 {
-    const uint8_t* encoding_table; //effcitively [0, 63] -> char function
+    const uint8_t* encoding_table; //effectively [0, 63] -> char function
     uint8_t pad_char; //The character used for padding the stream (see below)
-    bool do_pad; //Wheter or not to pad the encoded stream with pad_char    
-    
+    bool do_pad; //Whether or not to pad the encoded stream with pad_char    
     //example:
     // "a" ~~encode~~> "YQ==" when do_pad = true
     // "a" ~~encode~~> "YQ"   when do_pad = false
-    //
-    // (using pad_char == '=')
 } Base64_Encoding;
 
 typedef struct Base64_Decoding
 {
-    const uint8_t* decoding_table; //effcitively char -> [0, 63] functions
+    const uint8_t* decoding_table; //effectively char -> [0, 63] functions
                                    //the decoding table also uses special output value
                                    //BASE64_DECODING_ERROR_VALUE (255) to mark invalid entries 
                                    //not allowed in the encoding.
-
     uint8_t pad_char; //The character used for padding the stream (see below)
-    bool optional_pad; //Wheter or not the pading can be ommited (see below)
-    bool enable_all_stream_sizes; //If this is true enables streams that satisfy (stream_length)%4 == 1 (see below for example)
+    bool optional_pad; //Whether or not the padding can be omitted (see below)
+    bool ignore_excess_bytes; //If this is true enables streams that satisfy (stream_length)%4 == 1 (see below for example)
     
     //example: 
-    //"YQ=="    -> "a" - corect
+    //"YQ=="    -> "a" - correct
     //"YQ="     -> "a" - correct only if optional_pad == true
     //"YQ"      -> "a" - correct only if optional_pad == true
-    //"Y"       -> ""  - correct only if enable_all_stream_sizes == true
+    //"Y"       -> ""  - correct only if ignore_excess_bytes == true
     //""        -> ""  - correct
-    
-    //enable_all_stream_sizes should be false by default because the sequences which it enables lose data.
 } Base64_Decoding;
 
 //Returns the needed maximu output length of the output given the input_legth
@@ -137,9 +131,8 @@ EXTERNAL int64_t base64_encode(void* _out, const void* _data, int64_t count, Bas
                 *out++ = encoding.pad_char;
         }
         else {
-            *out++ = encoding.encoding_table[((in[0] & 0x03) << 4) |
-                (in[1] >> 4)];
-                *out++ = encoding.encoding_table[(in[1] & 0x0f) << 2];
+            *out++ = encoding.encoding_table[((in[0] & 0x03) << 4) | (in[1] >> 4)];
+            *out++ = encoding.encoding_table[(in[1] & 0x0f) << 2];
         }
         if(encoding.do_pad)
             *out++ = encoding.pad_char;
@@ -274,9 +267,9 @@ EXTERNAL int64_t base64_decode(void* _out, const void* _data, int64_t input_leng
 
             case 1: 
                 //This is incorrect. The first output byte has only 6 bits of data.
-                //However we signal an error only of decoding.enable_all_stream_sizes is false
+                //However we signal an error only of decoding.ignore_excess_bytes is false
                 //Else we just ignore it.
-                if(decoding.enable_all_stream_sizes == false)
+                if(decoding.ignore_excess_bytes == false)
                 {
                     if(error_at)
                         *error_at = in_i + pad_at;

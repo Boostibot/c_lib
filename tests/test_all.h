@@ -20,6 +20,7 @@
 #include "../sort.h"
 #include "../mem.h"
 #include "../map.h"
+#include "../unicode.h"
 #include "../allocator_tracking.h"
 
 #include "test_random.h"
@@ -32,6 +33,7 @@
 #include "test_math.h"
 #include "test_stable_array.h"
 #include "test_image.h"
+#include "test_unicode.h"
 #include "test_chase_lev_queue.h"
 #include "test_debug_allocator.h"
 
@@ -68,6 +70,7 @@ static void test_all(double total_time)
         UNIT_TEST(test_path),
         UNIT_TEST(test_log),
         UNIT_TEST(test_match),
+        TIMED_TEST(test_unicode),
         TIMED_TEST(test_map),
         TIMED_TEST(test_array),
         TIMED_TEST(test_hash),
