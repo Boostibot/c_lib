@@ -1,5 +1,5 @@
-#ifndef MODULE_UNICODE
-#define MODULE_UNICODE
+#ifndef MODULE_UTF
+#define MODULE_UTF
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -10,41 +10,48 @@ typedef int64_t isize;
     #define EXTERNAL
 #endif
 
-#define UNICODE_MAX           0x10FFFF //maximum value of unicode codepoint - anything greater is invalid 
-#define UNICODE_REPLACEMENT   0xFFFD   //unicode value which should be used for badly parsed encoding
-#define UNICODE_ENDIAN_LITTLE 0        
-#define UNICODE_ENDIAN_BIG    1  
+//Some simple functions to decode and encode the utf formats. 
+//The functions are designed to be easily used in a loop reading or writing a single codepoint at a time.
+//I havent spend much effort optimizing these, still they should be decently fast: have fast paths for ascii, have no loops. 
+// In case of utf8 I have spend some effort to only do one if to verify validity of all continuation bytes within a codepoint.  
+//All functions here have been verified against every possible codepoint/4 byte sequence
+// to succeed or fail precisely when they should according to the spec. 
+
+#define UTF_MAX           0x10FFFF //maximum value of unicode codepoint - anything greater is invalid 
+#define UTF_REPLACEMENT   0xFFFD   //unicode value which should be used for badly parsed encoding
+#define UTF_ENDIAN_LITTLE 0        
+#define UTF_ENDIAN_BIG    1  
 
 //Read a code point in the give encoding starting at *index. 
 // On success a valid code point is saved, index is advanced and returns true.
 // On failure a code point is set to -1 and returns false. If failure is caused by index >= code point is set to 0 instead.
-EXTERNAL bool unicode_utf8_decode(const void* input, isize input_size, uint32_t* out_code_point, isize* index);
-EXTERNAL bool unicode_utf16_decode(const void* input, isize input_size, uint32_t* out_code_point, isize* index, uint32_t endian);
-EXTERNAL bool unicode_utf32_decode(const void* input, isize input_size, uint32_t* out_code_point, isize* index, uint32_t endian);
+EXTERNAL bool utf8_decode(const void* input, isize input_size, uint32_t* out_code_point, isize* index);
+EXTERNAL bool utf16_decode(const void* input, isize input_size, uint32_t* out_code_point, isize* index, uint32_t endian);
+EXTERNAL bool utf32_decode(const void* input, isize input_size, uint32_t* out_code_point, isize* index, uint32_t endian);
 
 //Write a code point in the give encoding starting at *index. If code point is invalid or index >= output_size returns false.
 //Else writes it into output, advances index and returns true.
-EXTERNAL bool unicode_utf8_encode(void* output, isize output_size, uint32_t code_point, isize* index);
-EXTERNAL bool unicode_utf16_encode(void* output, isize output_size, uint32_t code_point, isize* index, uint32_t endian);
-EXTERNAL bool unicode_utf32_encode(void* output, isize output_size, uint32_t code_point, isize* index, uint32_t endian);
+EXTERNAL bool utf8_encode(void* output, isize output_size, uint32_t code_point, isize* index);
+EXTERNAL bool utf16_encode(void* output, isize output_size, uint32_t code_point, isize* index, uint32_t endian);
+EXTERNAL bool utf32_encode(void* output, isize output_size, uint32_t code_point, isize* index, uint32_t endian);
 
 //returns if the given codepoint is valid and can be encoded in utf8-utf32. 
-//This doesnt necesserily mean it has assigned meaning or that it will correclty render on screen
-EXTERNAL bool unicode_is_valid(uint32_t code_point);
+//This doesnt mean it has assigned unicode meaning or that it will correctly render on screen.
+EXTERNAL bool utf_is_valid_codepoint(uint32_t code_point);
 
-#endif MODULE_UNICODE
+#endif MODULE_UTF
 
-#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_UNICODE)) && !defined(MODULE_HAS_IMPL_UNICODE)
-#define MODULE_HAS_IMPL_UNICODE
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_UTF)) && !defined(MODULE_HAS_IMPL_UTF)
+#define MODULE_HAS_IMPL_UTF
 
-EXTERNAL bool unicode_is_valid(uint32_t code_point)
+EXTERNAL bool utf_is_valid_codepoint(uint32_t code_point)
 {
     //is not surrogate and is inside the range
     return ((0xD800 > code_point || code_point > 0xDFFF) && code_point <= 0x10FFFF);
 }
 
 //built from the spec and verified against every single value
-EXTERNAL bool unicode_utf8_decode(const void* input, isize input_size, uint32_t* out_code_point, isize* index)
+EXTERNAL bool utf8_decode(const void* input, isize input_size, uint32_t* out_code_point, isize* index)
 {
     uint8_t* in = (uint8_t*) input + *index;
     isize rem = input_size - *index;
@@ -111,7 +118,7 @@ EXTERNAL bool unicode_utf8_decode(const void* input, isize input_size, uint32_t*
 }
 
 //adpated from: https://gist.github.com/MightyPork/52eda3e5677b4b03524e40c9f0ab1da5
-EXTERNAL bool unicode_utf8_encode(void* output, isize output_size, uint32_t code_point, isize* index) {
+EXTERNAL bool utf8_encode(void* output, isize output_size, uint32_t code_point, isize* index) {
     uint8_t* out = (uint8_t*) output + *index;
     isize rem = output_size - *index;
 
@@ -154,7 +161,7 @@ EXTERNAL bool unicode_utf8_encode(void* output, isize output_size, uint32_t code
 }
 
 //see: https://www.ietf.org/rfc/rfc2781.txt
-EXTERNAL bool unicode_utf16_decode(const void* input, isize input_size, uint32_t* out_code_point, isize* index, uint32_t endian)
+EXTERNAL bool utf16_decode(const void* input, isize input_size, uint32_t* out_code_point, isize* index, uint32_t endian)
 {
     uint8_t* in = (uint8_t*) input + *index;
     isize rem = input_size - *index;
@@ -187,7 +194,7 @@ EXTERNAL bool unicode_utf16_decode(const void* input, isize input_size, uint32_t
 }
 
 //see: https://www.ietf.org/rfc/rfc2781.txt
-EXTERNAL bool unicode_utf16_encode(void* output, isize output_size, uint32_t code_point, isize* index, uint32_t endian)
+EXTERNAL bool utf16_encode(void* output, isize output_size, uint32_t code_point, isize* index, uint32_t endian)
 {
     uint8_t* out = (uint8_t*) output + *index;
     isize rem = output_size - *index;
@@ -238,7 +245,7 @@ EXTERNAL bool unicode_utf16_encode(void* output, isize output_size, uint32_t cod
 }
 
 //simple little/big endian serialization
-EXTERNAL bool unicode_utf32_decode(const void* input, isize input_size, uint32_t* out_code_point, isize* index, uint32_t endian)
+EXTERNAL bool utf32_decode(const void* input, isize input_size, uint32_t* out_code_point, isize* index, uint32_t endian)
 {
     uint8_t* in = (uint8_t*) input + *index;
     isize rem = input_size - *index;
@@ -271,7 +278,7 @@ EXTERNAL bool unicode_utf32_decode(const void* input, isize input_size, uint32_t
     return true;
 }
 
-EXTERNAL bool unicode_utf32_encode(void* output, isize output_size, uint32_t code_point, isize* index, uint32_t endian)
+EXTERNAL bool utf32_encode(void* output, isize output_size, uint32_t code_point, isize* index, uint32_t endian)
 {
     uint8_t* out = (uint8_t*) output + *index;
     isize rem = output_size - *index;

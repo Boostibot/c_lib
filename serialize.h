@@ -1,6 +1,5 @@
 #include <stdint.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -617,10 +616,8 @@ static bool _deser_recover(const Ser_Value*  object)
     Ser_String total = {(char*) reader->data, reader->capacity};
     Ser_String recovery = {recovery_text, recovery_len};
     isize recovered = _ser_find_first_or(total, recovery, reader->offset, -1);
-    if(recovered != -1) {
+    if(recovered != -1) 
         reader->offset = recovered;
-        printf("recovered!\n");
-    }
 
     return recovered != -1;
 }
