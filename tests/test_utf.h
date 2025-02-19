@@ -169,7 +169,7 @@ static void test_utf(double time_limit)
     for(uint32_t val = 0; ; val += 1) {
         test_utf_encode_utf8(val);
         test_utf_decode_utf8(val);
-        if(val == UINT16_MAX)
+        if(val == test_all_till)
             break;
     }
 

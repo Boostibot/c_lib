@@ -549,6 +549,7 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
         {
             if((uint32_t) fill_with_or_minus_one < 256)
                 memset(builder->data + builder->count, fill_with_or_minus_one, (size_t) ((to_size - builder->count)));
+            builder->data[builder->count] = '\0'; 
         }
         else
             //We clear the memory when shrinking so that we dont have to clear it when pushing!

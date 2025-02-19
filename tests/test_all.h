@@ -7,21 +7,24 @@
 
 #define MODULE_ALL_COUPLED
 #define MODULE_ALL_TEST
+
 #include "../platform.h"
 #include "../defines.h"
 #include "../assert.h"
 #include "../profile.h"
-#include "../list.h"
-#include "../path.h"
 #include "../allocator_tlsf.h"
-#include "../slz4.h"
-#include "../match.h"
 #include "../perf.h"
 #include "../sort.h"
 #include "../mem.h"
 #include "../map.h"
-#include "../unicode.h"
+#include "../utf.h"
 #include "../allocator_tracking.h"
+
+#include "../list.h"
+#include "../path.h"
+#include "../slz4.h"
+#include "../match.h"
+#include "../base64.h"
 
 #include "test_random.h"
 #include "test_arena.h"
@@ -33,7 +36,8 @@
 #include "test_math.h"
 #include "test_stable_array.h"
 #include "test_image.h"
-#include "test_unicode.h"
+#include "test_utf.h"
+#include "test_base64.h"
 #include "test_chase_lev_queue.h"
 #include "test_debug_allocator.h"
 
@@ -64,13 +68,15 @@ static void test_all(double total_time)
     run_tests(NULL, total_time, 
         UNIT_TEST(platform_test_all),
         UNIT_TEST(test_list),
+        UNIT_TEST(test_list),
         UNIT_TEST(test_image),
         UNIT_TEST(test_stable_array),
         // UNIT_TEST(test_random),
         UNIT_TEST(test_path),
         UNIT_TEST(test_log),
         UNIT_TEST(test_match),
-        TIMED_TEST(test_unicode),
+        TIMED_TEST(test_base64),
+        TIMED_TEST(test_utf),
         TIMED_TEST(test_map),
         TIMED_TEST(test_array),
         TIMED_TEST(test_hash),
