@@ -15,7 +15,8 @@ This is a perpetually ongoing development C codebase I use for personal projects
 - *`allocator.h`: Interface for generic allocators.
 - `allocator_debug.h`: Wrapper around generic allocator that verifies no overwrites and detects leaks. Has support for on demand checking of all blocks, continual printing of allocations etc. Can capture callstack to print exactly where the problematic allocation came from.
 - *`allocator_tlsf.h`: A TLSF style allocator on top of a given memory block. All operations are hard O(1). All book-keeping is done in seperate memory, allowing interface for allocation on the GPU. Is about 25% faster then malloc but currently essentially usnuseed because of its complexity.
-- *`deprecated/unicode.h`: Conversion between UTF8, UTF16, UTF32 with proper error checking. Extensively tested.
+- *`utf.h`: Conversion between UTF8, UTF16, UTF32 with proper error checking. Tested on every single code point/4 byte value.
+- *`base64.h`: Simple, fast, configurable base64 encoding. Should be able to support just about any base64 variant.
 - *`chase_lev_queue.h`: SPMC Chase-Lev lock-free queue.
 - *`stable_array.h`: O(1) Fast, memory efficient free-list like structure keeping stable pointers. Accessible through handles. Is suitable for storing large amounts of data or implementing SQL-like tables. 
 - *`serialize.h`: Procedures for binary JSON-like parsing in "immediate style". That is, no tree structure is made, instead the contents are parsed as they come in. The format itself is forward and backward compatible and includes mechanism for seamless error recovery through writer defined magic numbers which are transparent to the reader.
