@@ -3,8 +3,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "utf.h"
-#include "assert.h"
+#include "../utf.h"
+#include "../assert.h"
 
 typedef int64_t isize;
 typedef struct Allocator Allocator;
@@ -29,14 +29,14 @@ typedef enum Json_Type {
     JSON_EOF,
 } Json_Type;
 
-typedef struct Ser_Writer {
+typedef struct Json_Writer {
     Allocator* alloc;
     uint8_t* data;
     isize offset;
     isize capacity;
     isize depth;
     bool has_user_buffer;
-} Ser_Writer;
+} Json_Writer;
 
 #define JSON_READ_STRICT                0
 #define JSON_READ_ALLOW_JSON5_KEYS      1
@@ -53,6 +53,8 @@ typedef struct Json_Reader {
     isize depth;
 
     uint32_t flags;
+
+    uint64_t nesting[4];
 } Json_Reader;
 
 typedef struct Json_Value {
@@ -81,14 +83,223 @@ bool json_escaped_string_equals(Json_String json_string_with_escapes, Json_Strin
 bool json_string_encode_codepoint(void* into, isize into_size, isize* offset, uint32_t codepoint);
 bool json_string_decode_codepoint(const void* from, isize from_size, isize* offset, uint32_t* codepoint);
 
-void json_write_value(Ser_Writer* r, Json_Value value);
-void json_write_string(Ser_Writer* r, Json_String string);
+void json_write_value(Json_Writer* r, Json_Value value);
+void json_write_string(Json_Writer* r, Json_String string);
 
 #define JSON_READ_KEEP_WHITESPACE       32
 #define JSON_READ_KEEP_COMMENTS         64
 #define _JSON_READ_REMOVE_NEEDLESS_MASK (~(uint32_t)JSON_READ_KEEP_WHITESPACE & ~(uint32_t)JSON_READ_KEEP_COMMENTS)
 
-bool json_read_value(Json_Reader* r, Json_Value* value, uint32_t flags);
+bool is_json_hex_digit(char c)
+{
+    return ('0' <= c <= '9') || ('a' <= c <= 'f') || ('A' <= c <= 'Z');
+}
+
+bool is_json_hex_digit(char c)
+{
+    return ('0' <= c <= '9') || ('a' <= c <= 'f') || ('A' <= c <= 'Z');
+}
+
+const static uint8_t json_hex_to_val[256] = {
+    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+     0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 99, 99, 99, 99, 99, 99,
+    99, 10, 11, 12, 13, 14, 15, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+    99, 10, 11, 12, 13, 14, 15, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+};
+
+
+#define JSON_STRING_DECODE_EOF      1 
+#define JSON_STRING_DECODE_ESCAPE   2 
+#define JSON_STRING_DECODE_NO_VALUE 2 
+bool json_string_decode_codepoint(const void* from, isize from_size, isize* offset, char start_char, isize , uint32_t* codepoint_out, uint32_t* out_flags, uint32_t flags)
+{
+    uint8_t* in = (uint8_t*) from;
+    isize i = *offset;
+
+    bool found_end = false;
+
+    *out_flags = 0;
+
+    uint8_t c = in[i++];
+    uint32_t codepoint = c;
+    if(c == (uint8_t) start_char) {
+        *out_flags |= JSON_STRING_DECODE_EOF;
+        codepoint = 0;
+    }
+    else if(c == '\\') {
+        *out_flags |= JSON_STRING_DECODE_ESCAPE;
+        if(i >= from_size) {
+            //error
+        }
+
+        uint8_t escape_first = in[i++];
+        bool escape_valid = true;
+        switch(escape_first)
+        {
+            case '\\': codepoint = '\\'; break;
+            case '/': codepoint = '/'; break;
+            case 'b': codepoint = '\b'; break;
+            case 'f': codepoint = '\f'; break;
+            case 'n': codepoint = '\n'; break;
+            case 'r': codepoint = '\r'; break;
+            case 't': codepoint = '\t'; break;
+
+            case 'v': 
+            case '0': {
+                if((flags & JSON_READ_ALLOW_JSON5_STRINGS) == 0) {
+                    //error
+                }
+                
+                codepoint = escape_first == 'v' ? '\v' : '\0';
+            } 
+                        
+            case 'u': {
+                if(i + 4 > from_size) {
+                    //error
+                }
+                
+                uint32_t v4 = json_hex_to_val[in[i++]];
+                uint32_t v3 = json_hex_to_val[in[i++]];
+                uint32_t v2 = json_hex_to_val[in[i++]];
+                uint32_t v1 = json_hex_to_val[in[i++]];
+                if((v1 | v2 | v3 | v4) >= 16) {
+                    //error
+                }
+
+                uint32_t unicode = v4 << 12 | v3 << 8 | v2 << 4 | v1;
+                if(utf_is_valid_codepoint(unicode) == false) {
+                    //error
+                }
+                                
+                codepoint = unicode;
+            } break;
+
+            case 'x': {
+                if((flags & JSON_READ_ALLOW_JSON5_STRINGS) == 0) {
+                    //error
+                }
+                if(i + 2 > from_size) {
+                    //error
+                }
+
+                uint32_t v2 = json_hex_to_val[in[i++]];
+                uint32_t v1 = json_hex_to_val[in[i++]];
+                if((v1 | v2) >= 16) {
+                    //error
+                }
+
+                uint32_t unicode = v2 << 4 | v1;
+                if(utf_is_valid_codepoint(unicode) == false) {
+                    //error
+                }
+                
+                codepoint = unicode;
+            } break;
+
+            default: {
+                if(flags & JSON_READ_ALLOW_JSON5_STRINGS) {
+                    uint32_t newline1 = 0;
+                    uint32_t newline2 = 0;
+                    isize j1 = i; 
+                    bool newline1_ok = utf8_decode(in, from_size, &newline1, &j1);
+                    isize j2 = j1; 
+                    bool newline2_ok = utf8_decode(in, from_size, &newline2, &j2);
+
+                    if(newline1_ok && (newline1 == '\n' || newline1 == 0x2028 || newline1 == 0x2029))
+                        i = j1;
+                    else if(newline2_ok && newline1 == '\r' && newline1 == '\n')
+                        i = j2;
+                    else if(newline1 == '\r')
+                        i = j1;
+                    else {
+                        
+                        escape_valid = false;
+                    }
+                }
+                else {
+                    
+                    escape_valid = false;
+                    //error
+                }
+
+            } break;
+        }
+    }
+    else if(0x0000 <= c && c <= 0x001F) {
+        //error
+    }
+    else if(c <= 0x7F) {
+        codepoint = c;       
+    }
+    else {
+        if(utf8_decode(in, from_size, &codepoint, &i)) {
+            //           
+        }
+    }
+
+    *codepoint_out = codepoint;
+}
+
+bool json_read_value(Json_Reader* r, Json_Value* value, uint32_t flags)
+{
+    if(r->offset < r->capacity)
+    {
+        isize i = r->offset;
+        char first = r->data[r->offset];
+
+        if('0' <= first && first <= '9')
+        {
+            
+        }
+
+        if(first == '"' || first == '\'')
+        {
+            if((flags & JSON_READ_ALLOW_JSON5_STRINGS) == 0 && first == '\'') {
+                //Error
+            }
+
+            bool found_end = true;
+            isize first_escape = -1;
+            isize j = i;
+            for(; j < r->capacity; j++) {
+                
+            }
+        }
+        
+        //json5 key
+        if(('a' <= first && first <= 'z') || ('A' <= first && first <= 'Z') || first == '_' || first == '$')
+        {
+            if((flags & JSON_READ_ALLOW_JSON5_KEYS) == 0) {
+                //Error
+            }
+
+            bool is_within_object = !!(r->nesting[r->depth/64] & (1 << (r->depth%64)));
+            if(is_within_object == false) {
+                //Error
+            }
+        }
+        
+        //json5 comment
+        if(first == '/')
+        {
+
+        }
+    }
+
+}
+
 
 bool json_key_string_equals(Json_Value val, Json_String string);
 static inline bool json_key_cstring_equals(Json_Value val, const char* cstr) 
