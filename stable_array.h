@@ -125,7 +125,7 @@ inline static Stable_Array_Iter _stable_array_iter_precond(Stable_Array* stable,
     Stable_Array_Iter it = {0};
     it.stable = stable;
     it.item_i = from_id % STABLE_ARRAY_BLOCK_SIZE;
-    it.block_i = from_id % STABLE_ARRAY_BLOCK_SIZE;
+    it.block_i = from_id / STABLE_ARRAY_BLOCK_SIZE;
     it.index = from_id;
     return it;
 }
