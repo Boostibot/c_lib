@@ -65,9 +65,8 @@ static int run_tests(int* total, double time, ...);
 
 static void test_all(double total_time)
 {
-    //!!!
-    for(int i = 0; i < 100; i++)
-        test_map(1);
+    //for(int i = 0; i < 100; i++)
+        //test_map(1);
 
     run_tests(NULL, total_time, 
         UNIT_TEST(platform_test_all),

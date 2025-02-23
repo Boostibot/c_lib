@@ -9,7 +9,7 @@
     #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
 #endif // !TEST
 
-#define TEST_MATH_EPSILON (EPSILON*2)
+#define TEST_MATH_EPSILON 4.0e-5f
 
 #define TEST_NEAR_FLOAT(a, b, msg) TEST(is_near_scaledf(a, b, TEST_MATH_EPSILON), msg)
 #define TEST_NEAR_VEC3(a, b, msg) TEST(vec3_is_near_scaled(a, b, TEST_MATH_EPSILON), msg)

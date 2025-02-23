@@ -18,7 +18,7 @@ This is a perpetually ongoing development C codebase I use for personal projects
 - *`utf.h`: Conversion between UTF8, UTF16, UTF32 with proper error checking. Tested on every single code point/4 byte value.
 - *`base64.h`: Simple, fast, configurable base64 encoding. Should be able to support just about any base64 variant.
 - *`chase_lev_queue.h`: SPMC Chase-Lev lock-free queue.
-- *`stable_array.h`: O(1) Fast, memory efficient free-list like structure keeping stable pointers. Accessible through handles. Is suitable for storing large amounts of data or implementing SQL-like tables. 
+- *`stable.h`: O(1) Fast, memory efficient free-list like structure keeping stable pointers to items. Accessible through handles. Is suitable for storing large amounts of data or implementing SQL-like tables. 
 - *`serialize.h`: Procedures for binary JSON-like parsing in "immediate style". That is, no tree structure is made, instead the contents are parsed as they come in. The format itself is forward and backward compatible and includes mechanism for seamless error recovery through writer defined magic numbers which are transparent to the reader.
 - *`channel.h`: Novel Go-like concurrent channel. Fixed capacity MPMC ordered queue. As long as the channel is not empty/full is fully lock free on pop/push. Just like Go has procedures for closing which still allow to retrieve the stored data (this has been hard to achieve and where the novelty comes from). 
 - *`image.h`: Generic image container and subimage view into it. Works with any pixel format as long as it fits evenly into some number of bytes (ie. doesnt do bitpacking). 
