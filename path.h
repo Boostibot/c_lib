@@ -1217,7 +1217,6 @@ void test_path_strip_last(const char* path, const char* expected_head, const cha
 
 void test_path()
 {
-    PROFILE_START();
     test_single_path("", "", "", "", "", "", TEST_PATH_IS_DIR);
     test_single_path(".", "", "", ".", "", "", TEST_PATH_IS_DIR);
     test_single_path("..", "", "", "..", "", "", TEST_PATH_IS_DIR);
@@ -1336,9 +1335,6 @@ void test_path()
     test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_RELATIVE, "C:/path/to/dir1/dir2/", "C:/path/to/dir1/dir2/dir3/file.txt", "dir3/file.txt");
     test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_RELATIVE, "C:/path/to/dir", "path/to/world/file.txt", "path/to/world/file.txt");
     test_path_make_relative_absolute_with_prefixes(TEST_PATH_MAKE_RELATIVE, "path/to/dir", "C:/path/to/world/file.txt", "C:/path/to/world/file.txt");
-
-    LOG_OKAY("PATH", "Done!");
-    PROFILE_STOP();
 }   
 
 #endif

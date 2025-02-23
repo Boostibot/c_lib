@@ -34,7 +34,7 @@
 #include "test_mem.h"
 #include "test_map.h"
 #include "test_math.h"
-#include "test_stable_array.h"
+#include "test_stable.h"
 #include "test_image.h"
 #include "test_utf.h"
 #include "test_base64.h"
@@ -70,7 +70,7 @@ static void test_all(double total_time)
         UNIT_TEST(test_list),
         UNIT_TEST(test_list),
         UNIT_TEST(test_image),
-        UNIT_TEST(test_stable_array),
+        UNIT_TEST(test_stable),
         // UNIT_TEST(test_random),
         UNIT_TEST(test_path),
         UNIT_TEST(test_log),

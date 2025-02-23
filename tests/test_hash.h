@@ -141,10 +141,10 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 							}
 
 						
-						for(Hash_It it = {0}; hash_iterate(&table, removed_key, &it); );
+						for(Hash_Iter it = {0}; hash_iterate(&table, removed_key, &it); );
 
 						i32 removed_hash_count = 0;
-						for(Hash_It it = {0}; hash_iterate(&table, removed_key, &it); removed_hash_count++)
+						for(Hash_Iter it = {0}; hash_iterate(&table, removed_key, &it); removed_hash_count++)
 							hash_remove(&table, it.index);
 
 						TEST(removed_truth_count == removed_hash_count);
@@ -199,9 +199,9 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 							if(truth_key_array.data[j] == key)
 								array_push(&truth_found, truth_val_array.data[j]);
 								
-						for(Hash_It it = {0}; hash_iterate(&table, key, &it); );
+						for(Hash_Iter it = {0}; hash_iterate(&table, key, &it); );
 
-						for(Hash_It it = {0}; hash_iterate(&table, key, &it); )
+						for(Hash_Iter it = {0}; hash_iterate(&table, key, &it); )
 							array_push(&hash_found, it.entry->value);
 								
 						TEST(hash_found.count == truth_found.count);

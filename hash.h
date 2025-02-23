@@ -44,11 +44,11 @@ typedef struct Hash_Entry {
 } Hash_Entry;
  
 //Iterator of entries with the same hash 
-typedef struct Hash_It {
+typedef struct Hash_Iter {
     uint32_t index;  
     uint32_t iter; 
     Hash_Entry* entry;
-} Hash_It;
+} Hash_Iter;
 
 #ifndef EXTERNAL
     #define EXTERNAL
@@ -59,7 +59,7 @@ EXTERNAL void  hash_deinit(Hash* table);
 EXTERNAL void  hash_clear(Hash* to_table); 
 EXTERNAL bool  hash_find(const Hash*, uint64_t hash, isize* index);
 EXTERNAL bool  hash_find_or_insert(Hash* table, uint64_t hash, uint64_t value, isize* index); 
-EXTERNAL bool  hash_iterate(const Hash* table, uint64_t hash, Hash_It* it); 
+EXTERNAL bool  hash_iterate(const Hash* table, uint64_t hash, Hash_Iter* it); 
 EXTERNAL isize hash_insert(Hash* table, uint64_t hash, uint64_t value); 
 EXTERNAL isize hash_set(Hash* table, uint64_t hash, uint64_t value); 
 EXTERNAL void  hash_reserve(Hash* table, isize to_size); 
@@ -144,13 +144,13 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
         #endif
     }
 
-    INTERNAL Hash_It _hash_it_make(const Hash* table, uint64_t hash)
+    INTERNAL Hash_Iter _hash_it_make(const Hash* table, uint64_t hash)
     {
-        Hash_It it = {hash & (table->capacity - 1), 1};
+        Hash_Iter it = {hash & (table->capacity - 1), 1};
         return it;
     }
 
-    INTERNAL bool _hash_find_next(const Hash* table, uint64_t hash, Hash_It* it)
+    INTERNAL bool _hash_find_next(const Hash* table, uint64_t hash, Hash_Iter* it)
     {
         if(table->count > 0)
         {
@@ -419,14 +419,14 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
     EXTERNAL bool hash_find(const Hash* table, uint64_t hash, isize* index)
     {
         _hash_check_invariants(table);
-        Hash_It it = _hash_it_make(table, hash);
+        Hash_Iter it = _hash_it_make(table, hash);
         bool out = _hash_find_next(table, hash, &it);
         if(index)
             *index = it.index;
         return out;
     }
 
-    EXTERNAL bool hash_iterate(const Hash* table, uint64_t hash, Hash_It* it)
+    EXTERNAL bool hash_iterate(const Hash* table, uint64_t hash, Hash_Iter* it)
     {
         _hash_check_invariants(table);
         if(it->iter == 0)
@@ -442,21 +442,21 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
     EXTERNAL isize hash_remove_with_hash(Hash* table, uint64_t hash)
     {
         isize count = 0;
-        for(Hash_It it = _hash_it_make(table, hash); _hash_find_next(table, hash, &it); count++)
+        for(Hash_Iter it = _hash_it_make(table, hash); _hash_find_next(table, hash, &it); count++)
             hash_remove(table, it.index);
         return count;
     }
     EXTERNAL isize hash_remove_with_value(Hash* table, uint64_t hash, uint64_t value)
     {
         isize count = 0;
-        for(Hash_It it = _hash_it_make(table, hash); _hash_find_next(table, hash, &it); )
+        for(Hash_Iter it = _hash_it_make(table, hash); _hash_find_next(table, hash, &it); )
             if(it.entry->value == value)
                 count += hash_remove(table, it.index);
         return count;
     }
     EXTERNAL bool hash_find_with_value(const Hash* table, uint64_t hash, uint64_t value, isize* index)
     {
-        for(Hash_It it = _hash_it_make(table, hash); _hash_find_next(table, hash, &it); )
+        for(Hash_Iter it = _hash_it_make(table, hash); _hash_find_next(table, hash, &it); )
             if(it.entry->value == value)
             {
                 if(index) *index = it.index;
@@ -517,7 +517,7 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
             {
                 Hash_Entry entry = table->entries[i];
                 if(hash_entry_is_used(table, &entry)) {
-                    Hash_It it = _hash_it_make(table, entry.hash);
+                    Hash_Iter it = _hash_it_make(table, entry.hash);
                     TEST(_hash_find_next(table, entry.hash, &it));
                     used_count += 1;
                 }
