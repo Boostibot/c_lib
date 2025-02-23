@@ -65,6 +65,10 @@ static int run_tests(int* total, double time, ...);
 
 static void test_all(double total_time)
 {
+    //!!!
+    for(int i = 0; i < 100; i++)
+        test_map(1);
+
     run_tests(NULL, total_time, 
         UNIT_TEST(platform_test_all),
         UNIT_TEST(test_list),
@@ -75,9 +79,9 @@ static void test_all(double total_time)
         UNIT_TEST(test_path),
         UNIT_TEST(test_log),
         UNIT_TEST(test_match),
+        TIMED_TEST(test_map),
         TIMED_TEST(test_base64),
         TIMED_TEST(test_utf),
-        TIMED_TEST(test_map),
         TIMED_TEST(test_array),
         TIMED_TEST(test_hash),
         TIMED_TEST(test_hash),

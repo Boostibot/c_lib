@@ -88,8 +88,8 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
 //
 // We create backlinks by manually inserting the index of the hash entry to the given item. These backlinks remain valid until the next rehash 
 // upon which the Hash_Entries get essentially randomly shuffled. Because of this we give specialized routines that also restore the backlinks
-// as a part of the rehashing. These assume that the Hash stores {hash, index of item} or {hash, pointer of item} entries (thus both can be read as value_u64)
-// and calculate the address uint32_t backlink as: (uint8_t*) items_base + entry.value_u64*item_size + item_backlink_offset. 
+// as a part of the rehashing. These assume that the Hash stores {hash, index of item} or {hash, pointer of item} entries (thus both can be read as value)
+// and calculate the address uint32_t backlink as: (uint8_t*) items_base + entry.value*item_size + item_backlink_offset. 
 // When we are storing pointers to indices we set item_size=1, items_base=NULL. When we are storing indices we use the pointer to the array and sizeof item.
 // 
 // Be careful that normal rehash might be called when hash_insert, hash_find_or_insert require to grow the hash. If you want to prevent that, then simply call
@@ -305,7 +305,7 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
 
                         //do backlinks if given
                         if(item_size > 0)
-                            memcpy(entry.value_u64*item_size + base, &i, sizeof i);
+                            memcpy(entry.value*item_size + base, &i, sizeof i);
                         break;
                     }
 

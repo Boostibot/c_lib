@@ -100,6 +100,8 @@ typedef struct Debug_Allocator {
 #define DEBUG_ALLOC_PRINT               32 // do_printing = true 
 #define DEBUG_ALLOC_USE                 64 // do_set_as_default = true
 
+//TODO: thread local list of debug allocators!
+
 EXTERNAL Debug_Allocator debug_allocator_make(Allocator* parent, uint64_t flags); //convenience wrapper for debug_allocator_init
 EXTERNAL void debug_allocator_init(Debug_Allocator* allocator, Allocator* parent, Allocator* internal_allocator, Debug_Allocator_Options options);
 EXTERNAL void debug_allocator_deinit(Debug_Allocator* allocator);

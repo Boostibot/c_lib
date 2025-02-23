@@ -135,6 +135,8 @@ EXTERNAL void subimage_copy(Subimage to_image, Subimage image, isize offset_x, i
 
 EXTERNAL void subimage_flip_x(Subimage image, void* temp_pixel, isize temp_size);
 EXTERNAL void subimage_flip_y(Subimage image, void* temp_row, isize temp_size);
+
+//TODO: changing of formats. Increasing/decreasing number of channels/casting
 #endif
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_IMAGE)) && !defined(MODULE_HAS_IMPL_IMAGE)
