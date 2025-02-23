@@ -83,7 +83,7 @@ typedef struct Subimage {
     int32_t height;
 } Subimage;
 
-#define IMAGE_ALIGN 32 //for simd
+#define IMAGE_ALIGN 64 //for simd
 
 //returns the human readable name of the pixel type. 
 // Example return values are "uint8_t", "f32", "i64", ..., "custom" (for pixel_type > 0) and "invalid" (pixel_type < 0 and none of the predefined)
@@ -115,28 +115,38 @@ EXTERNAL Image image_from_subimage(Subimage to_copy, Allocator* alloc);
 EXTERNAL Subimage image_portion(Image image, isize from_x, isize from_y, isize width, isize height);
 EXTERNAL Subimage image_range(Image image, isize from_x, isize from_y, isize to_x, isize to_y);
 
-EXTERNAL int32_t   image_channel_count(Image image);
+EXTERNAL int32_t image_channel_count(Image image);
 EXTERNAL isize image_pixel_count(Image image);
 EXTERNAL isize image_byte_stride(Image image);
 EXTERNAL isize image_byte_size(Image image);
 
 EXTERNAL Subimage subimage_of(Image image);
 EXTERNAL Subimage subimage_make(void* pixels, isize width, isize height, isize pixel_size, Pixel_Type type);
-EXTERNAL bool subimage_is_contiguous(Subimage view); //returns true if the view is contiguous in memory
+EXTERNAL bool subimage_is_contiguous(Subimage view); //returns true if the subimage is contiguous in memory
+EXTERNAL bool subimage_is_overlapping(Subimage a, Subimage b); //returns true if the subimages overlap in memory
+EXTERNAL bool subimage_is_same_format(Subimage a, Subimage b); //returns true if the subimages have the same format.
 EXTERNAL void* subimage_at(Subimage image, isize x, isize y);
 EXTERNAL int32_t subimage_channel_count(Subimage image);
 EXTERNAL isize subimage_pixel_count(Subimage image);
 EXTERNAL isize subimage_byte_stride(Subimage image);
 EXTERNAL isize subimage_byte_size(Subimage image);
 
-EXTERNAL Subimage subimage_portion(Subimage view, isize from_x, isize from_y, isize width, isize height);
-EXTERNAL Subimage subimage_range(Subimage view, isize from_x, isize from_y, isize to_x, isize to_y);
-EXTERNAL void subimage_copy(Subimage to_image, Subimage image, isize offset_x, isize offset_y);
+EXTERNAL Subimage subimage_portion(Subimage image, isize from_x, isize from_y, isize width, isize height);
+EXTERNAL Subimage subimage_range(Subimage image, isize from_x, isize from_y, isize to_x, isize to_y);
 
-EXTERNAL void subimage_flip_x(Subimage image, void* temp_pixel, isize temp_size);
-EXTERNAL void subimage_flip_y(Subimage image, void* temp_row, isize temp_size);
+//copies to from_image into to_image at the specified offset. The images need to have the same format and the same number of channels but can overlap
+EXTERNAL void subimage_copy(Subimage to_image, Subimage from_image, isize offset_x, isize offset_y); 
+//Copies to from_image into to_image at the specified offset. The images need to have the same format but can have different number of channels and must not overlap.
+//If to_image has more channels than from_image and pad_with_or_minus_one != -1 then memsets each row to byte value of pad_with_or_minus_one.
+//For more complicated patterns use memtile then call this function with pad_with_or_minus_one == -1.
+EXTERNAL void subimage_convert(Subimage to_image, Subimage from_image, isize offset_x, isize offset_y, int pad_with_or_minus_one);  
 
-//TODO: changing of formats. Increasing/decreasing number of channels/casting
+EXTERNAL void subimage_flip_x_inplace(Subimage image, void* temp_pixel, isize temp_size); //flips the image in place. temp_pixel needs to point to at least image.pixel_size bytes.
+EXTERNAL void subimage_flip_y_inplace(Subimage image, void* temp_row, isize temp_size); //flips the image in place. temp_pixel needs to point to at least image.pixel_size bytes.
+
+EXTERNAL void subimage_flip_x(Subimage to_image, Subimage from_image, isize offset_x, isize offset_y);
+EXTERNAL void subimage_flip_y(Subimage to_image, Subimage from_image, isize offset_x, isize offset_y);
+
 #endif
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_IMAGE)) && !defined(MODULE_HAS_IMPL_IMAGE)
@@ -301,9 +311,7 @@ EXTERNAL int32_t subimage_channel_count(Subimage image)
 
 EXTERNAL isize subimage_byte_stride(Subimage image)
 {
-    isize stride = image.containing_width * image.pixel_size;
-
-    return stride;
+    return image.containing_width * image.pixel_size;
 }
 
 EXTERNAL isize subimage_pixel_count(Subimage image)
@@ -341,7 +349,26 @@ EXTERNAL Subimage subimage_of(Image image)
 
 EXTERNAL bool subimage_is_contiguous(Subimage view)
 {
-    return view.from_x == 0 && view.width == view.containing_width;
+    return (view.from_x == 0 && view.width == view.containing_width) || view.height <= 1;
+}
+
+EXTERNAL bool subimage_is_overlapping(Subimage a, Subimage b)
+{
+    if(a.pixels != b.pixels)
+        return false;
+        
+    isize dx = b.from_x - a.from_x;
+    isize dy = b.from_y - a.from_y;
+
+    isize ah = a.height;
+    isize bh = b.height;
+    
+    if(-bh >= dy || dy >= ah)
+        return false;
+
+    isize aw = a.width*a.pixel_size;
+    isize bw = b.width*b.pixel_size;
+    return -bw < dx && dx < aw;
 }
 
 EXTERNAL Subimage subimage_range(Subimage view, isize from_x, isize from_y, isize to_x, isize to_y)
@@ -377,18 +404,18 @@ EXTERNAL Subimage image_range(Image image, isize from_x, isize from_y, isize to_
     return subimage_range(subimage_of(image), from_x, from_y, to_x, to_y);
 }
 
-EXTERNAL void* subimage_at(Subimage view, isize x, isize y)
+EXTERNAL void* subimage_at(Subimage subimage, isize x, isize y)
 {
-    CHECK_BOUNDS(x, view.width);
-    CHECK_BOUNDS(y, view.height);
+    CHECK_BOUNDS(x, subimage.width);
+    CHECK_BOUNDS(y, subimage.height);
 
-    int32_t containing_x = (int32_t) x + view.from_x;
-    int32_t containing_y = (int32_t) y + view.from_y;
+    int32_t containing_x = (int32_t) x + subimage.from_x;
+    int32_t containing_y = (int32_t) y + subimage.from_y;
     
-    isize byte_stride = subimage_byte_stride(view);
+    isize byte_stride = subimage.containing_width * subimage.pixel_size;;
 
-    uint8_t* data = (uint8_t*) view.pixels;
-    isize offset = containing_x*view.pixel_size + containing_y*byte_stride;
+    uint8_t* data = (uint8_t*) subimage.pixels;
+    isize offset = containing_x*subimage.pixel_size + containing_y*byte_stride;
     uint8_t* pixel = data + offset;
 
     return pixel;
@@ -396,48 +423,46 @@ EXTERNAL void* subimage_at(Subimage view, isize x, isize y)
 
 EXTERNAL void subimage_copy(Subimage to_image, Subimage from_image, isize offset_x, isize offset_y)
 {
-    //Simple implementation
-    int32_t copy_width = from_image.width;
-    int32_t copy_height = from_image.height;
-    if(copy_width == 0 || copy_height == 0)
+    if(from_image.width == 0 || from_image.height == 0)
         return;
-
-    Subimage to_portion = subimage_portion(to_image, offset_x, offset_y, copy_width, copy_height);
-    REQUIRE(from_image.type == to_image.type && from_image.pixel_size == to_image.pixel_size, "formats must match!");
-
+        
+    REQUIRE(from_image.type == to_image.type && from_image.pixel_size == to_image.pixel_size);
     isize to_image_stride = subimage_byte_stride(to_image); 
     isize from_image_stride = subimage_byte_stride(from_image); 
-    isize row_byte_size = copy_width * from_image.pixel_size;
+    isize row_byte_size = from_image.width * from_image.pixel_size;
 
+    Subimage to_portion = subimage_portion(to_image, offset_x, offset_y, from_image.width, from_image.height);
     uint8_t* to_image_ptr = (uint8_t*) subimage_at(to_portion, 0, 0);
     uint8_t* from_image_ptr = (uint8_t*) subimage_at(from_image, 0, 0);
 
+    //if both are contiguous (full width) then we can do just a single move
+    if(subimage_is_contiguous(to_portion) && subimage_is_contiguous(from_image))
+        memmove(to_image_ptr, from_image_ptr, (size_t) row_byte_size*to_portion.width);
     //Copy in the right order so we dont override any data
-    if(from_image_ptr >= to_image_ptr)
-    {
-        for(isize y = 0; y < copy_height; y++)
-        { 
-            memmove(to_image_ptr, from_image_ptr, (size_t) row_byte_size);
-
-            to_image_ptr += to_image_stride;
-            from_image_ptr += from_image_stride;
+    else {
+        if(from_image_ptr >= to_image_ptr)
+        {
+            for(isize y = 0; y < from_image.height; y++) { 
+                memmove(to_image_ptr, from_image_ptr, (size_t) row_byte_size);
+                to_image_ptr += to_image_stride;
+                from_image_ptr += from_image_stride;
+            }
         }
-    }
-    else
-    {
-        //Reverse order copy
-        to_image_ptr += copy_height*to_image_stride;
-        from_image_ptr += copy_height*from_image_stride;
+        else
+        {
+            //Reverse order copy
+            to_image_ptr += from_image.height*to_image_stride;
+            from_image_ptr += from_image.height*from_image_stride;
 
-        for(isize y = 0; y < copy_height; y++)
-        { 
-            to_image_ptr -= to_image_stride;
-            from_image_ptr -= from_image_stride;
-
-            memmove(to_image_ptr, from_image_ptr, (size_t) row_byte_size);
-        }
+            for(isize y = 0; y < from_image.height; y++) { 
+                to_image_ptr -= to_image_stride;
+                from_image_ptr -= from_image_stride;
+                memmove(to_image_ptr, from_image_ptr, (size_t) row_byte_size);
+            }
+        } 
     }
 }
+
 
 EXTERNAL Image image_from_subimage(Subimage view, Allocator* alloc)
 {
@@ -555,7 +580,52 @@ EXTERNAL void image_copy(Image* to_image, Subimage from_image, isize offset_x, i
     subimage_copy(subimage_of(*to_image), from_image, offset_x, offset_y);
 }
 
-EXTERNAL void subimage_flip_y(Subimage image, void* temp_row, isize temp_size)
+EXTERNAL void subimage_convert(Subimage to_image, Subimage from_image, isize offset_x, isize offset_y, int pad_with_or_minus_one)
+{
+    if(from_image.width == 0 || from_image.height == 0)
+        return;
+        
+    if(from_image.type == to_image.type && from_image.pixel_size == to_image.pixel_size)
+        subimage_copy(to_image, from_image, offset_x, offset_y);
+    else {
+        REQUIRE(subimage_is_overlapping(to_image, from_image) == false, "must not overlap in memory");
+        REQUIRE(from_image.type == to_image.type);
+
+        Subimage to_portion = subimage_portion(to_image, offset_x, offset_y, from_image.width, from_image.height);
+        isize min_size = from_image.pixel_size < to_image.pixel_size ? from_image.pixel_size : to_image.pixel_size;
+        for(isize y = 0; y < from_image.height; y++)
+        {
+            uint8_t* to_row = (uint8_t*) subimage_at(to_portion, 0, y);
+            uint8_t* from_row = (uint8_t*) subimage_at(from_image, 0, y);
+
+            //pad the space if necessary
+            if(pad_with_or_minus_one != -1 && from_image.pixel_size < to_image.pixel_size)
+                memset(to_row, pad_with_or_minus_one, to_portion.width*to_portion.pixel_size);
+
+            //perform the inner loop specialized for some common sizes.
+            #define SUIMAGE_LOOP_COPY(size) \
+                for(isize x = 0; x < from_image.width; x++) \
+                    memcpy(to_row + x*to_portion.pixel_size, from_row + y*from_image.pixel_size, size) \
+
+            switch(min_size) {
+                case 1:  SUIMAGE_LOOP_COPY(1); break;
+                case 2:  SUIMAGE_LOOP_COPY(2); break;
+                case 3:  SUIMAGE_LOOP_COPY(3); break;
+                case 4:  SUIMAGE_LOOP_COPY(4); break;
+                case 6:  SUIMAGE_LOOP_COPY(6); break;
+                case 8:  SUIMAGE_LOOP_COPY(8); break;
+                case 12: SUIMAGE_LOOP_COPY(12); break;
+                case 16: SUIMAGE_LOOP_COPY(16); break;
+                case 32: SUIMAGE_LOOP_COPY(32); break;
+                default: SUIMAGE_LOOP_COPY(min_size); break;
+            }
+
+            #undef SUIMAGE_LOOP_COPY
+        }
+    }
+}
+
+EXTERNAL void subimage_flip_y_inplace(Subimage image, void* temp_row, isize temp_size)
 {
     isize row_size = subimage_byte_stride(image);
     REQUIRE(temp_size >= row_size);
@@ -569,15 +639,16 @@ EXTERNAL void subimage_flip_y(Subimage image, void* temp_row, isize temp_size)
     }
 }
 
-EXTERNAL void subimage_flip_x(Subimage image, void* temp_pixel, isize temp_size)
+EXTERNAL void subimage_flip_x_inplace(Subimage image, void* temp_pixel, isize temp_size)
 {
-    isize stride = subimage_byte_stride(image);   
     REQUIRE(image.pixel_size <= temp_size); 
+    isize stride = subimage_byte_stride(image);   
+    uint8_t* image_ptr = (uint8_t*) subimage_at(image, 0, 0);
     for(isize y = 0; y < image.height; y++) 
     {
-        uint8_t* row = image.pixels + stride*y;
+        uint8_t* row = image_ptr + stride*y;
         void* te = temp_pixel;
-        #define IMAGE_FLIP_ROW(row, width, size)        \
+        #define SUBIMAGE_FLIP_ROW(row, width, size)        \
             for(isize x = 0; x < width/2; x++) {        \
                 uint8_t* a1 = row + size*x;             \
                 uint8_t* a2 = row + size*(width - x);   \
@@ -586,17 +657,61 @@ EXTERNAL void subimage_flip_x(Subimage image, void* temp_pixel, isize temp_size)
                 memcpy(a2, te, size);                   \
             }                                           \
 
-        //have versions for specific common sizes and do the generic
         switch(image.pixel_size) {
-            case 1:  IMAGE_FLIP_ROW(row, image.width, 1); break;
-            case 2:  IMAGE_FLIP_ROW(row, image.width, 2); break;
-            case 3:  IMAGE_FLIP_ROW(row, image.width, 3); break;
-            case 4:  IMAGE_FLIP_ROW(row, image.width, 4); break;
-            case 8:  IMAGE_FLIP_ROW(row, image.width, 8); break;
-            case 12: IMAGE_FLIP_ROW(row, image.width, 12); break;
-            case 16: IMAGE_FLIP_ROW(row, image.width, 16); break;
-            default: IMAGE_FLIP_ROW(row, image.width, image.pixel_size); break;
+            case 1:  SUBIMAGE_FLIP_ROW(row, image.width, 1); break;
+            case 2:  SUBIMAGE_FLIP_ROW(row, image.width, 2); break;
+            case 3:  SUBIMAGE_FLIP_ROW(row, image.width, 3); break;
+            case 4:  SUBIMAGE_FLIP_ROW(row, image.width, 4); break;
+            case 6:  SUBIMAGE_FLIP_ROW(row, image.width, 6); break;
+            case 8:  SUBIMAGE_FLIP_ROW(row, image.width, 8); break;
+            case 12: SUBIMAGE_FLIP_ROW(row, image.width, 12); break;
+            case 16: SUBIMAGE_FLIP_ROW(row, image.width, 16); break;
+            case 32: SUBIMAGE_FLIP_ROW(row, image.width, 32); break;
+            default: SUBIMAGE_FLIP_ROW(row, image.width, image.pixel_size); break;
         }
+        #undef SUBIMAGE_FLIP_ROW
+    }
+}
+
+EXTERNAL void subimage_flip_y(Subimage to_image, Subimage from_image, isize offset_x, isize offset_y)
+{
+    REQUIRE(subimage_is_overlapping(to_image, from_image) == false && to_image.pixel_size == from_image.pixel_size);
+    Subimage to_portion = subimage_portion(to_image, offset_x, offset_y, from_image.width, from_image.height);
+    for(isize y = 0; y < to_portion.height; y++) {
+        uint8_t* from_row = (uint8_t*) subimage_at(from_image, 0, y);
+        uint8_t* to_row = (uint8_t*) subimage_at(to_portion, 0, to_portion.height - y - 1);
+        memcpy(to_row, from_row, to_portion.width*to_portion.pixel_size);
+    }
+}
+
+EXTERNAL void subimage_flip_x(Subimage to_image, Subimage from_image, isize offset_x, isize offset_y)
+{
+    REQUIRE(subimage_is_overlapping(to_image, from_image) == false && to_image.pixel_size == from_image.pixel_size);
+    Subimage to_portion = subimage_portion(to_image, offset_x, offset_y, from_image.width, from_image.height);
+    for(isize y = 0; y < to_portion.height; y++) {
+        uint8_t* from_row = (uint8_t*) subimage_at(from_image, 0, y);
+        uint8_t* to_row = (uint8_t*) subimage_at(to_portion, 0, y);
+        
+        #define SUBIMAGE_FLIP_ROW(size)        \
+            for(isize x = 0; x < to_portion.width; x++) {        \
+                uint8_t* from_pixel = from_row + size*x;             \
+                uint8_t* to_pixel = to_row + size*(from_image.width - x);   \
+                memcpy(to_pixel, from_pixel, size);                   \
+            }                                           
+
+        switch(to_portion.pixel_size) {
+            case 1:  SUBIMAGE_FLIP_ROW(1); break;
+            case 2:  SUBIMAGE_FLIP_ROW(2); break;
+            case 3:  SUBIMAGE_FLIP_ROW(3); break;
+            case 4:  SUBIMAGE_FLIP_ROW(4); break;
+            case 6:  SUBIMAGE_FLIP_ROW(6); break;
+            case 8:  SUBIMAGE_FLIP_ROW(8); break;
+            case 12: SUBIMAGE_FLIP_ROW(12); break;
+            case 16: SUBIMAGE_FLIP_ROW(16); break;
+            case 32: SUBIMAGE_FLIP_ROW(32); break;
+            default: SUBIMAGE_FLIP_ROW(to_portion.pixel_size); break;
+        }
+        #undef SUBIMAGE_FLIP_ROW
     }
 }
 

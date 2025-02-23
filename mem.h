@@ -54,6 +54,8 @@ EXTERNAL void memtile(void *field, isize field_size, const void* pattern, isize 
         memcpy(field, pattern, (size_t) field_size);
     else if(pattern_size == 0)
         memset(field, 0, (size_t) field_size);
+    else if(pattern_size == 1)
+        memset(field, *(uint8_t*) pattern, (size_t) field_size);
     else
     {
         isize cursor = pattern_size;
@@ -63,8 +65,7 @@ EXTERNAL void memtile(void *field, isize field_size, const void* pattern, isize 
         memcpy((char*) field, pattern, (size_t) pattern_size);
     
         // now copy from destination buffer, doubling size each iteration
-        for (; cursor + copy_size < field_size; copy_size *= 2) 
-        {
+        for (; cursor + copy_size < field_size; copy_size *= 2) {
             memcpy((char*) field + cursor, field, (size_t) copy_size);
             cursor += copy_size;
         }

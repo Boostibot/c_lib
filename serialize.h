@@ -1,3 +1,6 @@
+#ifndef MODULE_SERIALIZE
+#define MODULE_SERIALIZE
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
@@ -24,9 +27,9 @@
 // Strings are null terminated (enforced by the parser - if not then error) which allows 
 // for zero copy reading.
 // 
-// Individual primitive types are grouped into json-like lists and objects. Lists are 
-// denoted by start and end type bytes. Everything between is inside the list. Objects
-// are just like lists except the items are interpreted in pairs of two: the first is
+// Individual primitive types are grouped into json-like arrays and objects. Lists are 
+// denoted by start and end type bytes. Everything between is inside the array. Objects
+// are just like arrays except the items are interpreted in pairs of two: the first is
 // key, the second is value. If object contains odd number of primitives the last is skipped. Any type
 // can be a key, although strings and integers are the most useful.
 //
@@ -46,15 +49,15 @@
 //
 // Lastly I have extended the above code to seamlessly handle data corruption or generally any other
 // fault in the format. Binary formats have the unhandy property where even a slight change can cause the 
-// entire format to become corrupted and unvisualiseable. This is generally solved by application specific 
+// entire format to become corrupted and not visualizable. This is generally solved by application specific 
 // magic numbers and checksums. I have taken a similar route which accounts very nicely for the generality and
 // structure of the format. 
 // 
-// I provide recovery variants for list/object begin/end which behave just like their regular counterparts 
+// I provide recovery variants for array/object begin/end which behave just like their regular counterparts 
 // except are followed by a user specified magic sequence. The writer is expected to use these a few times
 // in the format around large blocks of data (since the magic sequences pose some overhead). The reader on the
-// other hand doesnt have to know about these at all. When a parsing error is found within a recovery list/object
-// the code attempts to automatically recover by finding the matching end magic sequence for the given list/object.  
+// other hand doesnt have to know about these at all. When a parsing error is found within a recovery array/object
+// the code attempts to automatically recover by finding the matching end magic sequence for the given array/object.  
 //
 // A lot of the code is inside the header section because 
 //  A) its very short so splitting it would duplicate large portions of this file
@@ -67,16 +70,14 @@
     #include "assert.h"
     typedef String Ser_String;
 #else
-    typedef struct Allocator Allocator;
-    typedef struct Allocator_Error Allocator_Error;
-    typedef void* (*Allocator_Func)(Allocator* alloc, isize new_size, void* old_ptr, isize old_size, isize align, Allocator_Error* error_or_null);
-
-    typedef int64_t isize;
     typedef struct Ser_String {
         const char* data;
         isize count;
     } Ser_String;
 #endif
+
+typedef int64_t isize;
+typedef void* (*Allocator)(void* alloc, int mode, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align, void* other);
 
 #ifndef ASSERT
     #include <assert.h>
@@ -85,12 +86,6 @@
 
 #ifndef EXTERNAL
     #define EXTERNAL 
-#endif
-
-#ifdef __cplusplus
-    #define SER_CSTRING(x) Ser_String{x, sizeof(x"") - 1}
-#else
-    #define SER_CSTRING(x) (Ser_String){x, sizeof(x"") - 1}
 #endif
 
 #if defined(_MSC_VER)
@@ -107,14 +102,14 @@
 typedef enum Ser_Type {
     SER_NULL = 0,               //{u8 type}
     
-    SER_LIST_BEGIN,             //{u8 type}
+    SER_ARRAY_BEGIN,             //{u8 type}
     SER_OBJECT_BEGIN,           //{u8 type}
     SER_RECOVERY_OBJECT_BEGIN,  //{u8 type, u8 size}[size bytes of tag]
-    SER_RECOVERY_LIST_BEGIN,    //{u8 type, u8 size}[size bytes of tag]
+    SER_RECOVERY_ARRAY_BEGIN,    //{u8 type, u8 size}[size bytes of tag]
     
-    SER_LIST_END,               //{u8 type}
+    SER_ARRAY_END,               //{u8 type}
     SER_OBJECT_END,             //{u8 type}
-    SER_RECOVERY_LIST_END,      //{u8 type, u8 size}[size bytes of tag]
+    SER_RECOVERY_ARRAY_END,      //{u8 type, u8 size}[size bytes of tag]
     SER_RECOVERY_OBJECT_END,    //{u8 type, u8 size}[size bytes of tag]
     SER_ERROR, //"lexing" error. Is near the ENDers section so that we can check for ender with a single compare
 
@@ -133,9 +128,9 @@ typedef enum Ser_Type {
     SER_F8, SER_F16, SER_F32, SER_F64, //{u8 type}[sizeof(T) bytes]
 
     //aliases
-    SER_LIST = SER_LIST_BEGIN,
+    SER_ARRAY = SER_ARRAY_BEGIN,
     SER_OBJECT = SER_OBJECT_BEGIN,
-    SER_RECOVERY_LIST = SER_RECOVERY_LIST_BEGIN,
+    SER_RECOVERY_ARRAY = SER_RECOVERY_ARRAY_BEGIN,
     SER_RECOVERY_OBJECT = SER_RECOVERY_OBJECT_BEGIN,
     SER_STRING = SER_STRING_64,
     SER_COMPOUND_TYPES_COUNT = 4,
@@ -159,8 +154,9 @@ ATTRIBUTE_INLINE_NEVER
 EXTERNAL void ser_writer_grow(Ser_Writer* w, isize size);
 
 EXTERNAL void ser_binary(Ser_Writer* w, const void* ptr, isize size);
-EXTERNAL void ser_string(Ser_Writer* w, const void* ptr, isize size);
-static inline void ser_cstring(Ser_Writer* w, const char* ptr) { ser_string(w, ptr, ptr ? strlen(ptr) : 0); }
+EXTERNAL void ser_string_separate(Ser_Writer* w, const void* ptr, isize size);
+static inline void ser_string(Ser_Writer* w, Ser_String string) { ser_string_separate(w, string.data, string.count); }
+static inline void ser_cstring(Ser_Writer* w, const char* ptr) { ser_string_separate(w, ptr, ptr ? strlen(ptr) : 0); }
 
 static inline void ser_primitive(Ser_Writer* w, Ser_Type type, const void* ptr, isize size);
 static inline void ser_null(Ser_Writer* w)              { ser_primitive(w, SER_I8, NULL, 0); }
@@ -179,22 +175,22 @@ static inline void ser_u64(Ser_Writer* w, uint64_t val) { ser_primitive(w, SER_U
 static inline void ser_f32(Ser_Writer* w, float val)    { ser_primitive(w, SER_F32, &val, sizeof val); }
 static inline void ser_f64(Ser_Writer* w, double val)   { ser_primitive(w, SER_F64, &val, sizeof val); }
 
-static inline void ser_list_begin(Ser_Writer* w)        { ser_primitive(w, SER_LIST_BEGIN, NULL, 0); }
-static inline void ser_list_end(Ser_Writer* w)          { ser_primitive(w, SER_LIST_END, NULL, 0); }
+static inline void ser_array_begin(Ser_Writer* w)       { ser_primitive(w, SER_ARRAY_BEGIN, NULL, 0); }
+static inline void ser_array_end(Ser_Writer* w)         { ser_primitive(w, SER_ARRAY_END, NULL, 0); }
 static inline void ser_object_begin(Ser_Writer* w)      { ser_primitive(w, SER_OBJECT_BEGIN, NULL, 0); }
 static inline void ser_object_end(Ser_Writer* w)        { ser_primitive(w, SER_OBJECT_END, NULL, 0); }
 
 EXTERNAL void ser_custom_recovery(Ser_Writer* w, Ser_Type type, const void* ptr, isize size, const void* ptr2, isize size2);
 EXTERNAL void ser_custom_recovery_with_hash(Ser_Writer* w, Ser_Type type, const char* str);
 
-static inline void ser_recovery_list_begin(Ser_Writer* w, const char* str)      { ser_custom_recovery_with_hash(w, SER_RECOVERY_LIST_BEGIN, str); }
-static inline void ser_recovery_list_end(Ser_Writer* w, const char* str)        { ser_custom_recovery_with_hash(w, SER_RECOVERY_LIST_END, str); }
+static inline void ser_recovery_array_begin(Ser_Writer* w, const char* str)     { ser_custom_recovery_with_hash(w, SER_RECOVERY_ARRAY_BEGIN, str); }
+static inline void ser_recovery_array_end(Ser_Writer* w, const char* str)       { ser_custom_recovery_with_hash(w, SER_RECOVERY_ARRAY_END, str); }
 static inline void ser_recovery_object_begin(Ser_Writer* w, const char* str)    { ser_custom_recovery_with_hash(w, SER_RECOVERY_OBJECT_BEGIN, str); }
 static inline void ser_recovery_object_end(Ser_Writer* w, const char* str)      { ser_custom_recovery_with_hash(w, SER_RECOVERY_OBJECT_END, str); }
 
 static inline void ser_writer_reserve(Ser_Writer* w, isize size) {
     if(w->offset + size > w->capacity)
-        ser_writer_grow(w, size);
+        ser_writer_grow(w, w->offset + size);
 }
 static inline void ser_writer_write(Ser_Writer* w, const void* ptr, isize size) {
     ser_writer_reserve(w, size);
@@ -241,38 +237,50 @@ static inline Ser_Reader ser_reader_make(const void* data, isize size)  {Ser_Rea
 static inline Ser_Reader ser_reader_make_from_string(Ser_String string) {return ser_reader_make(string.data, string.count);}
 
 EXTERNAL bool deser_value(Ser_Reader* r, Ser_Value* out);
-EXTERNAL bool deser_iterate_list(const Ser_Value* list, Ser_Value* out_val);
+EXTERNAL bool deser_iterate_array(const Ser_Value* array, Ser_Value* out_val);
 EXTERNAL bool deser_iterate_object(const Ser_Value* object, Ser_Value* out_key, Ser_Value* out_val);
 EXTERNAL void deser_skip_to_depth(Ser_Reader* r, isize depth);
 
-ATTRIBUTE_INLINE_NEVER EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type target_type, void* out);
+ATTRIBUTE_INLINE_NEVER EXTERNAL bool ser_convert_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type target_type, void* out);
 
 static inline bool deser_null(Ser_Value object)                    { return object.type == SER_NULL; }
 static inline bool deser_bool(Ser_Value object, bool* val)         { if(object.type == SER_BOOL)   { *val = object.mbool; return true; } return false; }
-static inline bool deser_binary(Ser_Value object, Ser_String* val) { if(object.type == SER_STRING) { *val = object.mstring; return true; } return false; }
-static inline bool deser_string(Ser_Value object, Ser_String* val) { if(object.type == SER_BINARY) { *val = object.mbinary; return true; } return false; }
+static inline bool deser_binary(Ser_Value object, Ser_String* val) { if(object.type == SER_BINARY) { *val = object.mbinary; return true; } return false; }
+static inline bool deser_string(Ser_Value object, Ser_String* val) { if(object.type == SER_STRING) { *val = object.mstring; return true; } return false; }
 
-static inline bool deser_i64(Ser_Value val, int64_t* out)   { if(val.exact_type == SER_I64) {*out = (int64_t) val.mi64; return true;} return deser_generic_num(val.type, val.mu64, SER_I64, out); }
-static inline bool deser_i32(Ser_Value val, int32_t* out)   { if(val.exact_type == SER_I32) {*out = (int32_t) val.mi64; return true;} return deser_generic_num(val.type, val.mu64, SER_I32, out); }
-static inline bool deser_i16(Ser_Value val, int16_t* out)   { if(val.exact_type == SER_I16) {*out = (int16_t) val.mi64; return true;} return deser_generic_num(val.type, val.mu64, SER_I16, out); }
-static inline bool deser_i8(Ser_Value val, int8_t* out)     { if(val.exact_type == SER_I8)  {*out = (int8_t)  val.mi64; return true;} return deser_generic_num(val.type, val.mu64, SER_I8, out); }
+static inline bool deser_i64(Ser_Value val, int64_t* out)   { if(val.exact_type == SER_I64) {*out = (int64_t) val.mi64; return true;} return ser_convert_generic_num(val.type, val.mu64, SER_I64, out); }
+static inline bool deser_i32(Ser_Value val, int32_t* out)   { if(val.exact_type == SER_I32) {*out = (int32_t) val.mi64; return true;} return ser_convert_generic_num(val.type, val.mu64, SER_I32, out); }
+static inline bool deser_i16(Ser_Value val, int16_t* out)   { if(val.exact_type == SER_I16) {*out = (int16_t) val.mi64; return true;} return ser_convert_generic_num(val.type, val.mu64, SER_I16, out); }
+static inline bool deser_i8(Ser_Value val, int8_t* out)     { if(val.exact_type == SER_I8)  {*out = (int8_t)  val.mi64; return true;} return ser_convert_generic_num(val.type, val.mu64, SER_I8, out); }
 
-static inline bool deser_u64(Ser_Value val, uint64_t* out)  { if(val.exact_type == SER_U64) {*out = (uint64_t) val.mu64; return true;} return deser_generic_num(val.type, val.mu64, SER_U64, out); }
-static inline bool deser_u32(Ser_Value val, uint32_t* out)  { if(val.exact_type == SER_U32) {*out = (uint32_t) val.mu64; return true;} return deser_generic_num(val.type, val.mu64, SER_U32, out); }
-static inline bool deser_u16(Ser_Value val, uint16_t* out)  { if(val.exact_type == SER_U16) {*out = (uint16_t) val.mu64; return true;} return deser_generic_num(val.type, val.mu64, SER_U16, out); }
-static inline bool deser_u8(Ser_Value val, uint8_t* out)    { if(val.exact_type == SER_U8)  {*out = (uint8_t)  val.mu64; return true;} return deser_generic_num(val.type, val.mu64, SER_U8, out); }
+static inline bool deser_u64(Ser_Value val, uint64_t* out)  { if(val.exact_type == SER_U64) {*out = (uint64_t) val.mu64; return true;} return ser_convert_generic_num(val.type, val.mu64, SER_U64, out); }
+static inline bool deser_u32(Ser_Value val, uint32_t* out)  { if(val.exact_type == SER_U32) {*out = (uint32_t) val.mu64; return true;} return ser_convert_generic_num(val.type, val.mu64, SER_U32, out); }
+static inline bool deser_u16(Ser_Value val, uint16_t* out)  { if(val.exact_type == SER_U16) {*out = (uint16_t) val.mu64; return true;} return ser_convert_generic_num(val.type, val.mu64, SER_U16, out); }
+static inline bool deser_u8(Ser_Value val, uint8_t* out)    { if(val.exact_type == SER_U8)  {*out = (uint8_t)  val.mu64; return true;} return ser_convert_generic_num(val.type, val.mu64, SER_U8, out); }
 
-static inline bool deser_f64(Ser_Value val, double* out)    { if(val.exact_type == SER_F64) {*out = (double) val.mf64; return true;} return deser_generic_num(val.type, val.mu64, SER_F64, out); }
-static inline bool deser_f32(Ser_Value val, float* out)     { if(val.exact_type == SER_F32) {*out = (float) val.mf32; return true;} return deser_generic_num(val.type, val.mu64, SER_F32, out); }
+static inline bool deser_f64(Ser_Value val, double* out)    { if(val.exact_type == SER_F64) {*out = (double) val.mf64; return true;} return ser_convert_generic_num(val.type, val.mu64, SER_F64, out); }
+static inline bool deser_f32(Ser_Value val, float* out)     { if(val.exact_type == SER_F32) {*out = (float) val.mf32; return true;} return ser_convert_generic_num(val.type, val.mu64, SER_F32, out); }
 
-#define ser_cstring_eq(value, cstr) ser_string_eq(value, SER_CSTRING(cstr))
 static inline bool ser_string_eq(Ser_Value value, Ser_String str) {
     return value.type == SER_STRING 
         && value.mstring.count == str.count 
         && memcmp(value.mstring.data, str.data, str.count) == 0;
 }
 
-//IMPL ==============================
+static inline bool ser_cstring_eq(Ser_Value value, const char* str) {
+    isize len = str ? strlen(str) : 0;
+    return value.type == SER_STRING 
+        && value.mstring.count == len 
+        && memcmp(value.mstring.data, str, len) == 0;
+}
+
+EXTERNAL bool ser_write_json(Ser_Writer* w, Ser_Value val, isize indent_or_negative, isize max_recursion);
+EXTERNAL bool ser_write_json_read(Ser_Writer* w, Ser_Reader* r, isize indent_or_negative, isize max_recursion);
+#endif
+
+#if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_SERIALIZE)) && !defined(MODULE_HAS_IMPL_SERIALIZE)
+#define MODULE_HAS_IMPL_SERIALIZE
+
 EXTERNAL void ser_writer_init(Ser_Writer* w, void* buffer_or_null, isize size, Allocator* alloc_or_null_if_malloc)
 {
     ser_writer_deinit(w);
@@ -288,7 +296,7 @@ EXTERNAL void ser_writer_deinit(Ser_Writer* w)
 {
     if(w->has_user_buffer == false) {
         if(w->alloc) 
-            ((Allocator_Func) (void*) w->alloc)(w->alloc, NULL, w->data, w->capacity, 1, NULL);
+            (*w->alloc)(w->alloc, 0, 0, w->data, w->capacity, 1, NULL);
         else
             free(w->data);
     }
@@ -306,7 +314,7 @@ EXTERNAL void ser_writer_grow(Ser_Writer* w, isize size)
     void* old_buffer = w->has_user_buffer ? 0 : w->data;
     isize old_capacity = w->has_user_buffer ? 0 : w->capacity;
     if(w->alloc) 
-        new_data = ((Allocator_Func) (void*) w->alloc)(w->alloc, new_capacity, old_buffer, old_capacity, 1, NULL);
+        new_data = (*w->alloc)(w->alloc, 0, new_capacity, old_buffer, old_capacity, 1, NULL);
     else
         new_data = realloc(old_buffer, new_capacity);
 
@@ -314,18 +322,18 @@ EXTERNAL void ser_writer_grow(Ser_Writer* w, isize size)
         memcpy(new_data, w->data, w->capacity);
         w->has_user_buffer = false;
     }
-
+    memset((uint8_t*) new_data + old_capacity, 0, new_capacity - old_capacity);
     w->data = (uint8_t*) new_data;
     w->capacity = new_capacity;
 }
 
-EXTERNAL void ser_string(Ser_Writer* w, const void* ptr, isize size)
+EXTERNAL void ser_string_separate(Ser_Writer* w, const void* ptr, isize size)
 {
     if(w->offset + size+10 > w->capacity)
         ser_writer_grow(w, size+10);
 
     if(size <= 0)
-        w->data[w->offset] = (uint8_t) SER_STRING_0;
+        w->data[w->offset++] = (uint8_t) SER_STRING_0;
     else
     {
         if(size >= 256) {
@@ -352,9 +360,8 @@ EXTERNAL void ser_binary(Ser_Writer* w, const void* ptr, isize size)
 
 EXTERNAL void ser_custom_recovery(Ser_Writer* w, Ser_Type type, const void* ptr, isize size, const void* ptr2, isize size2)
 {
-    uint8_t null = 0;
-    uint8_t usize = (uint8_t) size;
-    ser_primitive(w, type, &usize, size);
+    uint8_t usize = (uint8_t) (size + size2);
+    ser_primitive(w, type, &usize, sizeof usize);
     ser_writer_write(w, ptr, size);
     ser_writer_write(w, ptr2, size2);
 }
@@ -398,6 +405,7 @@ EXTERNAL bool deser_value(Ser_Reader* r, Ser_Value* out_val)
     Ser_Value out = {0};
     out.type = SER_ERROR;
     out.exact_type = SER_ERROR;
+    out.r = r;
     isize offset_before = r->offset; 
 
     uint8_t uncast_type = 0; 
@@ -427,25 +435,26 @@ EXTERNAL bool deser_value(Ser_Reader* r, Ser_Value* out_val)
             case SER_F32: { float    val = 0; ok = deser_read(r, &val, 4); out.mf32 = val; } break;
             case SER_F64: { double   val = 0; ok = deser_read(r, &val, 8); out.mf64 = val; } break;
 
-            case SER_LIST_END:
-            case SER_OBJECT_END:    { out.mcompound.depth = r->depth; r->depth -= 1; } break;
-            case SER_LIST_BEGIN:    
-            case SER_OBJECT_BEGIN:  { out.mcompound.depth = r->depth; r->depth += 1; } break;
+            case SER_ARRAY_END:
+            case SER_OBJECT_END:    { out.mcompound.depth = (uint32_t) r->depth; r->depth -= 1; } break;
+            case SER_ARRAY_BEGIN:    
+            case SER_OBJECT_BEGIN:  { out.mcompound.depth = (uint32_t) r->depth; r->depth += 1; } break;
 
-            case SER_RECOVERY_LIST_END:
+            case SER_RECOVERY_ARRAY_END:
             case SER_RECOVERY_OBJECT_END:    
-            case SER_RECOVERY_LIST_BEGIN:    
+            case SER_RECOVERY_ARRAY_BEGIN:    
             case SER_RECOVERY_OBJECT_BEGIN:  { 
                 uint8_t size = 0;
                 ok &= deser_read(r, &size, sizeof size);
                 out.mcompound.recovery = r->data + r->offset;
                 out.mcompound.recovery_len = size;
-                out.mcompound.depth = 0;
+                out.mcompound.depth = (uint32_t) r->depth;
+
                 ok &= deser_skip(r, out.mstring.count);
                 if(ok) {
-                    if((uint32_t) type - SER_LIST_END < SER_COMPOUND_TYPES_COUNT)
+                    if((uint32_t) type - SER_ARRAY_END < SER_COMPOUND_TYPES_COUNT) 
                         r->depth -= 1; 
-                    else
+                    else 
                         r->depth += 1; 
                 }
             } break;
@@ -505,20 +514,20 @@ ATTRIBUTE_INLINE_NEVER static bool _deser_recover(const Ser_Value* object);
 
 inline static bool _ser_type_is_ender_or_error(Ser_Type type)
 {
-    return (uint32_t) type - SER_LIST_END <= SER_COMPOUND_TYPES_COUNT;
+    return (uint32_t) type - SER_ARRAY_END <= SER_COMPOUND_TYPES_COUNT;
 }
 
-EXTERNAL bool deser_iterate_list(const Ser_Value* list, Ser_Value* out_val)
+EXTERNAL bool deser_iterate_array(const Ser_Value* array, Ser_Value* out_val)
 {
-    if(list->type != SER_LIST && list->type != SER_RECOVERY_LIST)
+    if(array->type != SER_ARRAY && array->type != SER_RECOVERY_ARRAY)
         return false;
 
-    deser_skip_to_depth(list->r, list->mcompound.depth);
-    deser_value(list->r, out_val);
+    deser_skip_to_depth(array->r, array->mcompound.depth + 1);
+    deser_value(array->r, out_val);
     if(_ser_type_is_ender_or_error(out_val->type))
     {
-        if(list->type != out_val->type - SER_COMPOUND_TYPES_COUNT)
-            _deser_recover(list);
+        if(array->type != out_val->type - SER_COMPOUND_TYPES_COUNT)
+            _deser_recover(array);
         return false;
     }
 
@@ -530,7 +539,7 @@ EXTERNAL bool deser_iterate_object(const Ser_Value* object, Ser_Value* out_key, 
     if(object->type != SER_OBJECT && object->type != SER_RECOVERY_OBJECT)
         return false;
 
-    deser_skip_to_depth(object->r, object->mcompound.depth);
+    deser_skip_to_depth(object->r, object->mcompound.depth + 1);
     deser_value(object->r, out_key);
     if(_ser_type_is_ender_or_error(out_key->type)) 
     {
@@ -542,7 +551,7 @@ EXTERNAL bool deser_iterate_object(const Ser_Value* object, Ser_Value* out_key, 
 
     //NOTE: can be removed if we disallow dynamic as keys
     // then this case will just full under error.
-    deser_skip_to_depth(object->r, object->mcompound.depth); 
+    deser_skip_to_depth(object->r, object->mcompound.depth + 1); 
     deser_value(object->r, out_val);
     if(_ser_type_is_ender_or_error(out_key->type))
         goto recover;
@@ -598,7 +607,7 @@ static isize _ser_find_first_or(Ser_String in_str, Ser_String search_for, isize 
 ATTRIBUTE_INLINE_NEVER
 static bool _deser_recover(const Ser_Value*  object)
 {
-    if(object->type == SER_LIST || object->type == SER_OBJECT)
+    if(object->type == SER_ARRAY || object->type == SER_OBJECT)
         return false;
 
     Ser_Reader* reader = object->r;
@@ -607,7 +616,7 @@ static bool _deser_recover(const Ser_Value*  object)
     char recovery_text[270];
     {
         isize i = 0;
-        recovery_text[i++] = object->type == SER_RECOVERY_LIST ? SER_RECOVERY_LIST_END : SER_RECOVERY_OBJECT_END;
+        recovery_text[i++] = object->type == SER_RECOVERY_ARRAY ? SER_RECOVERY_ARRAY_END : SER_RECOVERY_OBJECT_END;
         recovery_text[i++] = (uint8_t) object->mstring.count;
         memcpy(recovery_text + i, object->mstring.data, object->mstring.count); i += object->mstring.count + 2;
         recovery_len = i;
@@ -623,7 +632,7 @@ static bool _deser_recover(const Ser_Value*  object)
 }
 
 ATTRIBUTE_INLINE_NEVER
-EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type target_type, void* out)
+EXTERNAL bool ser_convert_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type target_type, void* out)
 {
     union {
         uint64_t mu64;
@@ -636,7 +645,11 @@ EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type ta
     if(target_type == SER_F32) {
         float val = 0;
         switch(type) {
-            case SER_F64: val = (float) object.mf64; state = !(val != object.mf64); break; //funny comparison for nans
+            case SER_F64: {
+                val = (float) object.mf64; 
+                //strange comparison becase of nans
+                double back = val; state = memcmp(&back, &object.mf64, sizeof back) == 0;
+            } break; 
             case SER_F32: val = (float) object.mf32; break;
             case SER_I64: val = (float) object.mi64; state = (int64_t) val == object.mi64; break;
             case SER_U64: val = (float) object.mu64; state = (uint64_t) val == object.mu64; break;
@@ -666,8 +679,8 @@ EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type ta
     {
         int64_t val = 0;
         switch(type) {
-            case SER_U64: val = (int64_t) object.mi64; break;
-            case SER_I64: val = (int64_t) object.mu64; state = object.mu64 <= INT64_MAX; break;
+            case SER_U64: val = (int64_t) object.mu64; state = object.mu64 <= INT64_MAX; break;
+            case SER_I64: val = (int64_t) object.mi64; break;
             case SER_F64: val = (int64_t) object.mf64; state = val == object.mf64; break;
             case SER_F32: val = (int64_t) object.mf32; state = val == object.mf32; break;
             default: state = false; break;
@@ -675,15 +688,15 @@ EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type ta
 
         if(state) {
             switch(target_type) {
-                case SER_I64: state = INT64_MIN <= val && val <= INT64_MAX; if(state) *(int64_t*) out = val; break; 
-                case SER_I32: state = INT32_MIN <= val && val <= INT32_MAX; if(state) *(int32_t*) out = val; break; 
-                case SER_I16: state = INT16_MIN <= val && val <= INT16_MAX; if(state) *(int16_t*) out = val; break; 
-                case SER_I8:  state = INT8_MIN  <= val && val <= INT8_MAX;  if(state) *(int8_t*)  out = val; break; 
+                case SER_I64: state = INT64_MIN <= val && val <= INT64_MAX; if(state) *(int64_t*) out = (int64_t) val; break; 
+                case SER_I32: state = INT32_MIN <= val && val <= INT32_MAX; if(state) *(int32_t*) out = (int32_t) val; break; 
+                case SER_I16: state = INT16_MIN <= val && val <= INT16_MAX; if(state) *(int16_t*) out = (int16_t) val; break; 
+                case SER_I8:  state = INT8_MIN  <= val && val <= INT8_MAX;  if(state) *(int8_t*)  out = (int8_t) val; break; 
                 
-                case SER_U64: state = 0 <= val && val <= UINT64_MAX; if(state) *(uint64_t*) out = val; break; 
-                case SER_U32: state = 0 <= val && val <= UINT32_MAX; if(state) *(uint32_t*) out = val; break; 
-                case SER_U16: state = 0 <= val && val <= UINT16_MAX; if(state) *(uint16_t*) out = val; break; 
-                case SER_U8:  state = 0 <= val && val <= UINT8_MAX;  if(state) *(uint8_t*)  out = val; break; 
+                case SER_U64: state = 0 <= val && val <= UINT64_MAX; if(state) *(uint64_t*) out = (uint64_t) val; break; 
+                case SER_U32: state = 0 <= val && val <= UINT32_MAX; if(state) *(uint32_t*) out = (uint32_t) val; break; 
+                case SER_U16: state = 0 <= val && val <= UINT16_MAX; if(state) *(uint16_t*) out = (uint16_t) val; break; 
+                case SER_U8:  state = 0 <= val && val <= UINT8_MAX;  if(state) *(uint8_t*)  out = (uint8_t) val; break; 
 
                 default: state = false; break;
             }
@@ -692,189 +705,169 @@ EXTERNAL bool deser_generic_num(Ser_Type type, uint64_t generic_num, Ser_Type ta
     return state;
 }
 
-
-//START of test
-bool deser_f32v3(const Ser_Value* object, float out[3])
+static void ser_write_newline(Ser_Writer* w, isize indent_or_negative, isize depth)
 {
-    if(object->type == SER_LIST)
-    {
-        int count = 0;
-        for(Ser_Value val = {0}; deser_iterate_list(object, &val); ) {
-            count += deser_f32(val, &out[count]);
-            if(count >= 3)
-                break;
-        }
-
-        return count >= 3;
+    if(indent_or_negative >= 0) {
+        ser_writer_reserve(w, depth*indent_or_negative + 1);
+        w->data[w->offset++] = '\n';
+        for(isize i = 0; i < depth*indent_or_negative; i++)
+            w->data[w->offset++] = ' ';
     }
-    else if(object->type == SER_OBJECT)
-    {
-        int parts = 0;
-        for(Ser_Value key = {0}, val = {0}; deser_iterate_object(object, &key, &val); ) 
-        {
-                 if(ser_cstring_eq(key, "x")) parts |= deser_f32(val, &out[0]) << 0;
-            else if(ser_cstring_eq(key, "y")) parts |= deser_f32(val, &out[1]) << 1;
-            else if(ser_cstring_eq(key, "z")) parts |= deser_f32(val, &out[2]) << 2;
-        }
-
-        return parts == 7;
-    }
-    return false;    
 }
 
-void ser_f32v3(Ser_Writer* w, const float vals[3]) { 
-    uint8_t data[32];
-    int i = 0, c = 0;
-    data[i++] = SER_LIST_BEGIN;
-        data[i++] = SER_F32; memcpy(data + i, vals + c++, sizeof(float)); i += sizeof(float);
-        data[i++] = SER_F32; memcpy(data + i, vals + c++, sizeof(float)); i += sizeof(float);
-        data[i++] = SER_F32; memcpy(data + i, vals + c++, sizeof(float)); i += sizeof(float);
-        data[i++] = SER_F32; memcpy(data + i, vals + c++, sizeof(float)); i += sizeof(float);
-    data[i++] = SER_LIST_END;
-    ser_writer_write(w, data, i);
-}
-
-typedef union Vec3 {
-    struct {
-        float x;
-        float y;
-        float z;
-    };
-    float floats[3];
-} Vec3;
-
-typedef enum Map_Scale_Filter {
-    MAP_SCALE_FILTER_BILINEAR = 0,
-    MAP_SCALE_FILTER_TRILINEAR,
-    MAP_SCALE_FILTER_NEAREST,
-} Map_Scale_Filter;
-
-typedef enum Map_Repeat {
-    MAP_REPEAT_REPEAT = 0,
-    MAP_REPEAT_MIRRORED_REPEAT,
-    MAP_REPEAT_CLAMP_TO_EDGE,
-    MAP_REPEAT_CLAMP_TO_BORDER
-} Map_Repeat;
-
-#define MAX_CHANNELS 4
-typedef struct Map_Info {
-    Vec3 offset;                
-    Vec3 scale; //default to 1 1 1
-    Vec3 resolution;
-
-    int32_t channels_count; 
-    int32_t channels_indices1[MAX_CHANNELS]; 
-
-    Map_Scale_Filter filter_minify;
-    Map_Scale_Filter filter_magnify;
-    Map_Repeat repeat_u;
-    Map_Repeat repeat_v;
-    Map_Repeat repeat_w;
-
-    float gamma;          //default 2.2
-    float brightness;     //default 0
-    float contrast;       //default 0
-} Map_Info;
-
-bool deser_map_repeat(const Ser_Value* val, Map_Repeat* repeat)
+static bool _ser_write_json(Ser_Writer* w, Ser_Value val, isize indent_or_negative, isize max_recursion, isize depth)
 {
-    if(0) {}
-    else if(ser_cstring_eq(*val, "repeat"))          *repeat = MAP_REPEAT_REPEAT;
-    else if(ser_cstring_eq(*val, "mirrored"))        *repeat = MAP_REPEAT_MIRRORED_REPEAT;
-    else if(ser_cstring_eq(*val, "clamp_to_edge"))   *repeat = MAP_REPEAT_CLAMP_TO_EDGE;
-    else if(ser_cstring_eq(*val, "clamp_to_border")) *repeat = MAP_REPEAT_CLAMP_TO_BORDER;
-    else return false; //log here
+    //TODO: how do I handle this better???
+    if(depth > max_recursion)
+        return false;
+
+    switch(val.type) {
+        case SER_OBJECT: 
+        case SER_RECOVERY_OBJECT: {
+            isize object_len = 0;
+            ser_writer_write(w, "{", 1);
+            for(Ser_Value key = {0}, value = {0}; deser_iterate_object(&val, &key, &value); object_len ++) {
+                if(object_len > 0)
+                    ser_writer_write(w, ",", 1);
+                ser_write_newline(w, indent_or_negative, depth + 1);
+
+                _ser_write_json(w, key, indent_or_negative, max_recursion, depth + 1);
+                ser_writer_write(w, ": ", 1 + (indent_or_negative >= 0));
+                _ser_write_json(w, value, indent_or_negative, max_recursion, depth + 1);
+            }
+
+            if(object_len > 0)
+                ser_write_newline(w, indent_or_negative, depth);
+            ser_writer_write(w, "}", 1);
+        } break; 
+        
+        case SER_ARRAY: 
+        case SER_RECOVERY_ARRAY: {
+            isize array_len = 0;
+            ser_writer_write(w, "[", 1);
+            for(Ser_Value value = {0}; deser_iterate_array(&val, &value); array_len++) {
+                if(array_len > 0)
+                    ser_writer_write(w, ",", 1);
+                ser_write_newline(w, indent_or_negative, depth + 1);
+                    
+                _ser_write_json(w, value, indent_or_negative, max_recursion, depth + 1);
+            }
+            
+            if(array_len > 0)
+                ser_write_newline(w, indent_or_negative, depth);
+            ser_writer_write(w, "]", 1);
+        } break; 
+
+        case SER_NULL: {
+            ser_writer_write(w, "null", 4); 
+        } break; 
+
+        case SER_BOOL: {
+            val.mbool ? ser_writer_write(w, "true", 4) : ser_writer_write(w, "false", 5); 
+        } break;
+            
+        case SER_I64: {
+            char buffer[64] = {0};
+            int count = snprintf(buffer, sizeof buffer, "%lli", (long long) val.mi64);
+            ser_writer_write(w, buffer, count); 
+        } break;
+            
+        case SER_U64: {
+            char buffer[64] = {0};
+            int count = snprintf(buffer, sizeof buffer, "%llu", (unsigned long long) val.mi64);
+            ser_writer_write(w, buffer, count); 
+        } break;
+
+        case SER_F64:
+        case SER_F32: {
+            char buffer[64] = {0};
+            double cast = val.type == SER_F64 ? val.mf64 : val.mf32;
+            int count = 0;
+                
+            //do a strange lower bound to find the minimum number of significant digits to print
+		    int digits_low_i = 0;
+		    int digits_count = val.type == SER_F64 ? 14 : 10;
+		    while (digits_count > 0)
+		    {
+			    int step = digits_count / 2;
+			    int curr = digits_low_i + step;
+                count = snprintf(buffer, sizeof buffer, "%.*lf", digits_count, cast);
+                double reconstructed = strtod(buffer, NULL);
+			    if(reconstructed != cast)
+			    {
+				    digits_low_i = curr + 1;
+				    digits_count -= step + 1;
+			    }
+			    else
+				    digits_count = step;
+		    }
+            
+            if(digits_count == 0)
+                count = snprintf(buffer, sizeof buffer, "%.*lf", digits_count, cast);
+            ser_writer_write(w, buffer, count); 
+        } break;
+            
+        case SER_BINARY: {
+            const char* hex = "0123456789ABCDEF";
+            ser_writer_reserve(w, val.mbinary.count*2 + 2);
+
+            w->data[w->offset++] = '"';
+            for(isize i = 0; i < val.mbinary.count; i++)
+            {
+                uint8_t c = (uint8_t) val.mbinary.data[i];
+                w->data[w->offset++] = hex[c >> 4];
+                w->data[w->offset++] = hex[c & 7];
+            }
+            w->data[w->offset++] = '"';
+        } break;
+
+        case SER_STRING: {
+            ser_writer_reserve(w, val.mstring.count + 2);
+                
+            w->data[w->offset++] = '"';
+            for(isize i = 0; i < val.mbinary.count; i++)
+            {
+                //properly escape the json string
+                uint8_t c = (uint8_t) val.mbinary.data[i];
+                switch(c)
+                {
+                    case '"':  ser_writer_write(w, "\\\"", 2); break;
+                    case '\\': ser_writer_write(w, "\\\\", 2); break;
+                    case '\b': ser_writer_write(w, "\\b", 2); break;
+                    case '\f': ser_writer_write(w, "\\f", 2); break;
+                    case '\n': ser_writer_write(w, "\\n", 2); break;
+                    case '\r': ser_writer_write(w, "\\r", 2); break;
+                    case '\t': ser_writer_write(w, "\\t", 2); break;
+                    default: {
+                        if(c > 0x001F)
+                            ser_writer_write(w, &c, 1); 
+                        else {
+                            char buffer[16] = {0};
+                            int count = snprintf(buffer, sizeof buffer, "\\u%04x", (unsigned) c);
+                            ser_writer_write(w, buffer, count); 
+                        }
+                    } break;
+                }
+            }
+            ser_writer_write(w, "\"", 1); 
+        } break;
+    }
+
+    ser_writer_reserve(w, 1);
+    w->data[w->offset] = '\0';
     return true;
 }
 
-bool deser_map_scale_filter(const Ser_Value* val, Map_Scale_Filter* filter)
+EXTERNAL bool ser_write_json(Ser_Writer* w, Ser_Value val, isize indent_or_negative, isize max_recursion)
 {
-    if(0) {}
-    else if(ser_cstring_eq(*val, "bilinear")) *filter = MAP_SCALE_FILTER_BILINEAR;
-    else if(ser_cstring_eq(*val, "trilinear"))*filter = MAP_SCALE_FILTER_TRILINEAR;
-    else if(ser_cstring_eq(*val, "nearest"))  *filter = MAP_SCALE_FILTER_NEAREST;
-    else return false; //log here
-    return true;
+    return _ser_write_json(w, val, indent_or_negative, max_recursion, 0);
 }
 
-bool deser_map_info(Ser_Value object, Map_Info* out_map_info)
+EXTERNAL bool ser_write_json_read(Ser_Writer* w, Ser_Reader* r, isize indent_or_negative, isize max_recursion)
 {
-    Map_Info out = {0};
-    Vec3 scale = {1,1,1};
-    out.scale = scale;
-    out.gamma = 2.2f;
-
-    for(Ser_Value key, val; deser_iterate_object(&object, &key, &val); )
-    {
-        /**/ if(ser_cstring_eq(key, "offset"))          deser_f32v3(&val, out.offset.floats);
-        else if(ser_cstring_eq(key, "scale"))           deser_f32v3(&val, out.scale.floats);
-        else if(ser_cstring_eq(key, "resolution"))      deser_f32v3(&val, out.resolution.floats);
-        else if(ser_cstring_eq(key, "filter_minify"))   deser_map_scale_filter(&val, &out.filter_minify);
-        else if(ser_cstring_eq(key, "filter_magnify"))  deser_map_scale_filter(&val, &out.filter_magnify);
-        else if(ser_cstring_eq(key, "repeat_u"))        deser_map_repeat(&val, &out.repeat_u); //log here
-        else if(ser_cstring_eq(key, "repeat_v"))        deser_map_repeat(&val, &out.repeat_v);
-        else if(ser_cstring_eq(key, "repeat_w"))        deser_map_repeat(&val, &out.repeat_w);
-        else if(ser_cstring_eq(key, "gamma"))           deser_f32(val, &out.gamma);
-        else if(ser_cstring_eq(key, "brightness"))      deser_f32(val, &out.brightness);
-        else if(ser_cstring_eq(key, "contrast"))        deser_f32(val, &out.contrast);
-        else if(ser_cstring_eq(key, "channels_count"))  deser_i32(val, &out.channels_count);
-        else if(ser_cstring_eq(key, "channels_indices1"))
-        {
-            int i = 0;
-            for(Ser_Value item; deser_iterate_list(&val, &item); )
-                i += deser_i32(item, &out.channels_indices1[i]); //log here
-        }
-    }
-
-    *out_map_info = out;
-    return true;
+    Ser_Value val = {0};
+    if(deser_value(r, &val))
+        return _ser_write_json(w, val, indent_or_negative, max_recursion, 0);
+    return false;
 }
-
-ATTRIBUTE_INLINE_NEVER
-void ser_map_repeat(Ser_Writer* w, Map_Repeat repeat)
-{
-    switch(repeat)
-    {
-        case MAP_REPEAT_REPEAT:             ser_cstring(w, "repeat"); break;
-        case MAP_REPEAT_MIRRORED_REPEAT:    ser_cstring(w, "mirrored"); break;
-        case MAP_REPEAT_CLAMP_TO_EDGE:      ser_cstring(w, "clamp_to_edge"); break;
-        case MAP_REPEAT_CLAMP_TO_BORDER:    ser_cstring(w, "clamp_to_border"); break;
-        default:                            ser_cstring(w, "invalid"); break;
-    }
-}
-
-ATTRIBUTE_INLINE_NEVER
-void ser_map_scale_filter(Ser_Writer* w, Map_Scale_Filter filter)
-{
-    switch(filter)
-    {
-        case MAP_SCALE_FILTER_BILINEAR:     ser_cstring(w, "bilinear"); break;
-        case MAP_SCALE_FILTER_TRILINEAR:    ser_cstring(w, "trilinear"); break;
-        case MAP_SCALE_FILTER_NEAREST:      ser_cstring(w, "nearest"); break; 
-        default:                            ser_cstring(w, "invalid"); break; 
-    }
-}
-
-void ser_map_info(Ser_Writer* w, Map_Info info)
-{
-    ser_recovery_object_begin(w, "Map_Info");
-    ser_cstring(w, "offset");          ser_f32v3(w, info.offset.floats);
-    ser_cstring(w, "scale");           ser_f32v3(w, info.scale.floats);
-    ser_cstring(w, "resolution");      ser_f32v3(w, info.resolution.floats);
-    ser_cstring(w, "filter_minify");   ser_map_scale_filter(w, info.filter_minify);
-    ser_cstring(w, "filter_magnify");  ser_map_scale_filter(w, info.filter_magnify);
-    ser_cstring(w, "repeat_u");        ser_map_repeat(w, info.repeat_u);
-    ser_cstring(w, "repeat_v");        ser_map_repeat(w, info.repeat_v);
-    ser_cstring(w, "repeat_w");        ser_map_repeat(w, info.repeat_w);
-    ser_cstring(w, "gamma");           ser_f32(w, info.gamma);
-    ser_cstring(w, "brightness");      ser_f32(w, info.brightness);
-    ser_cstring(w, "contrast");        ser_f32(w, info.contrast);
-    ser_cstring(w, "channels_count");  ser_i32(w, info.channels_count);
-    ser_cstring(w, "channels_indices1");
-    ser_list_begin(w);
-    for(int i = 0; i < MAX_CHANNELS; i++)
-        ser_i32(w, info.channels_indices1[i]);
-    ser_list_end(w);
-    ser_recovery_object_end(w, "Map_Info");
-}
-
+#endif

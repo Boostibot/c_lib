@@ -38,6 +38,7 @@
 #include "test_image.h"
 #include "test_utf.h"
 #include "test_base64.h"
+#include "test_serialize.h"
 #include "test_chase_lev_queue.h"
 #include "test_debug_allocator.h"
 
@@ -65,15 +66,13 @@ static int run_tests(int* total, double time, ...);
 
 static void test_all(double total_time)
 {
-    //for(int i = 0; i < 100; i++)
-        //test_map(1);
-
     run_tests(NULL, total_time, 
         UNIT_TEST(platform_test_all),
         UNIT_TEST(test_list),
         UNIT_TEST(test_list),
         UNIT_TEST(test_image),
         UNIT_TEST(test_stable),
+        UNIT_TEST(test_serialize),
         // UNIT_TEST(test_random),
         UNIT_TEST(test_path),
         UNIT_TEST(test_log),

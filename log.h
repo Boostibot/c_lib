@@ -401,6 +401,11 @@ INTERNAL void _log_builder_deinit(_Log_Builder* builder)
     memset(builder, 0, sizeof *builder);
 }
 
+#ifndef ASSERT
+    #include <assert.h>
+    #define ASSERT(x, ...)              assert(x)
+#endif  
+
 INTERNAL char* _log_builder_append_vfmt(_Log_Builder* builder_or_null, const char* fmt, va_list args)
 {
     _Log_Builder empty = {0};
@@ -408,21 +413,26 @@ INTERNAL char* _log_builder_append_vfmt(_Log_Builder* builder_or_null, const cha
 
     va_list copy;
     va_copy(copy, args);
-    int64_t remaining = builder->capacity - builder->size;
-    int count = vsnprintf(builder->data + builder->size, (size_t) remaining, fmt, copy);
-
-    if(count >= remaining) {
+    ASSERT(builder->capacity >= builder->size);
+    int count = vsnprintf(builder->data + builder->size, (size_t) (builder->capacity - builder->size), fmt, copy);
+    if(builder->size + count >= builder->capacity) {
         void* old_data = builder->data;
-        builder->data = (char*) malloc((size_t) (builder->size + count + 1));
+        isize new_capacity = builder->capacity*2 + 8;
+        if(new_capacity < builder->size + count)
+            new_capacity = builder->size + count;
+
+        builder->data = (char*) malloc((size_t) (new_capacity + 1));
         memcpy(builder->data, old_data, (size_t) builder->size);
         if(builder->is_backed == false)
             free(old_data);
 
         builder->is_backed = false;
-        vsnprintf(builder->data + builder->size, (size_t) count + 1, fmt, args);
+        builder->capacity = new_capacity;
+        count = vsnprintf(builder->data + builder->size, (size_t) (builder->capacity - builder->size), fmt, copy);
     }
 
     builder->size += count; 
+    ASSERT(builder->capacity >= builder->size);
     return builder->data;
 }
 

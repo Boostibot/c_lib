@@ -93,6 +93,26 @@ static Test_String_Map_Entry* test_string_map_set(Test_String_Map* map, String k
     return entry; 
 }
 
+static Test_String_Map_Entry* test_string_map_set2(Test_String_Map* map, String key, String value, Allocator* alloc, String* replaced)       
+{ 
+    uint64_t hash = map_hash_escape(hash_string(key));
+    Test_String_Map_Entry* entry = NULL;
+    if(map_prepare_insert_or_find_ptr(&map->generic, MY_MAP_INFO, &key, hash, (void**) &entry))
+    {
+        *replaced = string_allocate(alloc, entry->value);
+        string_reallocate(map->alloc, &entry->value, value);
+    }
+    else {
+        *replaced = string_make(NULL, 0);
+        entry->hash = hash;
+        entry->key = string_allocate(map->alloc, key);
+        entry->value = string_allocate(map->alloc, value);
+    }
+
+    map_debug_test_consistency(&map->generic, MY_MAP_INFO);
+    return entry; 
+}
+
 static Test_String_Map_Entry* test_string_map_get(const Test_String_Map* map, String string)           
 {
     uint64_t hash = map_hash_escape(hash_string(string));
@@ -299,9 +319,9 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 
         Test_String_Map map = {0};
         test_string_map_init(&map, debug.alloc);
-		//uint64_t random_seed = random_clock_seed();
-		// uint64_t random_seed = 0;
-		// *random_state() = random_state_make(random_seed);
+		uint64_t seed = random_seed();
+		//uint64_t seed = 0;
+		*random_state() = random_state_make(seed);
 
 		isize max_size = 0;
 		isize max_capacity = 0;
@@ -391,7 +411,7 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
                                 break;
                             }
                         }   
-                        TEST(test_string_map_remove(&map, test_string_map_get(&map, removed_key)));
+                        TEST(test_string_map_remove(&map, entry));
                         TEST(key_val_found);
                     }
 				} break;
@@ -408,29 +428,28 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
                         key = string_allocate(arena_outer.alloc, key);
                         val = string_allocate(arena_outer.alloc, val);
                     }
-
-                    //same as with remove
-                    Test_String_Map_Entry* entry = test_string_map_get(&map, key);
+                    
+                    String replaced_val = {0};
+                    test_string_map_set2(&map, key, val, arena_outer.alloc, &replaced_val);
+					TEST(test_string_map_get(&map, key) != NULL);
 
                     bool key_found = false;
-                    for(isize j = 0; j < truth_key_array.count; j++) {
-                        if(entry && string_is_equal(truth_key_array.data[j], key) && string_is_equal(truth_val_array.data[j], entry->value)) {
-                            string_deallocate(truth_alloc.alloc, &truth_val_array.data[j]);
-                            truth_val_array.data[j] = string_allocate(truth_alloc.alloc, val);
-                            key_found = true;
-                            break;
+                    if(replaced_val.data != NULL) {
+                        for(isize j = 0; j < truth_key_array.count; j++) {
+                            if(string_is_equal(truth_key_array.data[j], key) && string_is_equal(truth_val_array.data[j], replaced_val)) {
+                                string_deallocate(truth_alloc.alloc, &truth_val_array.data[j]);
+                                truth_val_array.data[j] = string_allocate(truth_alloc.alloc, val);
+                                key_found = true;
+                                break;
+                            }
                         }
                     }
 
-                    TEST((entry != NULL) == key_found);
                     if(key_found == false) {
                         array_push(&truth_key_array, string_allocate(truth_alloc.alloc, key));
                         array_push(&truth_val_array, string_allocate(truth_alloc.alloc, val));
                     }
-                    
-                    test_string_map_set(&map, key, val);
-					TEST(test_string_map_get(&map, key) != NULL);
-				} break;
+                } break;
 
 				case REMOVE_ALL_WITH_KEY: 
 				case REMOVE_ALL_WITH_BAD_KEY: {
