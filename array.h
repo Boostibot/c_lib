@@ -170,7 +170,13 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
         CHECK_BOUNDS(0, (array_ptr)->count, "cannot pop from empty array!"), \
         (array_ptr)->data[--(array_ptr)->count] \
     ) \
-    
+
+//Removes the item at index and puts the last item in its place to fill the hole
+#define array_remove_unordered(array_ptr, index) (\
+        CHECK_BOUNDS(0, (array_ptr)->count, "cannot remove from empty array!"), \
+        (array_ptr)->data[(index)] = (array_ptr)->data[--(array_ptr)->count] \
+    ) \
+
 //Returns the value of the last item. The array must not be empty!
 #define array_last(array) (\
         CHECK_BOUNDS(0, (array).count, "cannot get last from empty array!"), \

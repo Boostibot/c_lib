@@ -68,12 +68,37 @@ EXTERNAL void  hash_copy_rehash(Hash* to_table, const Hash* from_table, isize to
 EXTERNAL void  hash_copy_simple(Hash* to_table, const Hash* from_table); 
 EXTERNAL bool  hash_remove(Hash* table, isize found_index); 
 EXTERNAL void  hash_test_invariants(const Hash* table, bool slow_check); 
-EXTERNAL void  _hash_hacky_insert(Hash* table, isize index, uint64_t hash, uint64_t value); 
+EXTERNAL isize hash_remove_with_hash(Hash* table, uint64_t hash); 
+EXTERNAL isize hash_remove_with_value(Hash* table, uint64_t hash, uint64_t value); 
+EXTERNAL bool  hash_find_with_value(const Hash* table, uint64_t hash, uint64_t value, isize* index);
 
+EXTERNAL void  _hash_hacky_insert(Hash* table, isize index, uint64_t hash, uint64_t value); 
 static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
 {
     return entry->value - table->empty_value > 1;
 }
+
+//Backlink interface
+// 
+// This is a solution to a rather niche problem. Consider an array of items and a hash accelerating searches into it.
+// Lets say we want to remove an item at particular array index. We want to also remove the item from the accelerating hash, for which we would
+// need to first find it. This requires computing its hash and then doing normal hash_find or similar. When hash is actually a multihash this can
+// be quite expensive operation, thus it would be nice if we had some way to simply obtain the corresponding hash index without this lookup.
+// This is precisely what backlinks are - simply an index from the items back into the hash.
+//
+// We create backlinks by manually inserting the index of the hash entry to the given item. These backlinks remain valid until the next rehash 
+// upon which the Hash_Entries get essentially randomly shuffled. Because of this we give specialized routines that also restore the backlinks
+// as a part of the rehashing. These assume that the Hash stores {hash, index of item} or {hash, pointer of item} entries (thus both can be read as value_u64)
+// and calculate the address uint32_t backlink as: (uint8_t*) items_base + entry.value_u64*item_size + item_backlink_offset. 
+// When we are storing pointers to indices we set item_size=1, items_base=NULL. When we are storing indices we use the pointer to the array and sizeof item.
+// 
+// Be careful that normal rehash might be called when hash_insert, hash_find_or_insert require to grow the hash. If you want to prevent that, then simply call
+// hash_backlink_reserve(table, table.count + 1ll, ...) before the call. 
+
+EXTERNAL void  hash_backlink_reserve(Hash* table, isize to_size, void* items_base, isize item_size, isize item_backlink_offset); 
+EXTERNAL void  hash_backlink_rehash_in_place(Hash* table, isize to_size, Allocator* temp, void* items_base, isize item_size, isize item_backlink_offset);
+EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table, isize to_size, void* items_base, isize item_size, isize item_backlink_offset); 
+
 #endif
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_HASH)) && !defined(MODULE_HAS_IMPL_HASH)
@@ -263,19 +288,24 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
         table->empty_value = empty_value;
     }   
 
-    EXTERNAL void _hash_copy_rehash(Hash* to_table, const Hash* from_table)
+    INTERNAL void _hash_copy_rehash(Hash* to_table, const Hash* from_table, void* items_base, isize item_size, isize item_backlink_offset)
     {   
         hash_clear(to_table);
-        uint64_t mask = (uint64_t) to_table->capacity - 1;
+        uint8_t* base = (uint8_t*) items_base + item_backlink_offset;
+        uint32_t mask = to_table->capacity - 1;
         for(uint32_t j = 0; j < from_table->capacity; j++)
         {
             Hash_Entry entry = from_table->entries[j];
             if(entry.value - from_table->empty_value > 1)
             {
-                uint64_t i = entry.hash & mask;
-                for(uint64_t it = 1;; it++) {
+                uint32_t i = (uint32_t) entry.hash & mask;
+                for(uint32_t it = 1;; it++) {
                     if(to_table->entries[i].value == to_table->empty_value) {
                         to_table->entries[i] = entry;
+
+                        //do backlinks if given
+                        if(item_size > 0)
+                            memcpy(entry.value_u64*item_size + base, &i, sizeof i);
                         break;
                     }
 
@@ -287,15 +317,21 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
         to_table->count = from_table->count;
         to_table->rehashed_times += 1;
     }
-    
+
     ATTRIBUTE_INLINE_NEVER
-    EXTERNAL void hash_copy_rehash(Hash* to_table, const Hash* from_table, isize to_size)
+    EXTERNAL void hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table, isize to_size, void* items_base, isize item_size, isize item_backlink_offset)
     {
         PROFILE_START();
         _hash_check_invariants(to_table);
         _hash_check_invariants(from_table);
 
-        isize required = to_size > from_table->count ? to_size : from_table->count;
+        isize required = from_table->gravestone_count + from_table->count;
+        if(from_table->gravestone_count > from_table->count)
+            required = from_table->count;
+          
+        if(required < to_size)
+            required = to_size;
+
         isize rehash_to = 16;
         while(rehash_to*3/4 < required)
             rehash_to *= 2;
@@ -309,7 +345,7 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
             Hash old_copy = *from_table;
             to_table->entries = (Hash_Entry*) _hash_alloc(to_table->allocator, rehash_to*sizeof(Hash_Entry), NULL, 0, sizeof(Hash_Entry));
             to_table->capacity = (int32_t) rehash_to;
-            _hash_copy_rehash(to_table, &old_copy);
+            _hash_copy_rehash(to_table, &old_copy, items_base, item_size, item_backlink_offset);
             hash_deinit(&old_copy);
         }
         else
@@ -319,13 +355,19 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
                 to_table->entries = (Hash_Entry*) _hash_alloc(to_table->allocator, rehash_to*sizeof(Hash_Entry), to_table->entries, to_table->capacity*sizeof(Hash_Entry), sizeof(Hash_Entry));
                 to_table->capacity = (int32_t) rehash_to;
             }
-            _hash_copy_rehash(to_table, from_table);
+            _hash_copy_rehash(to_table, from_table, items_base, item_size, item_backlink_offset);
         }
         _hash_check_invariants(to_table);
         _hash_check_invariants(from_table);
         PROFILE_STOP();
     }
-
+    
+    ATTRIBUTE_INLINE_NEVER
+    EXTERNAL void hash_copy_rehash(Hash* to_table, const Hash* from_table, isize to_size)
+    {
+        hash_backlink_copy_rehash(to_table, from_table, to_size, 0, 0, 0);
+    }
+    
     EXTERNAL void hash_copy_simple(Hash* to_table, const Hash* from_table)
     {
         PROFILE_START();
@@ -346,13 +388,18 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
         PROFILE_STOP();
     }
     
-    EXTERNAL void hash_rehash_in_place(Hash* table, isize to_size, Allocator* temp_alloc)
+    EXTERNAL void hash_backlink_rehash_in_place(Hash* table, isize to_size, Allocator* temp_alloc, void* items_base, isize item_size, isize item_backlink_offset)
     {
         Hash temp = {0};
         hash_init(&temp, temp_alloc, table->empty_value);
         hash_copy_simple(&temp, table);
-        hash_copy_rehash(table, &temp, to_size);
+        hash_backlink_copy_rehash(table, &temp, to_size, items_base, item_size, item_backlink_offset);
         hash_deinit(&temp);
+    }
+
+    EXTERNAL void hash_rehash_in_place(Hash* table, isize to_size, Allocator* temp_alloc)
+    {
+        hash_backlink_rehash_in_place(table, to_size, temp_alloc, 0, 0, 0);
     }
 
     EXTERNAL void hash_reserve(Hash* table, isize to_size)
@@ -362,6 +409,13 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
             hash_copy_rehash(table, table, to_size);
     }
     
+    EXTERNAL void hash_backlink_reserve(Hash* table, isize to_size, void* items_base, isize item_size, isize item_backlink_offset)
+    {
+        _hash_check_invariants(table);
+        if(table->capacity*3/4 <= to_size + table->gravestone_count)
+            hash_backlink_copy_rehash(table, table, to_size, items_base, item_size, item_backlink_offset);
+    }
+
     EXTERNAL bool hash_find(const Hash* table, uint64_t hash, isize* index)
     {
         _hash_check_invariants(table);
@@ -384,6 +438,33 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
         return _hash_find_next(table, hash, it);
     }
     
+        
+    EXTERNAL isize hash_remove_with_hash(Hash* table, uint64_t hash)
+    {
+        isize count = 0;
+        for(Hash_It it = _hash_it_make(table, hash); _hash_find_next(table, hash, &it); count++)
+            hash_remove(table, it.index);
+        return count;
+    }
+    EXTERNAL isize hash_remove_with_value(Hash* table, uint64_t hash, uint64_t value)
+    {
+        isize count = 0;
+        for(Hash_It it = _hash_it_make(table, hash); _hash_find_next(table, hash, &it); )
+            if(it.entry->value == value)
+                count += hash_remove(table, it.index);
+        return count;
+    }
+    EXTERNAL bool hash_find_with_value(const Hash* table, uint64_t hash, uint64_t value, isize* index)
+    {
+        for(Hash_It it = _hash_it_make(table, hash); _hash_find_next(table, hash, &it); )
+            if(it.entry->value == value)
+            {
+                if(index) *index = it.index;
+                return true;
+            }
+        return false;
+    }
+
     EXTERNAL bool hash_find_or_insert(Hash* table, uint64_t hash, uint64_t value, isize* index)
     {
         return _hash_find_or_insert(table, hash, value, false, index);
@@ -406,7 +487,7 @@ static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
 
     EXTERNAL bool hash_remove(Hash* table, isize found)
     {
-        if((uint32_t) found < table->capacity)
+        if((uint64_t) found < table->capacity)
         {
             ASSERT(table->count > 0);
             table->entries[found].value = table->empty_value + 1;

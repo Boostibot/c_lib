@@ -1,7 +1,7 @@
 #ifndef MODULE_STABLE_ARRAY
 #define MODULE_STABLE_ARRAY
 
-// This is a data structure that aims to be as closely performant as array while being "stable"
+// This is a data structure that aims to be as closely performant as array while being 'stable'
 // meaning that pointers to items remain valid even with additions and removals.
 // 
 // We achieve this by storing unstable array of pointers to blocks of items. 
@@ -58,11 +58,11 @@ typedef struct Stable_Array_Block {
 typedef struct Stable_Array {
     Allocator* allocator;
     Stable_Array_Block* blocks;
+    isize count;
 
     uint32_t blocks_count;
     uint32_t blocks_capacity;
 
-    isize count;
     uint32_t item_size;
     uint32_t item_align;
     uint32_t allocation_size;
@@ -80,10 +80,14 @@ EXTERNAL void  stable_array_deinit(Stable_Array* stable);
 
 EXTERNAL isize stable_array_capacity(const Stable_Array* stable);
 EXTERNAL void* stable_array_at(const Stable_Array* stable, isize index);
-EXTERNAL void* stable_array_alive_at(const Stable_Array* stable, isize index, void* if_not_found);
+EXTERNAL void* stable_array_at_or(const Stable_Array* stable, isize index, void* if_not_found);
 EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out_or_null);
 EXTERNAL void  stable_array_remove(Stable_Array* stable, isize index);
 EXTERNAL void  stable_array_reserve(Stable_Array* stable, isize to);
+
+//useful for tables
+EXTERNAL isize stable_array_insert_nozero(Stable_Array* stable, void** out_or_null);
+EXTERNAL isize stable_array_insert_zero_from(Stable_Array* stable, void** out_or_null, isize zero_from);
 
 EXTERNAL void stable_array_test_invariants(const Stable_Array* stable, bool slow_checks);
 
@@ -115,7 +119,7 @@ inline static void* _stable_array_iter_per_slot(Stable_Array_Iter* it, isize ite
     #include <stdlib.h>
     #include <stdio.h>
     #define ASSERT(x, ...) assert(x)
-    #define REQUIRE(x, ...) assert(x)
+    #define ASSERT_BOUNDS(x, ...) assert(x)
     #define CHECK_BOUNDS(i, count, ...) assert(0 <= (i) && (i) <= (count))
     #define TEST(x, ...) (!(x) ? (fprintf(stderr, "TEST(" #x ") failed. " __VA_ARGS__), abort()) : (void) 0)
 #endif
@@ -267,11 +271,11 @@ EXTERNAL void* stable_array_at(const Stable_Array* stable, isize index)
     size_t block_i = (size_t) index / STABLE_ARRAY_BLOCK_SIZE;
     size_t item_i = (size_t) index %  STABLE_ARRAY_BLOCK_SIZE;
     Stable_Array_Block* block = &stable->blocks[block_i];
-    REQUIRE(block->mask & (1ull << item_i));
+    ASSERT_BOUNDS(block->mask & (1ull << item_i));
     return block->ptr + stable->item_size*item_i;
 }
 
-EXTERNAL void* stable_array_alive_at(const Stable_Array* stable, isize index, void* if_not_found)
+EXTERNAL void* stable_array_at_or(const Stable_Array* stable, isize index, void* if_not_found)
 {
     if(0 <= index && index <= stable_array_capacity(stable))
     {
@@ -284,8 +288,7 @@ EXTERNAL void* stable_array_alive_at(const Stable_Array* stable, isize index, vo
 
     return if_not_found;
 }
-
-EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out)
+EXTERNAL isize stable_array_insert_zero_from(Stable_Array* stable, void** out_or_null, isize zero_from)
 {
     _stable_array_check_invariants(stable);
     if(stable->count + 1 > stable_array_capacity(stable))
@@ -305,11 +308,20 @@ EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out)
 
     isize out_i = block_i*STABLE_ARRAY_BLOCK_SIZE + empty_i;
     stable->count += 1;
-    if(out)
-        *out = block->ptr + empty_i * stable->item_size;
+    if(out_or_null)
+        *out_or_null = block->ptr + empty_i*stable->item_size;
 
     _stable_array_check_invariants(stable);
     return out_i;
+}
+
+EXTERNAL isize stable_array_insert(Stable_Array* stable, void** out_or_null)
+{
+    return stable_array_insert_zero_from(stable, out_or_null, 0);
+}
+EXTERNAL isize stable_array_insert_nozero(Stable_Array* stable, void** out_or_null)
+{
+    return stable_array_insert_zero_from(stable, out_or_null, stable->item_size);
 }
 
 EXTERNAL void stable_array_remove(Stable_Array* stable, isize index)
@@ -320,7 +332,7 @@ EXTERNAL void stable_array_remove(Stable_Array* stable, isize index)
     size_t block_i = (size_t) index / STABLE_ARRAY_BLOCK_SIZE;
     size_t item_i = (size_t) index %  STABLE_ARRAY_BLOCK_SIZE;
     Stable_Array_Block* block = &stable->blocks[block_i];
-    REQUIRE(block->mask & (1ull << item_i));
+    ASSERT_BOUNDS(block->mask & (1ull << item_i));
 
     //If was full before removal add to free list
     if(~block->mask == 0)

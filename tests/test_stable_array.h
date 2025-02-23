@@ -17,11 +17,11 @@ static void test_stable_array()
         TEST(val == val_get);
         *val = 32;
 
-        TEST(stable_array_alive_at(&stable, -2, NULL) == NULL);
-        TEST(stable_array_alive_at(&stable, -1, NULL) == NULL);
-        TEST(stable_array_alive_at(&stable, 0, NULL) != NULL);
-        TEST(stable_array_alive_at(&stable, 1, NULL) == NULL);
-        TEST(stable_array_alive_at(&stable, 2, NULL) == NULL);
+        TEST(stable_array_at_or(&stable, -2, NULL) == NULL);
+        TEST(stable_array_at_or(&stable, -1, NULL) == NULL);
+        TEST(stable_array_at_or(&stable, 0, NULL) != NULL);
+        TEST(stable_array_at_or(&stable, 1, NULL) == NULL);
+        TEST(stable_array_at_or(&stable, 2, NULL) == NULL);
         stable_array_remove(&stable, 0);
 
         enum {INSERT_COUNT = 129};

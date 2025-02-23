@@ -171,7 +171,7 @@ MAP_INLINE_API void map_rehash(Map* map, Map_Info info, isize requested_capacity
 MAP_INLINE_API void map_reserve(Map* map, Map_Info info, isize requested_capacity)
 {
     if(map->capacity*3/4 <= requested_capacity + map->gavestones)
-        map_rehash(map, info, requested_capacity + map->gavestones);
+        map_rehash(map, info, requested_capacity);
 }
 
 //this is a separate fucntion specifically because it doesnt call map_debug_test_invariant so it can be used
@@ -379,7 +379,15 @@ ATTRIBUTE_INLINE_NEVER
 EXTERNAL void _map_rehash(Map* map, isize requested_capacity, uint32_t entry_size, uint32_t entry_align, uint32_t hash_offset)
 {
     TEST(requested_capacity <= UINT32_MAX);
-    isize least_size = requested_capacity > map->count ? requested_capacity : map->count;
+    
+    //Unless there are many many gravestones, count them into the lest size.
+    //This prevents a porblem where if the map has 11 entries and one removed entry, we will rehash
+    // to the same capacity (16). If we then insert an item, remove an item we are back where we were.
+    //Essentially for some unlucky sizes (one before the rehash will triger) there would be a rehash on
+    // every second operation - this is of course very bad for perf
+    isize least_size = map->gavestones > map->count ? map->count : map->gavestones + map->count;
+    if(least_size < requested_capacity)
+        least_size = requested_capacity;
 
     isize new_cap = 16;
     while(new_cap*3/4 <= least_size)
