@@ -164,7 +164,7 @@ CHANAPI isize channel_signed_distance(const Channel* chan);
 CHANAPI isize channel_count(const Channel* chan);
 CHANAPI bool channel_is_empty(const Channel* chan);
 
-CHANAPI bool channel_is_invariant_converged_state(Channel* chan, Channel_Info info);
+CHANAPI bool channel_is_consistent_converged_state(Channel* chan, Channel_Info info);
 
 //==========================================================================
 // Channel ticket interface 
@@ -731,7 +731,7 @@ CHANAPI bool channel_close_push(Channel* chan, Channel_Info info)
     return out;
 }
 
-CHANAPI bool channel_is_invariant_converged_state(Channel* chan, Channel_Info info) 
+CHANAPI bool channel_is_consistent_converged_state(Channel* chan, Channel_Info info) 
 {
     (void) info;
     bool out = true;
@@ -783,12 +783,12 @@ CHANAPI bool channel_is_invariant_converged_state(Channel* chan, Channel_Info in
                 
             #ifdef CHANNEL_DEBUG
             uint8_t* item = chan->items + target*info.item_size;
-            bool is_empty_invariant = true;
+            bool is_empty_consistent = true;
             for(isize i = 0; i < info.item_size; i++)
-                is_empty_invariant = is_empty_invariant && item[i] == (uint8_t) -1;
+                is_empty_consistent = is_empty_consistent && item[i] == (uint8_t) -1;
 
-            out = out && is_empty_invariant;
-            //ASSERT(is_empty_invariant);
+            out = out && is_empty_consistent;
+            //ASSERT(is_empty_consistent);
             #endif
         }
     }

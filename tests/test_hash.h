@@ -180,7 +180,7 @@ INTERNAL void test_hash_stress(f64 max_seconds)
 			if(max_capacity < table.capacity)
 				max_capacity = table.capacity;
 					
-			hash_test_invariants(&table, true);
+			hash_test_consistency(&table, true);
 			{
 				ASSERT(truth_key_array.count == truth_val_array.count);
 				TEST(truth_key_array.count == table.count);

@@ -67,10 +67,10 @@ EXTERNAL void  hash_rehash_in_place(Hash* table, isize to_size, Allocator* temp)
 EXTERNAL void  hash_copy_rehash(Hash* to_table, const Hash* from_table, isize to_size); 
 EXTERNAL void  hash_copy_simple(Hash* to_table, const Hash* from_table); 
 EXTERNAL bool  hash_remove(Hash* table, isize found_index); 
-EXTERNAL void  hash_test_invariants(const Hash* table, bool slow_check); 
 EXTERNAL isize hash_remove_with_hash(Hash* table, uint64_t hash); 
 EXTERNAL isize hash_remove_with_value(Hash* table, uint64_t hash, uint64_t value); 
 EXTERNAL bool  hash_find_with_value(const Hash* table, uint64_t hash, uint64_t value, isize* index);
+EXTERNAL void  hash_test_consistency(const Hash* table, bool slow_check); 
 
 EXTERNAL void  _hash_hacky_insert(Hash* table, isize index, uint64_t hash, uint64_t value); 
 static inline bool hash_entry_is_used(const Hash* table, Hash_Entry* entry)
@@ -126,7 +126,7 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
         #define INTERNAL inline static
     #endif
 
-    INTERNAL void _hash_check_invariants(const Hash* table)
+    INTERNAL void _hash_check_consistency(const Hash* table)
     {
         #ifndef HASH_DEBUG
             #if defined(DO_ASSERTS_SLOW)
@@ -140,7 +140,7 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
 
         (void) table;
         #if MAP_DEBUG > 0
-            hash_test_invariants(table, HASH_DEBUG > 1);
+            hash_test_consistency(table, HASH_DEBUG > 1);
         #endif
     }
 
@@ -175,11 +175,11 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
         return false;
     }
     
-    //lowlevel insert into a slot without any guarantee that its the right. (well, except invariants)
+    //lowlevel insert into a slot without any guarantee that its the right. (well, except consistency)
     //Sometimes this comes in handy
     EXTERNAL void  _hash_hacky_insert(Hash* table, isize index, uint64_t hash, uint64_t value)
     {
-        _hash_check_invariants(table);
+        _hash_check_consistency(table);
         uint64_t empty = table->empty_value;
         uint64_t removed = table->empty_value + 1;
         
@@ -192,7 +192,7 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
         table->count += 1;
         entry->value = value;
         entry->hash = hash;
-        _hash_check_invariants(table);
+        _hash_check_consistency(table);
     }
 
     INTERNAL bool _hash_find_or_insert(Hash* table, uint64_t hash, uint64_t value, bool insert_only, isize* index) 
@@ -240,7 +240,7 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
         table->entries[i].hash = hash;
         table->count += 1;
         *index = i;
-        _hash_check_invariants(table);
+        _hash_check_consistency(table);
         return true;
     }
     
@@ -254,7 +254,7 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
 
         to_table->gravestone_count = 0;
         to_table->count = 0;
-        _hash_check_invariants(to_table);
+        _hash_check_consistency(to_table);
     }
     
     INTERNAL void* _hash_alloc(Allocator* alloc, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align)
@@ -322,8 +322,8 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
     EXTERNAL void hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table, isize to_size, void* items_base, isize item_size, isize item_backlink_offset)
     {
         PROFILE_START();
-        _hash_check_invariants(to_table);
-        _hash_check_invariants(from_table);
+        _hash_check_consistency(to_table);
+        _hash_check_consistency(from_table);
 
         isize required = from_table->gravestone_count + from_table->count;
         if(from_table->gravestone_count > from_table->count)
@@ -357,8 +357,8 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
             }
             _hash_copy_rehash(to_table, from_table, items_base, item_size, item_backlink_offset);
         }
-        _hash_check_invariants(to_table);
-        _hash_check_invariants(from_table);
+        _hash_check_consistency(to_table);
+        _hash_check_consistency(from_table);
         PROFILE_STOP();
     }
     
@@ -371,8 +371,8 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
     EXTERNAL void hash_copy_simple(Hash* to_table, const Hash* from_table)
     {
         PROFILE_START();
-        _hash_check_invariants(to_table);
-        _hash_check_invariants(from_table);
+        _hash_check_consistency(to_table);
+        _hash_check_consistency(from_table);
         if(to_table->entries == from_table->entries)
             return;
 
@@ -383,8 +383,8 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
         memcpy(to_table->entries, from_table->entries, from_table->capacity*sizeof(Hash_Entry));
         to_table->gravestone_count = from_table->gravestone_count;
         to_table->empty_value = from_table->empty_value;
-        _hash_check_invariants(to_table);
-        _hash_check_invariants(from_table);
+        _hash_check_consistency(to_table);
+        _hash_check_consistency(from_table);
         PROFILE_STOP();
     }
     
@@ -404,21 +404,21 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
 
     EXTERNAL void hash_reserve(Hash* table, isize to_size)
     {
-        _hash_check_invariants(table);
+        _hash_check_consistency(table);
         if(table->capacity*3/4 <= to_size + table->gravestone_count)
             hash_copy_rehash(table, table, to_size);
     }
     
     EXTERNAL void hash_backlink_reserve(Hash* table, isize to_size, void* items_base, isize item_size, isize item_backlink_offset)
     {
-        _hash_check_invariants(table);
+        _hash_check_consistency(table);
         if(table->capacity*3/4 <= to_size + table->gravestone_count)
             hash_backlink_copy_rehash(table, table, to_size, items_base, item_size, item_backlink_offset);
     }
 
     EXTERNAL bool hash_find(const Hash* table, uint64_t hash, isize* index)
     {
-        _hash_check_invariants(table);
+        _hash_check_consistency(table);
         Hash_Iter it = _hash_it_make(table, hash);
         bool out = _hash_find_next(table, hash, &it);
         if(index)
@@ -428,7 +428,7 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
 
     EXTERNAL bool hash_iterate(const Hash* table, uint64_t hash, Hash_Iter* it)
     {
-        _hash_check_invariants(table);
+        _hash_check_consistency(table);
         if(it->iter == 0)
             *it = _hash_it_make(table, hash);
         else {
@@ -498,7 +498,7 @@ EXTERNAL void  hash_backlink_copy_rehash(Hash* to_table, const Hash* from_table,
         return false;
     }
     
-    EXTERNAL void hash_test_invariants(const Hash* table, bool slow_check)
+    EXTERNAL void hash_test_consistency(const Hash* table, bool slow_check)
     {
         PROFILE_START();
         TEST((table->entries == NULL) == (table->capacity == 0));

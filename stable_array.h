@@ -1,45 +1,40 @@
 #ifndef MODULE_STABLE
 #define MODULE_STABLE
 
-// Stable is a dynamic array of separately allocated blocks of items guaranteeing pointer stability of items.
-// Its ment to be used as a store of system data ie. all assets, all entities, SQL-style table etc.
-// Based on Jon Blows "bucket array", see here: https://www.youtube.com/watch?v=COQKyOCAxOQ
+// This is a data structure that aims to be as closely performant as array while being 'stable'
+// meaning that pointers to items remain valid even with additions and removals.
 // 
-// We want the items stored within to have the same semantics as if they were all separately allocated while 
-// also being dense in memory and allowing iteration. Insertion, removal and lookup should be fast O(1). 
-// Additionally, we want each stored item to be represented via an index. 
+// We achieve this by storing unstable array of pointers to blocks of items. 
+// Access is thus simply two pointer dereferences instead of one. This guarantees O(1) fast lookup.
 // 
-// Because of the pointer stability requirement, on removals we cannot simply shift back or "unordered remove" an
-// item. We need to track which items are alive and which not. Additionally we should be able to fill
-// the holes with new items. Both of these is done by storing 64 bit bitmask where on bits are alive and off bits
-// are dead items. To find next empty slot within a block we can use the bitscan/find first instruction. When
-// there are no more empty slots within a block we can use a normal freelist of blocks to find next block with at 
-// least one empty slot.
+// It can be used for implementing "tables" - SQL like collections of items with possibly multiple
+// accelerating hashes. The main advantage over regular array is that we dont have to worry about vacant slots 
+// on removal and can skip the hash table lookup by keeping the pointer and using it (because the address is stable). 
+// We can additionally keep also the key and compare if it still matches with the one currently there.
 // 
-// The structure is optimized for insertions and looping. The only perf consideration is how many cache line reads 
-// are necessary to perform the insertion. We want it to be at most 1 not counting in the lookup of the Stable 
-// structure fields. On insertion we need to read the first free block, the alive mask, and then the block pointer. 
-// Potentially we want to remove the block from the freelist if we filled all slots. So we simply store all of 
-// these things next to each other in the dynamic array, unstable part.
+// This structure can store up to UINT32_MAX*32 items which means 128GB worth of uint8_t's. Of course for
+// that becomes 512GB for uint32_t. Because of the individual allocations for each of the blocks, the allocation
+// of a new block is constant time. On the other hand any number of items can be located linearly in memory making 
+// the iteration over elements very fast. Thus its well suite for large collections of data.  
 // 
-// Lastly we allow to allocate more than a single block at a time because 64 might be way too little for certain 
-// use cases. We give the minimum allocation size (called allocation_size) and calculate the number of items that 
-// fit within that, then round up to multiple of 64. By default allocation_size=4096. If you are using VirtualAlloc
-// or similar with this structure you probably want to set it a bit higher.
+// Because we cannot swap any other item to a place of removed element we need to have some strategy
+// for keeping track of removed item slots and filling them with newly added items. 
+// We solve this by using bit fields where each bit indicates if the slot within block is used or empty. 
+// Additionally we keep a linked list of blocks that contain at least one empty slot so that we never 
+// have to scan through the entire array. This guarantees O(1) additions and removal.
 // 
-// The resulting structure has a couple of nice properties
-// 1. Its very memory efficient - we are storing just one extra bit per entry or 3 if we count the size of 
-//    the Stable_Block structure. This is good mainly because we are not polluting the cache with headers, next links etc.
-// 2. Because we always fill blocks until full and only then start filling next block, items are naturally clumping up 
-//    which achieves better cache locality. Note that this is not the case with simple free list. 
-// 3. Since the alive info is stored separately, possible on a far away page, even if we screw up and override some data/write to an
-//    entry when it should be dead, we dont corrupt the free-list.
-// 4. Looping over it is as fast as looping over an array. We loop over buckets and then loop over individual items. 
-//    This iteration is sequential within one block or one sequence of blocks allocated together. On top of that the blocks
-//    should be mostly filled or mostly empty making it easy for branch predictor to do its job. Finally because the control 
-//    structure (ie alive mask) is stored out of line it is possible to simply process all items regardless if they are alive or
-//    not (potentially even using SIMD).
+// Performance consideration here is mainly the number of independent addresses we need to fetch before
+// doing operation of interest. We need: 
+//  1: The unstable ptr array as dense as possible so that it can  remain in the cache easily
+//  
+//  2: The bit field and next not empty link to be close enough to other things so that they never
+//     require additional memory fetch.
 // 
+//  3: The final item array to have no additional data inside it to guarantee optimal traversal speed.
+// 
+//  4: The number of allocations needs to be kept low. It should be possible to allocate exponentially 
+//     bigger blocks at once.
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -79,17 +74,25 @@ typedef struct Stable {
 #endif
 #define STABLE_BLOCK_SIZE 64
 
+//stable
+//bucket
+
 EXTERNAL void  stable_init_custom(Stable* stable, Allocator* alloc, isize item_size, isize item_align, uint32_t allocation_size);
 EXTERNAL void  stable_init(Stable* stable, Allocator* alloc, isize item_size);
 EXTERNAL void  stable_deinit(Stable* stable);
 
 EXTERNAL isize stable_capacity(const Stable* stable);
-EXTERNAL void* stable_at(const Stable* stable, isize index); //returns the item at index which must be in range of [0, capacity) and the entry must be alive (asserts).
-EXTERNAL void* stable_at_or(const Stable* stable, isize index, void* if_not_found); //returns the item at index or if_not_found if the index is not from the valid range or the entry is dead.
+EXTERNAL void* stable_at(const Stable* stable, isize index);
+EXTERNAL void* stable_at_or(const Stable* stable, isize index, void* if_not_found);
+EXTERNAL isize stable_insert(Stable* stable, void** out_or_null);
 EXTERNAL void  stable_remove(Stable* stable, isize index);
 EXTERNAL void  stable_reserve(Stable* stable, isize to);
-EXTERNAL isize stable_insert(Stable* stable, void** out_or_null);
-EXTERNAL void  stable_test_consistency(const Stable* stable, bool slow_checks);
+
+//useful for tables
+EXTERNAL isize stable_insert_nozero(Stable* stable, void** out_or_null);
+EXTERNAL isize stable_insert_zero_from(Stable* stable, void** out_or_null, isize zero_from);
+
+EXTERNAL void stable_test_consistency(const Stable* stable, bool slow_checks);
 
 //Iteration (with inline impl for reasonable perf)
 typedef struct Stable_Iter {
@@ -106,13 +109,13 @@ inline static bool  _stable_iter_cond(Stable_Iter* it);
 inline static void  _stable_iter_postcond(Stable_Iter* it);
 inline static void* _stable_iter_per_slot(Stable_Iter* it, isize item_size);
 
-#define STABLE_FOR_GENERIC(table_ptr, it, T, item, item_size, from_id) \
+#define STABLE_FOR_CUSTOM(table_ptr, it, T, item, item_size, from_id) \
     for(Stable_Iter it = _stable_iter_precond(table_ptr, from_id); _stable_iter_cond(&it); _stable_iter_postcond(&it)) \
         for(T* item = NULL; it.item_i < STABLE_BLOCK_SIZE; it.item_i++, it.index++) \
             if(item = (T*) _stable_iter_per_slot(&it, item_size), item) \
 
-#define STABLE_FOR_VOID(table_ptr, it, item) STABLE_FOR_GENERIC((table_ptr), it, void, item, it.stable->item_size, 0)
-#define STABLE_FOR(table_ptr, it, T, item) STABLE_FOR_GENERIC((table_ptr), it, T, item, sizeof(T), 0)
+#define STABLE_FOR_GENERIC(table_ptr, it, item) STABLE_FOR_CUSTOM((table_ptr), it, void, item, it.stable->item_size, 0)
+#define STABLE_FOR(table_ptr, it, T, item) STABLE_FOR_CUSTOM((table_ptr), it, T, item, sizeof(T), 0)
 
 #ifndef ASSERT
     #include <assert.h>
@@ -128,8 +131,8 @@ inline static Stable_Iter _stable_iter_precond(Stable* stable, isize from_id)
 {
     Stable_Iter it = {0};
     it.stable = stable;
-    it.item_i = (uint32_t) from_id % STABLE_BLOCK_SIZE;
-    it.block_i = (uint32_t) ((size_t) from_id / STABLE_BLOCK_SIZE);
+    it.item_i = from_id % STABLE_BLOCK_SIZE;
+    it.block_i = from_id / STABLE_BLOCK_SIZE;
     it.index = from_id;
     return it;
 }
@@ -288,7 +291,7 @@ EXTERNAL void* stable_at_or(const Stable* stable, isize index, void* if_not_foun
 
     return if_not_found;
 }
-EXTERNAL isize stable_insert(Stable* stable, void** out_or_null)
+EXTERNAL isize stable_insert_zero_from(Stable* stable, void** out_or_null, isize zero_from)
 {
     _stable_check_consistency(stable);
     if(stable->count + 1 > stable_capacity(stable))
@@ -310,9 +313,18 @@ EXTERNAL isize stable_insert(Stable* stable, void** out_or_null)
     stable->count += 1;
     if(out_or_null)
         *out_or_null = block->ptr + empty_i*stable->item_size;
-    
+
     _stable_check_consistency(stable);
     return out_i;
+}
+
+EXTERNAL isize stable_insert(Stable* stable, void** out_or_null)
+{
+    return stable_insert_zero_from(stable, out_or_null, 0);
+}
+EXTERNAL isize stable_insert_nozero(Stable* stable, void** out_or_null)
+{
+    return stable_insert_zero_from(stable, out_or_null, stable->item_size);
 }
 
 EXTERNAL void stable_remove(Stable* stable, isize index)
@@ -343,7 +355,7 @@ EXTERNAL void stable_reserve(Stable* stable, isize to_size)
     {
         _stable_check_consistency(stable);
         
-        isize desired_items = (stable->allocation_size + stable->item_size - 1)/stable->item_size;
+        isize desired_items = stable->allocation_size/stable->item_size;
         if(desired_items < to_size)
             desired_items = to_size;
         isize added_blocks = (desired_items + STABLE_BLOCK_SIZE - 1)/STABLE_BLOCK_SIZE;

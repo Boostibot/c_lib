@@ -95,8 +95,8 @@ MAP_INLINE_API bool      map_hash_insert_or_find(Map* map, Map_Info info, const 
 #define MAP_TEST_INVARIANTS_HASHES  ((uint32_t) 4)
 #define MAP_TEST_INVARIANTS_FIND    ((uint32_t) 8)
 #define MAP_TEST_INVARIANTS_ALL     ((uint32_t) -1)
-ATTRIBUTE_INLINE_NEVER EXTERNAL void map_test_invariant(const Map* map, Map_Info info, uint32_t flags);
-ATTRIBUTE_INLINE_NEVER EXTERNAL void map_test_hash_invariant(const Map* map, uint32_t flags);
+ATTRIBUTE_INLINE_NEVER EXTERNAL void map_test_consistency(const Map* map, Map_Info info, uint32_t flags);
+ATTRIBUTE_INLINE_NEVER EXTERNAL void map_test_hash_consistency(const Map* map, uint32_t flags);
 #endif
 
 //Inline implementation
@@ -120,21 +120,21 @@ ATTRIBUTE_INLINE_NEVER EXTERNAL void _map_rehash(Map* map, isize requested_capac
 ATTRIBUTE_INLINE_NEVER EXTERNAL void _map_deinit(Map* map, uint32_t entry_size, uint32_t entry_align);
 EXTERNAL bool _map_remove_found(Map* map, uint32_t index, uint32_t slot, uint32_t entry_size);
 
-MAP_INLINE_API void _map_check_invariants(const Map* map, Map_Info info)
+MAP_INLINE_API void _map_check_consistency(const Map* map, Map_Info info)
 {
     #if defined(DO_ASSERTS_SLOW)
-        map_test_invariant(map, info, MAP_TEST_INVARIANTS_ALL);
+        map_test_consistency(map, info, MAP_TEST_INVARIANTS_ALL);
     #elif defined(DO_ASSERTS)
-        map_test_invariant(map, info, MAP_TEST_INVARIANTS_BASIC);
+        map_test_consistency(map, info, MAP_TEST_INVARIANTS_BASIC);
     #endif
 }
 
-MAP_INLINE_API void _map_check_hash_invariants(const Map* map)
+MAP_INLINE_API void _map_check_hash_consistency(const Map* map)
 {
     #if defined(DO_ASSERTS_SLOW)
-        map_test_hash_invariant(map, MAP_TEST_INVARIANTS_ALL);
+        map_test_hash_consistency(map, MAP_TEST_INVARIANTS_ALL);
     #elif defined(DO_ASSERTS)
-        map_test_hash_invariant(map, MAP_TEST_INVARIANTS_BASIC);
+        map_test_hash_consistency(map, MAP_TEST_INVARIANTS_BASIC);
     #endif
 }
 
@@ -159,7 +159,7 @@ MAP_INLINE_API Map_Find_It _map_find_it_make(const Map* map, uint64_t hash)
 
 MAP_INLINE_API bool _map_find_next(const Map* map, Map_Info info, const void* key, Map_Find_It* it, bool prefetch)
 {
-    _map_check_invariants(map, info);
+    _map_check_consistency(map, info);
     for(;it->internal.iter <= map->slots_mask; it->internal.iter += 1)
     {
         ASSERT(it->internal.iter <= map->slots_mask + 1);
@@ -191,7 +191,7 @@ MAP_INLINE_API bool _map_find_next(const Map* map, Map_Info info, const void* ke
 
 MAP_INLINE_API bool _map_insert_or_find(Map* map, Map_Info info, const void* key, uint64_t hash, Map_Found* found, bool do_only_insert)
 {
-    _map_check_invariants(map, info);
+    _map_check_consistency(map, info);
     map_reserve(map, info, (isize) map->count + 1);
     uint64_t i = hash & map->slots_mask;
     uint64_t empty_i = (uint64_t) -1;
@@ -250,13 +250,13 @@ MAP_INLINE_API bool _map_insert_or_find(Map* map, Map_Info info, const void* key
     found->index = added_index;
     found->slot = i;
     
-    _map_check_invariants(map, info);
+    _map_check_consistency(map, info);
     return true;
 }
 
 MAP_INLINE_API Map_Found map_find_index(const Map* map, isize index)
 {
-    _map_check_hash_invariants(map);
+    _map_check_hash_consistency(map);
     Map_Found out = {(uint32_t) -1, (uint32_t) -1, 0};
     if(index >= map->count)
         return out;
@@ -283,9 +283,9 @@ MAP_INLINE_API void map_init(Map* map, Map_Info info, Allocator* alloc)
 
 MAP_INLINE_API void map_deinit(Map* map, Map_Info info)
 {
-    _map_check_invariants(map, info);
+    _map_check_consistency(map, info);
     _map_deinit(map, info.entry_size, info.entry_align);
-    _map_check_invariants(map, info);
+    _map_check_consistency(map, info);
 }
 
 MAP_INLINE_API bool map_hash_find(const Map* map, Map_Info info, const void* key, uint64_t hash, Map_Found* found)
@@ -380,7 +380,7 @@ void _map_rehash(Map* map, isize requested_capacity)
 {
     TEST(requested_capacity <= UINT32_MAX);
 
-    _map_check_hash_invariants(map);
+    _map_check_hash_consistency(map);
     isize new_cap = 16;
     while(new_cap < requested_capacity)
         new_cap *= 2;
@@ -416,7 +416,7 @@ void _map_rehash(Map* map, isize requested_capacity)
     _map_alloc(map->alloc, 0, map->slots, (map->slots_mask + 1)*sizeof(Map_Slot), sizeof(Map_Slot));
     map->slots = new_slots;
     map->slots_mask = new_mask;
-    _map_check_hash_invariants(map);
+    _map_check_hash_consistency(map);
 }
 
 ATTRIBUTE_INLINE_NEVER 
@@ -427,14 +427,14 @@ void _map_deinit(Map* map, uint32_t entry_size, uint32_t entry_align)
     if(map->slots_mask > 0) 
         _map_alloc(map->alloc, 0, map->slots, (map->slots_mask + 1)*sizeof(Map_Slot), sizeof(Map_Slot));
     memset(map, 0, sizeof* map);
-    _map_check_hash_invariants(map);
+    _map_check_hash_consistency(map);
 }
 
 EXTERNAL bool _map_remove_found(Map* map, uint32_t index, uint32_t slot, uint32_t entry_size)
 {
     if(index == (uint32_t) -1)
     {
-        _map_check_hash_invariants(map);
+        _map_check_hash_consistency(map);
         isize removed_index = index;
         isize last_index = map->count - 1;
         if(last_index != removed_index)
@@ -455,14 +455,14 @@ EXTERNAL bool _map_remove_found(Map* map, uint32_t index, uint32_t slot, uint32_
         removed_slot->hash = (uint32_t) -1;
         map->slots_removed += 1;
         map->count -= 1;
-        _map_check_hash_invariants(map);
+        _map_check_hash_consistency(map);
         return true;
     }
     return false;
 }
 
 ATTRIBUTE_INLINE_NEVER
-void map_test_hash_invariant(const Map* map, uint32_t flags)
+void map_test_hash_consistency(const Map* map, uint32_t flags)
 {
     if(map->alloc == NULL) {
         Map null = {0};
@@ -501,9 +501,9 @@ void map_test_hash_invariant(const Map* map, uint32_t flags)
 }
 
 ATTRIBUTE_INLINE_NEVER
-void map_test_invariant(const Map* map, Map_Info info, uint32_t flags)
+void map_test_consistency(const Map* map, Map_Info info, uint32_t flags)
 {
-    map_test_hash_invariant(map, flags);
+    map_test_hash_consistency(map, flags);
 
     if(flags & MAP_TEST_INVARIANTS_HASHES) {
         TEST(info.key_hash);

@@ -59,7 +59,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 				break;
 
 			isize action = random_discrete(dist, ARRAY_COUNT(dist));
-			TEST(generic_array_is_invariant(array_make_generic(arr)));
+			TEST(generic_array_is_consistent(array_make_generic(arr)));
 			
 			switch(action)
 			{
@@ -154,7 +154,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 			for(isize k = 0; k < arr->count; k++)
 				TEST(arr->data != NULL && is_power_of_two_or_zero(arr->data[k]));
 				
-			TEST(generic_array_is_invariant(array_make_generic(arr)));
+			TEST(generic_array_is_consistent(array_make_generic(arr)));
 			PROFILE_STOP(iter);
 		}
 

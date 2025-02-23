@@ -108,7 +108,7 @@ EXTERNAL void** debug_allocation_get_callstack(const Debug_Allocation* alloc);
 EXTERNAL const Debug_Allocation* debug_allocator_get_allocation(const Debug_Allocator* allocator, void* ptr); 
 EXTERNAL void debug_allocator_test_all_allocations(const Allocator* self);
 EXTERNAL void debug_allocator_test_allocation(const Allocator* self, void* user_ptr);
-EXTERNAL void debug_allocator_test_invariants(const Debug_Allocator* self);
+EXTERNAL void debug_allocator_test_consistency(const Debug_Allocator* self);
 
 #define DEBUG_ALLOC_PRINT_ALIVE_CALLSTACK 1
 #define DEBUG_ALLOC_PRINT_ALIVE_TIME      2
@@ -134,7 +134,7 @@ INTERNAL Debug_Allocation* _debug_allocator_find_allocation(const Debug_Allocato
 INTERNAL void _debug_allocator_insert_allocation(Debug_Allocator* debug, Debug_Allocation* allocation);
 INTERNAL void _debug_allocator_remove_allocation(Debug_Allocator* self, Debug_Allocation* allocation);
 INTERNAL void _debug_allocator_deallocate_allocation(Debug_Allocator* self, Debug_Allocation* allocation);
-INTERNAL void _debug_allocator_check_invariants(const Debug_Allocator* self);
+INTERNAL void _debug_allocator_check_consistency(const Debug_Allocator* self);
 INTERNAL void _debug_allocator_panic(const Debug_Allocator* self, void* user_ptr, const Debug_Allocation* allocation, isize dist, const char* panic_reason);
 INTERNAL void _debug_allocation_test_dead_zones(const Debug_Allocator* self, const Debug_Allocation* allocation);
 INTERNAL Debug_Allocation* _debug_allocation_get_closest(const Debug_Allocator* self, void* ptr, isize* dist_or_null);
@@ -157,12 +157,12 @@ EXTERNAL void debug_allocator_init(Debug_Allocator* self, Allocator* parent, All
     if(options.do_set_as_default)
         self->allocator_backup = allocator_set_default(self->alloc);
         
-    _debug_allocator_check_invariants(self);
+    _debug_allocator_check_consistency(self);
 }
 
 EXTERNAL void debug_allocator_deinit(Debug_Allocator* self)
 {
-    _debug_allocator_check_invariants(self);
+    _debug_allocator_check_consistency(self);
     if(self->alive_count && self->options.do_deinit_leak_check)
     {
         const char* name = self->options.name;
@@ -236,7 +236,7 @@ EXTERNAL void* debug_allocator_func(void* self_void, int mode, isize new_size, v
     if(mode == ALLOCATOR_MODE_ALLOC) {
         PROFILE_START();
         Debug_Allocator* self = (Debug_Allocator*) (void*) self_void;
-        _debug_allocator_check_invariants(self);
+        _debug_allocator_check_consistency(self);
     
         const char* name = self->options.name;
         if(new_size < 0 || old_size < 0 || is_power_of_two(align) == false || align >= UINT16_MAX) {
@@ -354,7 +354,7 @@ EXTERNAL void* debug_allocator_func(void* self_void, int mode, isize new_size, v
             self->reallocation_count += 1;
         
         #ifdef DO_ASSERTS_SLOW
-            _debug_allocator_check_invariants(self);
+            _debug_allocator_check_consistency(self);
         #else
             if(self->options.do_continual_checks)
                 debug_allocator_test_all_allocations(self->alloc);
@@ -655,9 +655,9 @@ EXTERNAL void debug_allocator_test_all_allocations(const Allocator* self_alloc)
     TEST(size_sum <= self->max_bytes_allocated);
 }
 
-EXTERNAL void debug_allocator_test_invariants(const Debug_Allocator* self)
+EXTERNAL void debug_allocator_test_consistency(const Debug_Allocator* self)
 {
-    //TODO: test hash invariants - well linked, can find all...
+    //TODO: test hash consistency - well linked, can find all...
     debug_allocator_test_all_allocations(self->alloc);
     TEST(self->allocation_count >= self->deallocation_count && self->deallocation_count >= 0);
     TEST(self->reallocation_count >= 0);
@@ -665,11 +665,11 @@ EXTERNAL void debug_allocator_test_invariants(const Debug_Allocator* self)
     TEST((self->alive_count == 0) == (self->bytes_allocated == 0));
 }
 
-INTERNAL void _debug_allocator_check_invariants(const Debug_Allocator* self)
+INTERNAL void _debug_allocator_check_consistency(const Debug_Allocator* self)
 {
     (void) self;
     #ifdef DO_ASSERTS_SLOW
-        debug_allocator_test_invariants(self);
+        debug_allocator_test_consistency(self);
     #endif
 }
 
@@ -698,7 +698,7 @@ INTERNAL int _debug_allocation_alloc_id_compare(const void* a_, const void* b_)
 
 EXTERNAL Debug_Allocation* debug_allocator_get_alive_allocations(const Debug_Allocator* self, Allocator* alloc_result_from, isize max_entries, isize* count)
 {
-    _debug_allocator_check_invariants(self);
+    _debug_allocator_check_consistency(self);
     isize alloc_count = max_entries;
     if(alloc_count < 0)
         alloc_count = self->alive_count;

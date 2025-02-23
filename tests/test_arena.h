@@ -169,7 +169,7 @@ static void test_arena_stress(f64 time)
             } break;
         }
 
-        scratch_arena_test_invariants(&arena_stack);
+        scratch_arena_test_consistency(&arena_stack);
     }
 
     scratch_arena_deinit(&arena_stack);

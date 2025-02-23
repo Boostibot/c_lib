@@ -161,10 +161,10 @@
 //   instead the empty spaces are represented implicitly by calculating the distance between neighbouring nodes in memory
 //   order.
 //
-// - A big chunk of the code is dedicated to checking/asserting invariants. There are two kinds of such functions
-//   one tlsf_test_[thing]_invariants() which when called test whether the structure is correct and if it is not aborts.
+// - A big chunk of the code is dedicated to checking/asserting consistency. There are two kinds of such functions
+//   one tlsf_test_[thing]_consistency() which when called test whether the structure is correct and if it is not aborts.
 //   This "test" variant is available in even release builds but is not called internally. 
-//   The other kind is _tlsf_check_[thing]_invariants() which is a simple wrapper around the test variant. 
+//   The other kind is _tlsf_check_[thing]_consistency() which is a simple wrapper around the test variant. 
 //   This wrapper is used internally upon entry/exit of each function and gets turned into a noop in release builds.
 
 #ifdef MODULE_ALL_COUPLED
@@ -310,8 +310,8 @@ EXTERNAL isize    tlsf_size_from_bin_index(int32_t bin_index);
 
 //Checks whether the allocator is in valid state. If is not aborts.
 // Flags can be TLSF_CHECK_DETAILED and TLSF_CHECK_ALL_NODES.
-EXTERNAL void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags);
-EXTERNAL void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags_or_zero, uint32_t bin_or_zero);
+EXTERNAL void tlsf_test_consistency(Tlsf_Allocator* allocator, uint32_t flags);
+EXTERNAL void tlsf_test_node_consistency(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags_or_zero, uint32_t bin_or_zero);
 
 #endif
 
@@ -401,14 +401,14 @@ EXTERNAL isize tlsf_size_from_bin_index(int32_t bin_index)
     return size;
 }
 
-INTERNAL void _tlsf_check_invariants(Tlsf_Allocator* allocator);
+INTERNAL void _tlsf_check_consistency(Tlsf_Allocator* allocator);
 INTERNAL void _tlsf_check_node(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags);
 INTERNAL void _tlsf_unlink_node_in_bin(Tlsf_Allocator* allocator, uint32_t node_i, int32_t bin_i);
 INTERNAL void _tlsf_link_node_in_bin(Tlsf_Allocator* allocator, uint32_t node_i, int32_t bin_i);
 
 INTERNAL isize _tlsf_allocate(Tlsf_Allocator* allocator, isize size, isize align, isize align_offset, bool align_in_memory, uint32_t* out_node)
 {
-    _tlsf_check_invariants(allocator);
+    _tlsf_check_consistency(allocator);
     uint32_t bin_from = (uint32_t) tlsf_bin_index_from_size(size + align + align_offset, true);
     uint32_t bin_i = TLSF_INVALID;
     if(bin_from < TLSF_BINS)
@@ -512,7 +512,7 @@ INTERNAL isize _tlsf_allocate(Tlsf_Allocator* allocator, isize size, isize align
     if(allocator->max_bytes_allocated < allocator->bytes_allocated)
         allocator->max_bytes_allocated = allocator->bytes_allocated;
 
-    _tlsf_check_invariants(allocator);
+    _tlsf_check_consistency(allocator);
         
     *out_node = node_i;
     return node->offset;
@@ -521,7 +521,7 @@ INTERNAL isize _tlsf_allocate(Tlsf_Allocator* allocator, isize size, isize align
 EXTERNAL void tlsf_deallocate(Tlsf_Allocator* allocator, uint32_t node_i)
 {
     ASSERT(allocator);
-    _tlsf_check_invariants(allocator);
+    _tlsf_check_consistency(allocator);
     if(node_i == 0)
         return;
         
@@ -578,7 +578,7 @@ EXTERNAL void tlsf_deallocate(Tlsf_Allocator* allocator, uint32_t node_i)
         node->next_in_bin = TLSF_INVALID;
     #endif
     
-    _tlsf_check_invariants(allocator);
+    _tlsf_check_consistency(allocator);
 }
 
 INTERNAL void _tlsf_unlink_node_in_bin(Tlsf_Allocator* allocator, uint32_t node_i, int32_t bin_i)
@@ -631,7 +631,7 @@ INTERNAL void _tlsf_link_node_in_bin(Tlsf_Allocator* allocator, uint32_t node_i,
 
 EXTERNAL void tlsf_grow_memory(Tlsf_Allocator* allocator, void* new_memory, isize new_memory_size)
 {
-    _tlsf_check_invariants(allocator);
+    _tlsf_check_consistency(allocator);
     ASSERT(new_memory_size >= allocator->memory_size && (new_memory != NULL || allocator->memory == NULL));
     
     //copy over allocation memory (if both are present and the pointer changed)
@@ -662,12 +662,12 @@ EXTERNAL void tlsf_grow_memory(Tlsf_Allocator* allocator, void* new_memory, isiz
     }
     
     allocator->memory_size = end->offset;
-    _tlsf_check_invariants(allocator);
+    _tlsf_check_consistency(allocator);
 }
 
 EXTERNAL void tlsf_grow_nodes(Tlsf_Allocator* allocator, void* new_node_memory, isize new_node_memory_size)
 {
-    _tlsf_check_invariants(allocator);
+    _tlsf_check_consistency(allocator);
 
     isize new_node_capacity = new_node_memory_size / sizeof(Tlsf_Node);
     ASSERT(new_node_capacity >= allocator->node_capacity && new_node_memory != NULL);
@@ -692,7 +692,7 @@ EXTERNAL void tlsf_grow_nodes(Tlsf_Allocator* allocator, void* new_node_memory, 
     }
 
     allocator->node_capacity = (uint32_t) new_node_capacity;
-    _tlsf_check_invariants(allocator);
+    _tlsf_check_consistency(allocator);
 }
     
 INTERNAL void* _tlsf_allocator_func(void* self, int mode, int64_t new_size, void* old_ptr, int64_t old_size, int64_t align, void* other)
@@ -804,7 +804,7 @@ EXTERNAL bool tlsf_init(Tlsf_Allocator* allocator, void* memory_or_null, isize m
     }
     allocator->node_count = 2;
     
-    _tlsf_check_invariants(allocator);
+    _tlsf_check_consistency(allocator);
     return true;
 }
 
@@ -914,7 +914,7 @@ EXTERNAL isize tlsf_node_size(Tlsf_Allocator* allocator, uint32_t node_i)
         return 0;
 }
 
-EXTERNAL void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags, uint32_t bin_i)
+EXTERNAL void tlsf_test_node_consistency(Tlsf_Allocator* allocator, uint32_t node_i, uint32_t flags, uint32_t bin_i)
 {
     TEST(0 <= node_i && node_i < allocator->node_capacity);
     Tlsf_Node* node = &allocator->nodes[node_i];
@@ -986,7 +986,7 @@ EXTERNAL void tlsf_test_node_invariants(Tlsf_Allocator* allocator, uint32_t node
     }
 }
 
-EXTERNAL void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags)
+EXTERNAL void tlsf_test_consistency(Tlsf_Allocator* allocator, uint32_t flags)
 {
     //Check fields
     TEST(allocator->nodes != NULL);
@@ -1022,7 +1022,7 @@ EXTERNAL void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags)
         uint32_t nodes_in_free_list = 0;
         for(uint32_t node_i = allocator->node_first_free; node_i != TLSF_INVALID; nodes_in_free_list++)
         {
-            tlsf_test_node_invariants(allocator, node_i, TLSF_CHECK_FREELIST | flags, 0);
+            tlsf_test_node_consistency(allocator, node_i, TLSF_CHECK_FREELIST | flags, 0);
             Tlsf_Node* node = &allocator->nodes[node_i];
             node_i = node->next;
         }
@@ -1037,7 +1037,7 @@ EXTERNAL void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags)
             {
                 in_bin_count++;
                 TEST(in_bin_count < allocator->node_capacity);
-                tlsf_test_node_invariants(allocator, node_i, TLSF_CHECK_USED | TLSF_CHECK_BIN | flags, bin_i);
+                tlsf_test_node_consistency(allocator, node_i, TLSF_CHECK_USED | TLSF_CHECK_BIN | flags, bin_i);
                 
                 Tlsf_Node* node = &allocator->nodes[node_i];
                 node_i = node->next_in_bin;
@@ -1052,7 +1052,7 @@ EXTERNAL void tlsf_test_invariants(Tlsf_Allocator* allocator, uint32_t flags)
         {
             TEST(nodes_counted < allocator->node_capacity);
 
-            tlsf_test_node_invariants(allocator, node_i, flags, 0);
+            tlsf_test_node_consistency(allocator, node_i, flags, 0);
 
             Tlsf_Node* node = &allocator->nodes[node_i];
             node_i = node->next;
@@ -1077,12 +1077,12 @@ INTERNAL void _tlsf_check_node(Tlsf_Allocator* allocator, uint32_t node_i, uint3
             flags &= ~TLSF_CHECK_DETAILED;
         #endif
 
-        tlsf_test_node_invariants(allocator, node_i, flags, 0);
+        tlsf_test_node_consistency(allocator, node_i, flags, 0);
     #endif
 }
 
 
-INTERNAL void _tlsf_check_invariants(Tlsf_Allocator* allocator)
+INTERNAL void _tlsf_check_consistency(Tlsf_Allocator* allocator)
 {
     (void) allocator;
     #ifdef TLSF_DEBUG
@@ -1095,7 +1095,7 @@ INTERNAL void _tlsf_check_invariants(Tlsf_Allocator* allocator)
             flags |= TLSF_CHECK_ALL_NODES;
         #endif
 
-        tlsf_test_invariants(allocator, flags);
+        tlsf_test_consistency(allocator, flags);
     #endif
 }
 
@@ -1134,16 +1134,16 @@ void test_tlsf_alloc_unit()
 
     for(isize i = 0; i < ARRAY_COUNT(allocs); i++)
     {
-        tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
+        tlsf_test_consistency(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
         tlsf_allocate(&allocator, &allocs[i].node, allocs[i].size, allocs[i].align, 0);
-        tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
+        tlsf_test_consistency(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
     }
         
     for(isize i = 0; i < ARRAY_COUNT(allocs); i++)
     {
-        tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
+        tlsf_test_consistency(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
         tlsf_deallocate(&allocator, allocs[i].node);
-        tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
+        tlsf_test_consistency(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
     }
 
     free(nodes);
@@ -1216,7 +1216,7 @@ void test_allocator_tlsf_stress(double seconds, isize at_once)
         else
         {
             tlsf_free(&allocator, allocs[i].ptr);
-            tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
+            tlsf_test_consistency(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
         }
         
         double perturbation = 1 + _tlsf_random_interval(-MAX_PERTURBATION, MAX_PERTURBATION);
@@ -1262,7 +1262,7 @@ void test_allocator_tlsf_stress(double seconds, isize at_once)
         allocs[i].node = tlsf_get_node(&allocator, allocs[i].ptr);
 
         TEST((uint64_t) allocs[i].ptr % allocs[i].align == 0);
-        tlsf_test_invariants(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
+        tlsf_test_consistency(&allocator, TLSF_CHECK_DETAILED | TLSF_CHECK_ALL_NODES);
 
         iter += 1;
     }

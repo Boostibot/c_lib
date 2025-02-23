@@ -313,7 +313,7 @@ void test_channel_linearization(isize buffer_capacity, isize producer_count, isi
         }
         
         if(printing) printf("   All threads stopped #%i\n", gen);
-        TEST(channel_is_invariant_converged_state(chan, info));
+        TEST(channel_is_consistent_converged_state(chan, info));
 
         //Everything ok?
         for(isize k = 0; k < consumers_count; k++)
@@ -518,8 +518,8 @@ void test_channel_cycle(isize buffer_capacity, isize a_count, isize b_count, isi
         }
 
         if(printing) printf("   All threads stopped #%i\n", gen);
-        TEST(channel_is_invariant_converged_state(a_chan, info));
-        TEST(channel_is_invariant_converged_state(b_chan, info));
+        TEST(channel_is_consistent_converged_state(a_chan, info));
+        TEST(channel_is_consistent_converged_state(b_chan, info));
 
         //Everything ok?
         isize a_chan_count = channel_count(a_chan);
@@ -626,11 +626,11 @@ void test_channel_sequential(isize capacity, bool block)
     
     //Test blocking interface
     {
-        TEST(channel_is_invariant_converged_state(chan, info));
+        TEST(channel_is_consistent_converged_state(chan, info));
         //Push all
         for(int i = 0; i < chan->capacity; i++) {
             TEST(channel_push(chan, &i, info));
-            TEST(channel_is_invariant_converged_state(chan, info));
+            TEST(channel_is_consistent_converged_state(chan, info));
         }
 
         TEST(channel_try_push(chan, &dummy, info) == CHANNEL_FULL);
@@ -643,7 +643,7 @@ void test_channel_sequential(isize capacity, bool block)
         TEST(channel_is_closed(chan));
         TEST(channel_push(chan, &dummy, info) == false);
         TEST(channel_pop(chan, &dummy, info) == false);
-        TEST(channel_is_invariant_converged_state(chan, info));
+        TEST(channel_is_consistent_converged_state(chan, info));
 
         TEST(channel_count(chan) == capacity);
         TEST(channel_reopen(chan, info));
@@ -656,7 +656,7 @@ void test_channel_sequential(isize capacity, bool block)
             int popped = 0;
             TEST(channel_pop(chan, &popped, info));
             TEST(popped == i);
-            TEST(channel_is_invariant_converged_state(chan, info));
+            TEST(channel_is_consistent_converged_state(chan, info));
         }
 
         TEST(channel_count(chan) == 0);
@@ -670,7 +670,7 @@ void test_channel_sequential(isize capacity, bool block)
         int push_count = (int) chan->capacity - 1;
         for(int i = 0; i < push_count; i++) {
             TEST(channel_push(chan, &i, info));
-            TEST(channel_is_invariant_converged_state(chan, info));
+            TEST(channel_is_consistent_converged_state(chan, info));
         }
 
         TEST(channel_close_push(chan, info));
@@ -681,12 +681,12 @@ void test_channel_sequential(isize capacity, bool block)
         for(; channel_pop(chan, &popped, info); pop_count++)
         {
             TEST(popped == pop_count);
-            TEST(channel_is_invariant_converged_state(chan, info));
+            TEST(channel_is_consistent_converged_state(chan, info));
         }
 
         TEST(pop_count == push_count);
         TEST(channel_count(chan) == 0);
-        TEST(channel_is_invariant_converged_state(chan, info));
+        TEST(channel_is_consistent_converged_state(chan, info));
 
         TEST(channel_reopen(chan, info));
     }
@@ -723,11 +723,11 @@ void test_channel_sequential(isize capacity, bool block)
                 break;
             }
             
-            TEST(channel_is_invariant_converged_state(chan, info));
+            TEST(channel_is_consistent_converged_state(chan, info));
             TEST(popped == pop_count);
         }
         
-        TEST(channel_is_invariant_converged_state(chan, info));
+        TEST(channel_is_consistent_converged_state(chan, info));
         TEST(channel_count(chan) == 0);
     }
 
@@ -740,7 +740,7 @@ void test_channel_sequential(isize capacity, bool block)
         {
             Channel_Res res = channel_try_push(chan, &i, info);
             TEST(res == CHANNEL_OK);
-            TEST(channel_is_invariant_converged_state(chan, info));
+            TEST(channel_is_consistent_converged_state(chan, info));
         }
 
         TEST(channel_count(chan) == push_count);
@@ -749,7 +749,7 @@ void test_channel_sequential(isize capacity, bool block)
         TEST(channel_try_push(chan, &dummy, info) == CHANNEL_CLOSED);
         TEST(channel_count(chan) == push_count);
         
-        TEST(channel_is_invariant_converged_state(chan, info));
+        TEST(channel_is_consistent_converged_state(chan, info));
 
         int pop_count = 0;
         for(;; pop_count++)
@@ -767,7 +767,7 @@ void test_channel_sequential(isize capacity, bool block)
 
         TEST(pop_count == push_count);
         TEST(channel_count(chan) == 0);
-        TEST(channel_is_invariant_converged_state(chan, info));
+        TEST(channel_is_consistent_converged_state(chan, info));
     }
 
     channel_deinit(chan);

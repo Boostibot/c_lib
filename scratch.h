@@ -71,7 +71,7 @@ typedef struct Scratch {
 } Scratch;
 
 EXTERNAL Platform_Error scratch_arena_init(Scratch_Arena* arena, const char* name, isize reserve_size_or_zero, isize commit_granularity_or_zero, isize stack_max_depth_or_zero);
-EXTERNAL void scratch_arena_test_invariants(Scratch_Arena* arena);
+EXTERNAL void scratch_arena_test_consistency(Scratch_Arena* arena);
 EXTERNAL void scratch_arena_deinit(Scratch_Arena* arena);
 
 EXTERNAL Scratch scratch_acquire(Scratch_Arena* arena);
@@ -239,12 +239,12 @@ EXTERNAL Scratch        global_scratch_acquire();
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_SCRATCH_ARENA)) && !defined(MODULE_HAS_IMPL_SCRATCH_ARENA)
 #define MODULE_HAS_IMPL_SCRATCH_ARENA
 
-    INTERNAL void _scratch_arena_check_invariants(Scratch_Arena* arena);
+    INTERNAL void _scratch_arena_check_consistency(Scratch_Arena* arena);
     INTERNAL void _scratch_arena_fill_garbage(Scratch_Arena* arena, isize content_size);
 
     EXTERNAL void scratch_arena_deinit(Scratch_Arena* arena)
     {
-        _scratch_arena_check_invariants(arena);
+        _scratch_arena_check_consistency(arena);
         if(arena->reserved_from)
             platform_virtual_reallocate(NULL, arena->reserved_from, arena->reserved_size, PLATFORM_VIRTUAL_ALLOC_RELEASE, PLATFORM_MEMORY_PROT_NO_ACCESS);
         memset(arena, 0, sizeof *arena);
@@ -315,14 +315,14 @@ EXTERNAL Scratch        global_scratch_acquire();
                 platform_virtual_reallocate(NULL, reserved_from, reserve_size, PLATFORM_VIRTUAL_ALLOC_RELEASE, PLATFORM_MEMORY_PROT_NO_ACCESS);
         }
     
-        _scratch_arena_check_invariants(arena);
+        _scratch_arena_check_consistency(arena);
         return error;
     }
 
     EXTERNAL ATTRIBUTE_INLINE_NEVER void* _scratch_handle_unusual_push(Scratch_Arena* arena, Scratch_Stack* stack, u8** frame_ptr, isize size, isize align, Allocator_Error* error)
     {
         PROFILE_START();
-        _scratch_arena_check_invariants(arena);
+        _scratch_arena_check_consistency(arena);
         
         u8* used_to = *stack->curr_frame;
     
@@ -377,7 +377,7 @@ EXTERNAL Scratch        global_scratch_acquire();
         *frame_ptr = new_used_to;
 
         _scratch_arena_fill_garbage(arena, commit);
-        _scratch_arena_check_invariants(arena);
+        _scratch_arena_check_consistency(arena);
 
         end:
         PROFILE_STOP();
@@ -390,7 +390,7 @@ EXTERNAL Scratch        global_scratch_acquire();
         REQUIRE(scratch->arena && scratch->stack && 0 <= scratch->level && scratch->level <= scratch->arena->frame_count, 
             "Using an invalid frame! Its not initialized or it was used after it or a parent frame was released!");
         Scratch_Stack* stack = scratch->stack;
-        _scratch_arena_check_invariants(scratch->arena);
+        _scratch_arena_check_consistency(scratch->arena);
 
         u8* out = (u8*) align_forward(*scratch->frame_ptr, align);
         if(stack->curr_frame != scratch->frame_ptr || out + size > stack->commit_to)
@@ -398,7 +398,7 @@ EXTERNAL Scratch        global_scratch_acquire();
         else
         {
             *scratch->frame_ptr = out + size;
-            _scratch_arena_check_invariants(scratch->arena);
+            _scratch_arena_check_consistency(scratch->arena);
         }
 
         PROFILE_STOP();
@@ -416,7 +416,7 @@ EXTERNAL Scratch        global_scratch_acquire();
     {
         PROFILE_START();
         REQUIRE(arena->frame_count < arena->frame_capacity, "Too many arena frames or uninit");
-        _scratch_arena_check_invariants(arena);
+        _scratch_arena_check_consistency(arena);
 
         u32 level_i = arena->frame_count / SCRATCH_ARENA_CHANNELS;
         u32 stack_i = arena->frame_count % SCRATCH_ARENA_CHANNELS;
@@ -441,7 +441,7 @@ EXTERNAL Scratch        global_scratch_acquire();
         out.alloc[0] = scratch_allocator_func;
         arena->frame_count += 1;
 
-        _scratch_arena_check_invariants(arena);
+        _scratch_arena_check_consistency(arena);
         PROFILE_STOP();
         return out;
     }
@@ -454,14 +454,14 @@ EXTERNAL Scratch        global_scratch_acquire();
 
         Scratch_Arena* arena = scratch->arena;
         Scratch_Stack* stack = scratch->stack;
-        _scratch_arena_check_invariants(arena);
+        _scratch_arena_check_consistency(arena);
     
         u8* old_used_to = *stack->curr_frame;
         stack->curr_frame = MIN(stack->curr_frame, scratch->frame_ptr - 1); 
         arena->frame_count = scratch->level;
 
         _scratch_arena_fill_garbage(arena, old_used_to - *stack->curr_frame);
-        _scratch_arena_check_invariants(arena);
+        _scratch_arena_check_consistency(arena);
     
         //Set the frame to zero so that if someone tries to allocate from this frame
         // it will trigger an assert
@@ -512,7 +512,7 @@ EXTERNAL Scratch        global_scratch_acquire();
     #define SCRATCH_ARENA_DEBUG_DATA_SIZE     32
     #define SCRATCH_ARENA_DEBUG_DATA_PATTERN  0x55
     #define SCRATCH_ARENA_DEBUG_STACK_PATTERN (u8*) 0x6666666666666666
-    EXTERNAL void scratch_arena_test_invariants(Scratch_Arena* arena)
+    EXTERNAL void scratch_arena_test_consistency(Scratch_Arena* arena)
     {
         if(arena->reserved_from == NULL)
             return;
@@ -549,10 +549,10 @@ EXTERNAL Scratch        global_scratch_acquire();
         }
     }
 
-    INTERNAL void _scratch_arena_check_invariants(Scratch_Arena* arena)
+    INTERNAL void _scratch_arena_check_consistency(Scratch_Arena* arena)
     {
         if(SCRATCH_ARENA_DEBUG)
-            scratch_arena_test_invariants(arena);
+            scratch_arena_test_consistency(arena);
     }
 
     INTERNAL void _scratch_arena_fill_garbage(Scratch_Arena* arena, isize content_size)

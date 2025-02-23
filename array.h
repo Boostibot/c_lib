@@ -87,7 +87,7 @@ typedef u64_Array usize_Array;
 EXTERNAL void generic_array_init(Generic_Array gen, Allocator* allocator);
 EXTERNAL void generic_array_deinit(Generic_Array gen);
 EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity); 
-EXTERNAL bool generic_array_is_invariant(Generic_Array gen);
+EXTERNAL bool generic_array_is_consistent(Generic_Array gen);
 EXTERNAL void generic_array_resize(Generic_Array gen, isize to_size, bool zero_new);
 EXTERNAL void generic_array_reserve(Generic_Array gen, isize to_capacity);
 EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize data_count);
@@ -194,7 +194,7 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
     #define PROFILE_SCOPE(...)
 #endif
 
-EXTERNAL bool generic_array_is_invariant(Generic_Array gen)
+EXTERNAL bool generic_array_is_consistent(Generic_Array gen)
 {
     bool is_capacity_correct = 0 <= gen.array->capacity;
     bool is_size_correct = (0 <= gen.array->count && gen.array->count <= gen.array->capacity);
@@ -213,12 +213,12 @@ EXTERNAL void generic_array_init(Generic_Array gen, Allocator* allocator)
 {
     generic_array_deinit(gen);
     gen.array->allocator = allocator;
-    ASSERT_SLOW(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_consistent(gen));
 }
 
 EXTERNAL void generic_array_deinit(Generic_Array gen)
 {
-    ASSERT_SLOW(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_consistent(gen));
     if(gen.array->capacity > 0)
         (*gen.array->allocator)(gen.array->allocator, 0, 0, gen.array->data, gen.array->capacity * gen.item_size, gen.item_align, NULL);
     
@@ -229,7 +229,7 @@ EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity)
 {
     PROFILE_SCOPE()
     {
-        ASSERT(generic_array_is_invariant(gen));
+        ASSERT(generic_array_is_consistent(gen));
         REQUIRE(capacity >= 0 && gen.array->allocator != NULL);
 
         isize old_byte_size = gen.item_size * gen.array->capacity;
@@ -241,7 +241,7 @@ EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity)
         if(gen.array->count > gen.array->capacity)
             gen.array->count = gen.array->capacity;
         
-            ASSERT_SLOW(generic_array_is_invariant(gen));
+            ASSERT_SLOW(generic_array_is_consistent(gen));
     }
 }
 
@@ -252,12 +252,12 @@ EXTERNAL void generic_array_resize(Generic_Array gen, isize to_size, bool zero_n
         memset(gen.array->data + gen.array->count*gen.item_size, 0, (size_t) ((to_size - gen.array->count)*gen.item_size));
         
     gen.array->count = to_size;
-    ASSERT_SLOW(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_consistent(gen));
 }
 
 EXTERNAL void generic_array_reserve(Generic_Array gen, isize to_fit)
 {
-    ASSERT_SLOW(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_consistent(gen));
     if(gen.array->capacity > to_fit)
         return;
         
@@ -275,6 +275,6 @@ EXTERNAL void generic_array_append(Generic_Array gen, const void* data, isize da
     generic_array_reserve(gen, gen.array->count+data_count);
     memcpy(gen.array->data + gen.item_size * gen.array->count, data, (size_t) (gen.item_size * data_count));
     gen.array->count += data_count;
-    ASSERT_SLOW(generic_array_is_invariant(gen));
+    ASSERT_SLOW(generic_array_is_consistent(gen));
 }
 #endif

@@ -103,7 +103,7 @@ EXTERNAL void builder_insert(String_Builder* builder, isize at, String string);
 EXTERNAL void builder_assign(String_Builder* builder, String string); //Sets the contents of the builder to be equal to string
 EXTERNAL bool builder_is_equal(String_Builder a, String_Builder b); //Returns true if the contents and sizes of the strings match
 EXTERNAL int  builder_compare(String_Builder a, String_Builder b); //Compares sizes and then lexicographically the contents. Shorter strings are placed before longer ones.
-EXTERNAL bool builder_is_invariant(String_Builder builder);
+EXTERNAL bool builder_is_consistent(String_Builder builder);
 
 EXTERNAL String_Builder string_concat(Allocator* allocator, String a, String b);
 EXTERNAL String_Builder string_concat3(Allocator* allocator, String a, String b, String c);
@@ -418,7 +418,7 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
 
     //Builder functions ========================================
     static char _builder_null_termination[64] = {0};
-    EXTERNAL bool builder_is_invariant(String_Builder builder)
+    EXTERNAL bool builder_is_consistent(String_Builder builder)
     {
         bool null_termination_not_corrupted = _builder_null_termination[0] == '\0';
         bool is_capacity_correct = 0 <= builder.capacity;
@@ -446,7 +446,7 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
     }
     EXTERNAL void builder_deinit(String_Builder* builder)
     {
-        ASSERT_SLOW(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_consistent(*builder));
         if(builder->data != NULL && builder->data != _builder_null_termination)
             (*builder->allocator)(builder->allocator, 0, 0, builder->data, builder->capacity + 1, 1, NULL);
     
@@ -481,7 +481,7 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
     EXTERNAL void builder_set_capacity(String_Builder* builder, isize capacity)
     {
         PROFILE_START();
-        ASSERT_SLOW(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_consistent(*builder));
         REQUIRE(capacity >= 0 && builder && builder->allocator != NULL);
 
         void* old_data = NULL;
@@ -524,7 +524,7 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
             builder->data[builder->capacity] = '\0'; 
         }
         PROFILE_STOP();
-        ASSERT_SLOW(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_consistent(*builder));
     }
     
     EXTERNAL void builder_reserve(String_Builder* builder, isize to_fit)
@@ -543,7 +543,7 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
 
     EXTERNAL void builder_resize(String_Builder* builder, isize to_size, int fill_with_or_minus_one)
     {
-        ASSERT_SLOW(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_consistent(*builder));
         builder_reserve(builder, to_size);
         if(to_size >= builder->count)
         {
@@ -556,7 +556,7 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
             memset(builder->data + to_size, 0, (size_t) ((builder->count - to_size)));
         
         builder->count = to_size;
-        ASSERT_SLOW(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_consistent(*builder));
     }
 
     EXTERNAL void builder_clear(String_Builder* builder)
@@ -570,7 +570,7 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
         builder_reserve(builder, builder->count+string.count);
         memcpy(builder->data + builder->count, string.data, (size_t) string.count);
         builder->count += string.count;
-        ASSERT_SLOW(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_consistent(*builder));
     }
 
     EXTERNAL void builder_append_line(String_Builder* builder, String string)
@@ -580,7 +580,7 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
         memcpy(builder->data + builder->count, string.data, (size_t) string.count);
         builder->data[builder->count + string.count] = '\n';
         builder->count += string.count + 1;
-        ASSERT_SLOW(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_consistent(*builder));
     }
     
     EXTERNAL void builder_insert_hole(String_Builder* builder, isize at, isize hole_size, int fill_with_char_or_minus_one)
@@ -592,21 +592,21 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
             memset(builder->data + at, fill_with_char_or_minus_one, (size_t) hole_size);
 
         builder->count += hole_size;
-        ASSERT_SLOW(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_consistent(*builder));
     }
     
     EXTERNAL void builder_insert(String_Builder* builder, isize at, String string)
     {
         builder_insert_hole(builder, at, string.count, BUILDER_REISIZE_FOR_OVERWRITE);
         memcpy(builder->data + at, string.data, (size_t) string.count);
-        ASSERT_SLOW(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_consistent(*builder));
     }
 
     EXTERNAL void builder_assign(String_Builder* builder, String string)
     {
         builder_resize(builder, string.count, BUILDER_REISIZE_FOR_OVERWRITE);
         memcpy(builder->data, string.data, (size_t) string.count);
-        ASSERT_SLOW(builder_is_invariant(*builder));
+        ASSERT_SLOW(builder_is_consistent(*builder));
     }
 
     EXTERNAL void builder_push(String_Builder* builder, char c)
@@ -673,7 +673,7 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
 
         }
         PROFILE_STOP();
-        ASSERT(builder_is_invariant(*append_to));
+        ASSERT(builder_is_consistent(*append_to));
         return;
     }
     

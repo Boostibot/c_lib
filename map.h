@@ -104,8 +104,8 @@ MAP_INLINE_API bool  map_prepare_insert_or_find_ptr(Map* map, Map_Info info, con
 #define MAP_TEST_INVARIANTS_BASIC   ((uint32_t) 1)
 #define MAP_TEST_INVARIANTS_FIND    ((uint32_t) 2)
 #define MAP_TEST_INVARIANTS_ALL     ((uint32_t) -1)
-ATTRIBUTE_INLINE_NEVER EXTERNAL void map_test_invariant(const Map* map, Map_Info info, uint32_t flags);
-MAP_INLINE_API void map_debug_test_invariant(const Map* map, Map_Info info);
+ATTRIBUTE_INLINE_NEVER EXTERNAL void map_test_consistency(const Map* map, Map_Info info, uint32_t flags);
+MAP_INLINE_API void map_debug_test_consistency(const Map* map, Map_Info info);
 #endif
 
 //Inline implementation
@@ -128,7 +128,7 @@ ATTRIBUTE_INLINE_NEVER EXTERNAL void _map_grow_entries(Map* map, isize requested
 ATTRIBUTE_INLINE_NEVER EXTERNAL void _map_rehash(Map* map, isize requested_capacity, uint32_t entry_size, uint32_t entry_align, uint32_t hash_offset);
 ATTRIBUTE_INLINE_NEVER EXTERNAL void _map_deinit(Map* map, uint32_t entry_size, uint32_t entry_align);
 
-MAP_INLINE_API void map_debug_test_invariant(const Map* map, Map_Info info)
+MAP_INLINE_API void map_debug_test_consistency(const Map* map, Map_Info info)
 {
     #ifndef MAP_DEBUG
         #if defined(DO_ASSERTS_SLOW)
@@ -142,9 +142,9 @@ MAP_INLINE_API void map_debug_test_invariant(const Map* map, Map_Info info)
 
     (void) map, info;
     #if MAP_DEBUG > 1
-        map_test_invariant(map, info, MAP_TEST_INVARIANTS_ALL);
+        map_test_consistency(map, info, MAP_TEST_INVARIANTS_ALL);
     #elif MAP_DEBUG > 0
-        map_test_invariant(map, info, MAP_TEST_INVARIANTS_BASIC);
+        map_test_consistency(map, info, MAP_TEST_INVARIANTS_BASIC);
     #endif
 }
 
@@ -156,16 +156,16 @@ MAP_INLINE_API void map_init(Map* map, Map_Info info, Allocator* alloc)
 
 MAP_INLINE_API void map_deinit(Map* map, Map_Info info)
 {
-    map_debug_test_invariant(map, info);
+    map_debug_test_consistency(map, info);
     _map_deinit(map, info.entry_size, info.entry_align);
-    map_debug_test_invariant(map, info);
+    map_debug_test_consistency(map, info);
 }
 
 MAP_INLINE_API void map_rehash(Map* map, Map_Info info, isize requested_capacity)
 {
-    map_debug_test_invariant(map, info);
+    map_debug_test_consistency(map, info);
     _map_rehash(map, requested_capacity, info.entry_size, info.entry_align, info.hash_offset);
-    map_debug_test_invariant(map, info);
+    map_debug_test_consistency(map, info);
 }
 
 MAP_INLINE_API void map_reserve(Map* map, Map_Info info, isize requested_capacity)
@@ -174,8 +174,8 @@ MAP_INLINE_API void map_reserve(Map* map, Map_Info info, isize requested_capacit
         map_rehash(map, info, requested_capacity);
 }
 
-//this is a separate fucntion specifically because it doesnt call map_debug_test_invariant so it can be used
-// within map_debug_test_invariant
+//this is a separate fucntion specifically because it doesnt call map_debug_test_consistency so it can be used
+// within map_debug_test_consistency
 MAP_INLINE_API bool _map_find_next(const Map* map, Map_Info info, const void* key, uint64_t hash, uint32_t* index, uint32_t* iter)
 {
     if(map->count > 0)
@@ -205,7 +205,7 @@ MAP_INLINE_API void map_find_next_make(const Map* map, uint64_t hash, uint32_t* 
 MAP_INLINE_API bool map_find_next(const Map* map, Map_Info info, const void* key, uint64_t hash, uint32_t* index, uint32_t* iter)
 {
     ASSERT(map_hash_is_valid(hash));
-    map_debug_test_invariant(map, info);
+    map_debug_test_consistency(map, info);
     *index = (*index + *iter) & (map->capacity - 1);
     *iter += 1;
     return _map_find_next(map, info, key, hash, index, iter);
@@ -214,7 +214,7 @@ MAP_INLINE_API bool map_find_next(const Map* map, Map_Info info, const void* key
 MAP_INLINE_API bool map_find(const Map* map, Map_Info info, const void* key, uint64_t hash, isize* found)
 {
     ASSERT(map_hash_is_valid(hash));
-    map_debug_test_invariant(map, info);
+    map_debug_test_consistency(map, info);
     uint32_t iter = 1;
     uint32_t index = (uint32_t) hash & (map->capacity - 1);
     bool out = _map_find_next(map, info, key, hash, &index, &iter);
@@ -225,7 +225,7 @@ MAP_INLINE_API bool map_find(const Map* map, Map_Info info, const void* key, uin
 MAP_INLINE_API void* map_get_or(const Map* map, Map_Info info, const void* key, uint64_t hash, void* if_not_found)
 {
     ASSERT(map_hash_is_valid(hash));
-    map_debug_test_invariant(map, info);
+    map_debug_test_consistency(map, info);
     uint32_t iter = 1;
     uint32_t index = (uint32_t) hash & (map->capacity - 1);
     if(_map_find_next(map, info, key, hash, &index, &iter))
@@ -236,7 +236,7 @@ MAP_INLINE_API void* map_get_or(const Map* map, Map_Info info, const void* key, 
 MAP_INLINE_API bool _map_insert_or_find(Map* map, Map_Info info, const void* key, uint64_t hash, isize* found, bool do_only_insert)
 {
     ASSERT(map_hash_is_valid(hash));
-    map_debug_test_invariant(map, info);
+    map_debug_test_consistency(map, info);
     map_reserve(map, info, (isize) map->count + 1);
     uint64_t i = hash & (map->capacity - 1);
     uint64_t empty_i = (uint64_t) -1;
@@ -436,7 +436,7 @@ EXTERNAL void _map_deinit(Map* map, uint32_t entry_size, uint32_t entry_align)
 }
 
 ATTRIBUTE_INLINE_NEVER
-EXTERNAL void map_test_invariant(const Map* map, Map_Info info, uint32_t flags)
+EXTERNAL void map_test_consistency(const Map* map, Map_Info info, uint32_t flags)
 {
     if(flags & MAP_TEST_INVARIANTS_BASIC) {
         if(map->alloc == NULL) {

@@ -43,7 +43,7 @@
 // 8 - If the path is empty, add a dot.
 // 8 - Insert back trailing / if is directory path.
 //
-// The canonical path has the following invariants:
+// The canonical path has the following consistency:
 // 1) Path_Info is up to date including segment_count.
 // 2) Path_Info.is_directory <=> ends with /
 // 3) Includes only / (and not \)

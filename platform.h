@@ -258,7 +258,7 @@ PLATFORM_INTRINSIC void platform_memory_barrier();
 PLATFORM_INTRINSIC void platform_processor_pause();
 
 //Returns the first/last set (1) bit position. If num is zero result is undefined.
-//The following invariants hold (analogous for 64 bit)
+//The following consistency hold (analogous for 64 bit)
 // (num & (1 << platform_find_first_set_bit32(num)) != 0
 // (num & (1 << (32 - platform_find_last_set_bit32(num))) != 0
 PLATFORM_INTRINSIC int32_t platform_find_first_set_bit32(uint32_t num);

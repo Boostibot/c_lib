@@ -52,7 +52,7 @@ static void test_string_map_deinit(Test_String_Map* map);
 static void test_string_map_init(Test_String_Map* map, Allocator* alloc);
 static bool test_string_map_find_iterate(const Test_String_Map* map, String string, Test_String_Map_Find_Iter* iter);  
 static isize test_string_map_remove_all(Test_String_Map* map, String string);
-static void test_string_map_test_invariants(const Test_String_Map* map);
+static void test_string_map_test_consistency(const Test_String_Map* map);
 
 #define MY_MAP_INFO SINIT(Map_Info) {           \
         sizeof(Test_String_Map_Entry),          \
@@ -89,7 +89,7 @@ static Test_String_Map_Entry* test_string_map_set(Test_String_Map* map, String k
         entry->value = string_allocate(map->alloc, value);
     }
 
-    map_debug_test_invariant(&map->generic, MY_MAP_INFO);
+    map_debug_test_consistency(&map->generic, MY_MAP_INFO);
     return entry; 
 }
 
@@ -113,7 +113,7 @@ static void test_string_map_clear(Test_String_Map* map)
     MAP_FOR(*map, Test_String_Map_Entry, entry) 
         _my_entry_deinit(map, entry);
     map_clear(&map->generic, MY_MAP_INFO);
-    map_debug_test_invariant(&map->generic, MY_MAP_INFO);
+    map_debug_test_consistency(&map->generic, MY_MAP_INFO);
 }
 
 static void test_string_map_deinit(Test_String_Map* map)
@@ -151,13 +151,13 @@ static isize test_string_map_remove_all(Test_String_Map* map, String string)
         ASSERT(it.entry != NULL);
         removed += test_string_map_remove(map, it.entry);
     }
-    map_debug_test_invariant(&map->generic, MY_MAP_INFO);
+    map_debug_test_consistency(&map->generic, MY_MAP_INFO);
     return removed;
 }
 
-static void test_string_map_test_invariants(const Test_String_Map* map)
+static void test_string_map_test_consistency(const Test_String_Map* map)
 {
-    map_test_invariant(&map->generic, MY_MAP_INFO, MAP_TEST_INVARIANTS_ALL);
+    map_test_consistency(&map->generic, MY_MAP_INFO, MAP_TEST_INVARIANTS_ALL);
 }
 
 INTERNAL void test_string_map_unit()
@@ -469,7 +469,7 @@ INTERNAL void test_string_map_stress(f64 max_seconds)
 			if(max_capacity < map.capacity)
 				max_capacity = map.capacity;
 				
-			test_string_map_test_invariants(&map);
+			test_string_map_test_consistency(&map);
 			ASSERT(truth_key_array.count == truth_val_array.count);
 			TEST(truth_key_array.count == map.count);
 				
