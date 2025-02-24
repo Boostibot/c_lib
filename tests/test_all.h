@@ -39,7 +39,7 @@
 #include "test_utf.h"
 #include "test_base64.h"
 #include "test_serialize.h"
-#include "test_chase_lev_queue.h"
+#include "test_spmc_queue.h"
 #include "test_debug_allocator.h"
 
 typedef enum Test_Func_Type {
@@ -69,7 +69,6 @@ static void test_all(double total_time)
     run_tests(NULL, total_time, 
         UNIT_TEST(platform_test_all),
         UNIT_TEST(test_list),
-        UNIT_TEST(test_list),
         UNIT_TEST(test_image),
         UNIT_TEST(test_serialize),
         // UNIT_TEST(test_random),
@@ -87,10 +86,10 @@ static void test_all(double total_time)
         TIMED_TEST(test_math),
         TIMED_TEST(test_mem),
         TIMED_TEST(test_sort),
+        TIMED_TEST(test_debug_allocator),
         TIMED_TEST(slz4_test),
         TIMED_TEST(test_allocator_tlsf),
-        TIMED_TEST(test_debug_allocator),
-        TIMED_TEST(test_chase_lev_queue),
+        TIMED_TEST(test_spmc_queue),
         UNIT_TEST(NULL)
     );
 }

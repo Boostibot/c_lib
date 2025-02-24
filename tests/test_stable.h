@@ -183,7 +183,7 @@ INTERNAL void test_stable_stress(double max_seconds)
             for(isize j = 0; j < 10; j++) {
                 isize not_found = random_range(0, truth_array.count);
                 for(isize k = 0; k < truth_array.count; k++) 
-                    if(truth_array.data[k].index == k) {
+                    if(truth_array.data[k].index == not_found) {
                         not_found = -1;
                         break;
                     }

@@ -282,7 +282,7 @@ EXTERNAL void* stable_at(const Stable* stable, isize index)
 
 EXTERNAL void* stable_at_or(const Stable* stable, isize index, void* if_not_found)
 {
-    if(0 <= index && index <= stable_capacity(stable))
+    if(0 <= index && index < stable_capacity(stable))
     {
         size_t block_i = (size_t) index / STABLE_BLOCK_SIZE;
         size_t item_i = (size_t) index %  STABLE_BLOCK_SIZE;
