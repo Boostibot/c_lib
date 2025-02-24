@@ -13,8 +13,8 @@
 // item. We need to track which items are alive and which not. Additionally we should be able to fill
 // the holes with new items. Both of these is done by storing 64 bit bitmask where on bits are alive and off bits
 // are dead items. To find next empty slot within a block we can use the bitscan/find first instruction. When
-// there are no more empty slots within a block we can use a normal freelist of blocks to find next block with at 
-// least one empty slot.
+// there are no more empty slots within a block (ie all bits off mask are on) we can use a normal freelist 
+// of blocks to find next block with at least one empty slot.
 // 
 // The structure is optimized for insertions and looping. The only perf consideration is how many cache line reads 
 // are necessary to perform the insertion. We want it to be at most 1 not counting in the lookup of the Stable 
@@ -89,6 +89,9 @@ EXTERNAL void* stable_at_or(const Stable* stable, isize index, void* if_not_foun
 EXTERNAL void  stable_remove(Stable* stable, isize index);
 EXTERNAL void  stable_reserve(Stable* stable, isize to);
 EXTERNAL isize stable_insert(Stable* stable, void** out_or_null);
+EXTERNAL isize stable_insert_value(Stable* stable, void* value_or_null);
+EXTERNAL isize stable_insert_nozero(Stable* stable, void** out_or_null);
+EXTERNAL void  stable_clear(Stable* stable);
 EXTERNAL void  stable_test_consistency(const Stable* stable, bool slow_checks);
 
 //Iteration (with inline impl for reasonable perf)
@@ -161,6 +164,8 @@ inline static void* _stable_iter_per_slot(Stable_Iter* it, isize item_size)
     return NULL;
 }
 #endif
+
+#define MODULE_IMPL_ALL
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_STABLE)) && !defined(MODULE_HAS_IMPL_STABLE)
 #define MODULE_HAS_IMPL_STABLE
@@ -260,8 +265,8 @@ EXTERNAL void stable_deinit(Stable* stable)
         _stable_alloc(stable->allocator, 0, stable->blocks[k].ptr, (i - k)*STABLE_BLOCK_SIZE*stable->item_size, stable->item_align);
     }
 
-    if(stable->blocks_count)
-        _stable_alloc(stable->allocator, 0, stable->blocks, stable->blocks_count*sizeof(Stable_Block), 8);
+    if(stable->blocks_capacity)
+        _stable_alloc(stable->allocator, 0, stable->blocks, stable->blocks_capacity*sizeof(Stable_Block), 8);
     memset(stable, 0, sizeof *stable);
 }
 
@@ -288,7 +293,7 @@ EXTERNAL void* stable_at_or(const Stable* stable, isize index, void* if_not_foun
 
     return if_not_found;
 }
-EXTERNAL isize stable_insert(Stable* stable, void** out_or_null)
+INTERNAL isize _stable_insert(Stable* stable, void** out_or_null, bool zero)
 {
     _stable_check_consistency(stable);
     if(stable->count + 1 > stable_capacity(stable))
@@ -307,12 +312,51 @@ EXTERNAL isize stable_insert(Stable* stable, void** out_or_null)
     }
 
     isize out_i = block_i*STABLE_BLOCK_SIZE + empty_i;
+    uint8_t* ptr = block->ptr + empty_i*stable->item_size;
     stable->count += 1;
     if(out_or_null)
-        *out_or_null = block->ptr + empty_i*stable->item_size;
+        *out_or_null = ptr;
     
+    if(zero)
+        memset(ptr, 0, stable->item_size);
     _stable_check_consistency(stable);
     return out_i;
+}
+
+EXTERNAL isize stable_insert(Stable* stable, void** out_or_null)
+{
+    return _stable_insert(stable, out_or_null, true);
+}
+
+EXTERNAL isize stable_insert_nozero(Stable* stable, void** out_or_null)
+{
+    return _stable_insert(stable, out_or_null, false);
+}
+
+EXTERNAL isize stable_insert_value(Stable* stable, void* value_or_null)
+{
+    void* ptr = NULL;
+    isize out = _stable_insert(stable, &ptr, false);
+    if(value_or_null)
+        memcpy(ptr, value_or_null, stable->item_size);
+    else
+        memset(ptr, 0, stable->item_size);
+    return out;
+}
+
+EXTERNAL void stable_clear(Stable* stable)
+{
+    for(uint32_t block_i = 0; block_i < stable->blocks_count; block_i += 1) {
+        Stable_Block* block = &stable->blocks[block_i];
+
+        //if was full add to freelist
+        if(~block->mask == 0) {
+            block->next_free = stable->first_free;
+            stable->first_free = block_i + 1;
+        }
+        block->mask = 0;
+    }
+    stable->count = 0;
 }
 
 EXTERNAL void stable_remove(Stable* stable, isize index)
@@ -342,7 +386,7 @@ EXTERNAL void stable_reserve(Stable* stable, isize to_size)
     if(to_size > stable_capacity(stable))
     {
         _stable_check_consistency(stable);
-        
+        ASSERT(stable->item_size > 0);
         isize desired_items = (stable->allocation_size + stable->item_size - 1)/stable->item_size;
         if(desired_items < to_size)
             desired_items = to_size;

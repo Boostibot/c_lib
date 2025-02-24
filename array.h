@@ -241,7 +241,7 @@ EXTERNAL void generic_array_set_capacity(Generic_Array gen, isize capacity)
         if(gen.array->count > gen.array->capacity)
             gen.array->count = gen.array->capacity;
         
-            ASSERT_SLOW(generic_array_is_consistent(gen));
+        ASSERT_SLOW(generic_array_is_consistent(gen));
     }
 }
 

@@ -140,7 +140,8 @@ MAP_INLINE_API void map_debug_test_consistency(const Map* map, Map_Info info)
         #endif
     #endif
 
-    (void) map, info;
+    (void) map;
+    (void) info;
     #if MAP_DEBUG > 1
         map_test_consistency(map, info, MAP_TEST_INVARIANTS_ALL);
     #elif MAP_DEBUG > 0

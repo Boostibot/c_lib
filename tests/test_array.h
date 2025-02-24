@@ -5,7 +5,7 @@
 #include "../time.h"
 #include "../allocator_debug.h"
 
-INTERNAL void test_array_stress(f64 max_seconds)
+INTERNAL void test_array_stress(double max_seconds)
 {
 	Debug_Allocator debug_alloc = debug_allocator_make(allocator_get_default(), DEBUG_ALLOC_LEAK_CHECK | DEBUG_ALLOC_USE);
 	{
@@ -51,7 +51,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 
 		isize max_size = 0;
 		isize max_capacity = 0;
-		f64 start = clock_sec();
+		double start = clock_sec();
 		for(isize i = 0; i < MAX_ITERS; i++)
 		{
 			PROFILE_START(iter);
@@ -66,19 +66,16 @@ INTERNAL void test_array_stress(f64 max_seconds)
 				case INIT: {
 					array_deinit(arr);
 					array_init(arr, debug_alloc.alloc);
-					break;
-				}
+				} break;
 				
 				case CLEAR: {
 					array_clear(arr);
-					break;
-				}
+				} break;
 				
 				case SET_CAPACITY: {
 					isize capacity = random_range(0, MAX_CAPACITY);
 					array_set_capacity(arr, capacity);
-					break;
-				}
+				} break;
 				
 				case PUSH: {
 					i64 offset = random_range(0, 64);
@@ -89,8 +86,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 					array_push(arr, value);
 					TEST(value);
 					TEST(arr->data != NULL);
-					break;
-				}
+				} break;
 				
 				case POP: {
 					if(arr->count > 0)
@@ -99,8 +95,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 						TEST(is_power_of_two_or_zero(value));
 						array_pop(arr);
 					}
-					break;
-				}
+				} break;
 				
 				case RESERVE: {
 					isize size_before = arr->count;
@@ -110,16 +105,14 @@ INTERNAL void test_array_stress(f64 max_seconds)
 
 					TEST(size_before == arr->count);
 					TEST(capacity_before <= arr->capacity);
-					break;
-				}
+				} break;
 
 				case RESIZE: {
 					isize size = random_range(0, MAX_CAPACITY);
 					array_resize(arr, size);
 					TEST(arr->count == size);
 					TEST(arr->capacity >= size);
-					break;
-				}
+				} break;
 				
 				case APPEND: {
 					i64 appended[64] = {0};
@@ -133,8 +126,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 					}
 					
 					array_append(arr, appended, append_count);
-					break;
-				}
+				} break;
 				
 				case COPY: {
 					array_copy(other_array, *arr);
@@ -142,8 +134,7 @@ INTERNAL void test_array_stress(f64 max_seconds)
 					TEST(other_array->capacity >= other_array->count);
 
 					random_swap_any(&other_array, &arr, sizeof(arr));
-					break;
-				}
+				} break;
 			}
 			
 			if(max_size < arr->count)

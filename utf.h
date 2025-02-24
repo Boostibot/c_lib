@@ -39,7 +39,7 @@ EXTERNAL bool utf32_encode(void* output, isize output_size, uint32_t code_point,
 //This doesnt mean it has assigned unicode meaning or that it will correctly render on screen.
 EXTERNAL bool utf_is_valid_codepoint(uint32_t code_point);
 
-#endif MODULE_UTF
+#endif
 
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_UTF)) && !defined(MODULE_HAS_IMPL_UTF)
 #define MODULE_HAS_IMPL_UTF

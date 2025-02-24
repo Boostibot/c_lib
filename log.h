@@ -428,7 +428,8 @@ INTERNAL char* _log_builder_append_vfmt(_Log_Builder* builder_or_null, const cha
 
         builder->is_backed = false;
         builder->capacity = new_capacity;
-        count = vsnprintf(builder->data + builder->size, (size_t) (builder->capacity - builder->size), fmt, copy);
+        int count2 = vsnprintf(builder->data + builder->size, (size_t) (builder->capacity - builder->size), fmt, args);
+        ASSERT(count == count2);
     }
 
     builder->size += count; 

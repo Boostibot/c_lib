@@ -8,7 +8,7 @@ DEPENDENCIES = $(ALL_SOURCES) Makefile
 D := $(BUILD_DIR)
 
 $(D)/main.out: $(DEPENDENCIES) 
-	$(HOST_COMP) $(HOST_FLAGS) -x c _test_all.h -o $@ $(HOST_LINK)
+	$(HOST_COMP) $(HOST_FLAGS) -x c tests/test_all.h -o $@ $(HOST_LINK)
 
 clean:
 	rm -f $(D)/*.o

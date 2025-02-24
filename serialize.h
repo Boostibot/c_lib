@@ -851,6 +851,8 @@ static bool _ser_write_json(Ser_Writer* w, Ser_Value val, isize indent_or_negati
             }
             ser_writer_write(w, "\"", 1); 
         } break;
+
+        default: break;
     }
 
     ser_writer_reserve(w, 1);

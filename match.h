@@ -579,7 +579,7 @@ EXTERNAL bool match_decimal_i64_options(String str, isize* index, int64_t* out, 
     match_decimal_number_sign(str, &i, &is_negative, flags);
     if(match_decimal_number_int(str, &i, &mantissa, &exponent, flags))
     {
-        if(exponent == 0 && (mantissa <= is_negative ? -INT64_MIN : INT64_MAX)) {
+        if(exponent == 0 && mantissa <= (is_negative ? -(uint64_t)INT64_MIN : INT64_MAX)) {
             *index = i;
             *out = is_negative ? -(int64_t) mantissa : (int64_t) mantissa ;
             return true;

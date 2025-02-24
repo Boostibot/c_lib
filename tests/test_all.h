@@ -71,12 +71,12 @@ static void test_all(double total_time)
         UNIT_TEST(test_list),
         UNIT_TEST(test_list),
         UNIT_TEST(test_image),
-        UNIT_TEST(test_stable),
         UNIT_TEST(test_serialize),
         // UNIT_TEST(test_random),
         UNIT_TEST(test_path),
         UNIT_TEST(test_log),
         UNIT_TEST(test_match),
+        TIMED_TEST(test_stable),
         TIMED_TEST(test_map),
         TIMED_TEST(test_base64),
         TIMED_TEST(test_utf),
@@ -95,8 +95,13 @@ static void test_all(double total_time)
     );
 }
 
-
 #if defined(TEST_RUNNER)
+    void allocator_panic(Allocator_Error error)
+    {
+        (void) error;
+        PANIC("Allocator error");
+    }
+
     int main()
     {
         platform_init();

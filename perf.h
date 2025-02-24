@@ -198,8 +198,10 @@ EXTERNAL int64_t calculate_tsc_freq(int64_t qpc_dur, int64_t tsc_dur)
 {
     //duration = qpc_dur/qpc_freq = tsc_dur/tsc_freq
     // => tsc_freq = qpc_freq*tsc_dur/qpc_dur
+    int64_t qpc_freq = perf_counter_freq();
+    return qpc_freq;
+
     #if defined(_MSC_VER) && !defined(__clang__)
-        int64_t qpc_freq = perf_counter_freq();
         uint64_t hi, lo = _umul128((uint64_t) qpc_freq, (uint64_t) tsc_dur, &hi);
         uint64_t rem, quo = _udiv128(hi, lo, (uint64_t) qpc_dur, &rem);
         return (int64_t) quo;
