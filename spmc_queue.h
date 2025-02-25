@@ -59,15 +59,18 @@ typedef struct SPMC_Queue {
     alignas(64)
     SPMC_QUEUE_ATOMIC(uint64_t) top; //changed by pop
     SPMC_QUEUE_ATOMIC(uint64_t) estimate_bot;
+    uint64_t _pad1[6];
 
     alignas(64)
     SPMC_QUEUE_ATOMIC(uint64_t) bot; //changed by push
     uint64_t estimate_top;
+    uint64_t _pad2[6];
 
     alignas(64)
     SPMC_QUEUE_ATOMIC(SPMC_Queue_Block*) block;
     SPMC_QUEUE_ATOMIC(uint32_t) item_size;
     SPMC_QUEUE_ATOMIC(uint32_t) max_capacity_log2; //0 means max capacity off!
+    uint64_t _pad3[6];
 } SPMC_Queue;
 
 SPMC_QUEUE_API void spmc_queue_deinit(SPMC_Queue* queue);

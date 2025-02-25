@@ -93,7 +93,7 @@ INTERNAL void test_stable_stress(double max_seconds)
 
 		Array(Test_Stable_Truth) truth_array = {debug_alloc.alloc};
         Stable stable = {0};
-        stable_init(&stable, debug_alloc.alloc, sizeof(int64_t));
+        stable_init(&stable, debug_alloc.alloc, sizeof(uint64_t));
 
 		isize max_size = 0;
 		isize max_capacity = 0;
@@ -107,7 +107,7 @@ INTERNAL void test_stable_stress(double max_seconds)
 			switch(action) {
 				case INIT: {
                     stable_deinit(&stable);
-                    stable_init(&stable, debug_alloc.alloc, sizeof(int64_t));
+                    stable_init(&stable, debug_alloc.alloc, sizeof(uint64_t));
 					array_clear(&truth_array);
 				} break;
 				
@@ -154,14 +154,14 @@ INTERNAL void test_stable_stress(double max_seconds)
             //All items must be found
 			for(isize k = 0; k < truth_array.count; k++) {
                 Test_Stable_Truth* truth = &truth_array.data[k];
-                TEST(truth->value == *(int64_t*) stable_at(&stable, truth->index));
-                TEST(truth->value == *(int64_t*) stable_at_or(&stable, truth->index, NULL));
+                TEST(truth->value == *(uint64_t*) stable_at(&stable, truth->index));
+                TEST(truth->value == *(uint64_t*) stable_at_or(&stable, truth->index, NULL));
             }
 
             //iteration must iterate over all entries and must iterate in ascending order
             qsort(truth_array.data, truth_array.count, sizeof(Test_Stable_Truth), _test_stable_compare);
             isize iterated_count = 0;
-            STABLE_FOR(&stable, it, int64_t, item) {
+            STABLE_FOR(&stable, it, uint64_t, item) {
                 TEST(iterated_count < truth_array.count);
                 TEST(truth_array.data[iterated_count].index == it.index); 
                 TEST(truth_array.data[iterated_count].value == *item); 

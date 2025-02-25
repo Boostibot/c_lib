@@ -41,6 +41,7 @@
 #include "test_serialize.h"
 #include "test_spmc_queue.h"
 #include "test_debug_allocator.h"
+#include "test_unicode.h"
 
 typedef enum Test_Func_Type {
     TEST_FUNC_TYPE_SIMPLE,
@@ -68,6 +69,7 @@ static void test_all(double total_time)
 {
     run_tests(NULL, total_time, 
         UNIT_TEST(platform_test_all),
+        UNIT_TEST(test_unicode_unit),
         UNIT_TEST(test_list),
         UNIT_TEST(test_image),
         UNIT_TEST(test_serialize),
