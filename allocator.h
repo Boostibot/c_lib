@@ -120,6 +120,8 @@ EXTERNAL void* align_backward(void* ptr, isize align_to);
 
 #endif
 
+#define MODULE_IMPL_ALL
+
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_ALLOCATOR)) && !defined(MODULE_HAS_IMPL_ALLOCATOR)
 #define MODULE_HAS_IMPL_ALLOCATOR
 
@@ -141,6 +143,11 @@ EXTERNAL void* align_backward(void* ptr, isize align_to);
         #include <assert.h>
         #define ASSERT(x, ...) assert(x)
     #endif
+
+    #ifndef PANIC_EXPR
+        #define PANIC_EXPR(type, expr, ...) (fprintf(stderr, "panic type:%s expr:%s with message: '", (type), (expr)), fprintf(stderr, "" __VA_ARGS__), fprintf(stderr, "'\n"), abort())
+    #endif
+
     #include <stdarg.h>
     #include <stdio.h>
 
@@ -184,26 +191,36 @@ EXTERNAL void* align_backward(void* ptr, isize align_to);
 
     EXTERNAL void allocator_error(Allocator_Error* error_or_null, Allocator_Error_Type error_type, Allocator* allocator, isize new_size, void* old_ptr, isize old_size, isize align, const char* format, ...)
     {
-        Allocator_Error error = {0};
-        error.alloc = allocator;
-        error.new_size = new_size;
-        error.old_ptr = old_ptr;
-        error.old_size = old_size;
-        error.align = align;
-        error.error = error_type;
+        char space[256] = {0};
+        Allocator_Error error_backing = {0};
+        error_backing.error_string = space;
+        error_backing.error_string_capacity = sizeof space;
 
-        if(error.error_string) {
+        Allocator_Error* error = error_or_null ? error_or_null : &error_backing;
+        error->alloc = allocator;
+        error->new_size = new_size;
+        error->old_ptr = old_ptr;
+        error->old_size = old_size;
+        error->align = align;
+        error->error = error_type;
+
+        if(error->error_string) {
             va_list args;
             va_start(args, format);
-            error.error_string_count = vsnprintf(error.error_string, error.error_string_capacity, format, args);
+            error->error_string_count = vsnprintf(error->error_string, error->error_string_capacity, format, args);
             va_end(args);
         }
 
         if(error_or_null == NULL)
-            allocator_panic(error);
-        else
-            *error_or_null = error;
+            allocator_panic(*error);
     }
+
+    #ifndef ALLOCATOR_CUSTOM_PANIC
+    EXTERNAL void allocator_panic(Allocator_Error error)
+    {
+        PANIC_EXPR("ALLOCATOR", "allocator_panic", "%s", error.error_string);
+    }
+    #endif
     
     EXTERNAL bool is_power_of_two_or_zero(isize num) 
     {
