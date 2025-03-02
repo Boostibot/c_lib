@@ -1,5 +1,6 @@
-
-#define _CRT_SECURE_NO_WARNINGS
+#ifndef _CRT_SECURE_NO_WARNINGS
+    #define _CRT_SECURE_NO_WARNINGS
+#endif
 
 #ifdef APIENTRY
     #undef APIENTRY
@@ -176,136 +177,90 @@ int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
 //=========================================
 #include <process.h>
 
-typedef struct Platform_Thread_Cleanup {
-    void (*func)(void* context);
-    void* context;
-} Platform_Thread_Cleanup;
-
-#define _INLINE_CLEANUPS 8
-typedef struct Platform_Thread_State {
-    int (*func)(void*);
-    Platform_Thread_Cleanup inline_cleanups[_INLINE_CLEANUPS];
-    Platform_Thread_Cleanup* extended_cleanups;
-    int cleanup_count;
-    int cleanup_capacity;
-} Platform_Thread_State;
-
-static _declspec(thread) Platform_Thread_State* _current_thread_state = NULL;
-Platform_Thread_State* _platform_thread_state()
-{
-    if(_current_thread_state == NULL)
-        _current_thread_state = calloc(1, sizeof(Platform_Thread_State));
-    
-    return _current_thread_state;
-}
-
-void _platform_thread_cleanup()
-{
-    Platform_Thread_State* state = _platform_thread_state();
-    for(int i = 0; i < state->cleanup_count; i++)
-    {
-        Platform_Thread_Cleanup* cleanup = &state->inline_cleanups[i];
-        if(i >= _INLINE_CLEANUPS)
-            cleanup = &state->extended_cleanups[i - _INLINE_CLEANUPS];
-
-        cleanup->func(cleanup->context);
-    }
-
-    free(state->extended_cleanups);
-    free(state);
-
-    _current_thread_state = NULL;
-}
-
-unsigned _thread_func(void* ptr)
-{
-    Platform_Thread_State* state = (Platform_Thread_State*) ptr;
-    _current_thread_state = state;
-    void* user_context = state + 1;
-    int result = state->func(user_context);
-
-    _platform_thread_cleanup();
-    return (unsigned) result;
-}
-
-
-
-int64_t         platform_thread_get_processor_count();
-Platform_Thread platform_thread_get_current(); //Returns handle to the calling thread
+Platform_Error  platform_thread_launch(int64_t stack_size_or_zero, void (*func)(void*), void* context, const char* name_fmt, ...);
+int32_t         platform_thread_get_processor_count();
 int32_t         platform_thread_get_current_id(); 
-Platform_Thread platform_thread_get_main(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns NULL.
-bool            platform_thread_is_main();
-void            platform_thread_sleep(double seconds); //Sleeps the calling thread for specified number of seconds. The accuracy is platform and sheduler dependent
+int32_t         platform_thread_get_main_id(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns -1.
+const char*     platform_thread_get_current_name(); 
+void            platform_thread_sleep(double seconds); //Sleeps the calling thread for specified number of seconds. The accuracy is platform and scheduler dependent
 void            platform_thread_exit(int code); //Terminates a thread with an exit code
 void            platform_thread_yield(); //Yields the remainder of this thread's time slice to another thread
-void            platform_thread_detach(Platform_Thread* thread);
-bool            platform_thread_join(const Platform_Thread* threads, int64_t count, double seconds_or_negative_if_infinite); //Blocks calling thread until all threads finish. Must not join the current calling thread!
 
-Platform_Error platform_thread_launch(Platform_Thread* thread_or_null, int64_t stack_size_or_zero, int (*func)(void*), void* context)
+typedef struct _Platform_Thread_Context {
+    void (*func)(void* context);
+    void* context;
+    char* name;
+    size_t name_size;
+} _Platform_Thread_Context;
+
+_Thread_local _Platform_Thread_Context* g_thread_context = NULL;
+unsigned _thread_func(void* void_context)
 {
-    Platform_Thread dummy = {0};
-    Platform_Thread* thread = thread_or_null ? thread_or_null : &dummy;
-    assert(stack_size_or_zero >= 0);
+    _Platform_Thread_Context* context = (_Platform_Thread_Context*) void_context;
+    g_thread_context = context;
 
+    //set name
+    {
+        int utf16len = MultiByteToWideChar(CP_UTF8, 0, context->name, (int) context->name_size, NULL, 0);
+        wchar_t* wide_name = (wchar_t*) calloc(sizeof(wchar_t), utf16len + 1);
+        MultiByteToWideChar(CP_UTF8, 0, context->name, (int) context->name_size, wide_name, (int) utf16len);
+        SetThreadDescription(GetCurrentThread(), wide_name);
+        free(wide_name);
+    }
+
+    context->func(context->context);
+
+    free(context->name);
+    free(context);
+    return 0;
+}
+
+Platform_Error platform_thread_launch(isize stack_size_or_zero, void (*func)(void*), void* context, const char* name_fmt, ...)
+{
     if(stack_size_or_zero <= 0)
         stack_size_or_zero = 0;
+    if(stack_size_or_zero > UINT_MAX)
+        stack_size_or_zero = UINT_MAX;
 
-    thread->handle = NULL;
-    Platform_Thread_State* thread_state = calloc(1, sizeof(Platform_Thread_State) + sizeof(void*));
-    if(thread_state)
-    {
-        thread_state->func = func;
-        memcpy(thread_state + 1, &context, sizeof(void*));
-        thread->handle = (void*) _beginthreadex(NULL, (unsigned int) stack_size_or_zero, _thread_func, thread_state, 0, NULL);
+    _Platform_Thread_Context* thread_context = calloc(1, sizeof(_Platform_Thread_Context));
+    if(thread_context) {
+        thread_context->func = func;
+        thread_context->context = context;
+        
+        if(name_fmt == NULL)
+            name_fmt = "";
+
+        va_list args;
+        va_list copy;
+        va_start(args, name_fmt);
+        va_copy(copy, args);
+        thread_context->name_size = vsnprintf(NULL, 0, name_fmt, copy);
+        thread_context->name = calloc(1, thread_context->name_size + 1);
+        vsnprintf(thread_context->name, thread_context->name_size + 1, name_fmt, args);
+        va_end(args);
+
+        HANDLE handle = (HANDLE) _beginthreadex(NULL, (unsigned int) stack_size_or_zero, _thread_func, thread_context, 0, NULL);
+        if(handle) 
+            return PLATFORM_ERROR_OK;
+
+        free(thread_context->name);
     }
 
-    if(thread->handle)
-        return PLATFORM_ERROR_OK;
-    else
-    {
-        free(thread_state);
-        return (Platform_Error) GetLastError();
-    }
+    free(thread_context);
+    return (Platform_Error) GetLastError();
 }
 
 const char* platform_thread_get_current_name()
 {
-    return "main";
-}
-void platform_thread_set_current_name(const char* name, bool dealloc_on_exit)
-{
-    (void) name;
-    (void) dealloc_on_exit;
-}
-void platform_thread_attach_deinit(void (*func)(void* context), void* context)
-{
-    Platform_Thread_State* state = _platform_thread_state();
-    Platform_Thread_Cleanup cleanup = {func, context};
-    int i = state->cleanup_count++;
-    if(i < _INLINE_CLEANUPS)
-        state->inline_cleanups[i] = cleanup;
+    if(g_thread_context)
+        return g_thread_context->name;
     else
     {
-        i -= _INLINE_CLEANUPS;
-        if(i >= state->cleanup_capacity)
-        {
-            int new_capacity = state->cleanup_capacity*2 + _INLINE_CLEANUPS;
-            void* new_ptr = realloc(state->extended_cleanups, new_capacity * sizeof(Platform_Thread_Cleanup));
-            assert(new_ptr);
-            
-            state->extended_cleanups = new_ptr;
-            state->cleanup_capacity = new_capacity;
-        }
-
-        state->extended_cleanups[i] = cleanup;
+        if(platform_thread_get_current_id() == platform_thread_get_main_id())
+            return "main";
+        else
+            return "<unassigned>";
     }
-}
-
-Platform_Thread platform_thread_get_current()
-{
-    Platform_Thread out = {0};
-    out.handle = GetCurrentThread();
-    return out;
 }
 
 int32_t platform_thread_get_current_id()
@@ -313,24 +268,16 @@ int32_t platform_thread_get_current_id()
     return (int32_t) GetCurrentThreadId();
 }
 
-volatile void* _main_thread_handle = {0};
-void _platform_thread_get_main_init()
+int32_t platform_thread_get_main_id()
 {
-    void* thread = GetCurrentThread();
-    _main_thread_handle = thread;
+    static int32_t _main_thread_handle = -1;
+    if(_main_thread_handle == -1)
+        _main_thread_handle = (int32_t) GetCurrentThreadId();
+
+    return _main_thread_handle;
 }
 
-Platform_Thread platform_thread_get_main()
-{
-    Platform_Thread out = {(void*) _main_thread_handle};
-    return out;
-}
-bool platform_thread_is_main()
-{
-    return platform_thread_get_current().handle == platform_thread_get_main().handle;
-}
-
-int64_t platform_thread_get_processor_count()
+int32_t platform_thread_get_processor_count()
 {
     return GetCurrentProcessorNumber();
 }
@@ -351,54 +298,71 @@ void platform_thread_exit(int code)
     _endthreadex((unsigned int) code);
 }
 
-int64_t platform_thread_get_exit_code(Platform_Thread finished_thread)
+Platform_Error  platform_cond_var_init(Platform_Cond_Var* cond_var)
 {
-    DWORD out = 0;
-    if(!!GetExitCodeThread((HANDLE) finished_thread.handle, &out))
-        return INT64_MIN;
-    else
-        return out;
+    platform_cond_var_deinit(cond_var);
+    CONDITION_VARIABLE* conditional = (CONDITION_VARIABLE*) calloc(1, sizeof *conditional);
+    if(conditional != 0)
+        InitializeConditionVariable(conditional);
+
+    cond_var->handle = conditional;
+    return _platform_error_code(conditional != NULL);
 }
 
-bool platform_thread_join(const Platform_Thread* threads, int64_t count, double seconds_or_negative_if_infinite)
+void platform_cond_var_deinit(Platform_Cond_Var* cond_var)
 {
-    DWORD timeout = INFINITE;
+    if(cond_var->handle)
+    {
+        DeleteCriticalSection((CRITICAL_SECTION*) cond_var->handle);
+        free(cond_var->handle);
+        memset(cond_var, 0, sizeof cond_var);
+    }
+}
+
+void platform_cond_var_wake_single(Platform_Cond_Var* cond_var)
+{
+    assert(cond_var && cond_var->handle != NULL);
+    WakeConditionVariable((CONDITION_VARIABLE*) cond_var->handle);
+}
+void platform_cond_var_wake_all(Platform_Cond_Var* cond_var)
+{
+    assert(cond_var && cond_var->handle != NULL);
+    WakeAllConditionVariable((CONDITION_VARIABLE*) cond_var->handle);
+}
+bool platform_cond_var_wait_mutex(Platform_Cond_Var* cond_var, Platform_Mutex* mutex, double seconds_or_negative_if_infinite)
+{
+    assert(mutex && mutex->handle != NULL);
+    assert(cond_var && cond_var->handle != NULL);
+    DWORD wait_ms = INFINITE;
     if(seconds_or_negative_if_infinite > 0)
-        timeout = (DWORD) (seconds_or_negative_if_infinite * 1000);
-
-    DWORD result = 0;
-    if(count == 1)
-        result = WaitForSingleObject((HANDLE) threads[0].handle, timeout);
-    else
-    {
-        //@NOTE: In case of more then 256 handles we should wait differently but we dont because I am lazy
-        bool wait_for_all = true;
-        HANDLE handles[256] = {0};
-        for(int64_t i = 0; i < count;)
-        {
-            int64_t handle_count = 0;
-            for(; handle_count < 256; handle_count ++, i++)
-                handles[handle_count] = (HANDLE) threads[i].handle;
-
-            result = WaitForMultipleObjects((DWORD) handle_count, handles, wait_for_all, timeout);
-        }
-    }
-
-    return result != WAIT_TIMEOUT;
+        wait_ms = (DWORD) (seconds_or_negative_if_infinite*1000  + 0.5);
+    return !!SleepConditionVariableCS((CONDITION_VARIABLE*) cond_var->handle, (CRITICAL_SECTION*) mutex->handle, wait_ms);
 }
 
-void platform_thread_detach(Platform_Thread* thread)
+static bool _platform_cond_var_wait_rwlock(Platform_Cond_Var* cond_var, Platform_RW_Lock* mutex, double seconds_or_negative_if_infinite, bool is_reader)
 {
-    if(thread->handle != NULL)
-    {
-        bool state = CloseHandle(thread->handle);
-        thread->handle = NULL;
-        (void) state; assert(state); 
-    }
+    assert(mutex && mutex->handle != NULL);
+    assert(cond_var && cond_var->handle != NULL);
+    DWORD wait_ms = INFINITE;
+    if(seconds_or_negative_if_infinite > 0)
+        wait_ms = (DWORD) (seconds_or_negative_if_infinite*1000 + 0.5);
+    return !!SleepConditionVariableSRW((CONDITION_VARIABLE*) cond_var->handle, (SRWLOCK*) &mutex->handle, wait_ms, is_reader ? CONDITION_VARIABLE_LOCKMODE_SHARED : 0);
 }
+
+bool platform_cond_var_wait_rwlock_reader(Platform_Cond_Var* cond_var, Platform_RW_Lock* mutex, double seconds_or_negative_if_infinite)
+{
+    return _platform_cond_var_wait_rwlock(cond_var, mutex, seconds_or_negative_if_infinite, true);
+}
+
+bool platform_cond_var_wait_rwlock_writer(Platform_Cond_Var* cond_var, Platform_RW_Lock* mutex, double seconds_or_negative_if_infinite)
+{
+    return _platform_cond_var_wait_rwlock(cond_var, mutex, seconds_or_negative_if_infinite, false);
+}
+
 
 Platform_Error platform_mutex_init(Platform_Mutex* mutex)
 {
+    assert(mutex);
     platform_mutex_deinit(mutex);
     CRITICAL_SECTION* section = (CRITICAL_SECTION*) calloc(1, sizeof *section);
     if(section != 0)
@@ -413,27 +377,63 @@ void platform_mutex_deinit(Platform_Mutex* mutex)
     if(mutex->handle)
     {
         DeleteCriticalSection((CRITICAL_SECTION*) mutex->handle);
+        free(mutex->handle);
         memset(mutex, 0, sizeof mutex);
     }
 }
 
 void platform_mutex_lock(Platform_Mutex* mutex)
 {
-    assert(mutex->handle != NULL);
+    assert(mutex && mutex->handle != NULL);
     EnterCriticalSection((CRITICAL_SECTION*) mutex->handle);
 }
 
 void platform_mutex_unlock(Platform_Mutex* mutex)
 {
-    assert(mutex->handle != NULL);
+    assert(mutex && mutex->handle != NULL);
     LeaveCriticalSection((CRITICAL_SECTION*) mutex->handle);
 }
 
 bool platform_mutex_try_lock(Platform_Mutex* mutex)
 {
-    assert(mutex->handle != NULL);
-    return (bool) TryEnterCriticalSection((CRITICAL_SECTION*) mutex->handle);
+    assert(mutex && mutex->handle != NULL);
+    return !!TryEnterCriticalSection((CRITICAL_SECTION*) mutex->handle);
 }   
+
+Platform_Error platform_rwlock_init(Platform_RW_Lock* mutex)
+{
+    InitializeSRWLock((SRWLOCK*) &mutex->handle);
+    return PLATFORM_ERROR_OK;
+}
+void platform_rwlock_deinit(Platform_RW_Lock* mutex)
+{
+    mutex->handle = NULL;
+}
+void platform_rwlock_reader_lock(Platform_RW_Lock* mutex)
+{
+    AcquireSRWLockShared((SRWLOCK*) &mutex->handle);
+}
+void platform_rwlock_reader_unlock(Platform_RW_Lock* mutex)
+{
+    ReleaseSRWLockShared((SRWLOCK*) &mutex->handle);
+}
+void platform_rwlock_writer_lock(Platform_RW_Lock* mutex)
+{
+    AcquireSRWLockExclusive((SRWLOCK*) &mutex->handle);
+}
+void platform_rwlock_writer_unlock(Platform_RW_Lock* mutex)
+{
+    ReleaseSRWLockExclusive((SRWLOCK*) &mutex->handle);
+}
+
+bool platform_rwlock_reader_try_lock(Platform_RW_Lock* mutex)
+{
+    return !!TryAcquireSRWLockShared((SRWLOCK*) &mutex->handle);
+}
+bool platform_rwlock_writer_try_lock(Platform_RW_Lock* mutex)
+{
+    return !!TryAcquireSRWLockExclusive((SRWLOCK*) &mutex->handle);
+}
 
 #pragma comment(lib, "synchronization.lib")
 #include <process.h>
@@ -441,19 +441,10 @@ bool platform_futex_wait(volatile void* futex, uint32_t value, double seconds_or
 {
     DWORD wait = INFINITE;
     if(seconds_or_negative_if_infinite > 0)
-        wait = (DWORD) (seconds_or_negative_if_infinite * 1000);
-    bool state = (bool) WaitOnAddress(futex, &value, sizeof value, wait);
-    if(state == false)
-    {
-        #ifndef NDEBUG
-        DWORD err = GetLastError(); 
-        assert(err == ERROR_TIMEOUT);
-        #endif
-        return false;
-    }
-    return true;
+        wait = (DWORD) (seconds_or_negative_if_infinite*1000 + 0.5);
+    return !!WaitOnAddress(futex, &value, sizeof value, wait);
 }
-void platform_futex_wake(volatile void* futex)
+void platform_futex_wake_single(volatile void* futex)
 {
     WakeByAddressSingle((void*) futex);
 }
@@ -650,6 +641,7 @@ static char* _utf16_to_utf8(String_Buffer* append_to_or_null, const wchar_t* str
     int utf8len = WideCharToMultiByte(CP_UTF8, 0, string, (int) string_size, NULL, 0, NULL, NULL);
     buffer_resize(append_to, utf8len);
     WideCharToMultiByte(CP_UTF8, 0, string, (int) string_size, append_to->data, (int) utf8len, 0, 0);
+    append_to->data[utf8len] = '\0';
     return append_to->data;
 }
 
@@ -661,6 +653,7 @@ static wchar_t* _utf8_to_utf16(WString_Buffer* append_to_or_null, const char* st
     int utf16len = MultiByteToWideChar(CP_UTF8, 0, string, (int) string_size, NULL, 0);
     buffer_resize(append_to, utf16len);
     MultiByteToWideChar(CP_UTF8, 0, string, (int) string_size, append_to->data, (int) utf16len);
+    append_to->data[utf16len] = '\0';
     return append_to->data;
 }
 
@@ -737,7 +730,7 @@ int64_t platform_translate_error(Platform_Error error, char* translated, int64_t
         //Strips annoying trailing whitespace and null termination
         for(; needed_size > 0; needed_size --)
         {
-            char c = translated[needed_size - 1];
+            char c = source[needed_size - 1];
             if(!isspace(c) && c != '\0')
                 break;
         }
@@ -758,99 +751,112 @@ int64_t platform_translate_error(Platform_Error error, char* translated, int64_t
     return needed_size + 1;
 }
 
-//Opens the file in the specified combination of Platform_File_Open_Flags. 
+//we really want zero to be the default invalid value. Because of this we do this weird xor-by-INVALID_HANDLE_VALUE trick. 
+void* _platform_flip_handle(void* platform_handle)
+{
+    return (void*) ((uintptr_t) platform_handle ^ (uintptr_t) INVALID_HANDLE_VALUE);
+}
+
 Platform_Error platform_file_open(Platform_File* file, Platform_String file_path, int open_flags)
 {
     platform_file_close(file);
 
     WString_Buffer buffer = {0}; buffer_init_backed(&buffer, _LOCAL_BUFFER_SIZE);
     const wchar_t* path = _wstring_path(&buffer, file_path);
-    
+
     DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
     DWORD access = 0;
-    if(open_flags & PLATFORM_FILE_MODE_READ)
+    if(open_flags & PLATFORM_FILE_OPEN_READ)
         access |= GENERIC_READ;
-    if(open_flags & PLATFORM_FILE_MODE_WRITE)
+    if(open_flags & PLATFORM_FILE_OPEN_WRITE)
         access |= GENERIC_WRITE;
-    if(open_flags & PLATFORM_FILE_MODE_APPEND)
-        access |= FILE_APPEND_DATA;
 
     LPSECURITY_ATTRIBUTES security = NULL;
 
     DWORD creation = OPEN_EXISTING; 
-    if(open_flags & PLATFORM_FILE_MODE_REMOVE_CONTENT)
+    if(open_flags & PLATFORM_FILE_OPEN_REMOVE_CONTENT)
     {
-        if(open_flags & PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST)
+        if(open_flags & PLATFORM_FILE_OPEN_CREATE_MUST_NOT_EXIST)
             creation = CREATE_NEW;
-        else if(open_flags & PLATFORM_FILE_MODE_CREATE)
+        else if(open_flags & PLATFORM_FILE_OPEN_CREATE)
             creation = CREATE_ALWAYS;
     }
     else
     {
-        if(open_flags & PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST)
+        if(open_flags & PLATFORM_FILE_OPEN_CREATE_MUST_NOT_EXIST)
             creation = CREATE_NEW;
-        else if(open_flags & PLATFORM_FILE_MODE_CREATE)
+        else if(open_flags & PLATFORM_FILE_OPEN_CREATE)
             creation = OPEN_ALWAYS;
     }
     
     DWORD flags = FILE_ATTRIBUTE_NORMAL;
+    if(open_flags & PLATFORM_FILE_OPEN_TEMPORARY)
+        flags |= FILE_FLAG_DELETE_ON_CLOSE;
+    
+    if(open_flags & PLATFORM_FILE_OPEN_HINT_UNBUFFERED)
+        flags |= 0; //imposes too many restrictions on windows to be usable like this
+    if(open_flags & PLATFORM_FILE_OPEN_HINT_FRONT_TO_BACK_ACCESS)
+        flags |= FILE_FLAG_SEQUENTIAL_SCAN;
+    if(open_flags & PLATFORM_FILE_OPEN_HINT_BACK_TO_FRONT_ACCESS)
+        flags |= 0; //does not exist on windows
+    if(open_flags & PLATFORM_FILE_OPEN_HINT_RANDOM_ACCESS)
+        flags |= FILE_FLAG_RANDOM_ACCESS;
 
     HANDLE template_handle = NULL;
     HANDLE handle = CreateFileW(path, access, share, security, creation, flags, template_handle);
-    bool state = handle != INVALID_HANDLE_VALUE; 
-    if(state)
-    { 
-        file->handle.windows = handle;
-        file->is_open = true;
-    }
+    file->handle = _platform_flip_handle(handle);
 
     buffer_deinit(&buffer);
-    return _platform_error_code(state);
+    return _platform_error_code(file->handle != NULL);
+}
+
+bool platform_file_is_open(const Platform_File* file)
+{
+    return file->handle != NULL;
 }
 
 Platform_Error platform_file_close(Platform_File* file)
 {
     bool state = true;
-    if(file->is_open)
-        state = !!CloseHandle((HANDLE) file->handle.windows);
+    if(file->handle)
+        state = !!CloseHandle(_platform_flip_handle(file->handle));
 
     memset(file, 0, sizeof *file);
     return _platform_error_code(state);
 }
 
-Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t size, int64_t* read_bytes_because_eof)
+Platform_Error platform_file_read(Platform_File* file, void* buffer, isize size, isize offset, isize* read_bytes_because_eof)
 {
     bool state = true;
-    int64_t total_read = 0;
-    if(file->is_open)
-    {
-        // BOOL ReadFile(
-        //     [in]                HANDLE       hFile,
-        //     [out]               LPVOID       lpBuffer,
-        //     [in]                DWORD        nNumberOfBytesToRead,
-        //     [out, optional]     LPDWORD      lpNumberOfBytesRead,
-        //     [in, out, optional] LPOVERLAPPED lpOverlapped
-        // );
+    isize total_read = 0;
+
+    // BOOL ReadFile(
+    //     [in]                HANDLE       hFile,
+    //     [out]               LPVOID       lpBuffer,
+    //     [in]                DWORD        nNumberOfBytesToRead,
+    //     [out, optional]     LPDWORD      lpNumberOfBytesRead,
+    //     [in, out, optional] LPOVERLAPPED lpOverlapped
+    // );
+    for(; file->handle && total_read < size;)  {
+        isize to_read = size - total_read;
+        if(to_read > (DWORD) -1)
+            to_read = (DWORD) -1;
         
-        for(; total_read < size;)
-        {
-            int64_t _GB = 1 << 30;
-            int64_t to_read = size - total_read;
-            if(to_read > _GB)
-                to_read = _GB;
+        OVERLAPPED overlapped = {0};
+        overlapped.Pointer = (void*) (offset + total_read);
 
-            DWORD bytes_read = 0;
-            state = !!ReadFile((HANDLE) file->handle.windows, (unsigned char*) buffer + total_read, (DWORD) to_read, &bytes_read, NULL);
-            //Eof found!
-            if(state && bytes_read <= 0)
-                break;
+        DWORD bytes_read = 0;
+        state = !!ReadFile(_platform_flip_handle(file->handle), (unsigned char*) buffer + total_read, (DWORD) to_read, &bytes_read, &overlapped);
 
-            //Error
-            if(state == false)
-                break;
+        //Eof found!
+        if(state && bytes_read < to_read)
+            break;
 
-            total_read += bytes_read;
-        }
+        //Error
+        if(state == false)
+            break;
+
+        total_read += bytes_read;
     }
 
     if(read_bytes_because_eof)
@@ -859,83 +865,89 @@ Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t siz
     return _platform_error_code(state);
 }
 
-Platform_Error platform_file_write(Platform_File* file, const void* buffer, int64_t size)
+Platform_Error _platform_file_write(Platform_File* file, const void* buffer, isize size, isize offset, bool at_end)
 {
     bool state = true;
-    if(file->is_open)
-    {
-        // BOOL WriteFile(
-        //     [in]                HANDLE       hFile,
-        //     [in]                LPCVOID      lpBuffer,
-        //     [in]                DWORD        nNumberOfBytesToWrite,
-        //     [out, optional]     LPDWORD      lpNumberOfBytesWritten,
-        //     [in, out, optional] LPOVERLAPPED lpOverlapped
-        // );
-
-        for(int64_t total_written = 0; total_written < size;)
-        {
-            int64_t _GB = 1 << 30;
-            int64_t to_write = size - total_written;
-            if(to_write > _GB)
-                to_write = _GB;
-
-            DWORD bytes_written = 0;
-            state = !!WriteFile((HANDLE) file->handle.windows, (unsigned char*) buffer + total_written, (DWORD) to_write, &bytes_written, NULL);
-            if(state == false || bytes_written <= 0)
-            {
-                state = false;
-                break;
-            }
-
-            total_written += bytes_written;
-        }
-    }
-
-    return _platform_error_code(state);
-}
-
-Platform_Error _platform_file_seek_tell(Platform_File* file, int64_t offset, int64_t* new_offset, Platform_File_Seek from)
-{
-    // BOOL SetFilePointerEx(
-    //     [in]            HANDLE         hFile,
-    //     [in]            LARGE_INTEGER  liDistanceToMove,
-    //     [out, optional] PLARGE_INTEGER lpNewFilePointer,
-    //     [in]            DWORD          dwMoveMethod
+    // BOOL WriteFile(
+    //     [in]                HANDLE       hFile,
+    //     [in]                LPCVOID      lpBuffer,
+    //     [in]                DWORD        nNumberOfBytesToWrite,
+    //     [out, optional]     LPDWORD      lpNumberOfBytesWritten,
+    //     [in, out, optional] LPOVERLAPPED lpOverlapped
     // );
 
-    bool state = true;
-    LARGE_INTEGER new_offset_win = {0}; 
-    if(file->is_open)
-    {
-        LARGE_INTEGER offset_win = {0};
-        offset_win.QuadPart = offset;
-        //@NOTE: Platform_File_Seek from has matching values to the windows API values
-        state = !!SetFilePointerEx((HANDLE) file->handle.windows, offset_win, &new_offset_win, (DWORD) from);
-    }
+    for(isize total_written = 0; file->handle && total_written < size;) {
+        isize to_write = size - total_written;
+        if(to_write > (DWORD) -1)
+            to_write = (DWORD) -1;
 
-    if(new_offset)
-        *new_offset = new_offset_win.QuadPart;
+        OVERLAPPED overlapped = {0};
+        if(at_end)
+            overlapped.Pointer = (void*) -1;
+        else
+            overlapped.Pointer = (void*) (offset + total_written);
+        
+        DWORD bytes_written = 0;
+        state = !!WriteFile(_platform_flip_handle(file->handle), (unsigned char*) buffer + total_written, (DWORD) to_write, &bytes_written, NULL);
+        if(state == false)
+            break;
+
+        total_written += bytes_written;
+    }
 
     return _platform_error_code(state);
 }
 
-Platform_Error platform_file_tell(Platform_File file, int64_t* offset)
+Platform_Error platform_file_write(Platform_File* file, const void* buffer, isize size, isize offset)
 {
-    return _platform_file_seek_tell(&file, 0, offset, PLATFORM_FILE_SEEK_FROM_CURRENT);
-}
-
-Platform_Error platform_file_seek(Platform_File* file, int64_t offset, Platform_File_Seek from)
-{
-    return _platform_file_seek_tell(file, offset, NULL, from);
+    return _platform_file_write(file, buffer, size, offset, false);
 }
 
 Platform_Error platform_file_flush(Platform_File* file)
 {
-    bool state = true;
-    if(file->is_open)
-        state = !!FlushFileBuffers((HANDLE) file->handle.windows);
-    
+    bool state = file->handle && FlushFileBuffers(_platform_flip_handle(file->handle));
     return _platform_error_code(state);
+}
+
+Platform_Error platform_file_size(const Platform_File* file, isize* size)
+{
+    bool state = file->handle && GetFileSizeEx(_platform_flip_handle(file->handle), (LARGE_INTEGER*) (void*) size);
+    return _platform_error_code(state);
+}
+
+Platform_Error platform_file_read_entire(Platform_String file_path, void* buffer, isize buffer_size)
+{
+    Platform_File file = {0};
+    Platform_Error error = platform_file_open(&file, file_path, PLATFORM_FILE_OPEN_READ | PLATFORM_FILE_OPEN_HINT_FRONT_TO_BACK_ACCESS);
+    isize read = 0;
+    if(error == 0)
+        error = platform_file_read(&file, buffer, buffer_size, 0, &read);
+    if(error == 0 && read != buffer_size)
+        error = PLATFORM_ERROR_OTHER;
+    platform_file_close(&file);
+    return error;
+}
+
+Platform_Error platform_file_write_entire(Platform_String file_path, const void* buffer, isize buffer_size, bool fail_if_not_found)
+{
+    Platform_File file = {0};
+    Platform_Error error = platform_file_open(&file, file_path, 
+            PLATFORM_FILE_OPEN_WRITE | PLATFORM_FILE_OPEN_REMOVE_CONTENT | (fail_if_not_found ? 0 : PLATFORM_FILE_OPEN_CREATE) | PLATFORM_FILE_OPEN_HINT_FRONT_TO_BACK_ACCESS);
+    if(error == 0)
+        error = platform_file_write(&file, buffer, buffer_size, 0);
+    platform_file_close(&file);
+    return error;
+}
+
+Platform_Error platform_file_append_entire(Platform_String file_path, const void* buffer, isize buffer_size, bool fail_if_not_found)
+{
+    Platform_File file = {0};
+    Platform_Error error = platform_file_open(&file, file_path, 
+            PLATFORM_FILE_OPEN_WRITE | (fail_if_not_found ? 0 : PLATFORM_FILE_OPEN_CREATE) | PLATFORM_FILE_OPEN_HINT_FRONT_TO_BACK_ACCESS);
+    if(error == 0)
+        error = _platform_file_write(&file, buffer, buffer_size, 0, true);
+    platform_file_close(&file);
+    return error;
 }
 
 Platform_Error platform_file_create(Platform_String file_path, bool fail_if_exists)
@@ -1017,7 +1029,7 @@ Platform_Error platform_file_copy(Platform_String new_path, Platform_String old_
     return _platform_error_code(state);
 }
 
-Platform_Error platform_file_resize(Platform_String file_path, int64_t size)
+Platform_Error platform_file_resize(Platform_String file_path, isize size)
 {
     WString_Buffer buffer = {0}; buffer_init_backed(&buffer, _LOCAL_BUFFER_SIZE);
     const wchar_t* path = _wstring_path(&buffer, file_path);
@@ -1043,21 +1055,6 @@ Platform_Error platform_file_resize(Platform_String file_path, int64_t size)
     return error;
 }
 
-
-static Platform_Link_Type _get_link_type(const wchar_t* directory_path)
-{
-    HANDLE file = CreateFileW(directory_path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                              NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    size_t requiredSize = GetFinalPathNameByHandleW(file, NULL, 0, FILE_NAME_NORMALIZED);
-    CloseHandle(file);
-
-    Platform_Link_Type link_type = PLATFORM_LINK_TYPE_NOT_LINK;
-    if(requiredSize == 0)
-        link_type = PLATFORM_LINK_TYPE_OTHER;
-    
-    return link_type;
-}
-
 Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null)
 {    
     Platform_File_Info info = {0};
@@ -1067,8 +1064,10 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
     const wchar_t* path = _wstring_path(&buffer, file_path);
     bool state = !!GetFileAttributesExW(path, GetFileExInfoStandard, &native_info);
     
-    if(native_info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
-        info.link_type = _get_link_type(path);
+    //is *maybe* link. On win32 its quite difficult (and quite slow) to actually check this
+    // so we are gonna suffice with probably link.
+    if(native_info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) 
+        info.link_type = PLATFORM_LINK_TYPE_PROBABLY_LINK;
     if(!state)
         return _platform_error_code(state);
             
@@ -1091,14 +1090,6 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
 
     buffer_deinit(&buffer);
     return _platform_error_code(state);
-}
-
-BOOL _platform_directory_exists(const wchar_t* szPath)
-{
-  DWORD dwAttrib = GetFileAttributesW(szPath);
-
-  return (dwAttrib != INVALID_FILE_ATTRIBUTES && 
-         (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 }
 
 Platform_Error platform_directory_create(Platform_String dir_path, bool fail_if_already_existing)
@@ -1131,166 +1122,74 @@ Platform_Error platform_directory_remove(Platform_String dir_path, bool fail_if_
     return _platform_error_code(state);
 }
 
-WString_Buffer _vwformat_malloc(WString_Buffer* into_or_null, const wchar_t* format, va_list args)
+typedef struct _Platform_Dir_Iter {
+    WIN32_FIND_DATAW current_entry;
+    HANDLE first_found;
+    int64_t called_times;
+
+
+    //the WIN32_FIND_DATAW has MAX_PATH wchars size so this should be enough
+    char path[MAX_PATH*2 + 3];
+} _Platform_Dir_Iter;
+
+Platform_Error platform_directory_iter_init(Platform_Directory_Iter* iter, Platform_String directory_path)
 {
-    if(format == NULL)
-        format = L"";
+    platform_directory_iter_deinit(iter);
+    iter->internal = calloc(1, sizeof(_Platform_Dir_Iter));
+    iter->index = -1;
 
-    //gcc modifies va_list on use! make sure to copy it!
-    va_list args_copy;
-    va_copy(args_copy, args);
-    int count = vswprintf(NULL, 0, format, args);
+    WString_Buffer wide = {0};
+    buffer_init_backed(&wide, _LOCAL_BUFFER_SIZE);
+    _wstring_path(&wide, directory_path);
+    buffer_append(&wide, L"\\*.*", 4);
 
-    WString_Buffer backup = {0};
-    if(into_or_null == NULL)
-        into_or_null = &backup;
+    _Platform_Dir_Iter* it = (_Platform_Dir_Iter*) iter->internal;
+    it->first_found = FindFirstFileW(wide.data, &it->current_entry);
 
-    buffer_resize(into_or_null, count);
-    vswprintf(into_or_null->data, (size_t) count + 1, format, args_copy);
-    return *into_or_null;
-}
-
-WString_Buffer _wformat_malloc(WString_Buffer* into_or_null, const wchar_t* format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    WString_Buffer out = _vwformat_malloc(into_or_null, format, args);
-    va_end(args);
-    return out;
-}
-
-Platform_Error platform_directory_list_contents_alloc(Platform_String path, Platform_Directory_Entry** _entries, int64_t* _entries_count, int64_t max_depth)
-{
-    if(max_depth == -1)
-        max_depth = INT64_MAX;
-    if(max_depth <= 0)
-        return _platform_error_code(true);
-
-    typedef struct Dir_Iterator {
-        WIN32_FIND_DATAW current_entry;
-        HANDLE first_found;
-        bool failed;
-        bool had_first;
-        bool _pad[6];
-        WString_Buffer path;    
-        int64_t index;  
-    } Dir_Iterator;
-
-    DEFINE_BUFFER_TYPE(Dir_Iterator, Dir_Iterator_Buffer);
-    DEFINE_BUFFER_TYPE(Platform_Directory_Entry, Platform_Directory_Entry_Buffer);
+    Platform_Error error = 0;
+    if(it->first_found == INVALID_HANDLE_VALUE)
+        error = GetLastError();
     
-    Platform_Directory_Entry_Buffer entries = {0};
-    Dir_Iterator_Buffer dir_iterators = {0};
-    buffer_init_backed(&dir_iterators, 16);
-
-    {
-        Dir_Iterator first = {0};
-        _wstring_path(&first.path, path);
-        buffer_push(&dir_iterators, first);
-    }
-    
-    WString_Buffer temp = {0};
-    buffer_init_backed(&temp, _LOCAL_BUFFER_SIZE);
-
-    Platform_Error error = PLATFORM_ERROR_OK;
-    while(dir_iterators.size > 0)
-    {
-        Dir_Iterator* it = &dir_iterators.data[dir_iterators.size - 1];
-
-        if(it->had_first)
-            it->failed = !FindNextFileW(it->first_found, &it->current_entry);
-        else
-        {
-            //int count = swprintf(NULL, 0, L"%s\\*.*", it->path.data);
-            _wformat_malloc(&temp, L"%s\\*.*", it->path.data);
-            it->first_found = FindFirstFileW(temp.data, &it->current_entry);
-            it->had_first = true;
-            if(it->first_found == INVALID_HANDLE_VALUE)
-            {
-                it->failed = true;
-                if(dir_iterators.size == 1)
-                    error = _platform_error_code(false);
-            }
-        }
-
-        if(it->failed)
-        {
-            if(it->first_found != INVALID_HANDLE_VALUE && it->first_found != NULL)
-                FindClose(it->first_found);
-
-            buffer_deinit(&it->path);
-            buffer_resize(&dir_iterators, dir_iterators.size - 1);
-        }
-        else if(wcscmp(it->current_entry.cFileName, L".") != 0 && wcscmp(it->current_entry.cFileName, L"..") != 0)
-        {
-            it->index += 1;
-            _wformat_malloc(&temp, L"%s\\%s", it->path.data, it->current_entry.cFileName);
-        
-            Platform_File_Info info = {0};
-            info.created_epoch_time = _filetime_to_epoch_time(it->current_entry.ftCreationTime);
-            info.last_access_epoch_time = _filetime_to_epoch_time(it->current_entry.ftLastAccessTime);
-            info.last_write_epoch_time = _filetime_to_epoch_time(it->current_entry.ftLastWriteTime);
-            info.size = ((int64_t) it->current_entry.nFileSizeHigh << 32) | ((int64_t) it->current_entry.nFileSizeLow);
-        
-            info.type = PLATFORM_FILE_TYPE_FILE;
-            if(it->current_entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-            {
-                info.last_access_epoch_time = info.created_epoch_time;
-                info.last_write_epoch_time = info.created_epoch_time;
-                info.type = PLATFORM_FILE_TYPE_DIRECTORY;
-            }
-            else
-                info.type = PLATFORM_FILE_TYPE_FILE;
-
-            if(it->current_entry.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
-                info.link_type = _get_link_type(temp.data);  
-            
-            Platform_Directory_Entry entry = {0};
-            entry.info = info; 
-            entry.path = _string_path(NULL, temp.data, temp.size);
-            entry.directory_depth = dir_iterators.size - 1;
-            buffer_push(&entries, entry);
-
-            assert(dir_iterators.size < 10000 && "must not get stuck in an infinite loop");
-            if(info.type == PLATFORM_FILE_TYPE_DIRECTORY && dir_iterators.size < max_depth)
-            {
-                Dir_Iterator next = {0};
-                buffer_append(&next.path, temp.data, temp.size);
-                buffer_push(&dir_iterators, next);
-            }
-        }
-    }
-    
-    
-    if(error != 0)
-        buffer_deinit(&entries);
-    else
-    {
-        //Null terminate the entries
-        Platform_Directory_Entry terminator = {0};
-        buffer_push(&entries, terminator);
-        entries.size -= 1; //is not really a valid entry 
-    }
-
-    buffer_deinit(&temp);
-    buffer_deinit(&dir_iterators);
-    
-    if(_entries) *_entries = entries.data;
-    if(_entries_count) *_entries_count = entries.size;
-
+    buffer_deinit(&wide);
     return error;
 }
 
-void platform_directory_list_contents_free(Platform_Directory_Entry* entries)
+bool platform_directory_iter_next(Platform_Directory_Iter* iter)
 {
-    if(entries == NULL)
-        return;
+    bool ok = false;
+    if(iter->internal) {
+        _Platform_Dir_Iter* it = (_Platform_Dir_Iter*) iter->internal;
+        for(;;) {
+            if(it->called_times != 0)
+                if(FindNextFileW(it->first_found, &it->current_entry) == false)
+                    break;
 
-    int64_t i = 0;
-    for(; entries[i].path != NULL; i++)
-        free(entries[i].path);
-          
-    free(entries);
+            it->called_times += 1;
+            wchar_t* filename = it->current_entry.cFileName;
+            if(wcscmp(filename, L".") != 0 && wcscmp(filename, L"..") != 0) {
+                int utf8len = WideCharToMultiByte(CP_UTF8, 0, filename, (int) wcslen(filename), it->path, (int) sizeof(it->path) - 1, 0, 0);
+                it->path[utf8len] = '\0';
+                iter->index += 1;
+                iter->path.data = it->path;
+                iter->path.count = utf8len;
+                ok = true;
+                break;
+            }
+            
+        }
+    }
+        
+    return ok;
+}
+void platform_directory_iter_deinit(Platform_Directory_Iter* iter)
+{
+    ASSERT(iter);
+    if(iter->internal) {
+        _Platform_Dir_Iter* it = (_Platform_Dir_Iter*) iter->internal;
+        if(it->first_found != INVALID_HANDLE_VALUE && it->first_found != NULL)
+            FindClose(it->first_found);
+        free(it);
+    } 
 }
 
 //CWD madness
@@ -1303,7 +1202,7 @@ Platform_Error platform_directory_set_current_working(Platform_String new_workin
     return _platform_error_code_posix(state);
 }
 
-Platform_Error platform_directory_get_current_working(void* buffer, int64_t buffer_size, bool* needs_bigger_buffer_or_null)
+Platform_Error platform_directory_get_current_working(void* buffer, isize buffer_size, bool* needs_bigger_buffer_or_null)
 {
     assert(buffer != NULL || (buffer == NULL && buffer_size == 0));
 
@@ -1365,429 +1264,215 @@ const char* platform_get_executable_path()
     return dir;
 }
 
-void platform_file_memory_unmap(Platform_Memory_Mapping* mapping)
-{
-    if(mapping == NULL)
-        return;
-
-    HANDLE hFile = (HANDLE) mapping->state[0];
-    HANDLE hMap = (HANDLE) mapping->state[1];
-    LPVOID lpBasePtr = mapping->address;
-
-    if(lpBasePtr != NULL)
-        UnmapViewOfFile(lpBasePtr);
-    if(hMap != NULL && hMap != INVALID_HANDLE_VALUE)
-        CloseHandle(hMap);
-    if(hFile != NULL && hFile != INVALID_HANDLE_VALUE)
-        CloseHandle(hFile);
-        
-    memset(mapping, 0, sizeof *mapping);
-}
-
-Platform_Error platform_file_memory_map(Platform_String file_path, int64_t desired_size_or_zero, Platform_Memory_Mapping* mapping)
-{
-    memset(mapping, 0, sizeof *mapping);
-
-    HANDLE hFile = INVALID_HANDLE_VALUE;
-    HANDLE hMap = INVALID_HANDLE_VALUE;
-    LPVOID lpBasePtr = NULL;
-    LARGE_INTEGER liFileSize;
-    liFileSize.QuadPart = 0;
-
-    DWORD disposition = 0;
-    if(desired_size_or_zero == 0)
-        disposition = OPEN_EXISTING;
-    else
-        disposition = OPEN_ALWAYS;
-        
-    WString_Buffer buffer = {0}; buffer_init_backed(&buffer, _LOCAL_BUFFER_SIZE);
-    const wchar_t* path = _wstring_path(&buffer, file_path);
-    hFile = CreateFileW(
-        path,                            // lpFileName
-        GENERIC_READ | GENERIC_WRITE,          // dwDesiredAccess
-        FILE_SHARE_READ | FILE_SHARE_WRITE,    // dwShareMode
-        NULL,                                  // lpSecurityAttributes
-        disposition,                           // dwCreationDisposition
-        FILE_ATTRIBUTE_NORMAL,                 // dwFlagsAndAttributes
-        0);                                    // hTemplateFile
-    buffer_deinit(&buffer);
-
-    if (hFile == INVALID_HANDLE_VALUE)
-        goto error;
-
-    if (!GetFileSizeEx(hFile, &liFileSize)) 
-        goto error;
-
-    //If the file is completely empty 
-    // we dont perform any more operations
-    // return a valid pointer and size of 0
-    if (liFileSize.QuadPart == 0 && desired_size_or_zero == 0) 
-    {
-        CloseHandle(hFile);
-        mapping->size = 0;
-        mapping->address = NULL;
-        return PLATFORM_ERROR_OK;
-    }
-
-    {
-        LARGE_INTEGER desired_size = {0};
-        if(desired_size_or_zero == 0)
-            desired_size.QuadPart = liFileSize.QuadPart;
-        if(desired_size_or_zero > 0)
-        {
-            desired_size.QuadPart = desired_size_or_zero;
-
-            //if is desired smaller shrinks the file
-            if(desired_size_or_zero < liFileSize.QuadPart)
-            {
-                DWORD dwPtrLow = SetFilePointer(hFile, desired_size.LowPart, &desired_size.HighPart,  FILE_BEGIN); 
-                if(dwPtrLow == INVALID_SET_FILE_POINTER)
-                    goto error;
-
-                if(SetEndOfFile(hFile) == FALSE)
-                    goto error;
-            }
-        }
-        if(desired_size_or_zero < 0)
-            desired_size.QuadPart = -desired_size_or_zero + liFileSize.QuadPart;
-
-        hMap = CreateFileMappingW(
-            hFile,
-            NULL,                          // Mapping attributes
-            PAGE_READWRITE ,               // Protection flags
-            desired_size.HighPart,         // MaximumSizeHigh
-            desired_size.LowPart,          // MaximumSizeLow
-            NULL);                         // Name
-        if (hMap == 0) 
-            goto error;
-
-        lpBasePtr = MapViewOfFile(
-            hMap,
-            FILE_MAP_ALL_ACCESS,   // dwDesiredAccess
-            0,                     // dwFileOffsetHigh
-            0,                     // dwFileOffsetLow
-            0);                    // dwNumberOfBytesToMap
-        if (lpBasePtr == NULL) 
-            goto error;
-
-        mapping->size = desired_size.QuadPart;
-        mapping->address = lpBasePtr;
-        mapping->state[0] = (uint64_t) hFile;
-        mapping->state[1] = (uint64_t) hMap;
-        return PLATFORM_ERROR_OK;
-    }
-
-    error: {
-        DWORD err = GetLastError();
-        if(hMap != INVALID_HANDLE_VALUE && hMap != 0)
-            CloseHandle(hMap);
-        if(hFile != INVALID_HANDLE_VALUE)
-            CloseHandle(hFile);
-
-        return err;
-    }
-}
-
-
 //=========================================
 // File watch
 //=========================================
-
-enum {
-    _FILE_WATCH_CHANGE_CALL = 1,
-    _FILE_WATCH_CHANGE_HAS_BUFFER = 2,
-};
-
 typedef struct _Platform_File_Watch_Context {
     OVERLAPPED overlapped;
     HANDLE directory;
-    HANDLE destroy_notification;
-    HANDLE thread;
     DWORD win_flags;
     BOOL win_watch_subdir;
-    Platform_Error error;
-    CRITICAL_SECTION mutex;
-
-    void (*user_func)(Platform_File_Watch watch, void* context);
-    void* user_context;
 
     int32_t flags;
-
     String_Buffer watched_path;
     String_Buffer change_path;
-    String_Buffer change_old_path;
-
-    PLATFORM_ATOMIC(int32_t) changes;
-    PLATFORM_ATOMIC(int32_t) changes_calls;
-
+    String_Buffer change_new_path;
+    
     uint8_t* buffer;
-    size_t buffer_size;
-    size_t buffer_offset;
+    isize buffer_size;
+    isize buffer_capacity;
+    isize buffer_offset;
 } _Platform_File_Watch_Context;
 
-void _platform_file_watch_context_deinit(_Platform_File_Watch_Context* context)
+void platform_file_watch_deinit(Platform_File_Watch* watched)
 {
-    if(context)
-    {
+    if(watched && watched->handle) {
+        _Platform_File_Watch_Context* context = (_Platform_File_Watch_Context*) watched->handle;
         if(context->directory != INVALID_HANDLE_VALUE && context->directory != NULL)
             CloseHandle(context->directory);
-        if(context->destroy_notification != INVALID_HANDLE_VALUE && context->destroy_notification != NULL)
-            CloseHandle(context->destroy_notification);
+            
         if(context->overlapped.hEvent != INVALID_HANDLE_VALUE && context->overlapped.hEvent != NULL)
             CloseHandle(context->overlapped.hEvent);
 
-        DeleteCriticalSection(&context->mutex);
         buffer_deinit(&context->watched_path);
         buffer_deinit(&context->change_path);
-        buffer_deinit(&context->change_old_path);
+        buffer_deinit(&context->change_new_path);
 
         free(context->buffer);
-            
-        context->directory = NULL;
-        context->destroy_notification = NULL;
-        context->overlapped.hEvent = NULL;
-        context->buffer = NULL;
+        free(context);
     }
+    if(watched)
+        memset(watched, 0, sizeof *watched);
 }
 
-void _platform_file_watch_function(void* _context)
+Platform_Error platform_file_watch_init(Platform_File_Watch* file_watch, int32_t flags, Platform_String path, isize buffer_size)
 {
-    _Platform_File_Watch_Context* context = (_Platform_File_Watch_Context*) _context;
-    while (context->error == 0) 
-    {
-        HANDLE handles[2] = {context->overlapped.hEvent, context->destroy_notification};
-        DWORD result = WaitForMultipleObjects((DWORD) 2, handles, false, INFINITE);
-        
-        //If got file change
-        if (result == WAIT_OBJECT_0) {
+    bool ok = false;
+    platform_file_watch_deinit(file_watch);
+    _Platform_File_Watch_Context* context = (_Platform_File_Watch_Context*) calloc(1, sizeof(_Platform_File_Watch_Context));
+    if(context) {
+        file_watch->handle = context;
 
-            EnterCriticalSection(&context->mutex);
-            Platform_File_Watch watch = {_context};
-            if(context->user_func)
-                context->user_func(watch, context->user_context);
-            context->changes |= _FILE_WATCH_CHANGE_CALL;
-            context->changes_calls += 1;
-            LeaveCriticalSection(&context->mutex);
+        context->flags = flags;
+        context->win_flags = 0;
+        if(flags & PLATFORM_FILE_WATCH_CREATED)
+            context->win_flags |= FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_CREATION;
+        if(flags & PLATFORM_FILE_WATCH_DELETED)
+            context->win_flags |= FILE_NOTIFY_CHANGE_FILE_NAME;
+        if(flags & PLATFORM_FILE_WATCH_RENAMED)
+            context->win_flags |= FILE_NOTIFY_CHANGE_FILE_NAME;
+        if(flags & PLATFORM_FILE_WATCH_MODIFIED)
+            context->win_flags |= FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_ATTRIBUTES;
+        if(flags & PLATFORM_FILE_WATCH_DIRECTORY)
+            context->win_flags |= FILE_NOTIFY_CHANGE_DIR_NAME;
+
+        context->win_watch_subdir = !!(flags & PLATFORM_FILE_WATCH_SUBDIRECTORIES);
+        context->buffer_capacity = buffer_size <= 0 ? 64*1024 : buffer_size;
+        context->buffer = (uint8_t*) malloc(context->buffer_capacity);
+        buffer_reserve(&context->change_path, _LOCAL_BUFFER_SIZE);
+        buffer_reserve(&context->change_new_path, _LOCAL_BUFFER_SIZE);
+        buffer_append(&context->watched_path, path.data, path.count);
+
+        WString_Buffer wpath_buffer = {0}; buffer_init_backed(&wpath_buffer, _LOCAL_BUFFER_SIZE);
+        const wchar_t* wpath = _wstring_path(&wpath_buffer, path);
+            context->directory = CreateFileW(wpath,
+                FILE_LIST_DIRECTORY,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                NULL,
+                OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
+                NULL);
+        buffer_deinit(&wpath_buffer);
+
+        if(context->directory != INVALID_HANDLE_VALUE) {
+            //context->overlapped.hEvent = CreateEventA(NULL, FALSE, FALSE, NULL); 
+            //if(context->overlapped.hEvent != NULL)
+                ok = ReadDirectoryChangesW(
+                    context->directory, context->buffer, (DWORD) context->buffer_capacity, 
+                    context->win_watch_subdir, context->win_flags, NULL, &context->overlapped, NULL);
         }
 
-        //If got destroy request exit
-        if (result == WAIT_OBJECT_0 + 1) {
-            break;
-        }
     }
-
-    context->thread = INVALID_HANDLE_VALUE;
-    _platform_file_watch_context_deinit(context);
-    free(context);
+    
+    return _platform_error_code(ok);
 }
 
-Platform_Error platform_file_unwatch(Platform_File_Watch* file_watch_or_null)
-{
-    Platform_Error out = 0;
-    if(file_watch_or_null && file_watch_or_null->handle)
-    {
-        _Platform_File_Watch_Context* context = (_Platform_File_Watch_Context*) file_watch_or_null->handle;
-        out = context->error;
-        if(context->thread != INVALID_HANDLE_VALUE)
-            SetEvent(context->destroy_notification);
-
-        file_watch_or_null->handle = NULL;
-    }
-
-    return out;
-}
-
-Platform_Error platform_file_watch(Platform_File_Watch* file_watch_or_null, Platform_String file_path, int32_t file_watch_flags, void (*signal_func_or_null)(Platform_File_Watch watch, void* context), void* user_context)
-{
-    (void) file_watch_flags;
-    Platform_Error error = {0};
-    if(file_watch_or_null)
-        error = platform_file_unwatch(file_watch_or_null);
-
-    _Platform_File_Watch_Context context = {0};
-    _Platform_File_Watch_Context* context_alloced = NULL;
-    BOOL success = TRUE;
-    if(error != 0)
-        goto fail;
-
-    context.flags = file_watch_flags;
-    context.win_watch_subdir = !!(context.flags & PLATFORM_FILE_WATCH_SUBDIRECTORIES);
-    context.win_flags = 0;
-    if(file_watch_flags & PLATFORM_FILE_WATCH_CREATED)
-        context.win_flags |= FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_CREATION;
-    if(file_watch_flags & PLATFORM_FILE_WATCH_DELETED)
-        context.win_flags |= FILE_NOTIFY_CHANGE_FILE_NAME;
-    if(file_watch_flags & PLATFORM_FILE_WATCH_RENAMED)
-        context.win_flags |= FILE_NOTIFY_CHANGE_FILE_NAME;
-    if(file_watch_flags & PLATFORM_FILE_WATCH_MODIFIED)
-        context.win_flags |= FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_ATTRIBUTES;
-    if(file_watch_flags & PLATFORM_FILE_WATCH_DIRECTORY)
-        context.win_flags |= FILE_NOTIFY_CHANGE_DIR_NAME;
-
-    context.user_context = user_context;
-    context.user_func = signal_func_or_null;
-    context.overlapped.hEvent = CreateEventW(NULL, FALSE, 0, NULL);
-    context.destroy_notification = CreateEventW(NULL, FALSE, 0, NULL);
-    context.buffer_size = 10*1024;
-    context.buffer = (uint8_t*) malloc(context.buffer_size);
-    buffer_reserve(&context.change_path, _LOCAL_BUFFER_SIZE);
-    buffer_reserve(&context.change_old_path, _LOCAL_BUFFER_SIZE);
-    buffer_append(&context.watched_path, file_path.data, file_path.count);
-
-    WString_Buffer buffer = {0}; buffer_init_backed(&buffer, _LOCAL_BUFFER_SIZE);
-    const wchar_t* path = _wstring_path(&buffer, file_path);
-        context.directory = CreateFileW(path,
-            FILE_LIST_DIRECTORY,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            NULL,
-            OPEN_EXISTING,
-            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
-            NULL);
-    buffer_deinit(&buffer);
-
-    InitializeCriticalSection(&context.mutex);
-    if(error = _platform_error_code(context.directory != INVALID_HANDLE_VALUE && context.overlapped.hEvent != NULL && context.buffer), error != 0)
-        goto fail;
-        
-    context_alloced = (_Platform_File_Watch_Context*) malloc(sizeof *context_alloced);
-    if(context_alloced == NULL)
-        goto fail;
-
-    success = ReadDirectoryChangesW(
-        context.directory, context.buffer, (DWORD) context.buffer_size, 
-        context.win_watch_subdir, context.win_flags, NULL, &context.overlapped, NULL);
-    if(error = _platform_error_code(success && context_alloced != NULL), error != 0)
-        goto fail;
-
-    *context_alloced = context;
-    context_alloced->thread = (HANDLE) _beginthread(_platform_file_watch_function, 0, context_alloced);
-    if(error = _platform_error_code(context_alloced->thread != (HANDLE) -1), error != 0)
-        goto fail;
-
-    fail:
-    if(error != 0)
-    {
-        _platform_file_watch_context_deinit(&context);
-        free(context_alloced);
-    }
-    else
-    {
-        if(file_watch_or_null)
-            file_watch_or_null->handle = context_alloced;
-    }
-
-    return error;
-}
-
-const char* platform_file_watch_get_info(Platform_File_Watch file_watch, int32_t* flags_or_null)
-{
-    _Platform_File_Watch_Context* context = (_Platform_File_Watch_Context*) file_watch.handle;
-    const char* path = "";
-    if(context)
-    {
-        if(flags_or_null)  
-            *flags_or_null = context->flags;
-
-        path = context->watched_path.data;
-    }
-
-    return path;
-}
-
-bool platform_file_watch_poll(Platform_File_Watch file_watch, Platform_File_Watch_Event* user_event)
+bool platform_file_watch_poll(Platform_File_Watch* file_watch, Platform_File_Watch_Event* user_event, Platform_Error* error_or_null)
 {   
     bool ret = false;
-    (void) user_event;
-    _Platform_File_Watch_Context* context = (_Platform_File_Watch_Context*) file_watch.handle;
-    if(context)
+    memset(user_event, 0, sizeof* user_event);
+
+    Platform_Error error = 0;
+    if(file_watch && file_watch->handle)
     {
-        //Atomic to not have to enter and leave critical section when its not needed.
-        int32_t changes = atomic_load(&context->changes);
-        if(changes != 0)
-        {
-            //... okay some changes *probably* occurred
-            EnterCriticalSection(&context->mutex);
+        _Platform_File_Watch_Context* context = (_Platform_File_Watch_Context*) file_watch->handle;
+        buffer_resize(&context->change_new_path, 0);
+        buffer_resize(&context->change_path, 0);
+        isize new_name_count = 0; 
+        isize old_name_count = 0; 
 
-            //If there were change calls (ie we got a notification from the OS something changed)
-            // but we havent yet polled the OS buffer
-            //  - poll the buffer 
-            //  - set the context->changes to signal we have polled the buffer
-            if((context->changes & _FILE_WATCH_CHANGE_CALL) && (context->changes & _FILE_WATCH_CHANGE_HAS_BUFFER) == 0)
-            {
-                DWORD bytes_transferred = 0;
-                GetOverlappedResult(context->directory, &context->overlapped, &bytes_transferred, FALSE);
-                
+        //Iterate changes until we find a change that matches the provided flags
+        // + handle the rename events which are split between two calls
+        for(;;) {
+            //if we are at the end of the buffer try to get more changes from the os
+            if(context->buffer_offset >= context->buffer_size) {
                 context->buffer_offset = 0;
-                context->changes_calls = 0;
-                context->changes = _FILE_WATCH_CHANGE_HAS_BUFFER;
+                context->buffer_size = 0;
+
+                //Check the completion of previous ReadDirectoryChangesW
+                DWORD bytes_transferred = 0;
+
+                //the following two branches are equivalent except the second is a lot faster
+                // see here https://pastebin.com/iEcfQK3C
+                #if 1
+                BOOL ok = GetOverlappedResult(context->directory, &context->overlapped, &bytes_transferred, FALSE);
+                if(ok == false) {
+                    //if last error is ERROR_IO_PENDING then is not really an error just nothing happened yet
+                    DWORD maybe_error = GetLastError();
+                    if(maybe_error != ERROR_IO_PENDING)
+                        error = maybe_error;
+
+                    break;
+                }
+                #else
+                if(context->overlapped.Internal == 0x103 /* STATUS_IO_PENDING */) 
+                    break;
+                
+                bytes_transferred = (DWORD) context->buffer_capacity;
+                #endif
+                
+                context->buffer_size = bytes_transferred;
             }
 
-            //Iterate changes until we find a change that matches the user selection
-            // + handle the rename events which are split between two calls
-            int32_t modification = 0;
-            while((context->changes & _FILE_WATCH_CHANGE_HAS_BUFFER) && modification == 0)
-            {
-                FILE_NOTIFY_INFORMATION *event = NULL;
-                modification = 0;
-                buffer_resize(&context->change_old_path, 0);
-                buffer_resize(&context->change_path, 0);
-
-                do {
-                    event = (FILE_NOTIFY_INFORMATION*) (context->buffer + context->buffer_offset);
-                    
-                    //Fill out info and convert paths
-                    switch (event->Action) {
-                        case FILE_ACTION_ADDED: modification = PLATFORM_FILE_WATCH_CREATED; break;
-                        case FILE_ACTION_REMOVED: modification = PLATFORM_FILE_WATCH_DELETED; break;
-                        case FILE_ACTION_MODIFIED: modification = PLATFORM_FILE_WATCH_MODIFIED; break;
-                        case FILE_ACTION_RENAMED_OLD_NAME: modification = PLATFORM_FILE_WATCH_RENAMED; break;
-                        case FILE_ACTION_RENAMED_NEW_NAME: modification = PLATFORM_FILE_WATCH_RENAMED; break;
-                    }
-                    
-                    DWORD path_len = event->FileNameLength / sizeof(wchar_t);
-                    if(event->Action == FILE_ACTION_RENAMED_OLD_NAME)
-                        _string_path(&context->change_old_path, event->FileName, path_len);
-                    else
-                        _string_path(&context->change_path, event->FileName, path_len);
-
-                    if (event->NextEntryOffset) {
-                        //If there is next entry iterate to it
-                        context->buffer_offset += event->NextEntryOffset;
-                        context->changes |= _FILE_WATCH_CHANGE_HAS_BUFFER;
-                    } 
-                    else {
-                        //Else queue more changes
-                        context->changes &= ~_FILE_WATCH_CHANGE_HAS_BUFFER;
-
-                        BOOL success = ReadDirectoryChangesW(
-                            context->directory, context->buffer, (DWORD) context->buffer_size, 
-                            context->win_watch_subdir, context->win_flags,
-                            NULL, &context->overlapped, NULL);
-
-                        context->error = _platform_error_code(!!success);
-                    }
-                } while(event->Action == FILE_ACTION_RENAMED_OLD_NAME && event->NextEntryOffset);
-
-                //If the flags dont match what the user asked for iterate again
-                modification = modification & context->flags;
-            }
-
-            if(modification == 0)
-                ret = false;
-            else
-            {
+            //If we succeded yet size is zero then we overflown
+            if(context->buffer_size == 0) {
+                user_event->action = PLATFORM_FILE_WATCH_OVERFLOW;
+                user_event->watched_path.data = context->watched_path.data;
+                user_event->watched_path.count = context->watched_path.size;
                 ret = true;
-                user_event->action = (Platform_File_Watch_Flag) modification;
-                user_event->_ = 0;
-                user_event->path = context->change_path.data;
-                user_event->old_path = context->change_old_path.data;
-                user_event->watched_path = context->watched_path.data;
+                break;
+            } 
+                
+            ASSERT(context->buffer_offset < context->buffer_size);
+            FILE_NOTIFY_INFORMATION *event = (FILE_NOTIFY_INFORMATION*) (context->buffer + context->buffer_offset);
+            
+            //Fill out info and convert paths
+            int32_t action = 0;
+            switch (event->Action) {
+                case FILE_ACTION_ADDED: action = PLATFORM_FILE_WATCH_CREATED; break;
+                case FILE_ACTION_REMOVED: action = PLATFORM_FILE_WATCH_DELETED; break;
+                case FILE_ACTION_MODIFIED: action = PLATFORM_FILE_WATCH_MODIFIED; break;
+                case FILE_ACTION_RENAMED_OLD_NAME: action = PLATFORM_FILE_WATCH_RENAMED; old_name_count += 1; break;
+                case FILE_ACTION_RENAMED_NEW_NAME: action = PLATFORM_FILE_WATCH_RENAMED; new_name_count += 1; break;
+                default: action = 0; break;
             }
             
-            LeaveCriticalSection(&context->mutex);
+            isize path_len = event->FileNameLength / sizeof(wchar_t);
+            if(path_len > context->buffer_size - context->buffer_offset)
+                path_len = context->buffer_size - context->buffer_offset;
+
+            if(event->Action == FILE_ACTION_RENAMED_NEW_NAME)
+                _string_path(&context->change_new_path, event->FileName, path_len);
+            else
+                _string_path(&context->change_path, event->FileName, path_len);
+
+            //last entry has NextEntryOffset == 0
+            if (event->NextEntryOffset) 
+                context->buffer_offset += event->NextEntryOffset;
+            else 
+                context->buffer_offset = context->buffer_size;
+
+            if(context->buffer_offset >= context->buffer_size) {
+                context->buffer_offset = 0;
+                context->buffer_size = 0;
+                
+                //queue more changes (maybe we dont need this?? test it without this?)
+                ReadDirectoryChangesW(
+                    context->directory, context->buffer, (DWORD) context->buffer_capacity, 
+                    context->win_watch_subdir, context->win_flags,
+                    NULL, &context->overlapped, NULL);
+            }
+
+            //if we have everything the user asked for and we read both of the connected 
+            // rename events
+            if((action & context->flags) && old_name_count == new_name_count) {
+                user_event->action = (Platform_File_Watch_Flag) action;
+                user_event->path.data = context->change_path.data;
+                user_event->path.count = context->change_path.size;
+                if(action == PLATFORM_FILE_WATCH_RENAMED) {
+                    user_event->new_path.data = context->change_new_path.data;
+                    user_event->new_path.count = context->change_new_path.size;
+                }
+                user_event->watched_path.data = context->watched_path.data;
+                user_event->watched_path.count = context->watched_path.size;
+                ret = true;
+                break;
+            }
         }
     }
 
+    if(error_or_null)
+        *error_or_null = error;
     return ret;
 }
 
@@ -1830,48 +1515,6 @@ void* platform_dll_get_function(Platform_DLL* dll, Platform_String name)
     return result;
 }
 
-//=========================================
-// Window management
-//=========================================
-Platform_Window_Popup_Controls platform_window_make_popup(Platform_Window_Popup_Style desired_style, Platform_String message, Platform_String title)
-{
-    int style = 0;
-    int icon = 0;
-    switch(desired_style)
-    {
-        case PLATFORM_POPUP_STYLE_OK:            style = MB_OK; break;
-        case PLATFORM_POPUP_STYLE_ERROR:         style = MB_OK; icon = MB_ICONERROR; break;
-        case PLATFORM_POPUP_STYLE_WARNING:       style = MB_OK; icon = MB_ICONWARNING; break;
-        case PLATFORM_POPUP_STYLE_INFO:          style = MB_OK; icon = MB_ICONINFORMATION; break;
-        case PLATFORM_POPUP_STYLE_RETRY_ABORT:   style = MB_ABORTRETRYIGNORE; icon = MB_ICONWARNING; break;
-        case PLATFORM_POPUP_STYLE_YES_NO:        style = MB_YESNO; break;
-        case PLATFORM_POPUP_STYLE_YES_NO_CANCEL: style = MB_YESNOCANCEL; break;
-        default: style = MB_OK; break;
-    }
-    
-    int value = 0;
-    WString_Buffer title_backed = {0}; buffer_init_backed(&title_backed, _LOCAL_BUFFER_SIZE);
-    WString_Buffer message_backed = {0}; buffer_init_backed(&message_backed, _LOCAL_BUFFER_SIZE);
-    const wchar_t* title_wide =  _utf8_to_utf16(&title_backed, title.data, title.count);
-    const wchar_t* message_wide = _utf8_to_utf16(&message_backed, message.data, message.count);
-        value = MessageBoxW(0, message_wide, title_wide, style | icon);
-    buffer_deinit(&title_backed);
-    buffer_deinit(&message_wide);
-    
-    switch(value)
-    {
-        case IDABORT: return PLATFORM_POPUP_CONTROL_ABORT;
-        case IDCANCEL: return PLATFORM_POPUP_CONTROL_CANCEL;
-        case IDCONTINUE: return PLATFORM_POPUP_CONTROL_CONTINUE;
-        case IDIGNORE: return PLATFORM_POPUP_CONTROL_IGNORE;
-        case IDYES: return PLATFORM_POPUP_CONTROL_YES;
-        case IDNO: return PLATFORM_POPUP_CONTROL_NO;
-        case IDOK: return PLATFORM_POPUP_CONTROL_OK;
-        case IDRETRY: return PLATFORM_POPUP_CONTROL_RETRY;
-        case IDTRYAGAIN: return PLATFORM_POPUP_CONTROL_RETRY;
-        default: return PLATFORM_POPUP_CONTROL_OK;
-    }
-}
 
 //=========================================
 // CALLSTACK
@@ -1931,8 +1574,8 @@ static void _platform_stack_trace_init(const char* search_path)
     
         DWORD module_handles_size_needed = 0;
         HMODULE module_handles[MAX_MODULES] = {0};
-        TCHAR module_filename[MAX_NAME_LEN] = {0};
-        TCHAR module_name[MAX_NAME_LEN] = {0};
+        WCHAR module_filename[MAX_NAME_LEN] = {0};
+        WCHAR module_name[MAX_NAME_LEN] = {0};
         EnumProcessModules(GetCurrentProcess(), module_handles, sizeof(module_handles), &module_handles_size_needed);
     
         DWORD module_count = module_handles_size_needed/sizeof(HMODULE);
@@ -2099,7 +1742,7 @@ static int64_t _platform_stack_trace_walk(CONTEXT context, HANDLE process, HANDL
     return i;
 }
 
-int platform_is_debugger_atached()
+int platform_is_debugger_attached()
 {
     return IsDebuggerPresent() ? 1 : 0;
 }
@@ -2119,30 +1762,48 @@ typedef struct Platform_Sandbox_State {
     void* stack[SANDBOX_MAX_STACK];
     int64_t stack_size;
     int64_t epoch_time;
-    Platform_Exception exception;
+    int32_t exception;
     int32_t signal_handler_depth;
+    const char* exception_text;
 
     jmp_buf jump_buffer;
     CONTEXT context;
 } Platform_Sandbox_State;
 #pragma warning(default:4324)
 
-__declspec(thread) Platform_Sandbox_State sandbox_state = {0};
+void platform_sandbox_error_deinit(Platform_Sandbox_Error* error)
+{
+    free(error->call_stack);
+    memset(error, 0, sizeof *error);
+}
+
+enum {
+    PLATFORM_EXCEPTION_ABORT = 0x10001,
+    PLATFORM_EXCEPTION_TERMINATE = 0x10002,
+    PLATFORM_EXCEPTION_OTHER = 0x10003,
+};
+
+__declspec(thread) Platform_Sandbox_State t_sandbox_state = {0};
 void _sandbox_abort_filter(int signal)
 {
     int64_t epoch_time = platform_epoch_time();
-    if(sandbox_state.signal_handler_depth <= 0)
+    if(t_sandbox_state.signal_handler_depth <= 0)
         return;
     
-    Platform_Sandbox_State* curr_state = &sandbox_state;
-    if(signal == SIGABRT)
+    Platform_Sandbox_State* curr_state = &t_sandbox_state;
+    if(signal == SIGABRT) {
         curr_state->exception = PLATFORM_EXCEPTION_ABORT;
-    else if(signal == SIGTERM)
+        curr_state->exception_text = "abort";
+    }
+    else if(signal == SIGTERM) {
         curr_state->exception = PLATFORM_EXCEPTION_TERMINATE;
+        curr_state->exception_text = "terminate";
+    }
     else
     {
         assert(false && "badly registred signal handler");
         curr_state->exception = PLATFORM_EXCEPTION_OTHER;
+        curr_state->exception_text = "unknow exception";
     }
     curr_state->stack_size = platform_capture_call_stack(curr_state->stack, SANDBOX_MAX_STACK, 1);
     curr_state->epoch_time = epoch_time;
@@ -2154,105 +1815,56 @@ LONG WINAPI _sandbox_exception_filter(EXCEPTION_POINTERS * ExceptionInfo)
 {
     int64_t epoch_time = platform_epoch_time();
 
-    if(sandbox_state.signal_handler_depth <= 0)
+    if(t_sandbox_state.signal_handler_depth <= 0)
         return EXCEPTION_CONTINUE_SEARCH;
 
-    Platform_Exception exception = PLATFORM_EXCEPTION_OTHER;
+    const char* exception = "unknow exception";
     switch(ExceptionInfo->ExceptionRecord->ExceptionCode)
     {
         //Non errors:
         case CONTROL_C_EXIT: return EXCEPTION_CONTINUE_SEARCH;
         case STILL_ACTIVE: return EXCEPTION_CONTINUE_SEARCH;
 
-        //Errors:
-        case EXCEPTION_ACCESS_VIOLATION:
-            exception = PLATFORM_EXCEPTION_ACCESS_VIOLATION;
-            break;
-        case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
-            exception = PLATFORM_EXCEPTION_ACCESS_VIOLATION;
-            break;
-        case EXCEPTION_BREAKPOINT:
-            exception = PLATFORM_EXCEPTION_BREAKPOINT;
-            break;
-        case EXCEPTION_DATATYPE_MISALIGNMENT:
-            exception = PLATFORM_EXCEPTION_DATATYPE_MISALIGNMENT;
-            break;
-        case EXCEPTION_FLT_DENORMAL_OPERAND:
-            exception = PLATFORM_EXCEPTION_FLOAT_DENORMAL_OPERAND;
-            break;
-        case EXCEPTION_FLT_DIVIDE_BY_ZERO:
-            exception = PLATFORM_EXCEPTION_FLOAT_DIVIDE_BY_ZERO;
-            break;
-        case EXCEPTION_FLT_INEXACT_RESULT:
-            exception = PLATFORM_EXCEPTION_FLOAT_INEXACT_RESULT;
-            break;
-        case EXCEPTION_FLT_INVALID_OPERATION:
-            exception = PLATFORM_EXCEPTION_FLOAT_INVALID_OPERATION;
-            break;
-        case EXCEPTION_FLT_OVERFLOW:
-            exception = PLATFORM_EXCEPTION_FLOAT_OVERFLOW;
-            break;
-        case EXCEPTION_FLT_STACK_CHECK:
-            exception = PLATFORM_EXCEPTION_STACK_OVERFLOW;
-            break;
-        case EXCEPTION_FLT_UNDERFLOW:
-            exception = PLATFORM_EXCEPTION_FLOAT_UNDERFLOW;
-            break;
-        case EXCEPTION_ILLEGAL_INSTRUCTION:
-            exception = PLATFORM_EXCEPTION_ILLEGAL_INSTRUCTION;
-            break;
-        case EXCEPTION_IN_PAGE_ERROR:
-            exception = PLATFORM_EXCEPTION_PAGE_ERROR;
-            break;
-        case EXCEPTION_INT_DIVIDE_BY_ZERO:
-            exception = PLATFORM_EXCEPTION_INT_DIVIDE_BY_ZERO;
-            break;
-        case EXCEPTION_INT_OVERFLOW:
-            exception = PLATFORM_EXCEPTION_INT_OVERFLOW;
-            break;
-        case EXCEPTION_INVALID_DISPOSITION:
-            exception = PLATFORM_EXCEPTION_OTHER;
-            break;
-        case EXCEPTION_NONCONTINUABLE_EXCEPTION:
-            exception = PLATFORM_EXCEPTION_OTHER;
-            break;
-        case EXCEPTION_PRIV_INSTRUCTION:
-            exception = PLATFORM_EXCEPTION_PRIVILAGED_INSTRUCTION;
-            break;
-        case EXCEPTION_SINGLE_STEP:
-            exception = PLATFORM_EXCEPTION_BREAKPOINT_SINGLE_STEP;
-            break;
-        case EXCEPTION_STACK_OVERFLOW:
-            exception = PLATFORM_EXCEPTION_STACK_OVERFLOW;
-            break;
-        case PLATFORM_EXCEPTION_ABORT:
-            exception = PLATFORM_EXCEPTION_ABORT;
-            break;
-        case PLATFORM_EXCEPTION_TERMINATE:
-            exception = PLATFORM_EXCEPTION_TERMINATE;
-            break;
-        default:
-            exception = PLATFORM_EXCEPTION_OTHER;
-            break;
+        //Errors: see https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-exception_record
+        case EXCEPTION_ACCESS_VIOLATION:        exception = "access violation"; break;
+        case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:   exception = "array bounds check"; break;
+        case EXCEPTION_BREAKPOINT:              exception = "breakpoint"; break;
+        case EXCEPTION_DATATYPE_MISALIGNMENT:   exception = "datatype misaligned"; break;
+        case EXCEPTION_FLT_DENORMAL_OPERAND:    exception = "floating point denormal operand"; break;
+        case EXCEPTION_FLT_DIVIDE_BY_ZERO:      exception = "floating point divide by zero"; break;
+        case EXCEPTION_FLT_INEXACT_RESULT:      exception = "floating point inexact result"; break;
+        case EXCEPTION_FLT_INVALID_OPERATION:   exception = "floating point invalid operation"; break;
+        case EXCEPTION_FLT_OVERFLOW:            exception = "floating point overflow"; break;
+        case EXCEPTION_FLT_STACK_CHECK:         exception = "floating point stack check"; break;
+        case EXCEPTION_FLT_UNDERFLOW:           exception = "floating point underflow"; break;
+        case EXCEPTION_ILLEGAL_INSTRUCTION:     exception = "illegal instruction"; break;
+        case EXCEPTION_IN_PAGE_ERROR:           exception = "in page error"; break;
+        case EXCEPTION_INT_DIVIDE_BY_ZERO:      exception = "divide by zero"; break;
+        case EXCEPTION_INT_OVERFLOW:            exception = "int overflow"; break;
+        case EXCEPTION_INVALID_DISPOSITION:     exception = "invalid disposition in exception dispatcher"; break;
+        case EXCEPTION_NONCONTINUABLE_EXCEPTION:exception = "noncontinuable exception"; break;
+        case EXCEPTION_PRIV_INSTRUCTION:        exception = "priv instruction"; break;
+        case EXCEPTION_SINGLE_STEP:             exception = "debugger single step"; break;
+        case EXCEPTION_STACK_OVERFLOW:          exception = "stack overflow"; break;
+        case PLATFORM_EXCEPTION_ABORT:          exception = "abort"; break;
+        case PLATFORM_EXCEPTION_TERMINATE:      exception = "terminate"; break;
+        default:                                exception = "unknow exception"; break;
     }
     
     HANDLE process = GetCurrentProcess();
     HANDLE thread = GetCurrentThread();
 
-    Platform_Sandbox_State* curr_state = &sandbox_state;
+    Platform_Sandbox_State* curr_state = &t_sandbox_state;
     curr_state->epoch_time = epoch_time;
-    curr_state->exception = exception;
+    curr_state->exception = ExceptionInfo->ExceptionRecord->ExceptionCode;
+    curr_state->exception_text = exception;
     curr_state->context = *ExceptionInfo->ContextRecord;
     curr_state->stack_size = _platform_stack_trace_walk(curr_state->context, process, thread, 0, (void**) &curr_state->stack, SANDBOX_MAX_STACK, 0);
 
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
-Platform_Exception platform_exception_sandbox(
-    void (*sandboxed_func)(void* sandbox_context),   
-    void* sandbox_context,
-    void (*error_func)(void* error_context, Platform_Sandbox_Error error),
-    void* error_context)
+bool platform_exception_sandbox(void (*sandboxed_func)(void* sandbox_context), void* sandbox_context, Platform_Sandbox_Error* error_or_null)
 {
     //LPTOP_LEVEL_EXCEPTION_FILTER prev_exception_filter = SetUnhandledExceptionFilter(_sandbox_exception_filter);
     void* vector_exception_handler = AddVectoredExceptionHandler(1, _sandbox_exception_filter);
@@ -2261,52 +1873,52 @@ Platform_Exception platform_exception_sandbox(
     _crt_signal_t prev_abrt = signal(SIGABRT, _sandbox_abort_filter);
     _crt_signal_t prev_term = signal(SIGTERM, _sandbox_abort_filter);
         
-    Platform_Exception exception = PLATFORM_EXCEPTION_NONE;
-    Platform_Sandbox_State prev_state = sandbox_state;
-    memset(&sandbox_state, 0, sizeof sandbox_state);
+    Platform_Sandbox_State prev_state = t_sandbox_state;
+    memset(&t_sandbox_state, 0, sizeof t_sandbox_state);
 
-    sandbox_state.signal_handler_depth += 1;
+    t_sandbox_state.signal_handler_depth += 1;
 
-    bool had_exception = false;
-    switch(setjmp(sandbox_state.jump_buffer))
+    bool run_okay = true;
+    switch(setjmp(t_sandbox_state.jump_buffer))
     {
         default: {
             __try { 
                 sandboxed_func(sandbox_context);
             } 
             __except(_sandbox_exception_filter(GetExceptionInformation())) { 
-                had_exception = true;
+                run_okay = false;
             }
             break;
         }
 
-        case SANDBOX_JUMP_VALUE:
-            had_exception = true;
-            break;
+        case SANDBOX_JUMP_VALUE: {
+            run_okay = false;
+        } break;
     }
 
-    if(had_exception)
+    if(run_okay == false)
     {
-        //just in case we repeatedly exception or something like that
-        Platform_Sandbox_State error_state = sandbox_state;
-        exception = error_state.exception;
+        if(error_or_null) {
+            //just in case we repeatedly exception
+            Platform_Sandbox_State error_state = t_sandbox_state;
 
-        Platform_Sandbox_Error error = {exception};
-        error.call_stack = error_state.stack;
-        error.call_stack_size = (int32_t) error_state.stack_size;
-        error.execution_context = &error_state.context;
-        error.execution_context_size = (int64_t) sizeof error_state.context;
-        error.epoch_time = error_state.epoch_time;
+            Platform_Sandbox_Error error = {0};
+            error.exception = error_state.exception_text;
+            error.call_stack = calloc(error_state.stack_size, sizeof(void*));
+            error.call_stack_size = (int32_t) error_state.stack_size;
+            memcpy(error.call_stack, error_state.stack, error_state.stack_size*sizeof(void*));
+            error.epoch_time = error_state.epoch_time;
 
-        if(error_func)
-            error_func(error_context, error);
+            platform_sandbox_error_deinit(error_or_null);
+            *error_or_null = error;
+        }
     }
 
-    sandbox_state.signal_handler_depth -= 1;
-    if(sandbox_state.signal_handler_depth < 0)
-        sandbox_state.signal_handler_depth = 0;
+    t_sandbox_state.signal_handler_depth -= 1;
+    if(t_sandbox_state.signal_handler_depth < 0)
+        t_sandbox_state.signal_handler_depth = 0;
 
-    sandbox_state = prev_state;
+    t_sandbox_state = prev_state;
     signal(SIGABRT, prev_abrt);
     signal(SIGTERM, prev_term);
 
@@ -2314,37 +1926,7 @@ Platform_Exception platform_exception_sandbox(
     if(vector_exception_handler != NULL)
         RemoveVectoredExceptionHandler(vector_exception_handler);
     //SetUnhandledExceptionFilter(prev_exception_filter);
-    return exception;
-}
-
-const char* platform_exception_to_string(Platform_Exception error)
-{
-    switch(error)
-    {
-        case PLATFORM_EXCEPTION_NONE: return "PLATFORM_EXCEPTION_NONE";
-        case PLATFORM_EXCEPTION_ACCESS_VIOLATION: return "PLATFORM_EXCEPTION_ACCESS_VIOLATION";
-        case PLATFORM_EXCEPTION_DATATYPE_MISALIGNMENT: return "PLATFORM_EXCEPTION_DATATYPE_MISALIGNMENT";
-        case PLATFORM_EXCEPTION_FLOAT_DENORMAL_OPERAND: return "PLATFORM_EXCEPTION_FLOAT_DENORMAL_OPERAND";
-        case PLATFORM_EXCEPTION_FLOAT_DIVIDE_BY_ZERO: return "PLATFORM_EXCEPTION_FLOAT_DIVIDE_BY_ZERO";
-        case PLATFORM_EXCEPTION_FLOAT_INEXACT_RESULT: return "PLATFORM_EXCEPTION_FLOAT_INEXACT_RESULT";
-        case PLATFORM_EXCEPTION_FLOAT_INVALID_OPERATION: return "PLATFORM_EXCEPTION_FLOAT_INVALID_OPERATION";
-        case PLATFORM_EXCEPTION_FLOAT_OVERFLOW: return "PLATFORM_EXCEPTION_FLOAT_OVERFLOW";
-        case PLATFORM_EXCEPTION_FLOAT_UNDERFLOW: return "PLATFORM_EXCEPTION_FLOAT_UNDERFLOW";
-        case PLATFORM_EXCEPTION_FLOAT_OTHER: return "PLATFORM_EXCEPTION_FLOAT_OTHER";
-        case PLATFORM_EXCEPTION_PAGE_ERROR: return "PLATFORM_EXCEPTION_PAGE_ERROR";
-        case PLATFORM_EXCEPTION_INT_DIVIDE_BY_ZERO: return "PLATFORM_EXCEPTION_INT_DIVIDE_BY_ZERO";
-        case PLATFORM_EXCEPTION_INT_OVERFLOW: return "PLATFORM_EXCEPTION_INT_OVERFLOW";
-        case PLATFORM_EXCEPTION_ILLEGAL_INSTRUCTION: return "PLATFORM_EXCEPTION_ILLEGAL_INSTRUCTION";
-        case PLATFORM_EXCEPTION_PRIVILAGED_INSTRUCTION: return "PLATFORM_EXCEPTION_PRIVILAGED_INSTRUCTION";
-        case PLATFORM_EXCEPTION_BREAKPOINT: return "PLATFORM_EXCEPTION_BREAKPOINT";
-        case PLATFORM_EXCEPTION_BREAKPOINT_SINGLE_STEP: return "PLATFORM_EXCEPTION_BREAKPOINT_SINGLE_STEP";
-        case PLATFORM_EXCEPTION_STACK_OVERFLOW: return "PLATFORM_EXCEPTION_STACK_OVERFLOW";
-        case PLATFORM_EXCEPTION_ABORT: return "PLATFORM_EXCEPTION_ABORT";
-        case PLATFORM_EXCEPTION_TERMINATE: return "PLATFORM_EXCEPTION_TERMINATE";
-        case PLATFORM_EXCEPTION_OTHER: return "PLATFORM_EXCEPTION_OTHER";
-        default:
-            return "PLATFORM_EXCEPTION_OTHER";
-    }
+    return run_okay;
 }
 
 bool _platform_set_console_output_escape_sequences()
@@ -2379,7 +1961,7 @@ void _platform_set_console_utf8()
 void platform_init()
 {
     platform_deinit();
-    _platform_thread_get_main_init();
+    platform_thread_get_main_id();
 
     platform_perf_counter();
     platform_epoch_time_startup();

@@ -249,18 +249,35 @@ EXTERNAL void unicode_format_append_ranges(FILE* file, char* file_data, size_t f
         for(; i < len && categories[i] != ','; i++);
 
         size_t size = i - before;
-        if(size > sizeof(cat) - 1)
-            size = sizeof(cat) - 1;
+        if(size > sizeof(cat))
+            size = sizeof(cat);
 
         memcpy(cat, categories + before, size); cat[size] = '\0';
         unicode_parse_table(file_data, file_size, cat, &parsed, &parsed_count, &parsed_capacity);
     }
 
     qsort(parsed, parsed_count, sizeof *parsed, _unicode_range_compare);
+    
+    //merge neighboring/overlapping ranges
+    Unicode_Range* merged = calloc(parsed_count, sizeof *parsed);
+    size_t merged_count = 0;
+    for(size_t i = 0; i < parsed_count; i++) {
+        Unicode_Range curr = parsed[i];
+        Unicode_Range* prev = &parsed[merged_count - 1];
+        if(merged_count > 0 && prev->from <= curr.from && curr.from <= prev->to + 1) 
+            prev->to = prev->to > curr.to ? prev->to : curr.to;
+        else
+            merged[merged_count++] = curr;
+    }
+
+    //sort again for good measure 
+    qsort(merged, merged_count, sizeof *merged, _unicode_range_compare);
+
+    ASSERT(parsed_count <= merged_count);
+    printf("for %s (%s) merged %i ranges\n", name, categories, (int) (parsed_count - merged_count));
 
     fprintf(file, "Unicode_Range %s[%lli] = { //%s\n", name, (long long) parsed_count, categories);
-    for(size_t i = 0; i < parsed_count;)
-    {
+    for(size_t i = 0; i < parsed_count;) {
         fprintf(file, "    ");
         for(int j = 0; j < 8 && i < parsed_count; j++, i++)
             fprintf(file, "0x%04lx,0x%04lx, ", parsed[i].from, parsed[i].to);
@@ -268,6 +285,7 @@ EXTERNAL void unicode_format_append_ranges(FILE* file, char* file_data, size_t f
     }
     fprintf(file, "};//%s - %s\n\n", name, categories);
     free(parsed);
+    free(merged);
 }
 
 INTERNAL bool _unicode_read_entire_file(const char* in, char** read_file, size_t* read_size)

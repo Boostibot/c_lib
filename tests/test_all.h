@@ -8,17 +8,16 @@
 #define MODULE_ALL_COUPLED
 #define MODULE_ALL_TEST
 
-#include "../platform.h"
 #include "../defines.h"
 #include "../assert.h"
 #include "../profile.h"
 #include "../allocator_tlsf.h"
+#include "../allocator_tracking.h"
 #include "../perf.h"
 #include "../sort.h"
 #include "../mem.h"
 #include "../map.h"
 #include "../utf.h"
-#include "../allocator_tracking.h"
 
 #include "../list.h"
 #include "../path.h"
@@ -26,6 +25,7 @@
 #include "../match.h"
 #include "../base64.h"
 
+#include "test_platform.h"
 #include "test_random.h"
 #include "test_arena.h"
 #include "test_array.h"
@@ -131,26 +131,10 @@ static void test_all(double total_time)
 static void _run_test_try(void* context)
 {
     Test_Run_Context* c = (Test_Run_Context*) context;
-    switch(c->type)
-    {
-        case TEST_FUNC_TYPE_SIMPLE: 
-            ((Test_Func) c->func)(); 
-        break;
-        case TEST_FUNC_TYPE_TIMED: 
-            ((Test_Func_Timed) c->func)(c->max_time); 
-        break;
-        default: UNREACHABLE();
-    }
-}
-
-static void _run_test_recover(void* context, Platform_Sandbox_Error error)
-{
-    Test_Run_Context* c = (Test_Run_Context*) context;
-    if(error.exception != PLATFORM_EXCEPTION_ABORT)
-    {
-        PROFILE_INSTANT("failed test");
-        LOG_ERROR("TEST", "Exception occurred in test '%s': %s", c->name, platform_exception_to_string(error.exception));
-    }
+    if(c->type == TEST_FUNC_TYPE_SIMPLE)
+        ((Test_Func) c->func)(); 
+    if(c->type == TEST_FUNC_TYPE_TIMED)
+        ((Test_Func_Timed) c->func)(c->max_time); 
 }
 
 static bool run_test(Test_Run_Context context)
@@ -163,14 +147,18 @@ static bool run_test(Test_Run_Context context)
         default: UNREACHABLE();
     }
 
-    bool success = platform_exception_sandbox(_run_test_try, &context, _run_test_recover, &context) == 0;
-    if(success)
+    Platform_Sandbox_Error error;
+    bool ok = platform_exception_sandbox(_run_test_try, &context, &error);
+    if(ok)
         LOG_OKAY("TEST", "%s OK", context.name);
-    else
+    else {
+        LOG_ERROR("TEST", "Exception occurred in test '%s': %s", context.name, error.exception);
         LOG_ERROR("TEST", "%s FAILED", context.name);
+    }
 
+    panic_recovered();
     PROFILE_STOP();
-    return success;
+    return ok;
 }
 
 static int run_tests(int* total, double time, ...)

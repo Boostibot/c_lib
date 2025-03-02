@@ -14,24 +14,7 @@
 #include <limits.h>
 #include <stdbool.h>
 
-//This is a complete operating system abstraction layer. Its implementation is as straight forward and light as possible.
-//It uses sized strings on all inputs and returns null terminated strings for maximum compatibility and performance.
-//It tries to minimize the need to track state user side instead tries to operate on fixed amount of mutable buffers.
-
-//Why we need this:
-//  1) Practical
-//      The c standard library is extremely minimalistic so if we wish to list all files in a directory there is no other way.
-// 
-//  2) Ideological
-//     Its necessary to understand the bedrock of any medium we are working with. Be it paper, oil & canvas or code, 
-//     understanding the medium will help us define strong limitations on the final problem solutions. This is possible
-//     and this isnt. Yes or no. This drastically shrinks the design space of any problem which allow for deeper exploration of it. 
-//     
-//     Interestingly it does not only shrink the design space it also makes it more defined. We see more opportunities that we 
-//     wouldnt have seen if we just looked at some high level abstraction library. This can lead to development of better abstractions.
-//  
-//     Further having absolute control over the system is rewarding. Having the knowledge of every single operation that goes on is
-//     immensely satisfying.
+typedef int64_t isize;
 
 //=========================================
 // Define flags
@@ -86,15 +69,6 @@
     #define PLATFORM_ENDIAN      PLATFORM_ENDIAN_LITTLE
 #endif
 
-#ifndef PLATFORM_MAX_ALIGN
-    //Maximum alignment of builtin data type.
-    //If this is incorrect (either too much or too little) please correct it by defining it!
-    #define PLATFORM_MAX_ALIGN 8
-#endif
-
-#ifndef PLATFORM_SIMD_ALIGN
-    #define PLATFORM_SIMD_ALIGN 32
-#endif
 //Can be used in files without including platform.h but still becomes
 // valid if platform.h is included
 #if PLATFORM_ENDIAN == PLATFORM_ENDIAN_LITTLE
@@ -115,19 +89,12 @@
 //=========================================
 // Platform layer setup
 //=========================================
-
-//Initializes the platform layer interface. 
-//Should be called before calling any other function.
 void platform_init();
-
-//Deinitializes the platform layer, freeing all allocated resources back to os.
-//platform_init() should be called before using any other function again!
 void platform_deinit();
 
 //=========================================
 // Errors 
 //=========================================
-
 typedef uint32_t Platform_Error;
 enum {
     PLATFORM_ERROR_OK = 0, 
@@ -143,7 +110,6 @@ int64_t platform_translate_error(Platform_Error error, char* translated, int64_t
 //=========================================
 // Virtual memory
 //=========================================
-
 typedef enum Platform_Virtual_Allocation {
     PLATFORM_VIRTUAL_ALLOC_RESERVE  = 1, //Reserves address space so that no other allocation can be made there
     PLATFORM_VIRTUAL_ALLOC_COMMIT   = 2, //Commits address space causing operating system to supply physical memory or swap file
@@ -160,86 +126,72 @@ typedef enum Platform_Memory_Protection {
     PLATFORM_MEMORY_PROT_READ_WRITE_EXECUTE = PLATFORM_MEMORY_PROT_READ_WRITE | PLATFORM_MEMORY_PROT_EXECUTE,
 } Platform_Memory_Protection;
 
-Platform_Error platform_virtual_reallocate(void** output_adress_or_null, void* address, int64_t bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection);
-int64_t platform_page_size();
-int64_t platform_allocation_granularity();
-
-void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align);
-//Returns the size in bytes of an allocated block. 
-//old_ptr needs to be value returned from platform_heap_reallocate. Align must be the one supplied to platform_heap_reallocate.
-//If old_ptr is NULL returns 0.
-int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align); 
+Platform_Error platform_virtual_reallocate(void** output_adress_or_null, void* address, isize bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection);
+isize platform_page_size();
+isize platform_allocation_granularity();
 
 //=========================================
 // Threading
 //=========================================
-
-typedef int (*Platform_Thread_Func)(void* context);
-
-typedef struct Platform_Thread {
-    void* handle;
-} Platform_Thread;
-
-//A handle to fast (ie non kernel code) recursive mutex. (pthread_mutex_t on linux, CRITICAL_SECTION win32)
-typedef struct Platform_Mutex {
-    void* handle;
-} Platform_Mutex;
-
-//@NOTE: We made pretty much all of the threaded functions (except init-like) into non failing
-//       even though they CAN internally return error (we just assert). That is because:
-// 1) One can generally do very little when a mutex fails.
+//We made pretty much all of the threaded functions (except init-like) into non failing
+//even though they CAN internally return error (we just assert). That is because:
+// 1) One can generally do very little when a mutex (or similar) fails.
 // 2) All* error return values are due to a programmer mistake
-// 3) All error values require no further action 
-//   (ie if it failed then it failed and I cannot do anything about it apart from not calling this function)
-// 4) On win32 these functions never fail.
+// 3) On win32 these functions never fail.
 //
 // *pthread_mutex_lock has a fail state on too many recursive locks and insufficient privileges which are
 // not programmer mistake. However in practice they will not happened and if they do we are doing something
 // very specific and a custom implementation is preferred (or we can just change this).
 
-//initializes a new thread and immediately starts it with the func function.
-//Allocates and copies over context_size bytes from context (thus allowing to pass arbitrary large structures to the thread).
-//The thread has stack_size_or_zero bytes of stack sizes rounded up to page size
-//If stack_size_or_zero is zero or lower uses system default stack size.
-//The thread automatically cleans itself up upon completion or termination.
-Platform_Error platform_thread_launch(Platform_Thread* thread_or_null, int64_t stack_size_or_zero, int (*func)(void*), void* context);
-
-int64_t         platform_thread_get_processor_count();
-Platform_Thread platform_thread_get_current(); //Returns handle to the calling thread
+Platform_Error  platform_thread_launch(isize stack_size_or_zero, void (*func)(void*), void* context, const char* name_fmt, ...);
+int32_t         platform_thread_get_processor_count();
 int32_t         platform_thread_get_current_id(); 
+int32_t         platform_thread_get_main_id(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns -1.
 const char*     platform_thread_get_current_name(); 
-void            platform_thread_set_current_name(const char* name, bool dealloc_on_exit); 
-Platform_Thread platform_thread_get_main(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns NULL.
-bool            platform_thread_is_main();
-void            platform_thread_sleep(double seconds); //Sleeps the calling thread for specified number of seconds. The accuracy is platform and sheduler dependent
+void            platform_thread_sleep(double seconds); //Sleeps the calling thread for specified number of seconds. The accuracy is platform and scheduler dependent
 void            platform_thread_exit(int code); //Terminates a thread with an exit code
 void            platform_thread_yield(); //Yields the remainder of this thread's time slice to another thread
-void            platform_thread_detach(Platform_Thread* thread);
-bool            platform_thread_join(const Platform_Thread* threads, int64_t count, double seconds_or_negative_if_infinite); //Blocks calling thread until all threads finish. Must not join the current calling thread!
-int64_t         platform_thread_get_exit_code(Platform_Thread finished_thread); //Returns the exit code of a terminated thread. If the thread is not terminated the result is undefined. 
-bool            platform_thread_is_running(Platform_Thread thread, Platform_Error* error_or_null);
-void            platform_thread_attach_deinit(void (*func)(void* context), void* context); //Registers a function to be called when the thread terminates
 
-// //Interface 2
-// Platform_Error  platform_thread_launch(int64_t stack_size_or_zero, void (*func)(void*), void* context, const char* name);
-// int64_t         platform_thread_get_processor_count();
-// int32_t         platform_thread_get_current_id(); 
-// int32_t         platform_thread_get_main_id(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns NULL.
-// const char*     platform_thread_get_current_name(); 
-// void            platform_thread_set_current_name(const char* name, bool dealloc_on_exit); 
-// void            platform_thread_sleep(double seconds); //Sleeps the calling thread for specified number of seconds. The accuracy is platform and sheduler dependent
-// void            platform_thread_exit(); //Terminates a thread with an exit code
-// void            platform_thread_yield(); //Yields the remainder of this thread's time slice to another thread
-// void            platform_thread_attach_deinit(void (*func)(void* context), void* context); //Registers a function to be called when the thread terminates
+//Fast recursive mutex. (pthread_mutex_t on linux, CRITICAL_SECTION win32)
+typedef struct Platform_Mutex {
+    void* handle;
+} Platform_Mutex;
+
+//Small non-recursive mutex which allows multiple readers to hold the mutex at once.
+//Only a single writer may hold the mutex at once.
+typedef struct Platform_RW_Lock {
+    void* handle;
+} Platform_RW_Lock;
+
+typedef struct Platform_Cond_Var {
+    void* handle;
+} Platform_Cond_Var;
+
+Platform_Error  platform_cond_var_init(Platform_Cond_Var* cond_var);
+void            platform_cond_var_deinit(Platform_Cond_Var* cond_var);
+void            platform_cond_var_wake_single(Platform_Cond_Var* cond_var);
+void            platform_cond_var_wake_all(Platform_Cond_Var* cond_var);
+bool            platform_cond_var_wait_mutex(Platform_Cond_Var* cond_var, Platform_Mutex* mutex, double seconds_or_negative_if_infinite);
+bool            platform_cond_var_wait_rwlock_reader(Platform_Cond_Var* cond_var, Platform_RW_Lock* mutex, double seconds_or_negative_if_infinite);
+bool            platform_cond_var_wait_rwlock_writer(Platform_Cond_Var* cond_var, Platform_RW_Lock* mutex, double seconds_or_negative_if_infinite);
 
 Platform_Error  platform_mutex_init(Platform_Mutex* mutex);
 void            platform_mutex_deinit(Platform_Mutex* mutex);
 void            platform_mutex_lock(Platform_Mutex* mutex);
 void            platform_mutex_unlock(Platform_Mutex* mutex);
-bool            platform_mutex_try_lock(Platform_Mutex* mutex); //Tries to lock a mutex. Returns true if mutex was locked successfully. If it was not returns false without waiting.
+bool            platform_mutex_try_lock(Platform_Mutex* mutex); 
+
+Platform_Error  platform_rwlock_init(Platform_RW_Lock* mutex);
+void            platform_rwlock_deinit(Platform_RW_Lock* mutex);
+void            platform_rwlock_reader_lock(Platform_RW_Lock* mutex);
+void            platform_rwlock_reader_unlock(Platform_RW_Lock* mutex);
+void            platform_rwlock_writer_lock(Platform_RW_Lock* mutex);
+void            platform_rwlock_writer_unlock(Platform_RW_Lock* mutex);
+bool            platform_rwlock_reader_try_lock(Platform_RW_Lock* mutex);
+bool            platform_rwlock_writer_try_lock(Platform_RW_Lock* mutex);
 
 bool            platform_futex_wait(volatile void* futex, uint32_t value, double seconds_or_negative_if_infinite);
-void            platform_futex_wake(volatile void* futex);
+void            platform_futex_wake_single(volatile void* futex);
 void            platform_futex_wake_all(volatile void* futex);
 
 //Allows a resource to be initialized exactly once even in the case of raacing threads.
@@ -249,36 +201,6 @@ void            platform_futex_wake_all(volatile void* futex);
 //After the resource has been initialized these calls exit imemdiately and are evry cheap (just one load).
 static bool     platform_once_begin(volatile uint32_t* state);
 static void     platform_once_end(volatile uint32_t* state);
-
-//=========================================
-// Atomics 
-//=========================================
-PLATFORM_INTRINSIC void platform_compiler_barrier();
-PLATFORM_INTRINSIC void platform_memory_barrier();
-PLATFORM_INTRINSIC void platform_processor_pause();
-
-//Returns the first/last set (1) bit position. If num is zero result is undefined.
-//The following consistency hold (analogous for 64 bit)
-// (num & (1 << platform_find_first_set_bit32(num)) != 0
-// (num & (1 << (32 - platform_find_last_set_bit32(num))) != 0
-PLATFORM_INTRINSIC int32_t platform_find_first_set_bit32(uint32_t num);
-PLATFORM_INTRINSIC int32_t platform_find_first_set_bit64(uint64_t num);
-PLATFORM_INTRINSIC int32_t platform_find_last_set_bit32(uint32_t num); 
-PLATFORM_INTRINSIC int32_t platform_find_last_set_bit64(uint64_t num);
-
-//Returns the number of set (1) bits 
-PLATFORM_INTRINSIC int32_t platform_pop_count32(uint32_t num);
-PLATFORM_INTRINSIC int32_t platform_pop_count64(uint64_t num);
-
-#ifdef __cplusplus
-    #include <atomic>
-    #define PLATFORM_USE_ATOMICS using namespace std
-    #define PLATFORM_ATOMIC(T) std::atomic<T>
-#else
-    #include <stdatomic.h>
-    #define PLATFORM_USE_ATOMICS 
-    #define PLATFORM_ATOMIC(T) _Atomic(T) 
-#endif
 
 //=========================================
 // Timings
@@ -298,12 +220,36 @@ int64_t platform_perf_counter_frequency();
 int64_t platform_perf_counter_startup();    
 
 //=========================================
-// Filesystem
+// Files
 //=========================================
 typedef struct Platform_String {
     const char* data;
     int64_t count;
 } Platform_String;
+
+//(file is open) iff (handle != NULL)
+typedef union Platform_File {
+    void* handle;
+} Platform_File;
+
+typedef enum Platform_File_Open_Flags {
+    PLATFORM_FILE_OPEN_READ = 1,                    //Read privilege
+    PLATFORM_FILE_OPEN_WRITE = 2,                   //Write privilege
+    PLATFORM_FILE_OPEN_CREATE = 8,                  //Creates the file, if it already exists does nothing.
+    PLATFORM_FILE_OPEN_CREATE_MUST_NOT_EXIST = 16,  //Creates the file, if it already exists fails. When supplied alongside PLATFORM_FILE_OPEN_CREATE overrides it.
+    PLATFORM_FILE_OPEN_REMOVE_CONTENT = 32,         //If opening a file that has content, remove it.
+    PLATFORM_FILE_OPEN_READ_WRITE = PLATFORM_FILE_OPEN_READ | PLATFORM_FILE_OPEN_WRITE,
+    PLATFORM_FILE_OPEN_TEMPORARY = 64,              //Deletes the file on close
+
+    //Hints to the usage of the file. 
+    //Have no effect on the semantics but can improve performance in certain cases.
+    //Dont even have to be implemented.
+    PLATFORM_FILE_OPEN_HINT_UNBUFFERED = 128,        
+    PLATFORM_FILE_OPEN_HINT_FRONT_TO_BACK_ACCESS = 256, //Do not use with PLATFORM_FILE_OPEN_HINT_UNBUFFERED
+    PLATFORM_FILE_OPEN_HINT_BACK_TO_FRONT_ACCESS = 512, //Do not use with PLATFORM_FILE_OPEN_HINT_UNBUFFERED
+    PLATFORM_FILE_OPEN_HINT_RANDOM_ACCESS = 1024, //Do not use with PLATFORM_FILE_OPEN_HINT_UNBUFFERED
+} Platform_File_Open_Flags;
+
 
 typedef enum Platform_File_Type {
     PLATFORM_FILE_TYPE_NOT_FOUND = 0,
@@ -320,7 +266,7 @@ typedef enum Platform_Link_Type {
     PLATFORM_LINK_TYPE_HARD = 1,
     PLATFORM_LINK_TYPE_SOFT = 2,
     PLATFORM_LINK_TYPE_SYM = 3,
-    PLATFORM_LINK_TYPE_OTHER = 4,
+    PLATFORM_LINK_TYPE_PROBABLY_LINK = 4,
 } Platform_Link_Type;
 
 typedef struct Platform_File_Info {
@@ -331,126 +277,62 @@ typedef struct Platform_File_Info {
     int64_t last_write_epoch_time;  
     int64_t last_access_epoch_time; //The last time file was either read or written
 } Platform_File_Info;
-    
-typedef struct Platform_Directory_Entry {
-    char* path;
-    int64_t index_within_directory;
-    int64_t directory_depth;
-    Platform_File_Info info;
-} Platform_Directory_Entry;
 
-typedef struct Platform_Memory_Mapping {
-    void* address;
-    int64_t size;
-    uint64_t state[8];
-} Platform_Memory_Mapping;
-
-#ifdef linux
-    #undef linux //Genuinely guys wtf 
-#endif
-
-typedef struct Platform_File {
-    union {
-        void* windows;
-        int linux;
-    } handle;
-    bool is_open;
-    bool _[7];
-} Platform_File;
-
-typedef enum Platform_File_Open_Flags {
-    PLATFORM_FILE_MODE_READ = 1,                    //Read privilege
-    PLATFORM_FILE_MODE_WRITE = 2,                   //Write privilege
-    PLATFORM_FILE_MODE_APPEND = 4,                  //Append privileges (no effect on linux). 
-                                                    //Has no effect on the file write position unlike fopen(path, "a"). 
-                                                    //If you wish to start at the end of a file use platform_file_seek(file, 0, PLATFORM_FILE_SEEK_FROM_END)
-
-    PLATFORM_FILE_MODE_CREATE = 8,                  //Creates the file, if it already exists does nothing.
-    PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST = 16,  //Creates the file, if it already exists fails. When supplied alongside PLATFORM_FILE_MODE_CREATE overrides it.
-    PLATFORM_FILE_MODE_REMOVE_CONTENT = 32,         //If opening a file that has content, remove it.
-    PLATFORM_FILE_MODE_READ_WRITE_APPEND = PLATFORM_FILE_MODE_READ | PLATFORM_FILE_MODE_WRITE | PLATFORM_FILE_MODE_APPEND,
-    PLATFORM_FILE_MODE_TEMPORARY = 64, //TODO
-} Platform_File_Open_Flags;
-
-typedef enum Platform_File_Seek {
-    PLATFORM_FILE_SEEK_FROM_START = 0,
-    PLATFORM_FILE_SEEK_FROM_CURRENT = 1,
-    PLATFORM_FILE_SEEK_FROM_END = 2,
-} Platform_File_Seek;
-
-//Opens the file in the specified combination of Platform_File_Open_Flags. 
-Platform_Error platform_file_open(Platform_File* file, Platform_String path, int open_flags);
-//Closes already opened file. If file was not open does nothing.
-Platform_Error platform_file_close(Platform_File* file);
+Platform_Error platform_file_open(Platform_File* file, Platform_String path, int open_flags); //Opens the file in the specified combination of Platform_File_Open_Flags. 
+bool           platform_file_is_open(const Platform_File* file);
+Platform_Error platform_file_size(const Platform_File* file, isize* size); //obtains the size of already open file. Can be used to do seeking to end etc.
+Platform_Error platform_file_close(Platform_File* file); //Closes already opened file. If file was not successfully opened does nothing. Return value can be ignored
 //Reads size bytes into the provided buffer. Sets read_bytes_because_eof to the number of bytes actually read.
 //Does nothing when file is not open/invalid state. Only performs partial reads when eof is encountered. 
-//Specifcally this means: (*read_bytes_because_eof != size) <=> end of file reached
-Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t size, int64_t* read_bytes_because_eof);
+//Specifically this means: (*read_bytes_because_eof != size) iff (end of file reached)
+Platform_Error platform_file_read(Platform_File* file, void* buffer, isize size, isize offset, isize* read_bytes_because_eof);
 //Writes size bytes from the provided buffer, extending the file if necessary
 //Does nothing when file is not open/invalid state. Does not perform partial writes (the write either fails or succeeds nothing in between).
-Platform_Error platform_file_write(Platform_File* file, const void* buffer, int64_t size);
-//Obtains the current offset from the start of the file and saves it into offset. Does not modify the file 
-Platform_Error platform_file_tell(Platform_File file, int64_t* offset);
-//Offset the current file position relative to: start of the file (0 value), current position, end of the file
-Platform_Error platform_file_seek(Platform_File* file, int64_t offset, Platform_File_Seek from);
-//Flushes all cached contents of the file to disk.
+Platform_Error platform_file_write(Platform_File* file, const void* buffer, isize size, isize offset); //if offset is INT64_MAX writes at end
 Platform_Error platform_file_flush(Platform_File* file);
 
-//retrieves info about the specified file or directory
-Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null);
-//Creates an empty file at the specified path. Succeeds if the file exists after the call.
-//Saves to was_just_created_or_null whether the file was just now created. If is null doesnt save anything.
-Platform_Error platform_file_create(Platform_String file_path, bool fail_if_already_existing);
-//Removes a file at the specified path. If fail_if_not_found is true succeeds only if the file was removed.
-// else succeeds if the file does not exists after the call.
-Platform_Error platform_file_remove(Platform_String file_path, bool fail_if_not_found);
-//Moves or renames a file. If the file cannot be found or renamed to file that already exists, fails.
-Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path, bool replace_existing);
-//Copies a file. If the file cannot be found or copy_to_path file that already exists, fails.
-Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String copy_from_path, bool replace_existing);
-//Sets the size of the file to given size. On extending the value of added bytes are undefined (though most often 0)
-Platform_Error platform_file_resize(Platform_String file_path, int64_t size);
+//The fastest way to read/write/append a file. 
+//@NOTE: Maybe in the future we will want some mechanism to read as fast as possible a collection of files in async way. 
+//This could be useful for games with loose files
+Platform_Error platform_file_read_entire(Platform_String file_path, void* buffer, isize buffer_size);
+Platform_Error platform_file_write_entire(Platform_String file_path, const void* buffer, isize buffer_size, bool fail_if_not_found);
+Platform_Error platform_file_append_entire(Platform_String file_path, const void* buffer, isize buffer_size, bool fail_if_not_found);
 
-//Makes an empty directory
-//Saves to was_just_created_or_null whether the file was just now created. If is null doesnt save anything.
+Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info* info_or_null);
+Platform_Error platform_file_create(Platform_String file_path, bool fail_if_already_existing);
+Platform_Error platform_file_remove(Platform_String file_path, bool fail_if_not_found);
+Platform_Error platform_file_move(Platform_String new_path, Platform_String old_path, bool replace_existing);
+Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String copy_from_path, bool replace_existing);
+Platform_Error platform_file_resize(Platform_String file_path, isize size); //Sets the size of the file to given size. On extending the value of added bytes are undefined (though most often 0)
+
+//=========================================
+// Directories
+//=========================================
+typedef struct Platform_Directory_Iter {
+    void* internal;
+    isize index;
+    Platform_String path;
+} Platform_Directory_Iter;
+
+Platform_Error platform_directory_iter_init(Platform_Directory_Iter* iter, Platform_String directory_path);
+bool platform_directory_iter_next(Platform_Directory_Iter* iter);
+void platform_directory_iter_deinit(Platform_Directory_Iter* iter);
+
 Platform_Error platform_directory_create(Platform_String dir_path, bool fail_if_already_existing);
-//Removes an empty directory
-//Saves to was_just_deleted_or_null whether the file was just now deleted. If is null doesnt save anything.
 Platform_Error platform_directory_remove(Platform_String dir_path, bool fail_if_not_found);
 
-//changes the current working directory to the new_working_dir.  
 Platform_Error platform_directory_set_current_working(Platform_String new_working_dir);    
-//Retrieves the absolute path current working directory
-Platform_Error platform_directory_get_current_working(void* buffer, int64_t buffer_size, bool* needs_bigger_buffer_or_null);
-//Retrieves the absolute path working directory at the time of platform_init
-const char* platform_directory_get_startup_working();
-
-
-//Retrieves the absolute path of the executable / dll
-const char* platform_get_executable_path();    
-
-//Gathers and allocates list of files in the specified directory. Saves a pointer to array of entries to entries and its size to entries_count. 
-//Needs to be freed using directory_list_contents_free(). If max_depth == -1 max depth is unlimited
-Platform_Error platform_directory_list_contents_alloc(Platform_String directory_path, Platform_Directory_Entry** entries, int64_t* entries_count, int64_t max_depth);
-//Frees previously allocated file list
-void platform_directory_list_contents_free(Platform_Directory_Entry* entries);
-
-//Memory maps the file pointed to by file_path and saves the address and size of the mapped block into mapping. 
-//If the desired_size_or_zero == 0 maps the entire file. 
-//  if the file doesnt exist the function fails.
-//If the desired_size_or_zero > 0 maps only up to desired_size_or_zero bytes from the file.
-//  The file is resized so that it is exactly desired_size_or_zero bytes (filling empty space with 0)
-//  if the file doesnt exist the function creates a new file.
-//If the desired_size_or_zero < 0 maps additional desired_size_or_zero bytes from the file 
-//    (for appending) extending it by that amount and filling the space with 0.
-//  if the file doesnt exist the function creates a new file.
-Platform_Error platform_file_memory_map(Platform_String file_path, int64_t desired_size_or_zero, Platform_Memory_Mapping* mapping);
-//Unmpas the previously mapped file. If mapping is a result of failed platform_file_memory_map does nothing.
-void platform_file_memory_unmap(Platform_Memory_Mapping* mapping);
+Platform_Error platform_directory_get_current_working(void* buffer, isize buffer_size, bool* needs_bigger_buffer_or_null); //Retrieves the absolute path of current working directory
+const char* platform_directory_get_startup_working(); //Retrieves the absolute path of current working directory at the time of platform_init
+const char* platform_get_executable_path(); //Retrieves the absolute path of the executable / dll
 
 //=========================================
 // File Watch
 //=========================================
+typedef struct Platform_File_Watch {
+    void* handle;
+} Platform_File_Watch;
+
 typedef enum Platform_File_Watch_Flag {
     PLATFORM_FILE_WATCH_CREATED      = 1,
     PLATFORM_FILE_WATCH_DELETED      = 2,
@@ -458,46 +340,30 @@ typedef enum Platform_File_Watch_Flag {
     PLATFORM_FILE_WATCH_RENAMED      = 8,
     PLATFORM_FILE_WATCH_DIRECTORY    = 16,
     PLATFORM_FILE_WATCH_SUBDIRECTORIES = 32,
+    PLATFORM_FILE_WATCH_OVERFLOW = 64, //internal OS specific buffer overflown
 
-    PLATFORM_FILE_WATCH_ALL_FILES = PLATFORM_FILE_WATCH_CREATED 
+    PLATFORM_FILE_WATCH_ALL_FILES = 0
+        | PLATFORM_FILE_WATCH_CREATED
         | PLATFORM_FILE_WATCH_DELETED 
         | PLATFORM_FILE_WATCH_MODIFIED 
         | PLATFORM_FILE_WATCH_RENAMED,
 
-    PLATFORM_FILE_WATCH_ALL = PLATFORM_FILE_WATCH_ALL_FILES
+    PLATFORM_FILE_WATCH_ALL = 0
+        | PLATFORM_FILE_WATCH_ALL_FILES
         | PLATFORM_FILE_WATCH_DIRECTORY,
 } Platform_File_Watch_Flag;
  
-typedef struct Platform_File_Watch {
-    void* handle;
-} Platform_File_Watch;
-
 typedef struct Platform_File_Watch_Event {
-    Platform_File_Watch_Flag action;
     int32_t _;
-    const char* watched_path;
-    const char* path;
-    const char* old_path; //only used in case of PLATFORM_FILE_WATCH_RENAMED to store the previous path.
+    Platform_File_Watch_Flag action;
+    Platform_String watched_path;
+    Platform_String path;
+    Platform_String new_path;
 } Platform_File_Watch_Event;
 
-//Creates a watch of changes on a directory or a single file. These changes can be polled with platform_file_watch_poll. 
-//Returns Platform_Error indicating whether the operation was successful. 
-//file_watch_flags is a bitwise combination of members of Platform_File_Watch_Flag specifying which events we to be reported.
-// 
-//If file file_watch is not null, saves this watch to the given pointer.
-//If signal_func_or_null is not null, calls it immediately after a change has occurred. This can be used to give some more general signals about which watches have events.
-//
-//Note that the directory in which the watched file resides (or the watched directory itself) must exist else returns error.
-Platform_Error platform_file_watch(Platform_File_Watch* file_watch, Platform_String file_path, int32_t file_watch_flags, void (*signal_func_or_null)(Platform_File_Watch watch, void* context), void* context);
-//Deinits a given watch represented by file_watch_or_null. 
-Platform_Error platform_file_unwatch(Platform_File_Watch* file_watch);
-//Polls watch events from the given file watch. 
-//Returns true if event was polled and false if there are no events in the queue.
-//Note that once event is polled it is removed from the queue.
-//Note that this functions is implemented efficiently and in case of no events is practically free.
-bool platform_file_watch_poll(Platform_File_Watch file_watch, Platform_File_Watch_Event* event);
-//Returns the watched path from give filewatch. Also saves the used flags if to flags_or_null if not null.
-const char* platform_file_watch_get_info(Platform_File_Watch file_watch, int32_t* flags_or_null);
+Platform_Error platform_file_watch_init(Platform_File_Watch* file_watch, int32_t flags, Platform_String path, isize buffer_size);
+void           platform_file_watch_deinit(Platform_File_Watch* file_watch);
+bool           platform_file_watch_poll(Platform_File_Watch* file_watch, Platform_File_Watch_Event* event, Platform_Error* error_or_null);
 
 //=========================================
 // DLL management
@@ -511,46 +377,18 @@ void platform_dll_unload(Platform_DLL* dll);
 void* platform_dll_get_function(Platform_DLL* dll, Platform_String name);
 
 //=========================================
-// Window managmenet
-//=========================================
-
-typedef enum Platform_Window_Popup_Style {
-    PLATFORM_POPUP_STYLE_OK = 0,
-    PLATFORM_POPUP_STYLE_ERROR,
-    PLATFORM_POPUP_STYLE_WARNING,
-    PLATFORM_POPUP_STYLE_INFO,
-    PLATFORM_POPUP_STYLE_RETRY_ABORT,
-    PLATFORM_POPUP_STYLE_YES_NO,
-    PLATFORM_POPUP_STYLE_YES_NO_CANCEL,
-} Platform_Window_Popup_Style;
-
-typedef enum Platform_Window_Popup_Controls {
-    PLATFORM_POPUP_CONTROL_OK,
-    PLATFORM_POPUP_CONTROL_CANCEL,
-    PLATFORM_POPUP_CONTROL_CONTINUE,
-    PLATFORM_POPUP_CONTROL_ABORT,
-    PLATFORM_POPUP_CONTROL_RETRY,
-    PLATFORM_POPUP_CONTROL_YES,
-    PLATFORM_POPUP_CONTROL_NO,
-    PLATFORM_POPUP_CONTROL_IGNORE,
-} Platform_Window_Popup_Controls;
-
-//Makes default shell popup with a custom message and style
-Platform_Window_Popup_Controls platform_window_make_popup(Platform_Window_Popup_Style desired_style, Platform_String message, Platform_String title);
-
-//=========================================
 // Debug
 //=========================================
 //Could be separate file or project from here on...
 
-//checks wheter the debugger is attached. Returns 0 if not 1 if yes, -1 if error
-int platform_is_debugger_atached();
+//checks whether the debugger is attached. Returns 0 if not 1 if yes, -1 if error
+int platform_is_debugger_attached();
 
 typedef struct {
     char function[256]; //mangled or unmangled function name
     char module[256];   //mangled or unmangled module name ie. name of dll/executable
     char file[256];     //file or empty if not supported
-    int64_t line;       //0 if not supported;
+    int64_t line;       //0 if not supported
     void* address;
 } Platform_Stack_Trace_Entry;
 
@@ -565,69 +403,29 @@ int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t sk
 //will never fail yet translate all needed stack frames. 
 void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, void** stack, int64_t stack_size);
 
-typedef enum Platform_Exception {
-    PLATFORM_EXCEPTION_NONE = 0,
-    PLATFORM_EXCEPTION_ACCESS_VIOLATION,
-    PLATFORM_EXCEPTION_DATATYPE_MISALIGNMENT,
-    PLATFORM_EXCEPTION_FLOAT_DENORMAL_OPERAND,
-    PLATFORM_EXCEPTION_FLOAT_DIVIDE_BY_ZERO,
-    PLATFORM_EXCEPTION_FLOAT_INEXACT_RESULT,
-    PLATFORM_EXCEPTION_FLOAT_INVALID_OPERATION,
-    PLATFORM_EXCEPTION_FLOAT_OVERFLOW,
-    PLATFORM_EXCEPTION_FLOAT_UNDERFLOW,
-    PLATFORM_EXCEPTION_FLOAT_OTHER,
-    PLATFORM_EXCEPTION_PAGE_ERROR,
-    PLATFORM_EXCEPTION_INT_DIVIDE_BY_ZERO,
-    PLATFORM_EXCEPTION_INT_OVERFLOW,
-    PLATFORM_EXCEPTION_ILLEGAL_INSTRUCTION,
-    PLATFORM_EXCEPTION_PRIVILAGED_INSTRUCTION,
-    PLATFORM_EXCEPTION_BREAKPOINT,
-    PLATFORM_EXCEPTION_BREAKPOINT_SINGLE_STEP,
-    PLATFORM_EXCEPTION_STACK_OVERFLOW,
-    PLATFORM_EXCEPTION_ABORT,
-    PLATFORM_EXCEPTION_TERMINATE = 0x0001000,
-    PLATFORM_EXCEPTION_OTHER = 0x0001001,
-} Platform_Exception; 
-
 typedef struct Platform_Sandbox_Error {
-    //The exception that occurred
-    Platform_Exception exception;
-    
-    //A translated stack trace and its size
-    int32_t call_stack_size;
+    const char* exception;
+    int32_t call_stack_size; 
     void** call_stack; 
-
-    //Platform specific data containing the cpu state and its size (so that it can be copied and saved)
-    const void* execution_context;
-    int64_t execution_context_size;
-
-    //The epoch time of the exception
     int64_t epoch_time;
 } Platform_Sandbox_Error;
 
+void platform_sandbox_error_deinit(Platform_Sandbox_Error* error);
+
 //Launches the sandboxed_func inside a sandbox protecting the outside environment 
 // from any exceptions, including hardware exceptions that might occur inside sandboxed_func.
-//If an exception occurs collects execution context including stack pointers and calls
-// 'error_func_or_null' if not null. Gracefully recovers from all errors. 
-//Returns the error that occurred or PLATFORM_EXCEPTION_NONE = 0 on success.
-Platform_Exception platform_exception_sandbox(
+//If an exception occurs collects execution context including stack pointers and saves it into
+// error_or_null if not null. After an error occured should call platform_sandbox_error_deinit to
+// release the error memory
+//Returns true if no error occurred, false if some error occurred.
+bool platform_exception_sandbox(
     void (*sandboxed_func)(void* sandbox_context),   
-    void* sandbox_context,
-    void (*error_func_or_null)(void* error_context, Platform_Sandbox_Error error),
-    void* error_context);
-
-//Converts the sandbox error to string. The string value is the name of the enum
-// (PLATFORM_EXCEPTION_ACCESS_VIOLATION -> "PLATFORM_EXCEPTION_ACCESS_VIOLATION")
-const char* platform_exception_to_string(Platform_Exception error);
+    void* sandbox_context, Platform_Sandbox_Error* error_or_null);
 
 #if !defined(PLATFORM_OS) || PLATFORM_OS == PLATFORM_OS_UNKNOWN
     #undef PLATFORM_OS
-    #if defined(_WIN32)
+    #if defined(_WIN32) || defined(_WIN64)
         #define PLATFORM_OS PLATFORM_OS_WINDOWS // Windows
-    #elif defined(_WIN64)
-        #define PLATFORM_OS PLATFORM_OS_WINDOWS // Windows
-    #elif defined(__CYGWIN__) && !defined(_WIN32)
-        #define PLATFORM_OS PLATFORM_OS_WINDOWS // Windows (Cygwin POSIX under Microsoft Window)
     #elif defined(__ANDROID__)
         #define PLATFORM_OS PLATFORM_OS_ANDROID // Android (implies Linux, so it must come first)
     #elif defined(__linux__)
@@ -676,164 +474,16 @@ const char* platform_exception_to_string(Platform_Exception error);
     #else
         #define PLATFORM_COMPILER PLATFORM_COMPILER_UNKNOWN
     #endif
-
 #endif
 
-
-
-// =================== INLINE IMPLEMENTATION ============================
-#if defined(_MSC_VER)
-    #include <stdio.h>
-    #include <intrin.h>
-    #include <assert.h>
-
-    #pragma warning(push)
-    #pragma warning(disable:4996) //disables deprecated/unsafe function warning ( _ReadWriteBarrier() )
-
-    #if defined(_M_CEE_PURE) || defined(_M_IX86) || (defined(_M_X64) && !defined(_M_ARM64EC))
-        #define _PLATFORM_MSVC_X86
-    #elif defined(_M_ARM) || defined(_M_ARM64) || defined(_M_ARM64EC)
-        #define _PLATFORM_MSVC_ARM
-    #else
-        #error Unsupported hardware!
-    #endif
-
-    PLATFORM_INTRINSIC void platform_compiler_barrier() 
-    {
-        _ReadWriteBarrier();
-    }
-
-    PLATFORM_INTRINSIC void platform_memory_barrier()
-    {
-        _ReadWriteBarrier(); 
-        
-        //I dont think this is needed. 
-        //At least thats what MSVC std lib does.
-        //__faststorebarrier();
-        #ifdef _PLATFORM_MSVC_X86
-            //nothing...
-        #else
-            //taken from xxtomic.h
-            __dmb(0xB);
-        #endif
-    }
-
-    PLATFORM_INTRINSIC void platform_processor_pause()
-    {
-        #ifdef _PLATFORM_MSVC_X86
-            _mm_pause();
-        #else
-            __yield();
-        #endif
-    }
-    
-    PLATFORM_INTRINSIC int32_t platform_find_last_set_bit32(uint32_t num)
-    {
-        assert(num != 0);
-        unsigned long out = 0;
-        _BitScanReverse(&out, (unsigned long) num);
-        return (int32_t) out;
-    }
-    
-    PLATFORM_INTRINSIC int32_t platform_find_last_set_bit64(uint64_t num)
-    {
-        assert(num != 0);
-        unsigned long out = 0;
-        _BitScanReverse64(&out, (unsigned long long) num);
-        return (int32_t) out;
-    }
-
-    PLATFORM_INTRINSIC int32_t platform_find_first_set_bit32(uint32_t num)
-    {
-        assert(num != 0);
-        unsigned long out = 0;
-        _BitScanForward(&out, (unsigned long) num);
-        return (int32_t) out;
-    }
-    PLATFORM_INTRINSIC int32_t platform_find_first_set_bit64(uint64_t num)
-    {
-        assert(num != 0);
-        unsigned long out = 0;
-        _BitScanForward64(&out, (unsigned long long) num);
-        return (int32_t) out;
-    }
-    
-    PLATFORM_INTRINSIC int32_t platform_pop_count32(uint32_t num)
-    {
-        return (int32_t) __popcnt((unsigned int) num);
-    }
-    PLATFORM_INTRINSIC int32_t platform_pop_count64(uint64_t num)
-    {
-        return (int32_t) __popcnt64((unsigned long long)num);
-    }
-
-    #pragma warning(pop)
-
-#elif defined(__GNUC__) || defined(__clang__)
-    #define _GNU_SOURCE
-    #include <signal.h>
-
-    typedef char __MAX_ALIGN_TESTER__[
-        __alignof__(long long int) == PLATFORM_MAX_ALIGN || 
-        __alignof__(long double) == PLATFORM_MAX_ALIGN ? 1 : -1
-    ];
-
-    PLATFORM_INTRINSIC void platform_compiler_barrier() 
-    {
-        __asm__ __volatile__("":::"memory");
-    }
-
-    PLATFORM_INTRINSIC void platform_memory_barrier()
-    {
-        platform_compiler_barrier(); 
-        __sync_synchronize();
-    }
-
-    #if defined(__x86_64__) || defined(__i386__)
-        #include <immintrin.h> // For _mm_pause
-        PLATFORM_INTRINSIC void platform_processor_pause()
-        {
-            _mm_pause();
-        }
-    #else
-        #include <time.h>
-        PLATFORM_INTRINSIC void platform_processor_pause()
-        {
-            struct timespec spec = {0};
-            spec.tv_sec = 0;
-            spec.tv_nsec = 1;
-            nanosleep(spec, NULL);
-        }
-    #endif
-
-    //for refernce see: https://gcc.gnu.org/onlinedocs/gcc/Other-Builtins.html
-    PLATFORM_INTRINSIC int32_t platform_find_last_set_bit32(uint32_t num)
-    {
-        return 32 - __builtin_ctz((unsigned int) num) - 1;
-    }
-    PLATFORM_INTRINSIC int32_t platform_find_last_set_bit64(uint64_t num)
-    {
-        return 64 - __builtin_ctzll((unsigned long long) num) - 1;
-    }
-
-    PLATFORM_INTRINSIC int32_t platform_find_first_set_bit32(uint32_t num)
-    {
-        return __builtin_ffs((int) num) - 1;
-    }
-    PLATFORM_INTRINSIC int32_t platform_find_first_set_bit64(uint64_t num)
-    {
-        return __builtin_ffsll((long long) num) - 1;
-    }
-
-    PLATFORM_INTRINSIC int32_t platform_pop_count32(uint32_t num)
-    {
-        return __builtin_popcount((uint32_t) num);
-    }
-    PLATFORM_INTRINSIC int32_t platform_pop_count64(uint64_t num)
-    {
-        return __builtin_popcountll((uint64_t) num);
-    }
-
+#ifdef __cplusplus
+    #include <atomic>
+    #define PLATFORM_USE_ATOMICS using namespace std
+    #define PLATFORM_ATOMIC(T) std::atomic<T>
+#else
+    #include <stdatomic.h>
+    #define PLATFORM_USE_ATOMICS 
+    #define PLATFORM_ATOMIC(T) _Atomic(T) 
 #endif
 
 static bool platform_once_begin(volatile uint32_t* once)
@@ -868,340 +518,4 @@ static void platform_once_end(volatile uint32_t* once)
     platform_futex_wake_all(once);
 }
 
-#endif
-
-// ====================================================================================
-//                               UNIT TESTS 
-// ====================================================================================
-
-#if (defined(MODULE_ALL_TEST) || defined(MODULE_PLATFORM_TEST)) && !defined(MODULE_PLATFORM_HAS_TEST)
-#define MODULE_PLATFORM_HAS_TEST
-
-#include <stdint.h>
-#include <string.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <assert.h>
-static bool _platform_test_report(Platform_Error error, bool is_error, const char* expression, const char* file, const char* funcion, int line, const char* format, ...);
-
-#ifndef _MSC_VER
-    #define __FUNCTION__ __func__
-#endif
-
-#ifdef __cplusplus
-    #define PBRACE_INIT(Struct_Type) Struct_Type
-#else
-    #include <stdbool.h>
-    #define PBRACE_INIT(Struct_Type) (Struct_Type)
-#endif 
-
-#define PTEST(x, ...)           (_platform_test_report(0, !(x), #x, __FILE__, __FUNCTION__, __LINE__, "" __VA_ARGS__) ? abort() : (void) 0)
-#define PTEST_ERROR(error, ...) (_platform_test_report((error), 0, #error, __FILE__, __FUNCTION__, __LINE__, "" __VA_ARGS__) ? abort() : (void) 0)
-#define PSTRING(literal)        PBRACE_INIT(Platform_String){"" literal, sizeof(literal) - 1}
-
-//String containing few problematic sequences: BOM, non ascii, non single UTF16 representable chars, \r\n and \n newlines.
-// It should still be read in and out exactly the same!
-#define PUTF8_BOM        "\xEF\xBB\xBF"
-#define PUGLY_STR        PUTF8_BOM "Hello world!\r\n ěščřžýáéň,\n Φφ,Χχ,Ψψ,Ωω,\r\n あいうえお"
-#define PUGLY_STRING     PSTRING(PUGLY_STR)
-
-static void platform_test_file_content_equality(Platform_String path, Platform_String content);
-
-static void platform_test_file_io() 
-{
-    #define TEST_DIR          "__platform_file_test_directory__"
-    PTEST_ERROR(platform_directory_create(PSTRING(TEST_DIR), false));
-    PTEST(platform_directory_create(PSTRING(TEST_DIR), true) != 0, "Creating already created directory should fail when fail_if_already_exists = true\n");
-    {
-        Platform_File_Info dir_info = {0};
-        PTEST_ERROR(platform_file_info(PSTRING(TEST_DIR), &dir_info));
-        PTEST(dir_info.type == PLATFORM_FILE_TYPE_DIRECTORY);
-        PTEST(dir_info.link_type == PLATFORM_LINK_TYPE_NOT_LINK);
-
-        Platform_String test_file_content = PSTRING(PUGLY_STR PUGLY_STR);
-        Platform_String write_file_path = PSTRING(TEST_DIR "/write_file.txt");
-        Platform_String read_file_path = PSTRING(TEST_DIR "/read_file.txt");
-        Platform_String move_file_path = PSTRING(TEST_DIR "/move_file.txt");
-        
-        //Cleanup any possibly remaining files from previous (failed) tests
-        PTEST_ERROR(platform_file_remove(write_file_path, false));
-        PTEST_ERROR(platform_file_remove(read_file_path, false));
-        PTEST_ERROR(platform_file_remove(move_file_path, false));
-
-        //Write two PUGLY_STRING's into the file and flush it (no closing though!)
-        Platform_File write_file = {0};
-        PTEST_ERROR(platform_file_open(&write_file, write_file_path, PLATFORM_FILE_MODE_WRITE | PLATFORM_FILE_MODE_CREATE | PLATFORM_FILE_MODE_REMOVE_CONTENT));
-        PTEST(write_file.is_open);
-        PTEST_ERROR(platform_file_write(&write_file, PUGLY_STRING.data, PUGLY_STRING.count));
-        PTEST_ERROR(platform_file_write(&write_file, PUGLY_STRING.data, PUGLY_STRING.count));
-        PTEST_ERROR(platform_file_flush(&write_file));
-        
-        platform_test_file_content_equality(write_file_path, test_file_content);
-
-        //Copy the file 
-        PTEST_ERROR(platform_file_copy(read_file_path, write_file_path, false));
-        platform_test_file_content_equality(read_file_path, test_file_content);
-        PTEST_ERROR(platform_file_close(&write_file));
-
-        //Move the file
-        PTEST_ERROR(platform_file_move(move_file_path, write_file_path, false));
-        PTEST(platform_file_info(write_file_path, NULL) != 0, "Opening of the moved from file should fail since its no longer there!\n");
-        platform_test_file_content_equality(move_file_path, test_file_content);
-
-        //Trim the file and 
-        PTEST_ERROR(platform_file_resize(move_file_path, PUGLY_STRING.count));
-        platform_test_file_content_equality(move_file_path, PUGLY_STRING);
-
-        //Cleanup the directory so it can be deleted.
-        PTEST_ERROR(platform_file_remove(write_file_path, false)); //Just in case
-        PTEST_ERROR(platform_file_remove(read_file_path, true));
-        PTEST_ERROR(platform_file_remove(move_file_path, true));
-    }
-    PTEST_ERROR(platform_directory_remove(PSTRING(TEST_DIR), true));
-    PTEST(platform_directory_remove(PSTRING(TEST_DIR), true) != 0, "removing a missing directory should fail when fail_if_not_found = true\n");
-}
-
-
-#pragma warning(disable:4996) //Dissable "This function or variable may be unsafe. Consider using localtime_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details."
-#include <time.h>
-typedef struct tm _PDate;
-static _PDate _date_from_epoch_time(int64_t epoch_time)
-{
-    time_t copy = (time_t) (epoch_time / 1000 / 1000);
-    return *localtime(&copy);
-}
-
-static void platform_test_dir_entry(Platform_Directory_Entry* entries, int64_t entries_count, Platform_String entry_path, Platform_File_Type type, int64_t directory_depth);
-
-static void platform_test_directory_list() 
-{
-    #define TEST_DIR_LIST_DIR       "__platform_dir_list_test_directory__"
-    #define TEST_DIR_DEEPER1        TEST_DIR_LIST_DIR "/deeper1"
-    #define TEST_DIR_DEEPER2        TEST_DIR_LIST_DIR "/deeper2"
-    #define TEST_DIR_DEEPER3        TEST_DIR_LIST_DIR "/deeper3"
-    #define TEST_DIR_DEEPER3_INNER  TEST_DIR_DEEPER3 "/inner"
-
-    PTEST_ERROR(platform_directory_create(PSTRING(TEST_DIR_LIST_DIR), false));
-    {
-        PTEST_ERROR(platform_directory_create(PSTRING(TEST_DIR_DEEPER1), false));
-        PTEST_ERROR(platform_directory_create(PSTRING(TEST_DIR_DEEPER2), false));
-        PTEST_ERROR(platform_directory_create(PSTRING(TEST_DIR_DEEPER3), false));
-        PTEST_ERROR(platform_directory_create(PSTRING(TEST_DIR_DEEPER3_INNER), false));
-
-        Platform_String temp_file1 = PSTRING(TEST_DIR_LIST_DIR "/temp_file1.txt");
-        Platform_String temp_file2 = PSTRING(TEST_DIR_LIST_DIR "/temp_file2.txt");
-        Platform_String temp_file3 = PSTRING(TEST_DIR_LIST_DIR "/temp_file3.txt");
-        Platform_String temp_file_deep1_1 = PSTRING(TEST_DIR_DEEPER1 "/temp_file1.txt");
-        Platform_String temp_file_deep1_2 = PSTRING(TEST_DIR_DEEPER1 "/temp_file2.txt");
-        Platform_String temp_file_deep3_1 = PSTRING(TEST_DIR_DEEPER3_INNER "/temp_file1.txt");
-        Platform_String temp_file_deep3_2 = PSTRING(TEST_DIR_DEEPER3_INNER "/temp_file2.txt");
-
-        Platform_File first = {0};
-        PTEST_ERROR(platform_file_open(&first, temp_file1, PLATFORM_FILE_MODE_WRITE | PLATFORM_FILE_MODE_CREATE | PLATFORM_FILE_MODE_REMOVE_CONTENT));
-        PTEST_ERROR(platform_file_write(&first, PUGLY_STRING.data, PUGLY_STRING.count));
-        PTEST_ERROR(platform_file_close(&first));
-
-        PTEST_ERROR(platform_file_copy(temp_file2, temp_file1, true));
-        PTEST_ERROR(platform_file_copy(temp_file3, temp_file1, true));
-
-        PTEST_ERROR(platform_file_copy(temp_file_deep1_1, temp_file1, true));
-        PTEST_ERROR(platform_file_copy(temp_file_deep1_2, temp_file1, true));
-            
-        PTEST_ERROR(platform_file_copy(temp_file_deep3_1, temp_file1, true));
-        PTEST_ERROR(platform_file_copy(temp_file_deep3_2, temp_file1, true));
-
-        //Now the dir should look like (inside TEST_DIR):
-        // TEST_DIR:
-        //    temp_file1.txt
-        //    temp_file2.txt
-        //    temp_file3.txt
-        //    deeper1:
-        //         temp_file1.txt
-        //         temp_file2.txt
-        //    deeper2:
-        //    deeper3:
-        //         inner:
-        //             temp_file1.txt
-        //             temp_file2.txt
-
-        {
-            Platform_Directory_Entry* entries = NULL;
-            int64_t entries_count = 0;
-            PTEST_ERROR(platform_directory_list_contents_alloc(PSTRING(TEST_DIR_LIST_DIR), &entries, &entries_count, 1)); //Only the immediate directory
-            PTEST(entries_count == 6);
-
-            platform_test_dir_entry(entries, entries_count, temp_file1, PLATFORM_FILE_TYPE_FILE, 0);
-            platform_test_dir_entry(entries, entries_count, temp_file2, PLATFORM_FILE_TYPE_FILE, 0);
-            platform_test_dir_entry(entries, entries_count, temp_file3, PLATFORM_FILE_TYPE_FILE, 0);
-
-            platform_test_dir_entry(entries, entries_count, temp_file_deep1_1, PLATFORM_FILE_TYPE_NOT_FOUND, 0);
-            platform_test_dir_entry(entries, entries_count, temp_file_deep3_2, PLATFORM_FILE_TYPE_NOT_FOUND, 0);
-
-            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER1), PLATFORM_FILE_TYPE_DIRECTORY, 0);
-            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER2), PLATFORM_FILE_TYPE_DIRECTORY, 0);
-            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER3), PLATFORM_FILE_TYPE_DIRECTORY, 0);
-            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER3_INNER), PLATFORM_FILE_TYPE_NOT_FOUND, 0);
-
-            platform_directory_list_contents_free(entries);
-        }
-        
-        {
-            Platform_Directory_Entry* entries = NULL;
-            int64_t entries_count = 0;
-            PTEST_ERROR(platform_directory_list_contents_alloc(PSTRING(TEST_DIR_LIST_DIR), &entries, &entries_count, -1)); //All of the directories
-
-            for(int i = 0; i < entries_count; i++)
-            {
-                _PDate created_time = _date_from_epoch_time(entries[i].info.created_epoch_time);
-                _PDate write_time = _date_from_epoch_time(entries[i].info.last_write_epoch_time);
-                _PDate access_time = _date_from_epoch_time(entries[i].info.last_access_epoch_time);
-
-                #define PDATE_FMT "%04i/%02i/%02i %02i:%02i:%02i"
-                #define PDATE_PRINT(time) (time).tm_year + 1900, (time).tm_mon, (time).tm_mday, (time).tm_hour, (time).tm_min, (time).tm_sec
-                printf("'%s': created: " PDATE_FMT " write: " PDATE_FMT " access: " PDATE_FMT "\n", entries[i].path, PDATE_PRINT(created_time), PDATE_PRINT(write_time), PDATE_PRINT(access_time));
-                assert(entries[i].info.type != PLATFORM_FILE_TYPE_NOT_FOUND);
-            }
-
-            PTEST(entries_count == 11);
-            platform_test_dir_entry(entries, entries_count, temp_file1, PLATFORM_FILE_TYPE_FILE, 0);
-            platform_test_dir_entry(entries, entries_count, temp_file2, PLATFORM_FILE_TYPE_FILE, 0);
-            platform_test_dir_entry(entries, entries_count, temp_file3, PLATFORM_FILE_TYPE_FILE, 0);
-
-            platform_test_dir_entry(entries, entries_count, temp_file_deep1_1, PLATFORM_FILE_TYPE_FILE, 1);
-            platform_test_dir_entry(entries, entries_count, temp_file_deep3_2, PLATFORM_FILE_TYPE_FILE, 2);
-
-            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER3_INNER), PLATFORM_FILE_TYPE_DIRECTORY, 1);
-            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER1), PLATFORM_FILE_TYPE_DIRECTORY, 0);
-            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER2), PLATFORM_FILE_TYPE_DIRECTORY, 0);
-            platform_test_dir_entry(entries, entries_count, PSTRING(TEST_DIR_DEEPER3), PLATFORM_FILE_TYPE_DIRECTORY, 0);
-
-            platform_directory_list_contents_free(entries);
-        }
-
-        PTEST_ERROR(platform_file_remove(temp_file1, true));
-        PTEST_ERROR(platform_file_remove(temp_file2, true));
-        PTEST_ERROR(platform_file_remove(temp_file3, true));
-
-        PTEST_ERROR(platform_file_remove(temp_file_deep1_1, true));
-        PTEST_ERROR(platform_file_remove(temp_file_deep1_2, true));
-            
-        PTEST_ERROR(platform_file_remove(temp_file_deep3_1, true));
-        PTEST_ERROR(platform_file_remove(temp_file_deep3_2, true));
-
-        PTEST_ERROR(platform_directory_remove(PSTRING(TEST_DIR_DEEPER3_INNER), true));
-        PTEST_ERROR(platform_directory_remove(PSTRING(TEST_DIR_DEEPER1), true));
-        PTEST_ERROR(platform_directory_remove(PSTRING(TEST_DIR_DEEPER2), true));
-        PTEST_ERROR(platform_directory_remove(PSTRING(TEST_DIR_DEEPER3), true));
-    }
-    PTEST_ERROR(platform_directory_remove(PSTRING(TEST_DIR_LIST_DIR), true));
-}
-
-static void platform_test_all() 
-{   
-    printf("platform_test_all() running at directory: '%s'\n", platform_directory_get_startup_working());
-    PTEST(strlen(platform_directory_get_startup_working()) > 0);
-    PTEST(strlen(platform_get_executable_path()) > 0);
-
-    platform_test_file_io();
-    platform_test_directory_list();
-}
-
-static void platform_test_file_content_equality(Platform_String path, Platform_String content)
-{
-    //Check file info for correctness
-    Platform_File_Info info = {0};
-
-    PTEST_ERROR(platform_file_info(path, &info)); 
-
-    PTEST(info.type == PLATFORM_FILE_TYPE_FILE);
-    PTEST(info.link_type == PLATFORM_LINK_TYPE_NOT_LINK);
-    PTEST(info.size == content.count);
-    
-    //Read the entire file and check content for equality
-    void* buffer = malloc((size_t) info.size + 10); 
-    PTEST(buffer);
-
-    int64_t bytes_read = 0;
-    Platform_File file = {0};
-    PTEST_ERROR(platform_file_open(&file, path, PLATFORM_FILE_MODE_READ));
-    PTEST_ERROR(platform_file_read(&file, buffer, info.size, &bytes_read));
-    PTEST(bytes_read == info.size);
-    PTEST(memcmp(buffer, content.data, (size_t) content.count) == 0, "Content must match! Content: \n'%.*s' \nExpected: \n'%.*s'\n",
-        (int) content.count, (char*) buffer, (int) content.count, content.data
-    );
-
-    //Also verify there really is nothing more
-    PTEST_ERROR(platform_file_read(&file, buffer, 1, &bytes_read));
-    PTEST(bytes_read == 0, "Eof must be found!");
-    
-    PTEST_ERROR(platform_file_close(&file));
-    free(buffer);
-}
-static void platform_test_dir_entry(Platform_Directory_Entry* entries, int64_t entries_count, Platform_String entry_path, Platform_File_Type type, int64_t directory_depth)
-{
-    int64_t concatenated_size = entry_path.count;
-    char* concatenated = (char*) calloc(1, (size_t) concatenated_size + 1);
-    PTEST(concatenated);
-    memcpy(concatenated, entry_path.data, (size_t) entry_path.count);
-
-    Platform_Directory_Entry* entry = NULL;
-    for(int64_t i = 0; i < entries_count; i++)
-    {
-        Platform_String curr_path = {entries[i].path, (int64_t) strlen(entries[i].path)};
-        if(curr_path.count == concatenated_size && memcmp(curr_path.data, concatenated, (size_t) concatenated_size) == 0)
-        {
-            entry = &entries[i];
-            break;
-        }
-    }
-
-    if(type == PLATFORM_FILE_TYPE_NOT_FOUND)
-        PTEST(entry == NULL, "Entry '%s' must not be found!", concatenated);
-    else
-    {
-        Platform_File_Info info = {0};
-        PTEST_ERROR(platform_file_info(entry_path, &info));
-
-        PTEST(entry, "Entry '%s' must be found!", concatenated);
-        PTEST(entry->directory_depth == directory_depth);
-        PTEST(entry->info.type == type);
-
-        //@NOTE: getting the info is an access so we skip this.
-        //PTEST(info.created_epoch_time == entry->info.created_epoch_time);
-        //PTEST(info.last_write_epoch_time == entry->info.last_write_epoch_time);
-        //PTEST(info.last_access_epoch_time == entry->info.last_access_epoch_time); 
-        PTEST(info.link_type == entry->info.link_type);
-        PTEST(info.size == entry->info.size);
-        PTEST(info.type == entry->info.type);
-    }
-}
-
-static bool _platform_test_report(Platform_Error error, bool is_error, const char* expression, const char* file, const char* funcion, int line, const char* format, ...)
-{
-    is_error = error != 0 || is_error;
-    if(is_error)
-    {
-        printf("TEST(%s) failed in %s %s:%i\n", expression, file, funcion, line);
-        if(format && strlen(format) > 0)
-        {
-            va_list args;               
-            va_start(args, format);     
-            vprintf(format, args);
-            va_end(args);   
-        }
-        
-        if(error != 0)
-        {
-            int64_t size = platform_translate_error(error, NULL, 0);
-            char* message = (char*) malloc((size_t) size);
-            platform_translate_error(error, message, size);
-            printf("Error: %s\n", message);
-            free(message);
-        }
-        fflush(stdout);
-    }
-
-    return is_error; 
-}
 #endif

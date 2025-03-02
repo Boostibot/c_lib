@@ -492,7 +492,7 @@ INTERNAL char* _log_builder_append_fmt(_Log_Builder* builder_or_null, const char
     EXTERNAL bool panic_default_handler_break_into_debugger(void* context)
     {
         (void) context;
-        return platform_is_debugger_atached() == 1;
+        return platform_is_debugger_attached() == 1;
     }
 #else
     INTERNAL const char* _log_thread_name()

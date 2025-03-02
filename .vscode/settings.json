@@ -83,6 +83,7 @@
         "xlocmon": "cpp",
         "cstddef": "cpp",
         "xlocinfo": "cpp",
-        "allocator.h": "c"
+        "allocator.h": "c",
+        "process.h": "c"
     }
 }

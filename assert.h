@@ -56,10 +56,14 @@
     #endif
 
     ATTRIBUTE_NORETURN ATTRIBUTE_INLINE_NEVER
-    EXTERNAL void panic(const char* function, const char* joined, ...);
+    EXTERNAL void panic_compressed(const char* function, const char* joined, ...);
+    
+    ATTRIBUTE_NORETURN ATTRIBUTE_INLINE_NEVER
+    EXTERNAL void panic(const char* type, const char* expression, const char* file, const char* function, int line, const char* format, ...);
 
     ATTRIBUTE_NORETURN ATTRIBUTE_INLINE_NEVER
-    EXTERNAL void vpanic(const char* function, const char* joined, va_list arg);
+    EXTERNAL void vpanic(const char* type, const char* expression, const char* file, const char* function, int line, const char* format, va_list args);
+
     EXTERNAL void panic_recovered(); //should get called after we recovered from a panic (ie. before longjump to safety)
 
     typedef struct Panic_Handler {
@@ -91,7 +95,7 @@
 
     #define STATIC_ASSERT(x)                typedef char PP_CONCAT(__static_assertion__, __LINE__)[(x) ? 1 : -1]
 
-    #define PANIC_EXPR(type, expr, ...)     (panic(__func__, type "\0" expr "\0" __FILE__ "\0" PP_STRINGIFY(__LINE__) "\0" __VA_ARGS__), (void) sizeof printf(" " __VA_ARGS__))
+    #define PANIC_EXPR(type, expr, ...)     (panic_compressed(__func__, type "\0" expr "\0" __FILE__ "\0" PP_STRINGIFY(__LINE__) "\0" __VA_ARGS__), (void) sizeof printf(" " __VA_ARGS__))
     #define PANIC(...)                      PANIC_EXPR("PANIC", "PANIC("#__VA_ARGS__")", ##__VA_ARGS__)
 
     #define TEST(x, ...)                    (!(x) ? PANIC_EXPR("TEST", "TEST("#x")", ##__VA_ARGS__) : (void) 0)
@@ -181,24 +185,17 @@ EXTERNAL Panic_Handler panic_set_handler(Panic_Handler handler)
     return before;
 }
 
+
+#include <stdlib.h>
+#include <string.h>
+
 ATTRIBUTE_NORETURN ATTRIBUTE_INLINE_NEVER
-EXTERNAL void panic(const char* function, const char* joined, ...)
+EXTERNAL void panic_compressed(const char* function, const char* joined, ...)
 {
     Panic_Handler handler = panic_get_handler();
     if(handler.break_into_debugger(handler.context))
         DEBUG_BREAK();
-
-    va_list args;               
-    va_start(args, joined);   
-    vpanic(function, joined, args);
-    //va_end(args); //unreachable... 
-}
-
-#include <stdlib.h>
-#include <string.h>
-ATTRIBUTE_NORETURN ATTRIBUTE_INLINE_NEVER
-EXTERNAL void vpanic(const char* function, const char* joined, va_list args)
-{
+        
     const char* type = joined;
     const char* expr = type + strlen(type) + 1;
     const char* file = expr + strlen(expr) + 1;
@@ -206,16 +203,40 @@ EXTERNAL void vpanic(const char* function, const char* joined, va_list args)
     const char* format = line_str + strlen(line_str) + 1;
     int line = atoi(line_str);
 
+    va_list args;               
+    va_start(args, joined);   
+    vpanic(type, expr, file, function, line, format, args);
+}
+    
+ATTRIBUTE_NORETURN ATTRIBUTE_INLINE_NEVER
+EXTERNAL void panic(const char* type, const char* expression, const char* file, const char* function, int line, const char* format, ...)
+{
     Panic_Handler handler = panic_get_handler();
+    if(handler.break_into_debugger(handler.context))
+        DEBUG_BREAK();
+        
+    va_list args;               
+    va_start(args, format);   
+    vpanic(type, expression, file, function, line, format, args);
+}
+
+ATTRIBUTE_NORETURN ATTRIBUTE_INLINE_NEVER
+EXTERNAL void vpanic(const char* type, const char* expression, const char* file, const char* function, int line, const char* format, va_list args)
+{
+    Panic_Handler handler = panic_get_handler();
+    if(handler.break_into_debugger(handler.context))
+        DEBUG_BREAK();
+
     if(_thread_panic_depth > 10) {
         printf("%i unrecovered panics pending, aborting...", _thread_panic_depth);
     }
     else {
         _thread_panic_depth += 1;
-        handler.panic(handler.context, type, expr, file, function, line, format, args);
+        handler.panic(handler.context, type, expression, file, function, line, format, args);
     }
     abort();
 }
+
 
 EXTERNAL void panic_recovered()
 {
