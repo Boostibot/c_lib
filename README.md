@@ -2,9 +2,10 @@ This is a perpetually ongoing development C codebase I use for personal projects
 
 # Description of some files
 - *`array.h`: Generic, type-safe array in pure C. This mostly works like `std::vector`.
-- *`hash.h`: Small and performant hash table building block. This is not a fully fledged hash table, but just a 64 -> 64 bit hash mapping. All other tables can be implemented using this. Read the comment for more rationale.
-- *`string.h`: Collection of utility hash function operating on both slice-like and dynamic strings. 
-- *`scratch.h`: "Safe" arena implementation. Works like regular arena but contains code that cheaply check protect agains prevents accidental overriding of data. 
+- *`map.h`: Generic, dictironary/set in pure C. The API is low level and should be wrapped as appropriate for each concrete map type.
+- *`hash.h`: Simple hash table building block. This is not a fully fledged hash table, but just a 64 -> 64 bit hash mapping. Can be used as a building block for SQL-style tables with indexes or general hash tables.
+- *`string.h`: Collection of utility strinc functions operating on both slice-like and dynamic strings. 
+- *`scratch.h`: "Safe" arena implementation. Works like regular arena but contains code that cheaply checks and prevents accidental overriding of data. 
 - *`random.h`: Convenient fast, non-cryptographic random number generation. Has both global state and local state interface.
 - *`time.h`: Simple header for cross platform time stamps. 
 - *`math.h`: Float vector math library.
