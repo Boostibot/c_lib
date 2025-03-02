@@ -5,14 +5,14 @@
 //It is not really a full blown map implementation, more of a scaffolding to quickly wrap in your own struct and functions and use that way.
 // Simply put its very difficult to make a generic interface that is both convenient and efficient for every possible data type. For example
 // we want to store dynamic strings but use string slices for lookup. This can be solved in some ways but I believe the current solution to be 
-// simpler and more flexible. Another consideration are lifetimes - with sometime having something akin to destructor is convenient and sometimes not
+// simpler and more flexible. Another consideration are lifetimes - sometimes having something akin to destructor is convenient and sometimes not
 // having the interface like this helps us to easily use both.
 // 
 //The interface is in the style of qsort or similar - you pass in some information + function pointers and the functions use those to
 // perform a certain action. Calling such function pointers however incurs quite a bit of overhead especially for when the function is really
-// small (ie comparing integers for example). I solve this by marking all functions as __forceinline/__attribute__((always_inline)). 
-//This makes the compiler essentially treat these functions as macros and past the internal code to wherever they are called from. At that point
-// however the compiler sees that we are assigning some specific function to the function pointer argument and later calling it - it figures out
+// small (ie. comparing integers for example). I solve this by marking all functions as __forceinline/__attribute__((always_inline)). 
+//This makes the compiler essentially treat these functions as macros and paste the internal code to wherever they are called from. At that point,
+// however, the compiler sees that we are assigning some specific function to the function pointer argument and later calling it - it figures out
 // it can just call the function directly. Thus, the resulting codegen is identical to if we called a specific function directly.
 //Of course, the downside is that if we are not careful this code can get pasted to many many places exploding the code size. Because of this
 // I recommend wrapping the functions for a specific type and using those wrappers - it is also a lot more convenient anyway.
@@ -21,7 +21,7 @@
 // Since we are wrapping the functions anyway this doesnt really decrease their convenience. 
 // However it allows us to be more efficient because we can often calculate the hash once and use it in
 // several functions. The remove function is similar - unlike most remove functions it takes an already found index. This makes the common
-// patter of "insert, find, use, remove" one lookup more efficient.
+// pattern of "find, use, remove" one lookup more efficient.
 
 #include <stdint.h>
 #include <stdbool.h>
