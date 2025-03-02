@@ -360,8 +360,8 @@ EXTERNAL bool file_logger_init(File_Logger* logger, const char* path, uint32_t f
         struct tm* now = localtime(&ts.tv_sec);
 
         filename = _log_builder_append_fmt(NULL, 
-            "%s/%02i-%02i-%02i__%02i-%02i-%02i.log", 
-            path ? path : "logs", now->tm_year, now->tm_mon, now->tm_mday, now->tm_hour, now->tm_min, now->tm_sec);
+            "%s/%04i-%02i-%02i__%02i-%02i-%02i.log", 
+            path ? path : "logs", now->tm_year + 1900, now->tm_mon, now->tm_mday, now->tm_hour, now->tm_min, now->tm_sec);
     }
 
     FILE* file = fopen(filename, open_mode);
@@ -428,7 +428,7 @@ INTERNAL char* _log_builder_append_vfmt(_Log_Builder* builder_or_null, const cha
 
         builder->is_backed = false;
         builder->capacity = new_capacity;
-        int count2 = vsnprintf(builder->data + builder->size, (size_t) (builder->capacity - builder->size), fmt, args);
+        int count2 = vsnprintf(builder->data + builder->size, (size_t) (builder->capacity - builder->size + 1), fmt, args);
         ASSERT(count == count2);
     }
 
