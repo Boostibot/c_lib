@@ -67,6 +67,7 @@ static int run_tests(int* total, double time, ...);
 
 static void test_all(double total_time)
 {
+    //unicode_format_ranges_file("GeneralCategory.txt", "GeneralCategory_C.txt");
     run_tests(NULL, total_time, 
         UNIT_TEST(platform_test_all),
         UNIT_TEST(test_unicode_unit),

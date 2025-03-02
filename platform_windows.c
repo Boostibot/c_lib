@@ -1345,13 +1345,10 @@ Platform_Error platform_file_watch_init(Platform_File_Watch* file_watch, int32_t
         buffer_deinit(&wpath_buffer);
 
         if(context->directory != INVALID_HANDLE_VALUE) {
-            //context->overlapped.hEvent = CreateEventA(NULL, FALSE, FALSE, NULL); 
-            //if(context->overlapped.hEvent != NULL)
-                ok = ReadDirectoryChangesW(
-                    context->directory, context->buffer, (DWORD) context->buffer_capacity, 
-                    context->win_watch_subdir, context->win_flags, NULL, &context->overlapped, NULL);
+            ok = ReadDirectoryChangesW(
+                context->directory, context->buffer, (DWORD) context->buffer_capacity, 
+                context->win_watch_subdir, context->win_flags, NULL, &context->overlapped, NULL);
         }
-
     }
     
     return _platform_error_code(ok);
@@ -1384,7 +1381,7 @@ bool platform_file_watch_poll(Platform_File_Watch* file_watch, Platform_File_Wat
 
                 //the following two branches are equivalent except the second is a lot faster
                 // see here https://pastebin.com/iEcfQK3C
-                #if 1
+                #if 0
                 BOOL ok = GetOverlappedResult(context->directory, &context->overlapped, &bytes_transferred, FALSE);
                 if(ok == false) {
                     //if last error is ERROR_IO_PENDING then is not really an error just nothing happened yet
@@ -1479,7 +1476,6 @@ bool platform_file_watch_poll(Platform_File_Watch* file_watch, Platform_File_Wat
 //=========================================
 // DLL management
 //=========================================
-
 Platform_Error platform_dll_load(Platform_DLL* dll, Platform_String path)
 {
     WString_Buffer buffer = {0}; buffer_init_backed(&buffer, _LOCAL_BUFFER_SIZE);
@@ -1744,7 +1740,7 @@ static int64_t _platform_stack_trace_walk(CONTEXT context, HANDLE process, HANDL
 
 int platform_is_debugger_attached()
 {
-    return IsDebuggerPresent() ? 1 : 0;
+    return !!IsDebuggerPresent();
 }
 
 
