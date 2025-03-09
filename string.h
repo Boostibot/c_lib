@@ -86,6 +86,7 @@ EXTERNAL void   string_reallocate(Allocator* alloc, String* string, String new_v
 
 #define BUILDER_REISIZE_FOR_OVERWRITE -1
 EXTERNAL String_Builder builder_make(Allocator* alloc_or_null, isize capacity_or_zero);
+EXTERNAL String_Builder builder_make_with_size(Allocator* alloc_or_null, isize size_or_zero, int fill_with_or_negative);
 EXTERNAL String_Builder builder_of(Allocator* allocator, String string);  //Allocates a String_Builder from String using an allocator.
 EXTERNAL void builder_init(String_Builder* builder, Allocator* alloc);
 EXTERNAL void builder_init_with_capacity(String_Builder* builder, Allocator* alloc, isize capacity_or_zero);
@@ -475,6 +476,16 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
         builder.data = _builder_null_termination;
         if(capacity_or_zero > 0)
             builder_set_capacity(&builder, capacity_or_zero);
+        return builder;
+    }
+    
+    EXTERNAL String_Builder builder_make_with_size(Allocator* alloc_or_null, isize size_or_zero, int fill_with_or_negative)
+    {
+        String_Builder builder = {0};
+        builder.allocator = alloc_or_null;
+        builder.data = _builder_null_termination;
+        if(size_or_zero > 0)
+            builder_resize(&builder, size_or_zero, fill_with_or_negative);
         return builder;
     }
 
