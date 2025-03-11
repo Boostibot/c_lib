@@ -286,7 +286,7 @@ SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_it
                 }
         
                 //median of tree as a pivot
-                isize i = lo, j = (lo + hi)/2, k = hi;
+                isize i = lo, j = lo + (hi - lo)/2, k = hi;
                 if (is_less(AT(k), AT(i), context)) SWAP_DYN(AT(k), AT(i), swap_space);
                 if (is_less(AT(j), AT(i), context)) SWAP_DYN(AT(j), AT(i), swap_space);
                 if (is_less(AT(k), AT(j), context)) SWAP_DYN(AT(k), AT(j), swap_space);
@@ -375,7 +375,7 @@ SORT_API isize lower_bound_no_fail(const void* search_for, const void* sorted_it
 
     SORT_API void  hqsort(void* items, isize item_count, isize item_size, Is_Less_Func is_less, void* context)
     {
-        _SORT_ALIGNED(64) uint64_t buffer[128]; (void) buffer;
+        _SORT_ALIGNED(64) uint64_t buffer[256]; (void) buffer;
         void* ptr = buffer;
         if(2*item_size > sizeof(buffer)) ptr = malloc(2*item_size);
         quick_sort(items, ptr, HEAP_SORT_FROM, item_count, item_size, is_less, context);

@@ -235,6 +235,6 @@ const char* thread_cache_self_name()
     if(t_thread_cache_thread)
         return t_thread_cache_thread->name;
     else
-        //platform_thread_get_current_name();
+        //platform_thread_name();
         return "<not-thread-cache-thread>";
 }

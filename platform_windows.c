@@ -176,42 +176,32 @@ int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
 // Threading
 //=========================================
 #include <process.h>
-
-Platform_Error  platform_thread_launch(int64_t stack_size_or_zero, void (*func)(void*), void* context, const char* name_fmt, ...);
-int32_t         platform_thread_get_processor_count();
-int32_t         platform_thread_get_current_id(); 
-int32_t         platform_thread_get_main_id(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns -1.
-const char*     platform_thread_get_current_name(); 
-void            platform_thread_sleep(double seconds); //Sleeps the calling thread for specified number of seconds. The accuracy is platform and scheduler dependent
-void            platform_thread_exit(int code); //Terminates a thread with an exit code
-void            platform_thread_yield(); //Yields the remainder of this thread's time slice to another thread
-
-typedef struct _Platform_Thread_Context {
+typedef struct Platform_Pthread_State {
     void (*func)(void* context);
     void* context;
     char* name;
     size_t name_size;
-} _Platform_Thread_Context;
+} Platform_Pthread_State;
 
-_Thread_local _Platform_Thread_Context* g_thread_context = NULL;
-unsigned _thread_func(void* void_context)
+_Thread_local Platform_Pthread_State* t_thread_state = NULL;
+unsigned _thread_func(void* args)
 {
-    _Platform_Thread_Context* context = (_Platform_Thread_Context*) void_context;
-    g_thread_context = context;
+    Platform_Pthread_State* state = (Platform_Pthread_State*) args;
+    t_thread_state = state;
 
     //set name
     {
-        int utf16len = MultiByteToWideChar(CP_UTF8, 0, context->name, (int) context->name_size, NULL, 0);
+        int utf16len = MultiByteToWideChar(CP_UTF8, 0, state->name, (int) state->name_size, NULL, 0);
         wchar_t* wide_name = (wchar_t*) calloc(sizeof(wchar_t), utf16len + 1);
-        MultiByteToWideChar(CP_UTF8, 0, context->name, (int) context->name_size, wide_name, (int) utf16len);
+        MultiByteToWideChar(CP_UTF8, 0, state->name, (int) state->name_size, wide_name, (int) utf16len);
         SetThreadDescription(GetCurrentThread(), wide_name);
         free(wide_name);
     }
 
-    context->func(context->context);
+    state->func(state->state);
 
-    free(context->name);
-    free(context);
+    free(state->name);
+    free(state);
     return 0;
 }
 
@@ -222,7 +212,7 @@ Platform_Error platform_thread_launch(isize stack_size_or_zero, void (*func)(voi
     if(stack_size_or_zero > UINT_MAX)
         stack_size_or_zero = UINT_MAX;
 
-    _Platform_Thread_Context* thread_context = calloc(1, sizeof(_Platform_Thread_Context));
+    Platform_Pthread_State* thread_context = calloc(1, sizeof(Platform_Pthread_State));
     if(thread_context) {
         thread_context->func = func;
         thread_context->context = context;
@@ -243,38 +233,59 @@ Platform_Error platform_thread_launch(isize stack_size_or_zero, void (*func)(voi
         if(handle) 
             return PLATFORM_ERROR_OK;
 
-        free(thread_context->name);
+        freeplatform_thread_launch(thread_context->name);
     }
 
     free(thread_context);
     return (Platform_Error) GetLastError();
 }
 
-const char* platform_thread_get_current_name()
+
+static _Thread_local char* t_thread_name = NULL;
+static _Thread_local char t_thread_name_string[16] = {0};
+static bool g_main_thread_id_init = false;
+
+void _platform_threads_deinit() 
 {
-    if(g_thread_context)
-        return g_thread_context->name;
-    else
-    {
-        if(platform_thread_get_current_id() == platform_thread_get_main_id())
-            return "main";
-        else
-            return "<unassigned>";
-    }
+    g_main_thread_id_init = false;
+    t_thread_name = NULL;
 }
 
-int32_t platform_thread_get_current_id()
+void _platform_threads_init()
+{
+    platform_thread_main_id();
+} 
+
+int32_t platform_thread_id()
 {
     return (int32_t) GetCurrentThreadId();
 }
 
-int32_t platform_thread_get_main_id()
+int32_t platform_thread_main_id()
 {
-    static int32_t _main_thread_handle = -1;
-    if(_main_thread_handle == -1)
+    static int32_t _main_thread_handle = 0;
+    if(g_main_thread_id_init == false) {
         _main_thread_handle = (int32_t) GetCurrentThreadId();
+        g_main_thread_id_init = true;
+    }
 
     return _main_thread_handle;
+}
+
+const char* platform_thread_name()
+{
+    if(t_thread_name == NULL) {
+        if(t_thread_state)
+            t_thread_name = t_thread_state->name;
+        else if(platform_thread_id() == platform_thread_main_id())
+            t_thread_name = "main";
+        else {
+            snprintf(t_thread_name_string, sizeof t_thread_name_string, "<%04x>", platform_thread_id());
+            t_thread_name = t_thread_name_string;
+        }
+    }
+
+    return t_thread_name;
 }
 
 int32_t platform_thread_get_processor_count()
@@ -298,6 +309,91 @@ void platform_thread_exit(int code)
     _endthreadex((unsigned int) code);
 }
 
+
+//=========================================
+// MUTEX
+//=========================================
+Platform_Error platform_mutex_init(Platform_Mutex* mutex)
+{
+    assert(mutex);
+    platform_mutex_deinit(mutex);
+    CRITICAL_SECTION* section = (CRITICAL_SECTION*) calloc(1, sizeof *section);
+    if(section != 0)
+        InitializeCriticalSection(section);
+
+    mutex->handle = section;
+    return _platform_error_code(section != NULL);
+}
+
+void platform_mutex_deinit(Platform_Mutex* mutex)
+{
+    if(mutex->handle)
+    {
+        DeleteCriticalSection((CRITICAL_SECTION*) mutex->handle);
+        free(mutex->handle);
+        memset(mutex, 0, sizeof mutex);
+    }
+}
+
+void platform_mutex_lock(Platform_Mutex* mutex)
+{
+    assert(mutex && mutex->handle != NULL);
+    EnterCriticalSection((CRITICAL_SECTION*) mutex->handle);
+}
+
+void platform_mutex_unlock(Platform_Mutex* mutex)
+{
+    assert(mutex && mutex->handle != NULL);
+    LeaveCriticalSection((CRITICAL_SECTION*) mutex->handle);
+}
+
+bool platform_mutex_try_lock(Platform_Mutex* mutex)
+{
+    assert(mutex && mutex->handle != NULL);
+    return !!TryEnterCriticalSection((CRITICAL_SECTION*) mutex->handle);
+}   
+
+//=========================================
+// RW LOCK
+//=========================================
+Platform_Error platform_rwlock_init(Platform_RW_Lock* mutex)
+{
+    InitializeSRWLock((SRWLOCK*) &mutex->handle);
+    return PLATFORM_ERROR_OK;
+}
+void platform_rwlock_deinit(Platform_RW_Lock* mutex)
+{
+    mutex->handle = NULL;
+}
+void platform_rwlock_reader_lock(Platform_RW_Lock* mutex)
+{
+    AcquireSRWLockShared((SRWLOCK*) &mutex->handle);
+}
+void platform_rwlock_reader_unlock(Platform_RW_Lock* mutex)
+{
+    ReleaseSRWLockShared((SRWLOCK*) &mutex->handle);
+}
+void platform_rwlock_writer_lock(Platform_RW_Lock* mutex)
+{
+    AcquireSRWLockExclusive((SRWLOCK*) &mutex->handle);
+}
+void platform_rwlock_writer_unlock(Platform_RW_Lock* mutex)
+{
+    ReleaseSRWLockExclusive((SRWLOCK*) &mutex->handle);
+}
+
+bool platform_rwlock_reader_try_lock(Platform_RW_Lock* mutex)
+{
+    return !!TryAcquireSRWLockShared((SRWLOCK*) &mutex->handle);
+}
+bool platform_rwlock_writer_try_lock(Platform_RW_Lock* mutex)
+{
+    return !!TryAcquireSRWLockExclusive((SRWLOCK*) &mutex->handle);
+}
+
+//=========================================
+// COND VAR
+//=========================================
 Platform_Error  platform_cond_var_init(Platform_Cond_Var* cond_var)
 {
     platform_cond_var_deinit(cond_var);
@@ -360,80 +456,7 @@ bool platform_cond_var_wait_rwlock_writer(Platform_Cond_Var* cond_var, Platform_
 }
 
 
-Platform_Error platform_mutex_init(Platform_Mutex* mutex)
-{
-    assert(mutex);
-    platform_mutex_deinit(mutex);
-    CRITICAL_SECTION* section = (CRITICAL_SECTION*) calloc(1, sizeof *section);
-    if(section != 0)
-        InitializeCriticalSection(section);
-
-    mutex->handle = section;
-    return _platform_error_code(section != NULL);
-}
-
-void platform_mutex_deinit(Platform_Mutex* mutex)
-{
-    if(mutex->handle)
-    {
-        DeleteCriticalSection((CRITICAL_SECTION*) mutex->handle);
-        free(mutex->handle);
-        memset(mutex, 0, sizeof mutex);
-    }
-}
-
-void platform_mutex_lock(Platform_Mutex* mutex)
-{
-    assert(mutex && mutex->handle != NULL);
-    EnterCriticalSection((CRITICAL_SECTION*) mutex->handle);
-}
-
-void platform_mutex_unlock(Platform_Mutex* mutex)
-{
-    assert(mutex && mutex->handle != NULL);
-    LeaveCriticalSection((CRITICAL_SECTION*) mutex->handle);
-}
-
-bool platform_mutex_try_lock(Platform_Mutex* mutex)
-{
-    assert(mutex && mutex->handle != NULL);
-    return !!TryEnterCriticalSection((CRITICAL_SECTION*) mutex->handle);
-}   
-
-Platform_Error platform_rwlock_init(Platform_RW_Lock* mutex)
-{
-    InitializeSRWLock((SRWLOCK*) &mutex->handle);
-    return PLATFORM_ERROR_OK;
-}
-void platform_rwlock_deinit(Platform_RW_Lock* mutex)
-{
-    mutex->handle = NULL;
-}
-void platform_rwlock_reader_lock(Platform_RW_Lock* mutex)
-{
-    AcquireSRWLockShared((SRWLOCK*) &mutex->handle);
-}
-void platform_rwlock_reader_unlock(Platform_RW_Lock* mutex)
-{
-    ReleaseSRWLockShared((SRWLOCK*) &mutex->handle);
-}
-void platform_rwlock_writer_lock(Platform_RW_Lock* mutex)
-{
-    AcquireSRWLockExclusive((SRWLOCK*) &mutex->handle);
-}
-void platform_rwlock_writer_unlock(Platform_RW_Lock* mutex)
-{
-    ReleaseSRWLockExclusive((SRWLOCK*) &mutex->handle);
-}
-
-bool platform_rwlock_reader_try_lock(Platform_RW_Lock* mutex)
-{
-    return !!TryAcquireSRWLockShared((SRWLOCK*) &mutex->handle);
-}
-bool platform_rwlock_writer_try_lock(Platform_RW_Lock* mutex)
-{
-    return !!TryAcquireSRWLockExclusive((SRWLOCK*) &mutex->handle);
-}
+//Futex
 
 #pragma comment(lib, "synchronization.lib")
 #include <process.h>
@@ -521,7 +544,7 @@ int64_t platform_epoch_time_startup()
 
 
 //=========================================
-// Filesystem
+// Files
 //=========================================
 typedef struct Platform_WString {
     const wchar_t* data;
@@ -685,6 +708,8 @@ static char* _string_path(String_Buffer* append_to_or_null, const wchar_t* strin
     return str;
 }
 
+
+//TODO move out
 int64_t platform_translate_error(Platform_Error error, char* translated, int64_t translated_size)
 {
     char buffer[1024];
@@ -793,8 +818,10 @@ Platform_Error platform_file_open(Platform_File* file, Platform_String file_path
     if(open_flags & PLATFORM_FILE_OPEN_TEMPORARY)
         flags |= FILE_FLAG_DELETE_ON_CLOSE;
     
+    if(open_flags & PLATFORM_FILE_OPEN_HINT_WRITETHROUGH)
+        flags |= FILE_FLAG_WRITE_THROUGH;
     if(open_flags & PLATFORM_FILE_OPEN_HINT_UNBUFFERED)
-        flags |= 0; //imposes too many restrictions on windows to be usable like this
+        flags |= FILE_FLAG_NO_BUFFERING;
     if(open_flags & PLATFORM_FILE_OPEN_HINT_FRONT_TO_BACK_ACCESS)
         flags |= FILE_FLAG_SEQUENTIAL_SCAN;
     if(open_flags & PLATFORM_FILE_OPEN_HINT_BACK_TO_FRONT_ACCESS)
@@ -810,11 +837,6 @@ Platform_Error platform_file_open(Platform_File* file, Platform_String file_path
     return _platform_error_code(file->handle != NULL);
 }
 
-bool platform_file_is_open(const Platform_File* file)
-{
-    return file->handle != NULL;
-}
-
 Platform_Error platform_file_close(Platform_File* file)
 {
     bool state = true;
@@ -827,7 +849,7 @@ Platform_Error platform_file_close(Platform_File* file)
 
 Platform_Error platform_file_read(Platform_File* file, void* buffer, isize size, isize offset, isize* read_bytes_because_eof)
 {
-    bool state = true;
+    bool state = false;
     isize total_read = 0;
 
     // BOOL ReadFile(
@@ -867,7 +889,7 @@ Platform_Error platform_file_read(Platform_File* file, void* buffer, isize size,
 
 Platform_Error _platform_file_write(Platform_File* file, const void* buffer, isize size, isize offset, bool at_end)
 {
-    bool state = true;
+    bool state = false;
     // BOOL WriteFile(
     //     [in]                HANDLE       hFile,
     //     [in]                LPCVOID      lpBuffer,
@@ -950,6 +972,9 @@ Platform_Error platform_file_append_entire(Platform_String file_path, const void
     return error;
 }
 
+//=========================================
+// WHOLE FILES 
+//=========================================
 Platform_Error platform_file_create(Platform_String file_path, bool fail_if_exists)
 {
     WString_Buffer buffer = {0}; buffer_init_backed(&buffer, _LOCAL_BUFFER_SIZE);
@@ -1092,6 +1117,10 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
     return _platform_error_code(state);
 }
 
+
+//=========================================
+// DIRECTORIES
+//=========================================
 Platform_Error platform_directory_create(Platform_String dir_path, bool fail_if_already_existing)
 {
     WString_Buffer buffer = {0}; buffer_init_backed(&buffer, _LOCAL_BUFFER_SIZE);
@@ -1126,7 +1155,6 @@ typedef struct _Platform_Dir_Iter {
     WIN32_FIND_DATAW current_entry;
     HANDLE first_found;
     int64_t called_times;
-
 
     //the WIN32_FIND_DATAW has MAX_PATH wchars size so this should be enough
     char path[MAX_PATH*2 + 3];
@@ -1767,7 +1795,7 @@ typedef struct Platform_Sandbox_State {
 } Platform_Sandbox_State;
 #pragma warning(default:4324)
 
-void platform_sandbox_error_deinit(Platform_Sandbox_Error* error)
+void platform_exception_deinit(Platform_Exception* error)
 {
     free(error->call_stack);
     memset(error, 0, sizeof *error);
@@ -1860,7 +1888,7 @@ LONG WINAPI _sandbox_exception_filter(EXCEPTION_POINTERS * ExceptionInfo)
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
-bool platform_exception_sandbox(void (*sandboxed_func)(void* sandbox_context), void* sandbox_context, Platform_Sandbox_Error* error_or_null)
+bool platform_exception_sandbox(void (*sandboxed_func)(void* sandbox_context), void* sandbox_context, Platform_Exception* error_or_null)
 {
     //LPTOP_LEVEL_EXCEPTION_FILTER prev_exception_filter = SetUnhandledExceptionFilter(_sandbox_exception_filter);
     void* vector_exception_handler = AddVectoredExceptionHandler(1, _sandbox_exception_filter);
@@ -1895,17 +1923,17 @@ bool platform_exception_sandbox(void (*sandboxed_func)(void* sandbox_context), v
     if(run_okay == false)
     {
         if(error_or_null) {
-            //just in case we repeatedly exception
+            //just in case we repeatedly had exception
             Platform_Sandbox_State error_state = t_sandbox_state;
 
-            Platform_Sandbox_Error error = {0};
+            Platform_Exception error = {0};
             error.exception = error_state.exception_text;
             error.call_stack = calloc(error_state.stack_size, sizeof(void*));
             error.call_stack_size = (int32_t) error_state.stack_size;
             memcpy(error.call_stack, error_state.stack, error_state.stack_size*sizeof(void*));
             error.epoch_time = error_state.epoch_time;
 
-            platform_sandbox_error_deinit(error_or_null);
+            platform_exception_deinit(error_or_null);
             *error_or_null = error;
         }
     }
@@ -1957,7 +1985,7 @@ void _platform_set_console_utf8()
 void platform_init()
 {
     platform_deinit();
-    platform_thread_get_main_id();
+    platform_thread_main_id();
 
     platform_perf_counter();
     platform_epoch_time_startup();

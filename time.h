@@ -28,7 +28,7 @@ EXTERNAL double clock_sec_set(double to_time); //sets the base for clock_sec and
 //For clock_sec we might be scared that the int64_t to double conversion will cost us precision for sufficiently large 
 // performance counter values. In practice this extremely hard to achieve. On windows performance counter has
 // frequency of 10Mhz = period of 1e-7 seconds. Double is able to represent numbers up to 2^53 without loosing 
-// any precision, that is around 9e15. Thus it is able to represent numbers up to ~1e9 with precision of 1e-7 seconds.
+// integer precision, that is around 9e15. Thus it is able to represent numbers up to ~1e9 with precision of 1e-7 seconds.
 // This means that we will start to lose precision after 1e9 seconds = 31 years. If you dont run your program for 31 
 // years you should be fine.   
 #endif // !MODULE_TIME

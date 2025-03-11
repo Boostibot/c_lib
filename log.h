@@ -450,7 +450,7 @@ INTERNAL char* _log_builder_append_fmt(_Log_Builder* builder_or_null, const char
     #include "platform.h"
     INTERNAL const char* _log_thread_name()
     {
-        return platform_thread_get_current_name();
+        return platform_thread_name();
     }
 
     EXTERNAL void log_callstack(Log_Type type, const char* module, int64_t skip)

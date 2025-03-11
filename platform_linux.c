@@ -191,8 +191,68 @@ int64_t platform_page_size()
 
 int64_t platform_allocation_granularity()
 {
-    //@TEMP
     return (int64_t) getpagesize();
+}
+
+int64_t platform_translate_error(Platform_Error error, char* translated, int64_t translated_size)
+{
+    const char* str = NULL;
+    if(error == PLATFORM_ERROR_OK)
+        str = "okay";
+    if(error == PLATFORM_ERROR_OTHER)
+        str = "Other platform specific error occurred";
+    else
+        str = strerror((int) error);
+
+    int64_t needed_size = (int64_t) strlen(str);
+    int64_t availible_size = needed_size < translated_size - 1 ? needed_size : translated_size - 1;
+    if(translated_size > 0)
+    {
+        memcpy(translated, str, (size_t) availible_size);
+        translated[availible_size] = '\0';
+    }
+
+    return needed_size + 1;
+}
+
+#include <malloc.h>
+int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
+{
+    assert(align > 0);
+    int64_t size = 0;
+    if(old_ptr)
+        size = (int64_t) malloc_usable_size((void*) old_ptr);
+
+    return size;
+}
+
+void* platform_heap_reallocate(isize new_size, void* old_ptr, isize old_size, isize align)
+{
+    if(align <= (int64_t) sizeof(long long int))
+    {
+        if(new_size > 0)
+            return realloc(old_ptr, (size_t) new_size);
+
+        free(old_ptr);
+        return NULL;
+    }
+    else
+    {
+        void* out = NULL;
+        if(new_size > 0)
+        {
+            if(posix_memalign(&out, (size_t) align, (size_t) new_size))
+            {
+                int64_t min_size = old_size < new_size ? old_size : new_size;
+                memcpy(out, old_ptr, (size_t) min_size);
+            }
+        }
+
+        if(old_ptr)
+            free(old_ptr);
+
+        return out;
+    }
 }
 
 //=========================================
@@ -203,8 +263,67 @@ int64_t platform_allocation_granularity()
 #include <pthread.h>
 #include <unistd.h>
 
+//set name stuff
+#include <linux/prctl.h>  /* Definition of PR_* constants */
+#include <sys/prctl.h>
+typedef struct Platform_Pthread_State {
+    pthread_t thread;
+    char* name;
+    int name_size;
+    void (*func)(void*);
+    void* context;
+} Platform_Pthread_State;
 
-int64_t platform_thread_get_processor_count()
+_Thread_local Platform_Pthread_State* t_thread_state = NULL;
+void* _platform_pthread_start_routine(void* arg)
+{
+    Platform_Pthread_State* state = (Platform_Pthread_State*) arg;
+    t_thread_state = state;
+    prctl(PR_SET_NAME, state->name);
+    state->func(state->context);
+    free(state->name);
+    free(state);
+    return NULL;
+}
+
+#include <stdarg.h>
+Platform_Error  platform_thread_launch(isize stack_size_or_zero, void (*func)(void*), void* context, const char* name_fmt, ...)
+{
+    Platform_Error error = 0;
+    Platform_Pthread_State* thread_state = (Platform_Pthread_State*) calloc(1, sizeof(Platform_Pthread_State));
+    error = _platform_error_code(thread_state != NULL);
+    if(error == 0)
+    {
+        pthread_attr_t attr = {0};
+        pthread_attr_init(&attr);
+        if(stack_size_or_zero > 0)
+            pthread_attr_setstacksize(&attr, (size_t) stack_size_or_zero);
+
+        name_fmt = name_fmt ? name_fmt : "";
+        va_list args;
+        va_list copy;
+        va_start(args, name_fmt);
+        va_copy(copy, args);
+        int count = vsnprintf(NULL, 0, name_fmt, copy);
+        if(count < 16)
+            count = 16;
+        thread_state->name = (char*) malloc(count + 1);
+        thread_state->name_size = vsnprintf(thread_state->name, count + 1, name_fmt, args);
+        va_end(args);
+
+        thread_state->func = func;
+        thread_state->context = context;
+        error = pthread_create(&thread_state->thread, &attr, _platform_pthread_start_routine, thread_state);
+        pthread_attr_destroy(&attr);
+    }
+
+    if(error)
+        free(thread_state);
+
+    return error;
+}
+
+int32_t platform_thread_get_processor_count()
 {
     cpu_set_t cs;
     CPU_ZERO(&cs);
@@ -212,50 +331,51 @@ int64_t platform_thread_get_processor_count()
     return CPU_COUNT(&cs);
 }
 
-typedef struct Platform_Pthread_State {
-    pthread_t thread;
-    int (*func)(void*);
-    void* context;
-} Platform_Pthread_State;
-
-
-void* _platform_pthread_start_routine(void* arg)
+int32_t platform_thread_id()
 {
-    assert(arg != NULL);
-    Platform_Pthread_State* thread_state = (Platform_Pthread_State*) arg;
-    int result = thread_state->func(thread_state->context);
-    free(thread_state);
-    return (void*) (size_t) result;
+    return (int32_t) gettid();
 }
 
-Platform_Error platform_thread_launch(Platform_Thread* thread_or_null, int64_t stack_size_or_zero, int (*func)(void*), void* context)
+static _Thread_local char* t_thread_name = NULL;
+static _Thread_local char t_thread_name_string[16] = {0};
+static bool g_main_thread_id_init = false;
+int32_t platform_thread_main_id()
 {
-    Platform_Pthread_State* thread_state = (Platform_Pthread_State*) malloc(sizeof(Platform_Pthread_State));
-    bool state = thread_state != NULL;
-    if(state)
-    {
-        memset(thread_state, 0, sizeof *thread_state);
-
-        pthread_attr_t attr = {0};
-        pthread_attr_init(&attr);
-        if(stack_size_or_zero > 0)
-            pthread_attr_setstacksize(&attr, (size_t) stack_size_or_zero);
-
-        thread_state->func = func;
-        thread_state->context = context;
-        if(pthread_create(&thread_state->thread, &attr, _platform_pthread_start_routine, thread_state) != 0)
-        {
-            state = false;
-            free(thread_state);
-        }
-
-        pthread_attr_destroy(&attr);
+    static int32_t g_main_thread_id = 0;
+    if(g_main_thread_id_init == false) {
+        g_main_thread_id = (int32_t) gettid();
+        g_main_thread_id_init = true;
     }
 
-    if(state && thread_state && thread_or_null)
-        thread_or_null->handle = (void*) thread_state;
+    return g_main_thread_id;
+}
 
-    return _platform_error_code(state);
+void _platform_threads_deinit() 
+{
+    g_main_thread_id_init = false;
+    t_thread_name = NULL;
+}
+
+#include <stdio.h>
+const char* platform_thread_name()
+{
+    if(t_thread_name == NULL) {
+
+        if(t_thread_state)
+            t_thread_name = t_thread_state->name;
+        else if(platform_thread_id() == platform_thread_main_id())
+            t_thread_name = "main";
+        else {
+            // else init to the name retrieved from the OS
+            prctl(PR_GET_NAME, t_thread_name_string);
+            //if the name is the default one use the thread id instead (since the default one provides no information)
+            if(strncmp(program_invocation_name, t_thread_name_string, sizeof t_thread_name_string) == 0)
+                snprintf(t_thread_name_string, sizeof t_thread_name_string, "<%04x>", platform_thread_id());
+            t_thread_name = t_thread_name_string;
+        }
+    }
+    
+    return t_thread_name;
 }
 
 void platform_thread_sleep(double seconds)
@@ -271,58 +391,6 @@ void platform_thread_sleep(double seconds)
     }
 }
 
-Platform_Thread platform_thread_get_current()
-{
-    Platform_Thread out = {0};
-    return out;
-}
-
-int32_t platform_thread_get_current_id()
-{
-    return (int32_t) gettid();
-}
-
-static _Thread_local char* _thread_name = NULL;
-static _Thread_local char _thread_id_string[9] = {0};
-
-#include <stdio.h>
-const char* platform_thread_get_current_name()
-{
-    if(_thread_name)
-        return _thread_name;
-    else
-    {
-        if(_thread_id_string[0] == 0)
-            snprintf(_thread_id_string, sizeof _thread_id_string, "<%i>", platform_thread_get_current_id());
-
-        if(platform_thread_is_main())
-            return "main";
-        else
-            return _thread_id_string;
-    }
-}
-void platform_thread_set_current_name(const char* name, bool dealloc_on_exit)
-{
-    (void) name, (void) dealloc_on_exit;
-}
-Platform_Thread platform_thread_get_main()
-{
-    return platform_thread_get_current();
-}
-bool platform_thread_is_main()
-{
-    return true;
-}
-int64_t platform_thread_get_exit_code(Platform_Thread finished_thread)
-{
-    return INT64_MIN;
-}
-
-void platform_thread_attach_deinit(void (*func)(void* context), void* context)
-{
-    // pthread_cleanup_push(func, context); //wtf
-}
-
 void platform_thread_exit(int code)
 {
     pthread_exit((void*) (int64_t) code);
@@ -333,100 +401,128 @@ void platform_thread_yield()
     sched_yield();
 }
 
-void platform_thread_detach(Platform_Thread* thread)
-{
-    Platform_Pthread_State* thread_state = (Platform_Pthread_State*) thread->handle;
-    bool state = pthread_detach(thread_state->thread) == 0;
-    (void) state;
-    // return _platform_error_code(state);
-}
 
-bool platform_thread_join(const Platform_Thread* threads, int64_t count, double seconds_or_negative_if_infinite)
-{
-    //debug
-    Platform_Error last_error = 0;
-    (void) last_error;
-
-    bool out = true;
-    if(seconds_or_negative_if_infinite > 0)
-    {
-        struct timespec now_ts = {0};
-        (void) clock_gettime(CLOCK_REALTIME, &now_ts);
-        int64_t now_nanosecs = now_ts.tv_sec*1000000000LL + now_ts.tv_nsec;
-
-        struct timespec wait_till_ts = {0};
-        int64_t wait_nanosecs = (int64_t) (seconds_or_negative_if_infinite*1000000000LL);
-        int64_t nanosecs = wait_nanosecs + now_nanosecs;
-        wait_till_ts.tv_sec = nanosecs / 1000000000LL; 
-        wait_till_ts.tv_nsec = nanosecs % 1000000000LL; 
-
-        for(int64_t i = 0; i < count; i++)
-        {
-            Platform_Pthread_State* thread_state = (Platform_Pthread_State*) threads[i].handle;
-            int err = pthread_timedjoin_np(thread_state->thread, NULL, &wait_till_ts); 
-            if(err != 0)
-                last_error = (Platform_Error) err;
-            if(err == ETIMEDOUT)
-                out = false;
-        }
-    }
-    else
-    {
-        for(int64_t i = 0; i < count; i++)
-        {
-            Platform_Pthread_State* thread_state = (Platform_Pthread_State*) threads[i].handle;
-            int err = pthread_join(thread_state->thread, NULL); 
-            if(err != 0)
-                last_error = (Platform_Error) err;
-        }
-    }
-
-    return out;
-}
-
+//======================================
+// MUTEX
+//======================================
 Platform_Error platform_mutex_init(Platform_Mutex* mutex)
 {
+    Platform_Error error = 0;
     platform_mutex_deinit(mutex);
-    bool state = true;
-    pthread_mutex_t* mutex_state = (pthread_mutex_t*) malloc(sizeof(pthread_mutex_t));
+    mutex->handle = calloc(1, sizeof(pthread_mutex_t));
+    error = _platform_error_code(mutex->handle != NULL);
+    if(error == 0)
+        error = pthread_mutex_init((pthread_mutex_t*) mutex->handle, NULL);
 
-    state = mutex_state != NULL;
-    if(state)
-        state = pthread_mutex_init(mutex_state, NULL) == 0;
-
-    Platform_Error error = _platform_error_code(state);
-    mutex->handle = mutex_state;
-    if(!state)
+    if(error)
         platform_mutex_deinit(mutex);
 
     return error;
 }
+
 void platform_mutex_deinit(Platform_Mutex* mutex)
 {
-    pthread_mutex_t* mutex_state = (pthread_mutex_t*) mutex->handle;
-    if(mutex_state)
+    if(mutex->handle)
     {
-        pthread_mutex_destroy(mutex_state);
-        free(mutex_state);
+        pthread_mutex_destroy((pthread_mutex_t*) mutex->handle);
+        free(mutex->handle);
+        mutex->handle = 0;
     }
-
-    memset(mutex, 0, sizeof *mutex);
 }
 
-void platform_mutex_lock(Platform_Mutex* mutex)
+void platform_mutex_lock(Platform_Mutex* mutex) { pthread_mutex_lock((pthread_mutex_t*) mutex->handle); }
+void platform_mutex_unlock(Platform_Mutex* mutex) { pthread_mutex_unlock((pthread_mutex_t*) mutex->handle); }
+bool platform_mutex_try_lock(Platform_Mutex* mutex) { return pthread_mutex_trylock((pthread_mutex_t*) mutex->handle) == 0; }
+
+//======================================
+// RW Lock
+//======================================
+Platform_Error platform_rwlock_init(Platform_RW_Lock* mutex)
 {
-    pthread_mutex_t* mutex_state = (pthread_mutex_t*) mutex->handle;
-    if(mutex_state)
-        pthread_mutex_lock(mutex_state); 
+    Platform_Error error = 0;
+    platform_rwlock_deinit(mutex);
+    mutex->handle = calloc(1, sizeof(pthread_rwlock_t));
+    error = _platform_error_code(mutex->handle != NULL);
+    if(error == 0)
+        error = pthread_rwlock_init((pthread_rwlock_t*) mutex->handle, NULL);
+
+    if(error)
+        platform_rwlock_deinit(mutex);
+
+    return error;
 }
 
-void platform_mutex_unlock(Platform_Mutex* mutex)
+void platform_rwlock_deinit(Platform_RW_Lock* mutex)
 {
-    pthread_mutex_t* mutex_state = (pthread_mutex_t*) mutex->handle;
-    if(mutex_state)
-        pthread_mutex_unlock(mutex_state);
+    if(mutex->handle)
+    {
+        pthread_rwlock_destroy((pthread_rwlock_t*) mutex->handle);
+        free(mutex->handle);
+        mutex->handle = 0;
+    }
 }
 
+void platform_rwlock_reader_lock(Platform_RW_Lock* mutex)       { pthread_rwlock_rdlock((pthread_rwlock_t*) mutex->handle);}
+void platform_rwlock_reader_unlock(Platform_RW_Lock* mutex)     { pthread_rwlock_unlock((pthread_rwlock_t*) mutex->handle);}
+void platform_rwlock_writer_lock(Platform_RW_Lock* mutex)       { pthread_rwlock_wrlock((pthread_rwlock_t*) mutex->handle);}
+void platform_rwlock_writer_unlock(Platform_RW_Lock* mutex)     { pthread_rwlock_unlock((pthread_rwlock_t*) mutex->handle);}
+bool platform_rwlock_reader_try_lock(Platform_RW_Lock* mutex)   { return pthread_rwlock_tryrdlock((pthread_rwlock_t*) mutex->handle) == 0;}
+bool platform_rwlock_writer_try_lock(Platform_RW_Lock* mutex)   { return pthread_rwlock_trywrlock((pthread_rwlock_t*) mutex->handle) == 0;}
+
+//======================================
+// COND VAR
+//======================================
+Platform_Error platform_cond_var_init(Platform_Cond_Var* cond_var)
+{
+    Platform_Error error = 0;
+    platform_cond_var_deinit(cond_var);
+    cond_var->handle = calloc(1, sizeof(pthread_cond_t));
+    error = _platform_error_code(cond_var->handle != NULL);
+    if(error == 0)
+        error = pthread_cond_init((pthread_cond_t*) cond_var->handle, NULL);
+
+    if(error)
+        platform_cond_var_deinit(cond_var);
+
+    return error;
+}
+
+void platform_cond_var_deinit(Platform_Cond_Var* cond_var)
+{
+    if(cond_var->handle)
+    {
+        pthread_cond_destroy((pthread_cond_t*) cond_var->handle);
+        free(cond_var->handle);
+        cond_var->handle = 0;
+    }
+}
+
+struct timespec _platform_waitsec_to_timespec(double sec)
+{
+    struct timespec now = {0};
+    (void) clock_gettime(CLOCK_REALTIME , &now);
+
+    uint64_t nanosecs = (uint64_t) (sec*1000000000LL);
+    uint64_t combined_ns = (uint64_t) now.tv_nsec + nanosecs;
+    struct timespec tm = {0};
+    tm.tv_nsec = combined_ns % 1000000000ULL; 
+    tm.tv_sec = now.tv_sec + combined_ns / 1000000000ULL; 
+    return tm;
+}
+
+void platform_cond_var_wake_single(Platform_Cond_Var* cond_var) { pthread_cond_signal((pthread_cond_t*) cond_var->handle); }
+void platform_cond_var_wake_all(Platform_Cond_Var* cond_var)    { pthread_cond_broadcast((pthread_cond_t*) cond_var->handle); }
+bool platform_cond_var_wait_mutex(Platform_Cond_Var* cond_var, Platform_Mutex* mutex, double seconds_or_negative_if_infinite)
+{
+    if(seconds_or_negative_if_infinite < 0) {
+        pthread_cond_wait((pthread_cond_t*) cond_var->handle, (pthread_mutex_t*) mutex->handle);
+        return true;
+    }
+    else {
+        struct timespec tm = _platform_waitsec_to_timespec(seconds_or_negative_if_infinite);
+        return pthread_cond_timedwait((pthread_cond_t*) cond_var->handle, (pthread_mutex_t*) mutex->handle, &tm) != 0;
+    }
+}
 
 #include <linux/futex.h> 
 #include <sys/syscall.h> 
@@ -473,14 +569,14 @@ int64_t platform_perf_counter_frequency()
 	return (int64_t) 1000000000LL;
 }
 
-static int64_t startup_perf_counter;
-static int64_t startup_epoch_time;
+static int64_t g_startup_perf_counter;
+static int64_t g_startup_epoch_time;
 int64_t platform_perf_counter_startup()
 {
-    if(startup_perf_counter == 0)
-        startup_perf_counter = platform_perf_counter();
+    if(g_startup_perf_counter == 0)
+        g_startup_perf_counter = platform_perf_counter();
 
-    return startup_perf_counter;
+    return g_startup_perf_counter;
 }
 
 int64_t platform_epoch_time()
@@ -492,16 +588,22 @@ int64_t platform_epoch_time()
 
 int64_t platform_epoch_time_startup()
 {
-    if(startup_epoch_time == 0)
-        startup_epoch_time = platform_epoch_time();
+    if(g_startup_epoch_time == 0)
+        g_startup_epoch_time = platform_epoch_time();
 
-    return startup_epoch_time;
+    return g_startup_epoch_time;
 }
 
-void _platform_perf_counters_deinit()
+static void _platform_perf_counters_deinit()
 {
-    startup_perf_counter = 0;
-    startup_epoch_time = 0;
+    g_startup_perf_counter = 0;
+    g_startup_epoch_time = 0;
+}
+
+static void _platform_perf_counters_init()
+{
+    platform_epoch_time_startup();
+    platform_perf_counter_startup();
 }
 //=========================================
 // Filesystem
@@ -634,73 +736,81 @@ Platform_Error platform_file_info(Platform_String file_path, Platform_File_Info*
 
 #include <unistd.h>
 #include <sys/types.h>
+
+int _platform_fd(const Platform_File* file)
+{
+    return (int) (uintptr_t) file->handle - 1;
+}
+
 Platform_Error platform_file_open(Platform_File* file, Platform_String path, int open_flags)
 {
     platform_file_close(file);
 
-    int mode = 0;
-    if((open_flags & PLATFORM_FILE_MODE_WRITE) && (open_flags & PLATFORM_FILE_MODE_READ))
+    #ifndef O_LARGEFILE
+        #define O_LARGEFILE 0
+    #endif
+
+    int mode = O_NOCTTY | O_LARGEFILE;
+    if(((open_flags & PLATFORM_FILE_OPEN_WRITE) && (open_flags & PLATFORM_FILE_OPEN_READ)) || (open_flags & PLATFORM_FILE_OPEN_TEMPORARY))
         mode |= O_RDWR;
-    else if(open_flags & PLATFORM_FILE_MODE_READ)
+    else if(open_flags & PLATFORM_FILE_OPEN_READ)
         mode |= O_RDONLY;
-    else if(open_flags & PLATFORM_FILE_MODE_WRITE)
+    else if(open_flags & PLATFORM_FILE_OPEN_WRITE)
         mode |= O_WRONLY;
 
-    if(open_flags & PLATFORM_FILE_MODE_CREATE_MUST_NOT_EXIST)
+    if(open_flags & PLATFORM_FILE_OPEN_CREATE_MUST_NOT_EXIST)
         mode |= O_EXCL;
-    else if(open_flags & PLATFORM_FILE_MODE_CREATE)
+    else if(open_flags & PLATFORM_FILE_OPEN_CREATE)
         mode |= O_CREAT;
-
-    if(open_flags & PLATFORM_FILE_MODE_REMOVE_CONTENT)
+    if(open_flags & PLATFORM_FILE_OPEN_REMOVE_CONTENT)
         mode |= O_TRUNC;
-        
-    if(open_flags & PLATFORM_FILE_MODE_TEMPORARY)
+    if(open_flags & PLATFORM_FILE_OPEN_TEMPORARY) 
         mode |= O_TMPFILE;
+    if(open_flags & PLATFORM_FILE_OPEN_HINT_UNBUFFERED) 
+        mode |= O_DIRECT;
+    if(open_flags & PLATFORM_FILE_OPEN_HINT_WRITETHROUGH) 
+        mode |= O_SYNC;
 
-    // #ifndef O_LARGEFILE
-    //     #define O_LARGEFILE 0
-    // #endif
+    int fd = open(_ephemeral_null_terminate(path), mode, OPEN_FILE_PERMS);
+    file->handle = (void*) (ptrdiff_t) (fd + 1);
 
-    int fd = open(_ephemeral_null_terminate(path), mode | O_LARGEFILE, OPEN_FILE_PERMS);
-    bool state = fd != -1;
-    if(state)
-    {
-        file->handle.linux = fd;
-        file->is_open = true;
+    if(file->handle) {
+        if(open_flags & PLATFORM_FILE_OPEN_HINT_FRONT_TO_BACK_ACCESS) posix_fadvise(_platform_fd(file), 0, 0, POSIX_FADV_SEQUENTIAL);
+        if(open_flags & PLATFORM_FILE_OPEN_HINT_RANDOM_ACCESS) posix_fadvise(_platform_fd(file), 0, 0, POSIX_FADV_RANDOM);
     }
 
-    return _platform_error_code(state);
+    return _platform_error_code(file->handle != 0);
 }
 
 Platform_Error platform_file_close(Platform_File* file)
 {
     bool state = true;
-    if(file->is_open)
-        state = close(file->handle.linux) == 0;
+    if(file && file->handle) {
+        state = close(_platform_fd(file)) == 0;
+        file->handle = NULL;
+    }
 
-    memset(file, 0, sizeof *file);
     return _platform_error_code(state);
 }
 
-
-Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t size, int64_t* read_bytes_because_eof)
+Platform_Error platform_file_read(Platform_File* file, void* buffer, isize size, isize offset, isize* read_bytes_because_eof)
 {
-    bool state = true;
-    int64_t total_read = 0;
-    if(file->is_open)
+    bool state = false;
+    isize total_read = 0;
+    if(file->handle)
     {
         for(; total_read < size;)
         {
-            ssize_t bytes_read = read(file->handle.linux, (unsigned char*)buffer + total_read, (size_t) (size - total_read));
-            if(bytes_read == -1)
-            {
+            ssize_t bytes_read = pread(_platform_fd(file), (unsigned char*)buffer + total_read, (size_t) (size - total_read), offset);
+            //eof
+            if(bytes_read == 0) {
+                state = true;
+                break;
+            }
+            if(bytes_read == -1) {
                 state = false;
                 break;
             }
-
-            //eof
-            if(bytes_read == 0)
-                break;
 
             total_read += bytes_read;
         }
@@ -712,72 +822,80 @@ Platform_Error platform_file_read(Platform_File* file, void* buffer, int64_t siz
     return _platform_error_code(state);
 }
 
-Platform_Error platform_file_write(Platform_File* file, const void* buffer, int64_t size)
+Platform_Error platform_file_write(Platform_File* file, const void* buffer, int64_t size, isize offset)
 {
-    bool state = true;
-    if(file->is_open)
-    {
-        for(int64_t total_written = 0; total_written < size;)
-        {
-            ssize_t bytes_written = write(file->handle.linux, (unsigned char*) buffer + total_written, (size_t) (size - total_written));
-            if(bytes_written <= 0)
-            {
-                state = false;
-                break;
-            }
+    int64_t total_written = 0;
+    for(; file->handle && total_written < size;) {
+        ssize_t bytes_written = pwrite(_platform_fd(file), (unsigned char*) buffer + total_written, (size_t) (size - total_written), offset);
+        if(bytes_written <= 0)
+            break;
 
-            total_written += bytes_written;
-        }
+        total_written += bytes_written;
     }
 
-    return _platform_error_code(state);
-
+    return _platform_error_code(file->handle && total_written == size);
 }
-//Obtains the current offset from the start of the file and saves it into offset. Does not modify the file 
-Platform_Error platform_file_tell(Platform_File file, int64_t* offset_ptr)
-{
-    bool state = true;
-    loff_t offset = 0;
-    if(file.is_open)
-    {
-        offset = lseek64(file.handle.linux, 0, SEEK_CUR);
-        if(offset == -1)
-        {
-            state = false;
-            offset = 0;
-        }
-    }
-    if(offset_ptr) 
-        *offset_ptr = offset;
 
+
+Platform_Error platform_file_read_entire(Platform_String file_path, void* buffer, isize buffer_size)
+{
+    Platform_File file = {0};
+    Platform_Error error = platform_file_open(&file, file_path, PLATFORM_FILE_OPEN_READ);
+    isize read = 0;
+    if(error == 0)
+        error = platform_file_read(&file, buffer, buffer_size, 0, &read);
+    if(error == 0 && read != buffer_size)
+        error = PLATFORM_ERROR_OTHER;
+    platform_file_close(&file);
+    return error;
+}
+Platform_Error platform_file_write_entire(Platform_String file_path, const void* buffer, isize buffer_size, bool fail_if_not_found)
+{
+    Platform_File file = {0};
+    Platform_Error error = platform_file_open(&file, file_path, 
+            PLATFORM_FILE_OPEN_WRITE | PLATFORM_FILE_OPEN_REMOVE_CONTENT | (fail_if_not_found ? 0 : PLATFORM_FILE_OPEN_CREATE));
+    if(error == 0)
+        error = platform_file_write(&file, buffer, buffer_size, 0);
+    platform_file_close(&file);
+    return error;
+}
+Platform_Error platform_file_append_entire(Platform_String file_path, const void* buffer, isize buffer_size, bool fail_if_not_found)
+{
+    int mode = O_NOCTTY | O_LARGEFILE | O_WRONLY | O_APPEND;
+    if(fail_if_not_found == false)
+        mode |= O_CREAT;
+
+    int fd = open(_ephemeral_null_terminate(file_path), mode, OPEN_FILE_PERMS);
+    int64_t total_written = 0;
+    for(; fd != -1 && total_written < buffer_size;) {
+        ssize_t bytes_written = write(fd, (unsigned char*) buffer + total_written, (size_t) (buffer_size - total_written));
+        if(bytes_written <= 0)
+            break;
+
+        total_written += bytes_written;
+    }
+    bool state = fd >= 0 && total_written == buffer_size;
     return _platform_error_code(state);
 }
-//Offset the current file position relative to: start of the file (0 value), current possition, end of the file
-Platform_Error platform_file_seek(Platform_File* file, int64_t offset, Platform_File_Seek from)
-{
-    bool state = true;
-    if(file->is_open)
-    {
-        int from_linux = SEEK_SET;
-        if(from == PLATFORM_FILE_SEEK_FROM_START)
-            from_linux = SEEK_SET;
-        else if(from == PLATFORM_FILE_SEEK_FROM_CURRENT)
-            from_linux = SEEK_CUR;
-        else if(from == PLATFORM_FILE_SEEK_FROM_END)
-            from_linux = SEEK_END;
-        else
-            assert(false && "bad Platform_File_Seek given");
 
-        state = lseek64(file->handle.linux, (loff_t) offset, from_linux) != -1;
-    }
+
+#include <sys/stat.h>
+Platform_Error platform_file_size(const Platform_File* file, isize* size)
+{
+    struct stat st = {0};
+    bool state = false;
+    if(file->handle)
+        state = fstat(_platform_fd(file), &st) != -1;
+    if(size)
+        *size = st.st_size;
     return _platform_error_code(state);
 }
 
 Platform_Error platform_file_flush(Platform_File* file)
 {
-    bool state = true;
-    if(file->is_open)
-        state = fsync(file->handle.linux) == 0;
+    bool state = false;
+    if(file->handle)
+        state = fsync(_platform_fd(file)) == 0;
     
     return _platform_error_code(state);
 }
@@ -863,7 +981,6 @@ Platform_Error platform_file_copy(Platform_String copy_to_path, Platform_String 
     return out; 
 }
 
-//Resizes a file. The file must exist.
 Platform_Error platform_file_resize(Platform_String file_path, int64_t size)
 {
     //@NOTE: For some reason truncate64 does not see files that normal open does. 
@@ -917,9 +1034,25 @@ Platform_Error platform_directory_get_current_working(void* buffer, int64_t buff
     return error;
 }    
 
+static char* g_startup_cwd = NULL;
+static char* g_executable_path = NULL;
+static void _platform_paths_deinit()
+{
+    free(g_startup_cwd); g_startup_cwd = NULL;
+    free(g_executable_path); g_executable_path = NULL;
+}
+
+static void _platform_paths_init()
+{
+    platform_directory_get_startup_working();
+    platform_get_executable_path();
+}
+
 const char* platform_directory_get_startup_working()
 {
-    return "."; //TEMP
+    if(g_startup_cwd)
+        g_startup_cwd = getcwd(NULL, 0);
+    return g_startup_cwd;
 }
 
 const char* platform_get_executable_path()
@@ -954,263 +1087,277 @@ const char* platform_get_executable_path()
 #include <stdio.h> 
 #include <string.h>
 #include <stdarg.h>
-char* _vformat_malloc(const char* format, va_list args)
+typedef struct Dir_Iter {   
+    DIR* dir;
+    struct dirent entry;
+} Dir_Iter;
+
+Platform_Error platform_directory_iter_init(Platform_Directory_Iter* iter, Platform_String directory_path)
 {
-    if(format == NULL)
-        format = "";
+    platform_directory_iter_deinit(iter);
 
-    //gcc modifies va_list on use! make sure to copy it!
-    va_list args_copy;
-    va_copy(args_copy, args);
-    int count = vsnprintf(NULL, 0, format, args);
-    
-    char* out = (char*) malloc((size_t) count + 1);
-    if(out == NULL)
-        return NULL;
-
-    int new_count = vsnprintf(out, (size_t) count + 1, format, args_copy);
-    assert(new_count == count);
-    out[count] = '\0';
-    
-    return out;
-}
-
-char* _format_malloc(const char* format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    char* out = _vformat_malloc(format, args);
-    va_end(args);
-    return out;
-}
-
-Platform_Error platform_directory_list_contents_alloc(Platform_String directory_path, Platform_Directory_Entry** _entries, int64_t* _entries_count, int64_t max_depth)
-{
-    if(max_depth == -1)
-        max_depth = INT64_MAX;
-    if(max_depth <= 0)
-        return _platform_error_code(true);
-
-    typedef struct Dir_Iterator {   
-        DIR* dir;
-        int64_t index;
-        const char* filename; 
-        //filename points to one of the entries strings therefore is non owning.
-        //This is not really safe but its easier
-    } Dir_Iterator;
-
-    size_t dir_iterators_count = 0;
-    size_t dir_iterators_capacity = 4;
-    Dir_Iterator* dir_iterators = (Dir_Iterator*) malloc(dir_iterators_capacity * sizeof *dir_iterators);
-    assert(dir_iterators); //@TODO: proper null handling 
-
-    size_t entries_count = 0;
-    size_t entries_capacity = 16;
-    Platform_Directory_Entry* entries = (Platform_Directory_Entry*) malloc(entries_capacity * sizeof *entries);
-    assert(entries); //@TODO: proper null handling 
-
-    //Push first iterator
-    Dir_Iterator first_iterator = {0}; 
-    first_iterator.filename = _ephemeral_null_terminate(directory_path);
-    first_iterator.dir = opendir(first_iterator.filename);
-    dir_iterators[dir_iterators_count ++] = first_iterator;
-
-    Platform_Error error = _platform_error_code(first_iterator.dir != NULL);
-    while(dir_iterators_count > 0)
-    {
-        Dir_Iterator* it = &dir_iterators[dir_iterators_count - 1];
-        struct dirent * dir_entry = NULL;
-        if(it->dir)
-            dir_entry = readdir(it->dir);
-
-        //If opening the directory failed or something else happened 
-        // destroy the current iterator and pop it
-        if(dir_entry == NULL)
-        {
-            if(it->dir)
-                closedir(it->dir);
-
-            dir_iterators_count --;
+    bool state = false;
+    iter->internal = calloc(1, sizeof(Dir_Iter));
+    if(iter->internal) {
+        Dir_Iter* it = (Dir_Iter*) iter->internal; 
+        it->dir = opendir(_ephemeral_null_terminate(directory_path));
+        if(it->dir) {
+            iter->index = -1;
+            state = true;
         }
-        //Do not push the "." and ".." files that can be found within every diretcory
-        else if(strcmp(dir_entry->d_name, ".") != 0 && strcmp(dir_entry->d_name, "..") != 0)
-        {
-            //grow entries if necessary
-            if(entries_count + 1 >= entries_capacity)
-            {
-                size_t new_cap = entries_capacity*3/2 + 4;
-                void* new_data = realloc(entries, new_cap * sizeof(Platform_Directory_Entry));
-                if(new_data != NULL)
-                {
-                    entries = (Platform_Directory_Entry*) new_data; 
-                    entries_capacity = new_cap;
-                }
+    }
+
+    if(state == false)
+        platform_directory_iter_deinit(iter);
+
+    return _platform_error_code(state);
+}
+
+bool platform_directory_iter_next(Platform_Directory_Iter* iter)
+{
+    if(iter->internal)
+    {
+        for(;;) {
+
+
+            Dir_Iter* it = (Dir_Iter*) iter->internal; 
+            struct dirent* ent = readdir(it->dir);
+            if(ent) {
+                iter->index += 1;
+                it->entry = *ent;
+                iter->path.data = it->entry.d_name;
+                iter->path.count = strlen(it->entry.d_name);
+                return true;
             }
+        }
+    }
+    return false;
+}
 
-            Platform_Directory_Entry entry = {0};
-            entry.index_within_directory = it->index;
-            entry.directory_depth = (int64_t) dir_iterators_count - 1;
-            it->index += 1;
+void platform_directory_iter_deinit(Platform_Directory_Iter* iter)
+{
+    if(iter->internal) {
+        Dir_Iter* it = (Dir_Iter*) iter->internal; 
+        if(it->dir)
+            closedir(it->dir);
+        free(it);
+    }
+    memset(iter, 0, sizeof *iter);
+}
 
-            //If can push
-            if(entries_count < entries_capacity)
+
+//=========================================
+// File Watch
+//=========================================
+#if 0
+#include <sys/inotify.h>
+
+#include <dirent.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <errno.h>
+#include <stddef.h>
+
+Platform_Error _file_watch_scan_dir_recursive(const char *path, char*** out_dirs, isize* out_count)
+{
+    Platform_Error error = 0;
+    char** dirs = NULL;
+    isize dirs_capacity = 0;
+    isize dirs_count = 0;
+    isize dirs_visited_till = 0;
+    for(;;) {
+        const char* curr_path = path;
+        if(dirs_visited_till > 0)
+            curr_path = dirs[dirs_visited_till - 1];
+
+        DIR *dir = opendir(curr_path);
+
+        //if is an error on the first directory report it
+        if (dir == NULL) {
+            if(dirs_visited_till == 0)
+                error = _platform_error_code(false);
+        }
+        else {
+            //Iterate all files and push directories to a list
+            for(struct dirent *entry = NULL; entry = readdir(dir); ) 
             {
-                entry.path = _format_malloc("%s/%s", it->filename, dir_entry->d_name);
+                char* entry_path = NULL;
+                bool is_directory = false;
+                //if we got reliable information use it
+                if(entry->d_type != DT_UNKNOWN)
+                    is_directory = entry->d_type == DT_DIR || entry->d_type == DT_LNK;
+                else {
+                    //else construct the path and try to get info about the file
+                    // through stat. This will fail for recursive symlinks so we
+                    // dont need to handle this odd case in any way.
+                    asprintf(&entry_path, "%s/%s", curr_path, entry->d_name);
 
-                Platform_String path_str = {entry.path, (int64_t) strlen(entry.path)};
-                platform_file_info(path_str, &entry.info);
+                    struct stat64 buf = {0}; 
+                    if(stat64(entry_path, &buf) == 0 && S_ISDIR(buf.st_mode))
+                        is_directory = true;
+                    else
+                        free(entry_path);
+                }
 
-                assert(entry.info.type != PLATFORM_FILE_TYPE_NOT_FOUND);
-                entries[entries_count++] = entry;
-                
-                if(entry.info.type == PLATFORM_FILE_TYPE_DIRECTORY && (int64_t) dir_iterators_count < max_depth)
-                {
-                    Dir_Iterator new_it = {0};
-                    new_it.filename = entry.path;
-                    new_it.dir = opendir(new_it.filename);
-                    if(dir_iterators_count >= dir_iterators_capacity)
-                    {
-                        size_t new_cap = dir_iterators_capacity*3/2 + 4;
-                        void* new_data = realloc(dir_iterators, new_cap * sizeof(Dir_Iterator));
+                if(is_directory) {
+                    if(entry_path == NULL)
+                        asprintf(&entry_path, "%s/%s", curr_path, entry->d_name);
 
-                        if(new_data != NULL)
-                        {
-                            dir_iterators = (Dir_Iterator*) new_data; 
-                            dir_iterators_capacity = new_cap;
-                        }
+                    if(dirs_count >= dirs_capacity) {
+                        dirs_capacity = dirs_capacity*3/2 + 8;
+                        dirs = realloc(dirs, dirs_capacity*sizeof(*dirs));
                     }
 
-                    if(dir_iterators_count < dir_iterators_capacity)
-                        dir_iterators[dir_iterators_count ++] = new_it;
+                    dirs[dirs_count++] = entry_path;
                 }
             }
+
+            closedir(dir);
+        }    
+    
+        dirs_visited_till++;
+        if(dirs_visited_till >= dirs_count)
+            break;
+    }
+
+    if(out_dirs)
+        *out_dirs = dirs;
+    if(out_count)
+        *out_count = dirs_count;
+
+	return error;
+}
+
+typedef struct Platform_File_Watch_State {
+    int inotify_fd;
+    int32_t flags;
+    uint32_t linux_flags;
+
+    int*  watched_fds;
+    char** watched_paths;
+    isize watched_count;
+    isize watched_capacity;
+} Platform_File_Watch_State;
+
+Platform_Error _file_watch_recursive_add_inotify(const char *path, Platform_File_Watch_State* state)
+{
+    Platform_File_Watch_State state = {0};
+
+    Platform_Error error = 0;
+    char** dirs = NULL;
+    int** watched = NULL;
+    isize dirs_capacity = 0;
+    isize dirs_count = 0;
+    isize dirs_visited_till = 0;
+    for(;;) {
+        const char* curr_path = path;
+        if(dirs_visited_till > 0)
+            curr_path = dirs[dirs_visited_till - 1];
+
+        int watch = inotify_add_watch(state->inotify_fd, curr_path, state->linux_flags);
+
+        DIR *dir = opendir(curr_path);
+        //if is an error on the first directory report it
+        if (dir == NULL) {
+            if(dirs_visited_till == 0)
+                error = _platform_error_code(false);
         }
-    }    
-
-    free(dir_iterators);
-    dir_iterators = NULL;
-
-    if(error != 0)
-    {
-        free(entries);
-        entries = NULL;
-        entries_count = 0;
-    }
-    else
-    {
-        //We use null termination to mark how much we used. See platform_directory_list_contents_free
-        assert(entries_count < entries_capacity);
-        Platform_Directory_Entry last_entry = {0};
-        entries[entries_count] = last_entry;
-    }
-
-    if(_entries) *_entries = entries;
-    if(_entries_count) *_entries_count = (int64_t) entries_count;
-
-    return error;
-}
-
-//Frees previously allocated file list
-void platform_directory_list_contents_free(Platform_Directory_Entry* entries)
-{
-    if(entries)
-    {
-        for(int i = 0; ;i++)
-        {
-            //If is null termination stop
-            Platform_Directory_Entry* entry = &entries[i];
-            if(entry->path == NULL && entry->directory_depth == 0 && entry->info.type == PLATFORM_FILE_TYPE_NOT_FOUND)
-                break;
-
-            free(entry->path);
-        }
-
-        free(entries);
-    }
-}
-
-//Memory maps the file pointed to by file_path and saves the address and size of the mapped block into mapping. 
-//If the desired_size_or_zero == 0 maps the entire file. 
-//  if the file doesnt exist the function fails.
-//If the desired_size_or_zero > 0 maps only up to desired_size_or_zero bytes from the file.
-//  The file is resized so that it is exactly desired_size_or_zero bytes (filling empty space with 0)
-//  if the file doesnt exist the function creates a new file.
-//If the desired_size_or_zero < 0 maps additional desired_size_or_zero bytes from the file 
-//    (for appending) extending it by that amountand filling the space with 0.
-//  if the file doesnt exist the function creates a new file.
-Platform_Error platform_file_memory_map(Platform_String file_path, int64_t desired_size_or_zero, Platform_Memory_Mapping* mapping);
-//Unmpas the previously mapped file. If mapping is a result of failed platform_file_memory_map does nothing.
-void platform_file_memory_unmap(Platform_Memory_Mapping* mapping);
-
-int64_t platform_translate_error(Platform_Error error, char* translated, int64_t translated_size)
-{
-    const char* str = NULL;
-    if(error == PLATFORM_ERROR_OK)
-        str = "okay";
-    if(error == PLATFORM_ERROR_OTHER)
-        str = "Other platform specific error occurred";
-    else
-        str = strerror((int) error);
-
-    int64_t needed_size = (int64_t) strlen(str);
-    int64_t availible_size = needed_size < translated_size - 1 ? needed_size : translated_size - 1;
-    if(translated_size > 0)
-    {
-        memcpy(translated, str, (size_t) availible_size);
-        translated[availible_size] = '\0';
-    }
-
-    return needed_size + 1;
-}
-
-#include <malloc.h>
-int64_t platform_heap_get_block_size(const void* old_ptr, int64_t align)
-{
-    assert(align > 0);
-    int64_t size = 0;
-    if(old_ptr)
-        size = (int64_t) malloc_usable_size((void*) old_ptr);
-
-    return size;
-}
-
-void* platform_heap_reallocate(int64_t new_size, void* old_ptr, int64_t align)
-{
-    if(align <= (int64_t) sizeof(long long int))
-    {
-        if(new_size <= 0)
-        {
-            free(old_ptr);
-            return NULL;
-        }
-
-        return realloc(old_ptr, (size_t) new_size);
-    }
-    else
-    {
-        void* out = NULL;
-        if(new_size > 0)
-        {
-            if(posix_memalign(&out, (size_t) align, (size_t) new_size) != 0)
-                out = NULL;
-
-            if(out != NULL && old_ptr != NULL)
+        else {
+            //Iterate all files and push directories to a list
+            for(struct dirent *entry = NULL; entry = readdir(dir); ) 
             {
-                int64_t min_size = (int64_t) malloc_usable_size(old_ptr);
-                if(min_size > new_size)
-                    min_size = new_size;
+                char* entry_path = NULL;
+                bool is_directory = false;
+                //if we got reliable information use it
+                if(entry->d_type != DT_UNKNOWN)
+                    is_directory = entry->d_type == DT_DIR || entry->d_type == DT_LNK;
+                else {
+                    //else construct the path and try to get info about the file
+                    // through stat. This will fail for recursive symlinks so we
+                    // dont need to handle this odd case in any way.
+                    asprintf(&entry_path, "%s/%s", curr_path, entry->d_name);
 
-                memcpy(out, old_ptr, (size_t) min_size);
+                    struct stat64 buf = {0}; 
+                    if(stat64(entry_path, &buf) == 0 && S_ISDIR(buf.st_mode))
+                        is_directory = true;
+                    else
+                        free(entry_path);
+                }
+
+                if(is_directory) {
+                    if(entry_path == NULL)
+                        asprintf(&entry_path, "%s/%s", curr_path, entry->d_name);
+
+                    if(dirs_count >= dirs_capacity) {
+                        dirs_capacity = dirs_capacity*3/2 + 8;
+                        dirs = realloc(dirs, dirs_capacity*sizeof(*dirs));
+                    }
+
+                    dirs[dirs_count++] = entry_path;
+                }
             }
-        }
 
-        if(old_ptr)
-            free(old_ptr);
-
-        return out;
+            closedir(dir);
+        }    
+    
+        dirs_visited_till++;
+        if(dirs_visited_till >= dirs_count)
+            break;
     }
+
+    if(out_dirs)
+        *out_dirs = dirs;
+    if(out_count)
+        *out_count = dirs_count;
+
+	return error;
 }
 
+void _file_watch_dirs_dealloc(char** dirs, isize count)
+{
+    for(isize i = 0; i < count; i++)
+        free(dirs[i]);
+    free(dirs);
+}
+
+
+Platform_Error platform_file_watch_init(Platform_File_Watch* file_watch, int32_t flags, Platform_String path, isize buffer_size)
+{
+    platform_file_watch_deinit(file_watch);
+
+    int inotify_fd = inotify_init1(IN_NONBLOCK);
+
+    int linux_flags = 0;
+    if(flags & PLATFORM_FILE_WATCH_CREATED) linux_flags |= IN_CREATE;
+    if(flags & PLATFORM_FILE_WATCH_DELETED) linux_flags |= IN_DELETE;
+    if(flags & PLATFORM_FILE_WATCH_MODIFIED) linux_flags |= IN_MODIFY | IN_ATTRIB;
+    if(flags & PLATFORM_FILE_WATCH_RENAMED) linux_flags |= IN_MOVED_FROM | IN_MOVED_TO;
+
+    if(flags & PLATFORM_FILE_WATCH_DIRECTORY) linux_flags |= XXX;
+    if(flags & PLATFORM_FILE_WATCH_SUBDIRECTORIES) {
+        char** dirs_prev = NULL;
+        isize dirs_prev_count = 0;
+        Platform_Error error = _file_watch_scan_dir_recursive(_ephemeral_null_terminate(path), &dirs_prev, &dirs_prev_count)
+
+    }
+    
+    
+    linux_flags |= XXX;
+
+    inotify_add_watch(inotify_fd, _ephemeral_null_terminate(path), )
+}
+
+void platform_file_watch_deinit(Platform_File_Watch* file_watch)
+{
+
+}
+
+bool platform_file_watch_poll(Platform_File_Watch* file_watch, Platform_File_Watch_Event* event, Platform_Error* error_or_null)
+{
+
+}
+#endif
 
 //=========================================
 // Debug
@@ -1382,51 +1529,7 @@ int platform_is_debugger_attached()
 #include <setjmp.h>
 
 #define PLATFORM_SANDBOXES_MAX 256
-#define PLATFORM_SANDBOXE_JUMP_CODE 0x123
-
-//An X macro collection of all signals with some commented out that we are not handling. 
-//If you want to enable/disable comment/uncomment additional lines.
-//Taken from: https://man7.org/linux/man-pages/man7/signal.7.html
-//For info on X macros: https://en.wikipedia.org/wiki/X_macro 
-#define SIGNAL_ACTION_X \
-    X(SIGABRT, PLATFORM_EXCEPTION_ABORT)                /*P1990      Core    Abort signal from abort(3) */ \
-    /*X(SIGALRM, PLATFORM_EXCEPTION_OTHER)                P1990      Term    Timer signal from alarm(2) */ \
-    X(SIGBUS, PLATFORM_EXCEPTION_ACCESS_VIOLATION)      /*P2001      Core    Bus error (bad memory access) */ \
-    /*X(SIGCHLD, PLATFORM_EXCEPTION_OTHER)                P1990      Ign     Child stopped or terminated  */ \
-    /*X(SIGCLD, PLATFORM_EXCEPTION_OTHER)                   -        Ign     A synonym for SIGCHLD  */ \
-    /*X(SIGCONT, PLATFORM_EXCEPTION_OTHER)                P1990      Cont    Continue if stopped  */ \
-    /*X(SIGEMT, PLATFORM_EXCEPTION_OTHER)                   -        Term    Emulator trap  */ \
-    X(SIGFPE, PLATFORM_EXCEPTION_FLOAT_OTHER)           /*P1990      Core    Floating-point exception */ \
-    X(SIGHUP, PLATFORM_EXCEPTION_OTHER)                 /*P1990      Term    Hangup detected on controlling terminal or death of controlling process */ \
-    X(SIGILL, PLATFORM_EXCEPTION_ILLEGAL_INSTRUCTION)   /*P1990      Core    Illegal Instruction */ \
-    /*X(SIGINFO, PLATFORM_EXCEPTION_OTHER)                  -                A synonym for SIGPWR */ \
-    /*X(SIGINT, PLATFORM_EXCEPTION_OTHER)                 P1990      Term    Interrupt from keyboard */ \
-    /*X(SIGIO, PLATFORM_EXCEPTION_OTHER)                    -        Term    I/O now possible (4.2BSD) */ \
-    X(SIGIOT, PLATFORM_EXCEPTION_ABORT)                 /*  -        Core    IOT trap. A synonym for SIGABRT */ \
-    /*X(SIGKILL, PLATFORM_EXCEPTION_OTHER)                P1990      Term    Kill signal */ \
-    /*X(SIGLOST, PLATFORM_EXCEPTION_OTHER)                  -        Term    File lock lost (unused) */ \
-    /*X(SIGPIPE, PLATFORM_EXCEPTION_OTHER)                P1990      Term    Broken pipe: write to pipe with no readers; see pipe(7) */ \
-    /*X(SIGPOLL, PLATFORM_EXCEPTION_OTHER)                P2001      Term    Pollable event (Sys V); synonym for SIGIO */ \
-    /*X(SIGPROF, PLATFORM_EXCEPTION_OTHER)                P2001      Term    Profiling timer expired */ \
-    X(SIGPWR, PLATFORM_EXCEPTION_OTHER)                 /*  -        Term    Power failure (System V) */ \
-    /*X(SIGQUIT, PLATFORM_EXCEPTION_OTHER)               P1990      Core    Quit from keyboard */ \
-    X(SIGSEGV, PLATFORM_EXCEPTION_ACCESS_VIOLATION)     /*P1990      Core    Invalid memory reference */ \
-    X(SIGSTKFLT, PLATFORM_EXCEPTION_ACCESS_VIOLATION)   /*  -        Term    Stack fault on coprocessor (unused) */ \
-    /*X(SIGSTOP, PLATFORM_EXCEPTION_OTHER)                P1990      Stop    Stop process */ \
-    /*X(SIGTSTP, PLATFORM_EXCEPTION_OTHER)                P1990      Stop    Stop typed at terminal */ \
-    X(SIGSYS, PLATFORM_EXCEPTION_OTHER)                 /*P2001      Core    Bad system call (SVr4); see also seccomp(2) */ \
-    X(SIGTERM, PLATFORM_EXCEPTION_TERMINATE)            /*P1990      Term    Termination signal */ \
-    X(SIGTRAP, PLATFORM_EXCEPTION_BREAKPOINT)           /*P2001      Core    Trace/breakpoint trap */ \
-    /*X(SIGTTIN, PLATFORM_EXCEPTION_OTHER)                P1990      Stop    Terminal input for background process */ \
-    /*X(SIGTTOU, PLATFORM_EXCEPTION_OTHER)                P1990      Stop    Terminal output for background process */ \
-    /*X(SIGUNUSED, PLATFORM_EXCEPTION_OTHER)                -        Core    Synonymous with SIGSYS */ \
-    /*X(SIGURG, PLATFORM_EXCEPTION_OTHER)                 P2001      Ign     Urgent condition on socket (4.2BSD) */ \
-    /*X(SIGUSR1, PLATFORM_EXCEPTION_OTHER)                P1990      Term    User-defined signal 1 */ \
-    /*X(SIGUSR2, PLATFORM_EXCEPTION_OTHER)                P1990      Term    User-defined signal 2 */ \
-    /*X(SIGVTALRM, PLATFORM_EXCEPTION_OTHER)              P2001      Term    Virtual alarm clock (4.2BSD) */ \
-    /*X(SIGXCPU, PLATFORM_EXCEPTION_OTHER)                P2001      Core    CPU time limit exceeded (4.2BSD); see setrlimit(2) */ \
-    /*X(SIGXFSZ, PLATFORM_EXCEPTION_OTHER)                P2001      Core    File size limit exceeded (4.2BSD); see setrlimit(2) */ \
-    /*X(SIGWINCH, PLATFORM_EXCEPTION_OTHER)                 -        Ign     Window resize signal (4.3BSD, Sun) */ \
+#define PLATFORM_SANDBOXE_JUMP_CODE 0x78626473 //sdbx
 
 typedef struct Signal_Handler_State {
     sigjmp_buf jump_buffer;
@@ -1439,18 +1542,14 @@ typedef struct Signal_Handler_State {
     int64_t epoch_time;
 } Signal_Handler_State;
 
-static __thread Signal_Handler_State* platform_signal_handler_queue = NULL;
-static __thread int64_t platform_signal_handler_i1 = 0;
+static _Thread_local Signal_Handler_State* t_platform_sighandle_state = NULL;
 
 void platform_sighandler(int sig, struct sigcontext ctx) 
 {
     (void) ctx;
 
-    int64_t my_index_i1 = platform_signal_handler_i1;
-    if(my_index_i1 >= 1)
-    {
-        //@TODO: add more specific flag testing!
-        Signal_Handler_State* handler = &platform_signal_handler_queue[my_index_i1-1];
+    Signal_Handler_State* handler = t_platform_sighandle_state;
+    if(handler) {
         handler->perf_counter = platform_perf_counter();
         handler->perf_counter = platform_epoch_time();
         handler->stack_size = (int32_t) platform_capture_call_stack(handler->stack, PLATFORM_CALLSTACKS_MAX, 1);
@@ -1459,25 +1558,56 @@ void platform_sighandler(int sig, struct sigcontext ctx)
     }
 }
 
-Platform_Exception platform_exception_sandbox(
+bool platform_exception_sandbox(
     void (*sandboxed_func)(void* sandbox_context),   
-    void* sandbox_context,
-    void (*error_func)(void* error_context, Platform_Sandbox_Error error),
-    void* error_context)
+    void* sandbox_context, Platform_Exception* error_or_null)
 {
     typedef struct {
         int signal;
-        Platform_Exception platform_error;
+        const char* error_string;
         struct sigaction action;
         struct sigaction prev_action;
     } Signal_Error;
 
-    #undef X
-    #define X(SIGNAL_NAME, PLATFORM_ERROR) \
-         {(SIGNAL_NAME), (PLATFORM_ERROR), {0}, {0}},
-
     Signal_Error error_handlers[] = {
-        SIGNAL_ACTION_X
+        {SIGABRT, "abort"},                //P1990      Core    Abort signal from abort(3)
+        //{SIGALRM, "other"},              //P1990      Term    Timer signal from alarm(2)
+        {SIGBUS, "access violation"},      //P2001      Core    Bus error (bad memory access)
+        //{SIGCHLD, "other"},              //P1990      Ign     Child stopped or terminated 
+        //{SIGCLD, "other"},               //  -        Ign     A synonym for SIGCHLD 
+        //{SIGCONT, "other"},              //P1990      Cont    Continue if stopped 
+        //{SIGEMT, "other"},               //  -        Term    Emulator trap 
+        {SIGFPE, "floating point "},       //P1990      Core    Floating-point exception
+        {SIGHUP, "hangup"},                //P1990      Term    Hangup detected on controlling terminal or death of controlling process
+        {SIGILL, "illegal instruction"},   //P1990      Core    Illegal Instruction
+        //{SIGINFO, "other"},              //  -                A synonym for SIGPWR
+        //{SIGINT, "other"},               //P1990      Term    Interrupt from keyboard
+        //{SIGIO, "other"},                //  -        Term    I/O now possible (4.2BSD)
+        {SIGIOT, "abort"},                 //  -        Core    IOT trap. A synonym for SIGABRT
+        //{SIGKILL, "other"},              //P1990      Term    Kill signal
+        //{SIGLOST, "other"},              //  -        Term    File lock lost (unused)
+        //{SIGPIPE, "other"},              //P1990      Term    Broken pipe: write to pipe with no readers; see pipe(7)
+        //{SIGPOLL, "other"},              //P2001      Term    Pollable event (Sys V); synonym for SIGIO
+        //{SIGPROF, "other"},              //P2001      Term    Profiling timer expired
+        {SIGPWR, "other"},                 //  -        Term    Power failure (System V)
+        //{SIGQUIT, "other"},              //P1990      Core    Quit from keyboard
+        {SIGSEGV, "access violation"},     //P1990      Core    Invalid memory reference
+        {SIGSTKFLT, "access violation"},   //  -        Term    Stack fault on coprocessor (unused)
+        //{SIGSTOP, "other"},              //P1990      Stop    Stop process
+        //{SIGTSTP, "other"},              //P1990      Stop    Stop typed at terminal
+        {SIGSYS, "other"},                 //P2001      Core    Bad system call (SVr4); see also seccomp(2)
+        {SIGTERM, "terminate"},            //P1990      Term    Termination signal
+        {SIGTRAP, "breakpoint"},           //P2001      Core    Trace/breakpoint trap
+        //{SIGTTIN, "other"},              //P1990      Stop    Terminal input for background process
+        //{SIGTTOU, "other"},              //P1990      Stop    Terminal output for background process
+        //{SIGUNUSED, "other"},            //  -        Core    Synonymous with SIGSYS
+        //{SIGURG, "other"},               //P2001      Ign     Urgent condition on socket (4.2BSD)
+        //{SIGUSR1, "other"},              //P1990      Term    User-defined signal 1
+        //{SIGUSR2, "other"},              //P1990      Term    User-defined signal 2
+        //{SIGVTALRM, "other"},            //P2001      Term    Virtual alarm clock (4.2BSD)
+        //{SIGXCPU, "other"},              //P2001      Core    CPU time limit exceeded (4.2BSD); see setrlimit(2)
+        //{SIGXFSZ, "other"},              //P2001      Core    File size limit exceeded (4.2BSD); see setrlimit(2)
+        //{SIGWINCH, "other"},             //  -        Ign     Window resize signal (4.3BSD, Sun)
     };
 
     const int64_t handler_count = (int64_t) sizeof(error_handlers) / (int64_t) sizeof(Signal_Error);
@@ -1486,76 +1616,50 @@ Platform_Exception platform_exception_sandbox(
         Signal_Error* sig_error = &error_handlers[i];
         sig_error->action.sa_handler = (void(*)(int)) (void *)platform_sighandler;
         sigemptyset(&sig_error->action.sa_mask);
-        // sigaddset(&sig_error->action.sa_mask, (int) SA_RESETHAND);
         sigaddset(&sig_error->action.sa_mask, (int) SA_NOCLDSTOP);
 
         bool state = sigaction(sig_error->signal, &sig_error->action, &sig_error->prev_action) == 0;
         assert(state && "bad signal specifier!");
     }
 
-    Platform_Exception had_exception = PLATFORM_EXCEPTION_NONE;
-    if(platform_signal_handler_queue == NULL)
+    bool is_okay = false;
+    Signal_Handler_State* state = calloc(1, sizeof(Signal_Handler_State));
+    if(state != NULL)
     {
-        size_t needed_size = PLATFORM_SANDBOXES_MAX * sizeof(Signal_Handler_State);
-        platform_signal_handler_queue = (Signal_Handler_State*) malloc(needed_size);
-        if(platform_signal_handler_queue == NULL)
-        {
-            PLATFORM_PRINT_OUT_OF_MEMORY(needed_size);
-            assert("out of memory! @TODO: possible exception?");
-            had_exception = PLATFORM_EXCEPTION_OTHER;
-        }
-        else
-        {
-            memset(platform_signal_handler_queue, 0, needed_size);
-        }
-    }
-    
-    if(platform_signal_handler_queue != NULL)
-    {
-        platform_signal_handler_i1 = _CLAMP(platform_signal_handler_i1 + 1, 1, PLATFORM_SANDBOXES_MAX);
-        Signal_Handler_State* handler = &platform_signal_handler_queue[platform_signal_handler_i1 - 1];
-        memset(handler, 0, sizeof *handler);
-
-        switch(sigsetjmp(handler->jump_buffer, 0))
+        Signal_Handler_State* prev_state = t_platform_sighandle_state;
+        t_platform_sighandle_state = state;
+        switch(sigsetjmp(state->jump_buffer, 0))
         {
             case 0: {
                 sandboxed_func(sandbox_context);
-                break;
-            }
-            case PLATFORM_SANDBOXE_JUMP_CODE: {
-                had_exception = PLATFORM_EXCEPTION_OTHER;
-                
-                for(int64_t i = 0; i < handler_count; i++)
-                {
-                    if(error_handlers[i].signal == handler->signal)
-                    {
-                        had_exception = error_handlers[i].platform_error;
-                        break;
-                    }
-                }
-                
-                Platform_Sandbox_Error sanbox_error = {PLATFORM_EXCEPTION_NONE};
-                sanbox_error.exception = had_exception;
-                sanbox_error.call_stack = (void **) (void*) handler->stack;
-                sanbox_error.call_stack_size = handler->stack_size;
-                sanbox_error.epoch_time = handler->epoch_time;
-                
-                //@TODO
-                sanbox_error.execution_context = NULL;
-                sanbox_error.execution_context_size = 0;
+                is_okay = true;
+            } break;
 
-                error_func(error_context, sanbox_error);
-                break;
-            }
+            case PLATFORM_SANDBOXE_JUMP_CODE: {
+                is_okay = false;
+                const char* execption_text = "other";
+                for(int64_t i = 0; i < handler_count; i++)
+                    if(error_handlers[i].signal == state->signal)
+                        execption_text = error_handlers[i].error_string;
+                
+                Platform_Exception exception = {0};
+                exception.exception = execption_text;
+                exception.call_stack = (void **) (void*) state->stack;
+                exception.call_stack_size = state->stack_size;
+                exception.epoch_time = state->epoch_time;
+                if(error_or_null)
+                    *error_or_null = exception;
+            } break;
+
             default: {
                 assert(false && "unexpected jump occurred!");
-                break;
-            }
+            } break;
         }
 
-        platform_signal_handler_i1 = _CLAMP(platform_signal_handler_i1 - 1, 0, PLATFORM_SANDBOXES_MAX);
-
+        t_platform_sighandle_state = prev_state;
     }
+    free(state);
+
     for(int64_t i = 0; i < handler_count; i++)
     {
         Signal_Error* sig_error = &error_handlers[i];
@@ -1563,7 +1667,7 @@ Platform_Exception platform_exception_sandbox(
         assert(state && "bad signal specifier");
     }
 
-    return had_exception;
+    return is_okay;
 }
 
 void platform_init()

@@ -129,6 +129,7 @@ typedef enum Platform_Memory_Protection {
 Platform_Error platform_virtual_reallocate(void** output_adress_or_null, void* address, isize bytes, Platform_Virtual_Allocation action, Platform_Memory_Protection protection);
 isize platform_page_size();
 isize platform_allocation_granularity();
+void* platform_heap_reallocate(isize new_size, void* old_ptr, isize old_size, isize align);
 
 //=========================================
 // Threading
@@ -145,9 +146,9 @@ isize platform_allocation_granularity();
 
 Platform_Error  platform_thread_launch(isize stack_size_or_zero, void (*func)(void*), void* context, const char* name_fmt, ...);
 int32_t         platform_thread_get_processor_count();
-int32_t         platform_thread_get_current_id(); 
-int32_t         platform_thread_get_main_id(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns -1.
-const char*     platform_thread_get_current_name(); 
+int32_t         platform_thread_id(); //returns a unique identificator of the calling thread
+int32_t         platform_thread_main_id(); //Returns the handle to the thread which called platform_init(). If platform_init() was not called returns -1.
+const char*     platform_thread_name(); //returns the name of the calling thread specified at thread creation. If thread was not init through platform_thread_launch returns some os specific indetificator of the thread
 void            platform_thread_sleep(double seconds); //Sleeps the calling thread for specified number of seconds. The accuracy is platform and scheduler dependent
 void            platform_thread_exit(int code); //Terminates a thread with an exit code
 void            platform_thread_yield(); //Yields the remainder of this thread's time slice to another thread
@@ -157,11 +158,26 @@ typedef struct Platform_Mutex {
     void* handle;
 } Platform_Mutex;
 
+Platform_Error  platform_mutex_init(Platform_Mutex* mutex);
+void            platform_mutex_deinit(Platform_Mutex* mutex);
+void            platform_mutex_lock(Platform_Mutex* mutex);
+void            platform_mutex_unlock(Platform_Mutex* mutex);
+bool            platform_mutex_try_lock(Platform_Mutex* mutex); 
+
 //Small non-recursive mutex which allows multiple readers to hold the mutex at once.
 //Only a single writer may hold the mutex at once.
 typedef struct Platform_RW_Lock {
     void* handle;
 } Platform_RW_Lock;
+
+Platform_Error  platform_rwlock_init(Platform_RW_Lock* mutex);
+void            platform_rwlock_deinit(Platform_RW_Lock* mutex);
+void            platform_rwlock_reader_lock(Platform_RW_Lock* mutex);
+void            platform_rwlock_reader_unlock(Platform_RW_Lock* mutex);
+void            platform_rwlock_writer_lock(Platform_RW_Lock* mutex);
+void            platform_rwlock_writer_unlock(Platform_RW_Lock* mutex);
+bool            platform_rwlock_reader_try_lock(Platform_RW_Lock* mutex);
+bool            platform_rwlock_writer_try_lock(Platform_RW_Lock* mutex);
 
 typedef struct Platform_Cond_Var {
     void* handle;
@@ -172,23 +188,9 @@ void            platform_cond_var_deinit(Platform_Cond_Var* cond_var);
 void            platform_cond_var_wake_single(Platform_Cond_Var* cond_var);
 void            platform_cond_var_wake_all(Platform_Cond_Var* cond_var);
 bool            platform_cond_var_wait_mutex(Platform_Cond_Var* cond_var, Platform_Mutex* mutex, double seconds_or_negative_if_infinite);
-bool            platform_cond_var_wait_rwlock_reader(Platform_Cond_Var* cond_var, Platform_RW_Lock* mutex, double seconds_or_negative_if_infinite);
-bool            platform_cond_var_wait_rwlock_writer(Platform_Cond_Var* cond_var, Platform_RW_Lock* mutex, double seconds_or_negative_if_infinite);
+// bool            platform_cond_var_wait_rwlock_reader(Platform_Cond_Var* cond_var, Platform_RW_Lock* mutex, double seconds_or_negative_if_infinite);
+// bool            platform_cond_var_wait_rwlock_writer(Platform_Cond_Var* cond_var, Platform_RW_Lock* mutex, double seconds_or_negative_if_infinite);
 
-Platform_Error  platform_mutex_init(Platform_Mutex* mutex);
-void            platform_mutex_deinit(Platform_Mutex* mutex);
-void            platform_mutex_lock(Platform_Mutex* mutex);
-void            platform_mutex_unlock(Platform_Mutex* mutex);
-bool            platform_mutex_try_lock(Platform_Mutex* mutex); 
-
-Platform_Error  platform_rwlock_init(Platform_RW_Lock* mutex);
-void            platform_rwlock_deinit(Platform_RW_Lock* mutex);
-void            platform_rwlock_reader_lock(Platform_RW_Lock* mutex);
-void            platform_rwlock_reader_unlock(Platform_RW_Lock* mutex);
-void            platform_rwlock_writer_lock(Platform_RW_Lock* mutex);
-void            platform_rwlock_writer_unlock(Platform_RW_Lock* mutex);
-bool            platform_rwlock_reader_try_lock(Platform_RW_Lock* mutex);
-bool            platform_rwlock_writer_try_lock(Platform_RW_Lock* mutex);
 
 bool            platform_futex_wait(volatile void* futex, uint32_t value, double seconds_or_negative_if_infinite);
 void            platform_futex_wake_single(volatile void* futex);
@@ -235,19 +237,20 @@ typedef union Platform_File {
 typedef enum Platform_File_Open_Flags {
     PLATFORM_FILE_OPEN_READ = 1,                    //Read privilege
     PLATFORM_FILE_OPEN_WRITE = 2,                   //Write privilege
+    PLATFORM_FILE_OPEN_READ_WRITE = PLATFORM_FILE_OPEN_READ | PLATFORM_FILE_OPEN_WRITE,
     PLATFORM_FILE_OPEN_CREATE = 8,                  //Creates the file, if it already exists does nothing.
     PLATFORM_FILE_OPEN_CREATE_MUST_NOT_EXIST = 16,  //Creates the file, if it already exists fails. When supplied alongside PLATFORM_FILE_OPEN_CREATE overrides it.
     PLATFORM_FILE_OPEN_REMOVE_CONTENT = 32,         //If opening a file that has content, remove it.
-    PLATFORM_FILE_OPEN_READ_WRITE = PLATFORM_FILE_OPEN_READ | PLATFORM_FILE_OPEN_WRITE,
     PLATFORM_FILE_OPEN_TEMPORARY = 64,              //Deletes the file on close
 
     //Hints to the usage of the file. 
     //Have no effect on the semantics but can improve performance in certain cases.
     //Dont even have to be implemented.
-    PLATFORM_FILE_OPEN_HINT_UNBUFFERED = 128,        
-    PLATFORM_FILE_OPEN_HINT_FRONT_TO_BACK_ACCESS = 256, //Do not use with PLATFORM_FILE_OPEN_HINT_UNBUFFERED
-    PLATFORM_FILE_OPEN_HINT_BACK_TO_FRONT_ACCESS = 512, //Do not use with PLATFORM_FILE_OPEN_HINT_UNBUFFERED
-    PLATFORM_FILE_OPEN_HINT_RANDOM_ACCESS = 1024, //Do not use with PLATFORM_FILE_OPEN_HINT_UNBUFFERED
+    PLATFORM_FILE_OPEN_HINT_WRITETHROUGH = 128, //flush the data as soon as possible    
+    PLATFORM_FILE_OPEN_HINT_FRONT_TO_BACK_ACCESS = 256, //we expect to read/write data in sequential front to back order
+    PLATFORM_FILE_OPEN_HINT_BACK_TO_FRONT_ACCESS = 512, //we expect to read/write data in sequential back to front order
+    PLATFORM_FILE_OPEN_HINT_RANDOM_ACCESS = 1024, //we expect to read/write data in random order
+    PLATFORM_FILE_OPEN_HINT_UNBUFFERED = 2048, //write directly from the user allocated block instead of through internal cache. the data must be aligned to platform_page_size()      
 } Platform_File_Open_Flags;
 
 
@@ -279,7 +282,6 @@ typedef struct Platform_File_Info {
 } Platform_File_Info;
 
 Platform_Error platform_file_open(Platform_File* file, Platform_String path, int open_flags); //Opens the file in the specified combination of Platform_File_Open_Flags. 
-bool           platform_file_is_open(const Platform_File* file);
 Platform_Error platform_file_size(const Platform_File* file, isize* size); //obtains the size of already open file. Can be used to do seeking to end etc.
 Platform_Error platform_file_close(Platform_File* file); //Closes already opened file. If file was not successfully opened does nothing. Return value can be ignored
 //Reads size bytes into the provided buffer. Sets read_bytes_because_eof to the number of bytes actually read.
@@ -403,24 +405,24 @@ int64_t platform_capture_call_stack(void** stack, int64_t stack_size, int64_t sk
 //will never fail yet translate all needed stack frames. 
 void platform_translate_call_stack(Platform_Stack_Trace_Entry* translated, void** stack, int64_t stack_size);
 
-typedef struct Platform_Sandbox_Error {
+typedef struct Platform_Exception {
     const char* exception;
     int32_t call_stack_size; 
     void** call_stack; 
     int64_t epoch_time;
-} Platform_Sandbox_Error;
+} Platform_Exception;
 
-void platform_sandbox_error_deinit(Platform_Sandbox_Error* error);
+void platform_exception_deinit(Platform_Exception* error);
 
 //Launches the sandboxed_func inside a sandbox protecting the outside environment 
 // from any exceptions, including hardware exceptions that might occur inside sandboxed_func.
 //If an exception occurs collects execution context including stack pointers and saves it into
-// error_or_null if not null. After an error occured should call platform_sandbox_error_deinit to
+// error_or_null if not null. After an error occured should call platform_exception_deinit to
 // release the error memory
 //Returns true if no error occurred, false if some error occurred.
 bool platform_exception_sandbox(
     void (*sandboxed_func)(void* sandbox_context),   
-    void* sandbox_context, Platform_Sandbox_Error* error_or_null);
+    void* sandbox_context, Platform_Exception* error_or_null);
 
 #if !defined(PLATFORM_OS) || PLATFORM_OS == PLATFORM_OS_UNKNOWN
     #undef PLATFORM_OS

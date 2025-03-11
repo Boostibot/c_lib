@@ -98,12 +98,6 @@ static void test_all(double total_time)
 }
 
 #if defined(TEST_RUNNER)
-    void allocator_panic(Allocator_Error error)
-    {
-        (void) error;
-        PANIC("Allocator error");
-    }
-
     int main()
     {
         platform_init();
@@ -148,7 +142,7 @@ static bool run_test(Test_Run_Context context)
         default: UNREACHABLE();
     }
 
-    Platform_Sandbox_Error error;
+    Platform_Exception error;
     bool ok = platform_exception_sandbox(_run_test_try, &context, &error);
     if(ok)
         LOG_OKAY("TEST", "%s OK", context.name);

@@ -149,6 +149,8 @@ EXTERNAL void subimage_flip_y(Subimage to_image, Subimage from_image, isize offs
 
 #endif
 
+#define MODULE_IMPL_ALL
+
 #if (defined(MODULE_IMPL_ALL) || defined(MODULE_IMPL_IMAGE)) && !defined(MODULE_HAS_IMPL_IMAGE)
 #define MODULE_HAS_IMPL_IMAGE
 
@@ -603,24 +605,24 @@ EXTERNAL void subimage_convert(Subimage to_image, Subimage from_image, isize off
                 memset(to_row, pad_with_or_minus_one, to_portion.width*to_portion.pixel_size);
 
             //perform the inner loop specialized for some common sizes.
-            #define SUIMAGE_LOOP_COPY(size) \
+            #define SUBIMAGE_LOOP_COPY(size) \
                 for(isize x = 0; x < from_image.width; x++) \
-                    memcpy(to_row + x*to_portion.pixel_size, from_row + y*from_image.pixel_size, size) \
+                    memcpy(to_row + x*to_portion.pixel_size, from_row + x*from_image.pixel_size, size) \
 
             switch(min_size) {
-                case 1:  SUIMAGE_LOOP_COPY(1); break;
-                case 2:  SUIMAGE_LOOP_COPY(2); break;
-                case 3:  SUIMAGE_LOOP_COPY(3); break;
-                case 4:  SUIMAGE_LOOP_COPY(4); break;
-                case 6:  SUIMAGE_LOOP_COPY(6); break;
-                case 8:  SUIMAGE_LOOP_COPY(8); break;
-                case 12: SUIMAGE_LOOP_COPY(12); break;
-                case 16: SUIMAGE_LOOP_COPY(16); break;
-                case 32: SUIMAGE_LOOP_COPY(32); break;
-                default: SUIMAGE_LOOP_COPY(min_size); break;
+                case 1:  SUBIMAGE_LOOP_COPY(1); break;
+                case 2:  SUBIMAGE_LOOP_COPY(2); break;
+                case 3:  SUBIMAGE_LOOP_COPY(3); break;
+                case 4:  SUBIMAGE_LOOP_COPY(4); break;
+                case 6:  SUBIMAGE_LOOP_COPY(6); break;
+                case 8:  SUBIMAGE_LOOP_COPY(8); break;
+                case 12: SUBIMAGE_LOOP_COPY(12); break;
+                case 16: SUBIMAGE_LOOP_COPY(16); break;
+                case 32: SUBIMAGE_LOOP_COPY(32); break;
+                default: SUBIMAGE_LOOP_COPY(min_size); break;
             }
 
-            #undef SUIMAGE_LOOP_COPY
+            #undef SUBIMAGE_LOOP_COPY
         }
     }
 }
@@ -631,7 +633,7 @@ EXTERNAL void subimage_flip_y_inplace(Subimage image, void* temp_row, isize temp
     REQUIRE(temp_size >= row_size);
     for(isize y = 0; y < image.height/2; y++) {
         void* from_row1 = subimage_at(image, 0, y);
-        void* from_row2 = subimage_at(image, 0, image.height - y);
+        void* from_row2 = subimage_at(image, 0, image.height - y - 1);
         
         memcpy(temp_row, from_row1, row_size);
         memcpy(from_row1, from_row2, row_size);
@@ -648,26 +650,26 @@ EXTERNAL void subimage_flip_x_inplace(Subimage image, void* temp_pixel, isize te
     {
         uint8_t* row = image_ptr + stride*y;
         void* te = temp_pixel;
-        #define SUBIMAGE_FLIP_ROW(row, width, size)        \
-            for(isize x = 0; x < width/2; x++) {        \
+        #define SUBIMAGE_FLIP_ROW(size)        \
+            for(isize x = 0; x < image.width/2; x++) {        \
                 uint8_t* a1 = row + size*x;             \
-                uint8_t* a2 = row + size*(width - x);   \
+                uint8_t* a2 = row + size*(image.width - x - 1);   \
                 memcpy(te, a1, size);                   \
                 memcpy(a1, a2, size);                   \
                 memcpy(a2, te, size);                   \
             }                                           \
 
         switch(image.pixel_size) {
-            case 1:  SUBIMAGE_FLIP_ROW(row, image.width, 1); break;
-            case 2:  SUBIMAGE_FLIP_ROW(row, image.width, 2); break;
-            case 3:  SUBIMAGE_FLIP_ROW(row, image.width, 3); break;
-            case 4:  SUBIMAGE_FLIP_ROW(row, image.width, 4); break;
-            case 6:  SUBIMAGE_FLIP_ROW(row, image.width, 6); break;
-            case 8:  SUBIMAGE_FLIP_ROW(row, image.width, 8); break;
-            case 12: SUBIMAGE_FLIP_ROW(row, image.width, 12); break;
-            case 16: SUBIMAGE_FLIP_ROW(row, image.width, 16); break;
-            case 32: SUBIMAGE_FLIP_ROW(row, image.width, 32); break;
-            default: SUBIMAGE_FLIP_ROW(row, image.width, image.pixel_size); break;
+            case 1:  SUBIMAGE_FLIP_ROW(1); break;
+            case 2:  SUBIMAGE_FLIP_ROW(2); break;
+            case 3:  SUBIMAGE_FLIP_ROW(3); break;
+            case 4:  SUBIMAGE_FLIP_ROW(4); break;
+            case 6:  SUBIMAGE_FLIP_ROW(6); break;
+            case 8:  SUBIMAGE_FLIP_ROW(8); break;
+            case 12: SUBIMAGE_FLIP_ROW(12); break;
+            case 16: SUBIMAGE_FLIP_ROW(16); break;
+            case 32: SUBIMAGE_FLIP_ROW(32); break;
+            default: SUBIMAGE_FLIP_ROW(image.pixel_size); break;
         }
         #undef SUBIMAGE_FLIP_ROW
     }
@@ -695,7 +697,7 @@ EXTERNAL void subimage_flip_x(Subimage to_image, Subimage from_image, isize offs
         #define SUBIMAGE_FLIP_ROW(size)        \
             for(isize x = 0; x < to_portion.width; x++) {        \
                 uint8_t* from_pixel = from_row + size*x;             \
-                uint8_t* to_pixel = to_row + size*(from_image.width - x);   \
+                uint8_t* to_pixel = to_row + size*(to_portion.width - x - 1);   \
                 memcpy(to_pixel, from_pixel, size);                   \
             }                                           
 

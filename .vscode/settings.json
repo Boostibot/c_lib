@@ -84,6 +84,11 @@
         "cstddef": "cpp",
         "xlocinfo": "cpp",
         "allocator.h": "c",
-        "process.h": "c"
+        "process.h": "c",
+        "prctl.h": "c",
+        "futex.h": "c",
+        "span": "c",
+        "inotify.h": "c",
+        "stddef.h": "c"
     }
 }

@@ -91,10 +91,10 @@ EXTERNAL int32_t unicode_range_search(uint32_t codepoint, const Unicode_Range* r
 	}
 		
 	ASSERT(codepoint <= ranges[low_i].to);
-    if(codepoint < ranges[low_i].from)
+    if(codepoint < ranges[low_i].from) 
         return -1;
 
-	return (int32_t) low_i;
+    return (int32_t) low_i;
 }
 
 EXTERNAL bool unicode_is_alpha(uint32_t codepoint) { 
@@ -288,6 +288,7 @@ EXTERNAL void unicode_format_append_ranges(FILE* file, char* file_data, size_t f
     free(merged);
 }
 
+#include <errno.h>
 INTERNAL bool _unicode_read_entire_file(const char* in, char** read_file, size_t* read_size)
 {
     bool state = false;

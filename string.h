@@ -218,8 +218,8 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
 
     EXTERNAL String string_safe_range(String string, isize from, isize to)
     {
-        isize clamped_to = _CLAMP(to, 0, string.count);
-        isize clamped_from = _CLAMP(from, 0, to);
+        isize clamped_from = _CLAMP(from, 0, string.count);
+        isize clamped_to = _CLAMP(to, clamped_from, string.count);
         return string_range(string, clamped_from, clamped_to);
     }
     #undef _CLAMP
@@ -271,10 +271,10 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
         if(search_for.count == 0)
             return from;
 
-        isize to = in_str.count - in_str.count; 
-        for(isize i = to; i >= from; i--)
-            if(memcmp(in_str.data + i, search_for.data, search_for.count) == 0)
-                return i;
+        for(isize i = in_str.count - search_for.count; i >= from; i--)
+            if(in_str.data[i] == search_for.data[0])
+                if(memcmp(in_str.data + i, search_for.data, search_for.count) == 0)
+                    return i;
 
         return if_not_found;
     }
@@ -823,9 +823,9 @@ EXTERNAL bool line_iterator_next(Line_Iterator* iterator, String string);
             if(string.data[i] == '\r')
             {
                 //windows
-                if(i + 1 < string.count && string.data[i] == '\n')
+                if(i+1 < string.count && string.data[i+1] == '\n')
                     next_line_from = i+2;
-                //mac
+                //old school mac
                 else
                     next_line_from = i+1;
 
